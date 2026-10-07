@@ -19,7 +19,7 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 | LS §52 | end-to-end implementation architecture | full Gradle suite and native C smoke tests |
 | TS §§1–8, 65–70 | module structure, source model, lexer/parser, AST, recovery, hot-path storage | language-core tests and incremental lexer tests |
 | TS §§9–14, 26–30, 56 | symbols, scopes, types, methods, modules, C import adapter, foreign tooling | semantic/compiler tests and foreign-symbol LSP test |
-| TS §§15–25, 47–49 | compile-time values, templates, evaluator, scheduler, expansion cache and invalidation | `comptime` tests, incremental compiler tests, and the `cpx-deterministic` CLI golden/C17 execution fixture |
+| TS §§15–25, 47–49 | compile-time values, templates, evaluator, scheduler, fixed points, cycles, expansion cache replay and invalidation | `comptime` tests, incremental compiler tests, and the `cpx-deterministic` CLI golden/C17 execution fixture |
 | TS §§31–44, 58–62 | compiler pipeline, lowering, C AST, hoisting, headers, emitter, source maps | compiler/c-backend golden and execution tests |
 | TS §§45–46, 50–55, 63–64 | diagnostics, CLI, LSP, layered tests, golden fixtures | CLI integration/golden tests and `gradle test` |
 | TS §§69–78 | architectural invariants, milestones, verification and final audit | typed backend channels, full suite, `git diff --check` |

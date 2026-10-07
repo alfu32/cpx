@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R2.2 — recursive expansion, fixed points, cycles and cache invalidation
+R2.3.2 — connect semantic type identities and ABI layout facts to reflection
 
 Current milestone:
 R2 — CPX, generics and reflection conformance
@@ -3489,9 +3489,15 @@ project policy.
   - R2.1.1 [DONE] — complete typed value-category parsing and evaluation.
   - R2.1.2 [DONE] — close interpolation boundary, hygiene, and provenance cases.
   - R2.1.3 [DONE] — add deterministic expanded-source and generated-C fixtures.
-- R2.2 [TODO] — complete recursive expansion, fixed points, cycles, and cache
+- R2.2 [DONE] — complete recursive expansion, fixed points, cycles, and cache
   invalidation.
-- R2.3 [TODO] — complete stabilized reflection and type-universe conformance.
+- R2.3 [DOING] — complete stabilized reflection and type-universe conformance.
+  - R2.3.1 [DONE] — expose a frozen, read-only structural reflection snapshot
+    to reflective evaluators.
+  - R2.3.2 [TODO] — connect semantic type identities and ABI layout facts to
+    the reflection view.
+  - R2.3.3 [TODO] — add reflection-driven generated declarations and mutation
+    rejection fixtures.
 
 R2.1 MUST finish before recursive specialization work because expansion results
 must have stable typed representations before identity and caching can be
@@ -3531,8 +3537,40 @@ Implemented and tested on Linux:
 - the golden harness compares expanded representation and generated C from a
   clean compiler invocation, preventing source-format or expansion-order drift.
 
-R2.1 is complete. The next stage audits recursive fixed-point scheduling,
-dependency publication, cycle handling, and cache invalidation semantics.
+R2.1 is complete. R2.2 has now closed the recursive scheduling and cache
+contract; the active work is stabilized reflection.
+
+### R2.2 completion record
+
+Implemented and tested on Linux:
+
+- cached evaluations retain diagnostics and published dependency channels, so
+  cache hits cannot make dependent tasks appear ready incorrectly;
+- definition fingerprints are source-path independent and canonicalized from
+  template tokens, while changed definitions still invalidate their entries;
+- deterministic work-queue fixed points, nested expansion identity, deferred
+  definition discovery, explicit dependency cycles, recursion cycles, and
+  configurable expansion limits remain covered by scheduler/expander tests;
+- incremental compilation invalidates specialization keys through the changed
+  module dependency closure.
+
+R2.2 is complete. R2.3 continues with semantic type identity and ABI-backed
+reflection data.
+
+### R2.3.1 completion record
+
+Implemented and tested on Linux:
+
+- every evaluator context carries an early-safe or frozen-full
+  `TypeUniverseSnapshot` selected by the scheduler phase barrier;
+- `ComptimeReflection` exposes immutable names, kinds, fields, methods, enum
+  members, alias targets, and optional layout size/alignment facts;
+- generated structural descriptors are registered before the barrier and are
+  visible to reflective evaluators only after the universe is frozen;
+- reflective context tests prove generated structure members are available and
+  structural mutation remains rejected after stabilization.
+
+Semantic `TypeId` and ABI layout integration remains R2.3.2.
 
 **Deliverables**
 

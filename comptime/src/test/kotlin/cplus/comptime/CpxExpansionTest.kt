@@ -454,6 +454,66 @@ class CpxExpansionTest {
     }
 
     @Test
+    fun specializationCacheReplaysEvaluationChannelsWithoutReevaluating() {
+        val sourceText = """
+            comptime cpx<decl> make() {
+                return { int generated() { return 0; } };
+            }
+            make();
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(125), Path.of("cached-channels.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val cache = SpecializationCache()
+        var evaluations = 0
+        val expander = CpxExpander(
+            specializationCache = cache,
+            evaluator = ComptimeEvaluator { _, template, bindings, _ ->
+                evaluations++
+                ComptimeEvaluationResult(
+                    template.render(bindings),
+                    ComptimeExpansionChannels(dependencies = setOf(ComptimeDependency.Module("runtime")))
+                )
+            }
+        )
+
+        val first = expander.expand(source, parsed.syntax)
+        val second = expander.expand(source, parsed.syntax)
+
+        assertTrue(first.diagnostics.isEmpty(), first.diagnostics.joinToString())
+        assertTrue(second.diagnostics.isEmpty(), second.diagnostics.joinToString())
+        assertEquals(1, evaluations)
+        assertEquals(
+            setOf(ComptimeDependency.Module("runtime")),
+            second.evaluationResults.values.single().channels.dependencies
+        )
+        assertEquals(SpecializationCacheStatistics(1, hits = 1, misses = 1), cache.statistics())
+    }
+
+    @Test
+    fun equivalentTemplateFormattingSharesDefinitionSensitiveCacheEntry() {
+        fun parse(id: Int, text: String): SyntaxProgram {
+            val source = SourceFile(SourceFileId(id), Path.of("format-$id.cp"), text, 1)
+            return Parser(Lexer().lex(source)).parse().syntax
+        }
+
+        val first = parse(
+            126,
+            "comptime cpx<decl> make() { return { int generated() { return 1; } }; } make();"
+        )
+        val second = parse(
+            127,
+            "comptime cpx<decl> make() {\n return {\n int generated() { return 1; }\n };\n}\nmake();"
+        )
+        val cache = SpecializationCache()
+        val expander = CpxExpander(specializationCache = cache)
+
+        assertTrue(expander.expand(SourceFile(SourceFileId(126), Path.of("format-126.cp"), "", 1), first).diagnostics.isEmpty())
+        assertTrue(expander.expand(SourceFile(SourceFileId(127), Path.of("format-127.cp"), "", 1), second).diagnostics.isEmpty())
+        assertEquals(1L, cache.statistics().hits)
+        assertEquals(1L, cache.statistics().misses)
+    }
+
+    @Test
     fun nestedExpansionLimitsStopUnboundedGeneratedWork() {
         val sourceText = """
             comptime cpx<decl> outer(type T) { return { inner(T); }; }
@@ -729,6 +789,38 @@ class CpxExpansionTest {
     }
 
     @Test
+    fun reflectiveEvaluatorReceivesTheFrozenTypeUniverse() {
+        val sourceText = """
+            comptime cpx<decl> makeType(type T) {
+                return { struct reflected_{T}_t { int value; }; };
+            }
+            comptime cpx<expr> inspect(type T) {
+                return { int generated() { return 0; } };
+            }
+            makeType(int);
+            inspect(reflected_int_t);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(128), Path.of("reflection-context.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        var reflectiveContexts = 0
+        val result = CpxExpander(
+            evaluator = ComptimeEvaluator { functionName, template, bindings, context ->
+                if (functionName == "inspect") {
+                    reflectiveContexts++
+                    assertEquals(TypeUniverseAccess.FULL, context.reflection.access)
+                    assertEquals("struct", context.reflection.kindOf("reflected_int_t"))
+                    assertEquals(listOf("value"), context.reflection.fieldsOf("reflected_int_t").map { it.name })
+                    assertEquals(emptyList(), context.reflection.methodsOf("reflected_int_t"))
+                }
+                ComptimeEvaluationResult(template.render(bindings))
+            }
+        ).expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        assertEquals(1, reflectiveContexts)
+    }
+
+    @Test
     fun typeUniverseRejectsMutationAndFullIntrospectionAfterFreeze() {
         val scheduler = ComptimeScheduler()
         val descriptor = StructuralTypeDescriptor(
@@ -757,5 +849,9 @@ class CpxExpansionTest {
         assertEquals(descriptor, scheduler.typeUniverse.snapshot(TypeUniverseAccess.FULL).typeNamed("BeforeFreeze"))
         assertEquals("int", descriptor.fields.single().typeReference.name)
         assertEquals(listOf("value"), descriptor.layout?.fieldOrder)
+
+        val reflection = ComptimeReflection(scheduler.typeUniverse.snapshot(TypeUniverseAccess.FULL))
+        assertEquals("struct", reflection.kindOf("BeforeFreeze"))
+        assertEquals(listOf("value"), reflection.fieldsOf("BeforeFreeze").map { it.name })
     }
 }

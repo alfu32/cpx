@@ -62,8 +62,12 @@ data class ComptimeContext(
     val phase: CpxPhase,
     val target: ComptimeTargetInfo,
     val sourceOrigin: Origin,
-    val expansion: ExpansionId?
-)
+    val expansion: ExpansionId?,
+    val typeUniverse: TypeUniverseSnapshot = TypeUniverseSnapshot(emptySet(), TypeUniverseAccess.EARLY_SAFE)
+) {
+    val reflection: ComptimeReflection
+        get() = ComptimeReflection(typeUniverse)
+}
 
 data class ComptimeExpansionChannels(
     val replacement: List<NodeId> = emptyList(),
@@ -508,7 +512,7 @@ data class SpecializationCacheStatistics(
 
 private data class SpecializationCacheEntry(
     val definitionFingerprint: String,
-    val instantiatedText: String
+    val evaluation: ComptimeEvaluationResult
 )
 
 /**
@@ -525,6 +529,11 @@ class SpecializationCache {
 
     @Synchronized
     fun get(key: SpecializationKey, definitionFingerprint: String): String? {
+        return getEvaluation(key, definitionFingerprint)?.renderedText
+    }
+
+    @Synchronized
+    fun getEvaluation(key: SpecializationKey, definitionFingerprint: String): ComptimeEvaluationResult? {
         val entry = entries[key]
         if (entry == null || entry.definitionFingerprint != definitionFingerprint) {
             missCount++
@@ -532,12 +541,21 @@ class SpecializationCache {
             return null
         }
         hitCount++
-        return entry.instantiatedText
+        return entry.evaluation
     }
 
     @Synchronized
     fun put(key: SpecializationKey, definitionFingerprint: String, instantiatedText: String) {
-        entries[key] = SpecializationCacheEntry(definitionFingerprint, instantiatedText)
+        putEvaluation(key, definitionFingerprint, ComptimeEvaluationResult(instantiatedText))
+    }
+
+    @Synchronized
+    fun putEvaluation(
+        key: SpecializationKey,
+        definitionFingerprint: String,
+        evaluation: ComptimeEvaluationResult
+    ) {
+        entries[key] = SpecializationCacheEntry(definitionFingerprint, evaluation)
     }
 
     @Synchronized
@@ -608,7 +626,9 @@ data class StructuralMethodDescriptor(
 data class StructuralLayout(
     val representation: String,
     val fieldOrder: List<String>,
-    val isSized: Boolean
+    val isSized: Boolean,
+    val size: Long? = null,
+    val alignment: Long? = null
 )
 
 data class StructuralTypeDescriptor(
@@ -616,7 +636,9 @@ data class StructuralTypeDescriptor(
     val kind: String,
     val fields: List<StructuralFieldDescriptor> = emptyList(),
     val methods: List<StructuralMethodDescriptor> = emptyList(),
-    val layout: StructuralLayout? = null
+    val layout: StructuralLayout? = null,
+    val aliasTarget: StructuralTypeReference? = null,
+    val enumValues: List<String> = emptyList()
 )
 
 data class TypeUniverseSnapshot(
@@ -625,6 +647,30 @@ data class TypeUniverseSnapshot(
     val descriptors: Map<String, StructuralTypeDescriptor> = emptyMap()
 ) {
     fun typeNamed(name: String): StructuralTypeDescriptor? = descriptors[name]
+}
+
+/** Structured, read-only reflection view available to compile-time evaluators. */
+class ComptimeReflection(private val snapshot: TypeUniverseSnapshot) {
+    fun names(): Set<String> = snapshot.names
+
+    fun descriptor(name: String): StructuralTypeDescriptor? = snapshot.typeNamed(name)
+
+    fun fieldsOf(name: String): List<StructuralFieldDescriptor> = descriptor(name)?.fields.orEmpty()
+
+    fun methodsOf(name: String): List<StructuralMethodDescriptor> = descriptor(name)?.methods.orEmpty()
+
+    fun enumValuesOf(name: String): List<String> = descriptor(name)?.enumValues.orEmpty()
+
+    fun aliasTargetOf(name: String): StructuralTypeReference? = descriptor(name)?.aliasTarget
+
+    fun kindOf(name: String): String? = descriptor(name)?.kind
+
+    fun sizeOf(name: String): Long? = descriptor(name)?.layout?.size
+
+    fun alignmentOf(name: String): Long? = descriptor(name)?.layout?.alignment
+
+    val access: TypeUniverseAccess
+        get() = snapshot.access
 }
 
 /** Mutable only during structural expansion and immutable after freeze. */
@@ -1063,15 +1109,13 @@ class CpxExpander(
 
             val category = parseCategory(task.definition.category)
             val definitionFingerprint = buildString {
-                append(portablePathIdentity(source.path))
-                append('|')
                 append(task.definition.name)
                 append('|')
                 append(task.definition.category)
                 append('|')
                 append(task.definition.parameters.joinToString(",") { "${it.kind}:${it.name}" })
                 append('|')
-                append(task.definition.template)
+                append(canonicalSyntax(task.definition.template))
             }
             val context = ComptimeContext(
                 module = source.path.fileName.toString(),
@@ -1081,7 +1125,10 @@ class CpxExpander(
                 phase = task.phase,
                 target = target,
                 sourceOrigin = task.invocation.origin,
-                expansion = task.expansionId
+                expansion = task.expansionId,
+                typeUniverse = scheduler.typeUniverse.snapshot(
+                    if (task.phase == CpxPhase.REFLECTIVE) TypeUniverseAccess.FULL else TypeUniverseAccess.EARLY_SAFE
+                )
             )
             val template = templateParser.parse(
                 task.definition.template,
@@ -1100,16 +1147,18 @@ class CpxExpander(
                 scheduler.markFailed(task.key)
                 continue
             }
-            val cached = specializationCache.get(specializationKey, definitionFingerprint)
+            val cached = specializationCache.getEvaluation(specializationKey, definitionFingerprint)
             val instantiated = if (cached != null) {
-                evaluationResults[task.key] = ComptimeEvaluationResult(cached)
-                cached
+                evaluationResults[task.key] = cached
+                diagnostics.addAll(cached.diagnostics)
+                scheduler.publishAll(cached.channels.dependencies)
+                cached.renderedText
             } else {
                 val evaluation = evaluator.evaluate(task.definition.name, template, bindings, context)
                 evaluationResults[task.key] = evaluation
                 diagnostics.addAll(evaluation.diagnostics)
                 scheduler.publishAll(evaluation.channels.dependencies)
-                specializationCache.put(specializationKey, definitionFingerprint, evaluation.renderedText)
+                specializationCache.putEvaluation(specializationKey, definitionFingerprint, evaluation)
                 evaluation.renderedText
             }
             val generatedFile = SourceFile(
@@ -1692,9 +1741,6 @@ class CpxExpander(
     private fun syntheticSibling(source: Path, name: String): Path =
         source.resolveSibling(name.replace(Regex("[^A-Za-z0-9_.-]"), "_"))
 
-    private fun portablePathIdentity(path: Path): String =
-        path.toAbsolutePath().normalize().toString().replace('\\', '/')
-
     private fun registerStructuralDeclarations(
         universe: ComptimeTypeUniverse,
         declarations: Iterable<SyntaxDeclaration>
@@ -1703,11 +1749,20 @@ class CpxExpander(
     }
 
     private fun structuralTypeDescriptor(declaration: SyntaxDeclaration): StructuralTypeDescriptor? = when (declaration) {
-        is SyntaxAlias -> StructuralTypeDescriptor(declaration.name, "alias")
+        is SyntaxAlias -> StructuralTypeDescriptor(
+            declaration.name,
+            "alias",
+            aliasTarget = StructuralTypeReference(
+                declaration.target.name,
+                declaration.target.pointerDepth,
+                declaration.target.declarationKind
+            )
+        )
         is SyntaxEnum -> StructuralTypeDescriptor(
             declaration.name,
             "enum",
-            layout = StructuralLayout("enum", declaration.values.map { it.name }, isSized = true)
+            layout = StructuralLayout("enum", declaration.values.map { it.name }, isSized = true),
+            enumValues = declaration.values.map { it.name }
         )
         is SyntaxUnion -> StructuralTypeDescriptor(
             declaration.name,

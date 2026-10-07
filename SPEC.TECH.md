@@ -1028,6 +1028,13 @@ typeUniverse.freeze()
 
 structural mutation through reflective CPX SHALL be rejected.
 
+Each `ComptimeContext` exposes an immutable type-universe snapshot and a
+structured reflection view. Structural evaluators receive the early-safe name
+view; reflective evaluators receive the full descriptor view only after the
+stabilization barrier. The reflection view includes aggregate fields and
+methods, enum members, alias targets, and layout size/alignment when the ABI
+model has established those facts. It has no mutation operations.
+
 ---
 
 # 25. Reflection API
@@ -1786,6 +1793,14 @@ Cache:
 ```kotlin
 class SpecializationCache
 ```
+
+Cache entries SHALL retain the complete evaluation result required by the
+scheduler, including diagnostics and published dependency channels, rather
+than rendered text alone. Definition fingerprints SHALL be independent of the
+source path and SHALL canonicalize template token spelling so formatting-only
+edits do not create distinct semantic definitions. Explicit incremental
+invalidation removes entries for the changed specialization dependency
+closure.
 
 Equivalent calls:
 
