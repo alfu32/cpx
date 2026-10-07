@@ -13,10 +13,10 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R3.1 — C backend ABI interoperability matrix
+R4.1 — runtime contract inventory and page-backed allocator
 
 Current milestone:
-R2 — CPX, generics and reflection conformance
+R4 — runtime, allocator and libc behavior
 ```
 
 All tasks initially have status `TODO`.
@@ -3695,6 +3695,21 @@ layout, source-map, and dependency audits.
 
 ## R4 [TODO] Runtime, allocator and libc behavior
 
+**Dependency-ordered work queue**
+
+- R4.1 [DOING] — inventory runtime symbols, define target-neutral runtime
+  result/errno rules, and replace the fixed bootstrap arena with a page-backed
+  allocator contract;
+- R4.2 [TODO] — implement allocate, allocate-zeroed, resize, free, and aligned
+  operations with overflow, double-free, and invalid-range diagnostics;
+- R4.3 [TODO] — implement the C+ memory/string/conversion core and thread-local
+  errno boundary without importing host libc behavior into native APIs;
+- R4.4 [TODO] — implement the claimed C17 compatibility families in dependency
+  order: stdio/varargs, time/math/locale, Unicode, signal, atomics, TLS, and
+  setjmp/longjmp;
+- R4.5 [TODO] — execute independent C17 conformance fixtures, audit compiler
+  runtime symbols, and update the machine-checked conformance report.
+
 **Deliverables**
 
 - replace the bootstrap-only allocator with page-backed allocate,
@@ -3714,6 +3729,19 @@ diagnostics, and self-hosted products have no hidden libc/compiler-runtime
 dependencies.
 
 ## R5 [TODO] Complete native std and platform services
+
+**Dependency-ordered work queue**
+
+- R5.1 [TODO] — complete target-neutral `std.core`, `std.mem`, `std.string`,
+  `std.text`, and collection value/error types;
+- R5.2 [TODO] — extend the file PAL with seek, metadata, create/remove,
+  directory iteration, and stream adapters;
+- R5.3 [TODO] — implement memory/page, process/environment, time, thread,
+  synchronization, atomics, networking, and math PAL adapters;
+- R5.4 [TODO] — connect native std façades to PAL services and add capability
+  propagation, unavailable-service diagnostics, and dependency audits;
+- R5.5 [TODO] — record Darwin as either executablely supported or explicitly
+  capability-gated, without claiming a partial adapter as complete.
 
 **Deliverables**
 
@@ -3736,6 +3764,17 @@ matrix reports platform services as `pass` rather than merely `planned`.
 
 ## R6 [TODO] CLI transcoder and build-product completion
 
+**Dependency-ordered work queue**
+
+- R6.1 [TODO] — define project/workspace manifests and one source/import model
+  shared by `check`, `transcode`, `build`, and `run`;
+- R6.2 [TODO] — normalize output, header, map, target, runtime, libc, SDK,
+  compiler, sysroot, C-source, and library options with deterministic paths;
+- R6.3 [TODO] — make fat-JAR assembly reproducible, clean temporary products,
+  preserve process failures, and emit stable diagnostics;
+- R6.4 [TODO] — make `sdk`, `target`, `abi`, `runtime`, `libc`, and `audit`
+  validate the exact artifacts consumed by a normal build.
+
 **Deliverables**
 
 - define the supported project/workspace input model and make module/path/
@@ -3756,6 +3795,16 @@ Windows products from documented commands.
 
 ## R7 [TODO] LSP and VS Code product completion
 
+**Dependency-ordered work queue**
+
+- R7.1 [TODO] — make workspace indexing and imported-source URI mapping
+  authoritative for diagnostics, definitions, references, symbols, hover,
+  completion, tokens, and edits;
+- R7.2 [TODO] — run configured `java -jar <cli>` for LSP and Run Main with
+  portable settings, working directories, and path normalization;
+- R7.3 [TODO] — package and test the extension from a clean checkout against
+  the assembled CLI product.
+
 **Deliverables**
 
 - map diagnostics, definitions, references, symbols, completion, hover,
@@ -3772,6 +3821,17 @@ Windows, with external-source locations preserved and no competing parser or
 hard-coded CLI path.
 
 ## R8 [TODO] SDK packaging, target matrix and release conformance
+
+**Dependency-ordered work queue**
+
+- R8.1 [TODO] — generate deterministic SDK metadata, headers, syscall
+  catalogues, package indexes, and optional runtime objects;
+- R8.2 [TODO] — replace optimistic status entries with executable evidence and
+  explicit capability diagnostics;
+- R8.3 [TODO] — run Linux x86_64/AArch64 and Windows x86_64 (plus available
+  Windows AArch64/Darwin targets) product validation;
+- R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
+  builds, documented examples, and upgrade/ABI compatibility rules.
 
 **Deliverables**
 
