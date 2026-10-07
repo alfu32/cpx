@@ -8,6 +8,42 @@ import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
     @Test
+    fun importedForeignTypesRetainCNamesAndHeaders() {
+        val source = """
+            import { FILE } from c.stdio;
+            import { size_t } from c.stddef;
+
+            FILE* output;
+            size_t length;
+
+            int main() {
+                return 0;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-foreign-types", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("#include <stddef.h>"))
+        assertTrue(generated.contains("#include <stdio.h>"))
+        assertTrue(generated.contains("FILE* output;"))
+        assertTrue(generated.contains("size_t length;"))
+
+        val directory = Files.createTempDirectory("cplus-foreign-types-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(0, execution.waitFor())
+    }
+
+    @Test
     fun typeAliasesResolveAndEmitAsTypedefs() {
         val source = """
             typedef int count_t;

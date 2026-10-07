@@ -17,6 +17,7 @@ class CLowerer(private val semantic: SemanticModel) {
             .flatMap { import ->
                 when (import.module) {
                     "c.stdio" -> listOf("stdio.h")
+                    "c.stddef" -> listOf("stddef.h")
                     "c.math" -> listOf("math.h")
                     else -> emptyList()
                 }
@@ -97,6 +98,7 @@ class CLowerer(private val semantic: SemanticModel) {
     private fun type(reference: AstTypeRef): CType {
         val result = when {
             semantic.aliases.containsKey(reference.name) -> CType.Named(reference.name, reference.pointerDepth)
+            semantic.foreignTypes.containsKey(reference.name) -> CType.Named(reference.name, reference.pointerDepth)
             reference.declarationKind == "union" || semantic.unions.containsKey(reference.name) -> {
                 CType.Union(reference.name, reference.pointerDepth)
             }
