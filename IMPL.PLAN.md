@@ -3,14 +3,14 @@
 ## Dashboard
 
 ```text
-Overall: 117/145
+Overall: 119/145
 
 [DONE] [16/16] 1. Language front-end
 [DONE] [30/30] 2. Semantic model and modules
 [DONE] [20/20] 3. Compile-time and CPX system
 [DONE] [34/34] 4. Lowering and C backend
 [DONE] [14/14] 5. Tooling, integration and quality
-[TODO] [4/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
+[TODO] [6/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
 6.1.1.4 — Add SDK semantic metadata and reproducible cache format
@@ -2425,7 +2425,7 @@ all create correct bindings.
 
 ---
 
-## 6.1 [TODO] [4/8] SDK packaging and runtime foundation
+## 6.1 [TODO] [6/8] SDK packaging and runtime foundation
 
 **SDK**
 - SDK §2–6
@@ -2556,9 +2556,9 @@ all create correct bindings.
 
 ---
 
-### 6.1.2 [TODO] [0/4] Runtime lifecycle and compiler-support runtime
+### 6.1.2 [TODO] [2/4] Runtime lifecycle and compiler-support runtime
 
-#### 6.1.2.1 [TODO] Implement target startup selection and `__cplus_start`
+#### 6.1.2.1 [DONE] [4/4] Implement target startup selection and `__cplus_start`
 
 **SDK**
 - SDK §39 Program Startup ABI
@@ -2575,11 +2575,16 @@ all create correct bindings.
 - startup acquisition of arguments/environment is delegated to the selected target adapter.
 - startup symbols retain generated provenance for diagnostics/debugging.
 
+**Implementation**
+- Added `RuntimeLinker` and target runtime-link plans with explicit startup/runtime inputs and no-default-library flags for self-hosted profiles.
+- Added the Linux x86_64 `_start` adapter and `__cplus_start` runtime entry.
+- Added startup selection tests and CLI executable integration coverage.
+
 **Depends**
 - 6.1.1.2
 - 6.2.1.1
 
-#### 6.1.2.2 [TODO] Implement runtime initialization and application entry dispatch
+#### 6.1.2.2 [DONE] [4/4] Implement runtime initialization and application entry dispatch
 
 **SDK**
 - SDK §41 Application Entry Point
@@ -2593,6 +2598,11 @@ all create correct bindings.
 - runtime initializes TLS, allocator/runtime state, arguments/environment and global runtime state in deterministic order.
 - application entry remains semantically separate from platform loader entry.
 - integration fixture reaches `main` without an external libc startup.
+
+**Implementation**
+- Added deterministic runtime initialization hooks for TLS, allocator, global state, and argument/environment capture.
+- Added dispatch from platform `_start` through `__cplus_start` to the application `main` entry.
+- Added explicit runtime/system profile separation so system startup remains a downstream-toolchain responsibility.
 
 **Depends**
 - 6.1.2.1

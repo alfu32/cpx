@@ -1984,6 +1984,15 @@ schema, manifest identity, target identity, and all source hashes before reuse;
 otherwise it rebuilds the metadata from source. Metadata accelerates tooling
 and inspection but never replaces source as the authority for compilation.
 
+For `runtime=cplus` and `runtime=freestanding`, `RuntimeLinker` resolves the
+target startup adapter and compiler-support runtime from the SDK. On Linux
+x86_64 the adapter supplies `_start`, which acquires `argc`/`argv`, calls
+`__cplus_start`, and exits through the Linux process-exit syscall. The runtime
+initialization sequence records arguments, initializes runtime/TLS/allocator
+state hooks, dispatches either supported application `main` form, and runs
+normal termination handlers. `runtime=system` deliberately leaves startup and
+default-library selection to the downstream toolchain.
+
 ---
 
 # 59. Pipeline orchestration

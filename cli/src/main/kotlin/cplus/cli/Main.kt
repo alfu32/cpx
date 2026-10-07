@@ -5,6 +5,7 @@ import cplus.compiler.CompileRequest
 import cplus.compiler.BuildProfile
 import cplus.compiler.LibcProfile
 import cplus.compiler.RuntimeProfile
+import cplus.compiler.RuntimeLinker
 import cplus.compiler.SdkManifestLocator
 import cplus.compiler.TargetInfo
 import cplus.core.*
@@ -200,6 +201,11 @@ internal class Cli {
         printDiagnostics(result.diagnostics, sources.first())
         if (!result.isSuccessful) return 1
         val generated = result.generatedUnits.singleOrNull()?.text ?: return 2
+        val sdkResolution = result.sdkResolution ?: return 2
+        val runtimePlan = RuntimeLinker.plan(sdkResolution, target)
+        printDiagnostics(runtimePlan.diagnostics, sources.first())
+        if (!runtimePlan.isSuccessful) return 1
+        val runtime = runtimePlan.plan!!
         val cFile = executable.resolveSibling("${executable.fileName}.c")
         cFile.parent?.let { Files.createDirectories(it) }
         executable.parent?.let { Files.createDirectories(it) }
@@ -222,8 +228,16 @@ internal class Cli {
                 }
             }
             ProcessBuilder(
-                listOf("cc", "-std=c17") + includeFlags + listOf(cFile.toString()) +
-                    dependencySources + libraryFlags + listOf("-o", executable.toString())
+                listOf("cc", "-std=${target.cDialect}") +
+                    runtime.compilerFlags +
+                    includeFlags +
+                    listOf(cFile.toString()) +
+                    runtime.runtimeSources.map(Path::toString) +
+                    runtime.startupSources.map(Path::toString) +
+                    dependencySources +
+                    libraryFlags +
+                    runtime.linkerFlags +
+                    listOf("-o", executable.toString())
             )
                 .redirectErrorStream(true)
                 .start()
