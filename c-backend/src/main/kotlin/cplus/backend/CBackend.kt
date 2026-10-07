@@ -453,10 +453,11 @@ class CEmitter {
         unit.functions.forEach { function ->
             appendLine("${function.returnType.render()} ${function.name}(${parameters(function.parameters)});", function.origin)
         }
-        if (unit.functions.isNotEmpty()) appendLine()
-        unit.functions.forEachIndexed { index, function ->
+        val definitions = unit.functions.filter { it.body != null }
+        if (definitions.isNotEmpty()) appendLine()
+        definitions.forEachIndexed { index, function ->
             emitFunction(function, ::appendLine, ::append)
-            if (index != unit.functions.lastIndex) appendLine()
+            if (index != definitions.lastIndex) appendLine()
         }
 
         return GeneratedCUnit(output.toString(), mappings)

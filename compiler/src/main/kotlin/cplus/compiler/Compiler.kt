@@ -20,8 +20,11 @@ data class CompilerOptions(
 data class CompileRequest(
     val sources: List<Path>,
     val target: TargetInfo = TargetInfo(),
-    val options: CompilerOptions = CompilerOptions()
+    val options: CompilerOptions = CompilerOptions(),
+    val cSources: List<Path> = emptyList()
 )
+
+data class CSourceDependency(val path: Path)
 
 data class CompilationArtifacts(
     val source: SourceFile,
@@ -40,7 +43,8 @@ data class CompileResult(
     val generatedUnits: List<GeneratedCUnit>,
     val semanticModel: SemanticModel?,
     val artifacts: List<CompilationArtifacts>,
-    val moduleGraph: ModuleGraph? = null
+    val moduleGraph: ModuleGraph? = null,
+    val cSourceDependencies: List<CSourceDependency> = emptyList()
 ) {
     val isSuccessful: Boolean
         get() = diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
@@ -69,7 +73,7 @@ class CPlusCompiler(
     fun compile(request: CompileRequest): CompileResult {
         if (request.sources.size <= 1) {
             val artifacts = request.sources.map { compileOne(it, request.options) }
-            return resultOf(artifacts)
+            return resultOf(artifacts, cSourceDependencies = dependencies(request.cSources))
         }
         return compileWorkspace(request)
     }
@@ -108,7 +112,8 @@ class CPlusCompiler(
             units.map { ModuleSource(it.source, it.expanded?.program ?: it.parsed.syntax) }
         )
         val first = units.firstOrNull()
-        if (first == null) return CompileResult(emptyList(), emptyList(), null, emptyList(), moduleGraph)
+        val cSourceDependencies = dependencies(request.cSources)
+        if (first == null) return CompileResult(emptyList(), emptyList(), null, emptyList(), moduleGraph, cSourceDependencies)
 
         val mergedOrigin = first.ast.origin
         val mergedAst = AstProgram(
@@ -136,7 +141,8 @@ class CPlusCompiler(
                         additionalDiagnostics
                     )
                 ),
-                moduleGraph
+                moduleGraph,
+                cSourceDependencies
             )
         }
         val model = semantic.model
@@ -155,7 +161,8 @@ class CPlusCompiler(
                         additionalDiagnostics
                     )
                 ),
-                moduleGraph
+                moduleGraph,
+                cSourceDependencies
             )
         }
         val lowered = context.cLowererFactory(model).lower(mergedAst)
@@ -174,7 +181,8 @@ class CPlusCompiler(
                         additionalDiagnostics
                     )
                 ),
-                moduleGraph
+                moduleGraph,
+                cSourceDependencies
             )
         }
         val generated = context.cEmitter.emit(lowered.unit)
@@ -192,17 +200,28 @@ class CPlusCompiler(
                     additionalDiagnostics
                 )
             ),
-            moduleGraph
+            moduleGraph,
+            cSourceDependencies
         )
     }
 
-    private fun resultOf(artifacts: List<CompilationArtifacts>, moduleGraph: ModuleGraph? = null): CompileResult = CompileResult(
+    private fun resultOf(
+        artifacts: List<CompilationArtifacts>,
+        moduleGraph: ModuleGraph? = null,
+        cSourceDependencies: List<CSourceDependency> = emptyList()
+    ): CompileResult = CompileResult(
         diagnostics = artifacts.flatMap { it.allDiagnostics() },
         generatedUnits = artifacts.mapNotNull { it.generated },
         semanticModel = artifacts.singleOrNull()?.semantic?.model,
         artifacts = artifacts,
-        moduleGraph = moduleGraph
+        moduleGraph = moduleGraph,
+        cSourceDependencies = cSourceDependencies
     )
+
+    private fun dependencies(paths: List<Path>): List<CSourceDependency> = paths
+        .map { it.toAbsolutePath().normalize() }
+        .distinct()
+        .map(::CSourceDependency)
 
     private fun unresolvedImportCycleDiagnostics(
         moduleGraph: ModuleGraph,

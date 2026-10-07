@@ -9,6 +9,70 @@ import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
     @Test
+    fun cSourceDependenciesAreNormalizedAndDeduplicated() {
+        val directory = Files.createTempDirectory("cplus-c-source-dependencies")
+        val source = directory.resolve("main.cp").also {
+            it.writeText("int main() { return 0; }")
+        }
+        val cSource = directory.resolve("helpers").resolve("..").resolve("helper.c")
+
+        val result = CPlusCompiler().compile(
+            CompileRequest(
+                listOf(source),
+                cSources = listOf(cSource, cSource)
+            )
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals(
+            listOf(cSource.toAbsolutePath().normalize()),
+            result.cSourceDependencies.map(CSourceDependency::path)
+        )
+    }
+
+    @Test
+    fun cSourceImplementationCanSatisfyPrototypeOnlyDeclaration() {
+        val directory = Files.createTempDirectory("cplus-c-source-link")
+        val source = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    int helper_value();
+
+                    int main() {
+                        return helper_value();
+                    }
+                """.trimIndent()
+            )
+        }
+        val cSource = directory.resolve("helper.c").also {
+            it.writeText(
+                """
+                    int helper_value(void) {
+                        return 12;
+                    }
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(source), cSources = listOf(cSource)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("int helper_value();"))
+        assertTrue(!generated.contains("int helper_value() {"))
+
+        val executable = directory.resolve("program")
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), cSource.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(12, execution.waitFor())
+    }
+
+    @Test
     fun importedForeignTypesRetainCNamesAndHeaders() {
         val source = """
             import { FILE } from c.stdio;
