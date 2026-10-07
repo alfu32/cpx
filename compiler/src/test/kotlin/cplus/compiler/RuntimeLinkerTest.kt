@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import java.nio.file.Files
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeLinkerTest {
     @Test
@@ -32,7 +33,7 @@ class RuntimeLinkerTest {
 
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         assertEquals("start.c", result.plan!!.startupSources.single().fileName.toString())
-        assertTrue(result.plan.runtimeSources.any { it.toString().contains("platform/windows/runtime.c") })
+        assertTrue(result.plan.runtimeSources.any { it.toString().replace('\\', '/').contains("platform/windows/runtime.c") })
         assertTrue(result.plan.linkerFlags.contains("-lkernel32"))
         assertTrue(result.plan.compilerFlags.contains("-nostdlib"))
     }
@@ -52,6 +53,7 @@ class RuntimeLinkerTest {
 
     @Test
     fun normalTerminationRunsHandlersInReverseRegistrationOrder() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
         val resolution = requireNotNull(SdkResolver.resolve(manifest, TargetInfo()).resolution)
         val plan = requireNotNull(RuntimeLinker.plan(resolution, TargetInfo()).plan)

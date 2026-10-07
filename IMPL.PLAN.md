@@ -3113,6 +3113,7 @@ all create correct bindings.
 - Kept UCRT/MSVCRT out of the self-hosted runtime dependency policy.
 - Added the uniform `platform_write_stdout`/`platform_process_exit` PAL ABI and isolated Linux syscall and Windows DLL implementations behind it.
 - Added target startup adapters for Linux x86_64/AArch64 and Windows x86_64/AArch64 without host libc startup objects.
+- Reserved the PAL file-service boundary for canonical UTF-8 `/`-separated paths; Windows path/root and UTF-8-to-wide conversion remains inside the Windows adapter rather than in `std.fs` or application code.
 
 **Depends**
 - 6.2.1.3

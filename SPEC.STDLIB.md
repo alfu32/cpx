@@ -548,6 +548,18 @@ path manipulation
 
 Native C+ path semantics SHALL be independent from libc `char*` filename semantics.
 
+The portable C+ filesystem path representation SHALL be a UTF-8 string using `/`
+as its separator. Native `std.fs` and the C+ libc façade SHALL accept this
+representation on every target; application code SHALL NOT need to select
+Windows drive separators, UNC spelling, POSIX separators, or a host encoding.
+
+The PAL SHALL translate the canonical path at the OS boundary. On Windows this
+includes separator/root interpretation and conversion to the native wide
+character API representation where required. On Unix-like targets the PAL MAY
+pass the UTF-8 byte representation directly to the supported OS interface.
+This translation SHALL remain below `std.fs` and SHALL NOT leak host path
+syntax into portable C+ code.
+
 Platform encoding conversion belongs in the PAL.
 
 ---
@@ -2043,6 +2055,14 @@ platform.api.fs
        ├── windows.fs
        └── darwin.fs
 ```
+
+Filesystem APIs use one portable path representation at the `std.fs` boundary:
+UTF-8 text with `/` separators. The platform adapter owns conversion to the
+target OS path and encoding ABI; Windows may translate the canonical path to
+its native wide-character file APIs, while Unix-like adapters may use the
+UTF-8 bytes directly. Java/Kotlin compiler and tooling code SHALL keep using
+`java.nio.file.Path` for host filesystem access and SHALL normalize only
+serialized/logical path identities to `/`.
 
 Compile-time target selection occurs primarily at component boundaries.
 

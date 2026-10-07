@@ -2697,7 +2697,11 @@ functions: availability, arity, feature requirements, and lowering identity
 are verified before emission. Platform adapters expose narrow memory, file,
 process, time, thread, and synchronization services; Linux uses architecture
 catalogued syscalls, Windows uses declared DLL imports, and Darwin uses the
-supported System/libSystem userspace ABI.
+supported System/libSystem userspace ABI. File services receive the canonical
+C+ UTF-8 path form with `/` separators; path-root, separator, and encoding
+conversion belongs inside the target adapter. Compiler/tooling filesystem
+access remains native `java.nio.file.Path` and only serialized/logical path
+identities use slash normalization.
 
 The CLI exposes these boundaries through `sdk doctor|verify|package`,
 `target list|show`, `abi verify`, `runtime inspect`, `libc test`, and `audit`.

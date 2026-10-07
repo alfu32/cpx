@@ -531,7 +531,7 @@ class CompilerIntegrationTest {
 
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         assertEquals(0, execution.waitFor())
-        assertEquals("header adapter\n", execution.inputStream.bufferedReader().readText())
+        assertEquals("header adapter\n", normalizeLineEndings(execution.inputStream.bufferedReader().readText()))
     }
 
     @Test
@@ -598,7 +598,7 @@ class CompilerIntegrationTest {
         assertEquals(0, compileProcess.waitFor(), compileOutput)
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         assertEquals(0, execution.waitFor())
-        assertEquals("value=7\n", execution.inputStream.bufferedReader().readText())
+        assertEquals("value=7\n", normalizeLineEndings(execution.inputStream.bufferedReader().readText()))
     }
 
     @Test
@@ -1179,7 +1179,7 @@ class CompilerIntegrationTest {
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         val executionOutput = execution.inputStream.bufferedReader().readText()
         assertEquals(0, execution.waitFor(), executionOutput)
-        assertEquals("working\nleaving main\n", executionOutput)
+        assertEquals("working\nleaving main\n", normalizeLineEndings(executionOutput))
     }
 
     @Test
@@ -1220,7 +1220,7 @@ class CompilerIntegrationTest {
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         val executionOutput = execution.inputStream.bufferedReader().readText()
         assertEquals(2, execution.waitFor(), executionOutput)
-        assertEquals("tick\ntick\ntick\n", executionOutput)
+        assertEquals("tick\ntick\ntick\n", normalizeLineEndings(executionOutput))
     }
 
     @Test
@@ -1256,7 +1256,7 @@ class CompilerIntegrationTest {
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         val executionOutput = execution.inputStream.bufferedReader().readText()
         assertEquals(2, execution.waitFor(), executionOutput)
-        assertEquals("leaving loop\nleaving loop\nleaving loop\n", executionOutput)
+        assertEquals("leaving loop\nleaving loop\nleaving loop\n", normalizeLineEndings(executionOutput))
     }
 
     @Test
@@ -1458,7 +1458,7 @@ class CompilerIntegrationTest {
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         val executionOutput = execution.inputStream.bufferedReader().readText()
         assertEquals(0, execution.waitFor(), executionOutput)
-        assertEquals("inner\nouter\n", executionOutput)
+        assertEquals("inner\nouter\n", normalizeLineEndings(executionOutput))
     }
 
     @Test
@@ -1647,4 +1647,6 @@ class CompilerIntegrationTest {
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         assertEquals(8, execution.waitFor())
     }
+    private fun normalizeLineEndings(value: String): String =
+        value.replace("\r\n", "\n").replace('\r', '\n')
 }

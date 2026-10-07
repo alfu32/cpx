@@ -26,8 +26,8 @@ class LinkDriverTest {
         assertTrue(command.contains("-lkernel32"))
         assertTrue(command.contains("-nostdlib"))
         assertTrue(command.contains("-I"))
-        assertTrue(command.any { it.endsWith("sdk/libc/include") })
-        assertTrue(command.any { it.endsWith("sdk/runtime/include") })
+        assertTrue(command.any { portablePath(it).endsWith("sdk/libc/include") })
+        assertTrue(command.any { portablePath(it).endsWith("sdk/runtime/include") })
         assertFalse(command.any { it.contains("glibc", ignoreCase = true) || it.contains("musl", ignoreCase = true) })
     }
 
@@ -59,8 +59,10 @@ class LinkDriverTest {
         assertTrue(command.contains("/ENTRY:mainCRTStartup"))
         assertTrue(command.contains("/DCPLUS_RUNTIME_NO_WEAK"))
         assertTrue(command.contains("kernel32.lib"))
-        assertTrue(command.any { it.endsWith("sdk/libc/include") })
-        assertTrue(command.any { it.endsWith("sdk/runtime/include") })
+        assertTrue(command.any { portablePath(it).endsWith("sdk/libc/include") })
+        assertTrue(command.any { portablePath(it).endsWith("sdk/runtime/include") })
         assertFalse(command.any { it.startsWith("-l") })
     }
+
+    private fun portablePath(value: String): String = value.replace('\\', '/')
 }
