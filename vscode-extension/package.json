@@ -50,10 +50,15 @@
     "configuration": {
       "title": "C+",
       "properties": {
-        "cplus.server.command": {
+        "cplus.server.jarPath": {
           "type": "string",
-          "default": "cplus",
-          "description": "Executable used to start the C+ language server."
+          "default": "${workspaceFolder}/cli/build/libs/cplus-cli-0.1.0-SNAPSHOT-all.jar",
+          "description": "Path to the self-contained C+ CLI JAR used to start the language server."
+        },
+        "cplus.server.javaPath": {
+          "type": "string",
+          "default": "java",
+          "description": "Java executable used to launch the C+ CLI JAR."
         },
         "cplus.server.args": {
           "type": "array",
@@ -63,12 +68,12 @@
           "default": [
             "lsp"
           ],
-          "description": "Arguments passed to the C+ language-server executable."
+          "description": "Arguments passed to the C+ CLI after `java -jar <jar>`."
         },
         "cplus.server.cwd": {
           "type": "string",
-          "default": "",
-          "description": "Working directory for the language server. Empty uses the first workspace folder."
+          "default": "${workspaceFolder}",
+          "description": "Working directory for the language server."
         }
       }
     }

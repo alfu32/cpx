@@ -1,4 +1,5 @@
 const vscode = require('vscode');
+const fs = require('fs');
 const path = require('path');
 const { LanguageClient } = require('vscode-languageclient/node');
 
@@ -8,21 +9,35 @@ function workspaceDirectory() {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
 
+function expandWorkspaceVariable(value, workspace) {
+  return value.replaceAll('${workspaceFolder}', workspace || '');
+}
+
 function configuration() {
   const settings = vscode.workspace.getConfiguration('cplus');
-  const command = settings.get('server.command', 'cplus');
+  const workspace = workspaceDirectory();
+  const configuredJarPath = settings.get('server.jarPath', '');
+  const javaPath = settings.get('server.javaPath', 'java');
   const args = settings.get('server.args', ['lsp']);
-  const configuredCwd = settings.get('server.cwd', '');
-  const cwd = configuredCwd ? path.resolve(configuredCwd) : workspaceDirectory();
+  const configuredCwd = settings.get('server.cwd', '${workspaceFolder}');
+  const cwd = path.resolve(expandWorkspaceVariable(configuredCwd, workspace));
+  const jarPath = path.resolve(expandWorkspaceVariable(configuredJarPath, workspace));
+  if (!configuredJarPath) {
+    vscode.window.showErrorMessage('C+ language server JAR is not configured. Set cplus.server.jarPath.');
+    return undefined;
+  }
+  if (!fs.existsSync(jarPath)) {
+    vscode.window.showErrorMessage(`C+ language server JAR was not found: ${jarPath}`);
+    return undefined;
+  }
   return {
-    command,
-    args: Array.isArray(args) ? args.map(String) : ['lsp'],
+    command: javaPath,
+    args: ['-jar', jarPath, ...(Array.isArray(args) ? args.map(String) : ['lsp'])],
     cwd
   };
 }
 
-function createClient() {
-  const server = configuration();
+function createClient(server) {
   return new LanguageClient(
     'cplusLanguageServer',
     'C+ Language Server',
@@ -46,8 +61,15 @@ function createClient() {
 }
 
 async function startClient() {
-  client = createClient();
-  await client.start();
+  const server = configuration();
+  if (!server) return;
+  client = createClient(server);
+  try {
+    await client.start();
+  } catch (error) {
+    client = undefined;
+    vscode.window.showErrorMessage(`C+ language server failed to start: ${error.message}`);
+  }
 }
 
 async function restartClient() {

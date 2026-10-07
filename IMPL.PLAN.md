@@ -2115,8 +2115,8 @@ all create correct bindings.
 - `textDocument/semanticTokens/full` is served from the versioned workspace document text through `CPlusCompiler`.
 - The server advertises the semantic-token capability while retaining normal lexical tokenization for unresolved identifiers.
 - Integration coverage verifies initialization capabilities and non-empty semantic-token output.
-- Added `vscode-extension/` with the C+ `.cp` language declaration, language configuration, TextMate grammar, LSP client activation, configurable server command/arguments, and a restart command.
-- The extension bundles `vscode-languageclient` into its activation entrypoint and produces a self-contained `.vsix`; it delegates all intelligent behavior to the Kotlin language server.
+- Added `vscode-extension/` with the C+ `.cp` language declaration, language configuration, TextMate grammar, LSP client activation, configurable Java/JAR/CLI arguments, and a restart command.
+- Added the CLI `fatJar` distribution task; the extension launches the configured artifact as `java -jar <cli.jar> lsp`, bundles `vscode-languageclient` into its activation entrypoint, and produces a self-contained `.vsix`.
 
 ### 5.1.3 [DONE] Completion and hover
 

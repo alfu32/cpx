@@ -38,5 +38,7 @@ gradle --no-daemon -Dorg.gradle.native=false test
 git diff --check
 gradle --no-daemon -Dorg.gradle.native=false :cli:run --args='transcode examples/optional.cp --output /tmp/cpx-optional.c --header /tmp/cpx-optional.h'
 cc -std=c17 -fsyntax-only /tmp/cpx-optional.c
+gradle --no-daemon -Dorg.gradle.native=false :cli:fatJar
+java -jar cli/build/libs/cplus-cli-0.1.0-SNAPSHOT-all.jar --help
 cd vscode-extension && npm test && npm run package
 ```

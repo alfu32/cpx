@@ -6,22 +6,25 @@ LSP client for the Kotlin language server in the repository.
 ## Requirements
 
 - Visual Studio Code 1.85 or newer.
-- A `cplus` executable on `PATH`, or a configured command that starts the
-  repository's LSP server.
+- Java 21 or newer.
+- The self-contained CLI JAR built from this repository.
 
-The extension starts the server with `cplus lsp` by default. For a checkout of
-this repository, use a workspace setting such as:
+Build the CLI JAR first:
+
+```text
+gradle :cli:fatJar
+```
+
+The extension starts the server as `java -jar <jar> lsp`. The default JAR path
+targets this repository's output. It can be overridden through workspace
+settings:
 
 ```json
 {
-  "cplus.server.command": "gradle",
+  "cplus.server.jarPath": "${workspaceFolder}/cli/build/libs/cplus-cli-0.1.0-SNAPSHOT-all.jar",
+  "cplus.server.javaPath": "java",
   "cplus.server.args": [
-    "--no-daemon",
-    "-Dorg.gradle.native=false",
-    "--console=plain",
-    "--quiet",
-    ":cli:run",
-    "--args=lsp"
+    "lsp"
   ],
   "cplus.server.cwd": "${workspaceFolder}"
 }
