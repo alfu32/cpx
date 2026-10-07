@@ -217,6 +217,24 @@ data class SourceTypeCatalogue(
     }
 }
 
+data class SourceTypeBinding(
+    val declarationName: String,
+    val ownerModule: String,
+    val symbol: Symbol
+)
+
+private data class SourceTypeBindingRef(
+    val declarationName: String,
+    val ownerModule: String
+)
+
+private data class ModuleTypeEnvironment(
+    val structs: Map<String, StructType>,
+    val unions: Map<String, UnionType>,
+    val enums: Map<String, EnumType>,
+    val aliases: Map<String, AliasType>
+)
+
 data class SemanticModel(
     val program: AstProgram,
     val symbols: List<Symbol>,
@@ -238,7 +256,8 @@ data class SemanticModel(
     val foreignGlobals: Map<String, Symbol> = emptyMap(),
     val nodeIds: Map<NodeId, AstNode> = emptyMap(),
     val referenceIndex: ReferenceIndex = ReferenceIndex(),
-    val declarationCatalogue: DeclarationCatalogue = DeclarationCatalogue(emptyList())
+    val declarationCatalogue: DeclarationCatalogue = DeclarationCatalogue(emptyList()),
+    val moduleTypeBindings: Map<String, Map<String, SourceTypeBinding>> = emptyMap()
 ) {
     val sourceTypeCatalogue: SourceTypeCatalogue
         get() = SourceTypeCatalogue.from(symbols)
@@ -510,6 +529,8 @@ class SemanticAnalyzer(
         val aliasDeclarations = program.declarations
             .filterIsInstance<AstAlias>()
             .groupBy { it.name }
+        val aliasDeclarationsByModule = linkedMapOf<String, MutableMap<String, AstAlias>>()
+        val sourceTypeDeclarationsByModule = linkedMapOf<String, MutableMap<String, AstDeclaration>>()
         val resolvingAliases = mutableSetOf<String>()
         val functions = linkedMapOf<String, FunctionSymbol>()
         val methods = linkedMapOf<String, Map<String, MethodSymbol>>()
@@ -524,6 +545,67 @@ class SemanticAnalyzer(
         } else {
             program.modules.forEach { module ->
                 module.declarations.forEach { declarationModules[it] = module.name }
+            }
+        }
+        program.declarations.forEach { declaration ->
+            val moduleName = declarationModules[declaration] ?: defaultModule
+            when (declaration) {
+                is AstAlias -> {
+                    aliasDeclarationsByModule.getOrPut(moduleName) { linkedMapOf() }
+                        .putIfAbsent(declaration.name, declaration)
+                    sourceTypeDeclarationsByModule.getOrPut(moduleName) { linkedMapOf() }
+                        .putIfAbsent(declaration.name, declaration)
+                }
+                is AstStruct -> {
+                    sourceTypeDeclarationsByModule.getOrPut(moduleName) { linkedMapOf() }
+                        .putIfAbsent(declaration.name, declaration)
+                }
+                is AstUnion -> {
+                    sourceTypeDeclarationsByModule.getOrPut(moduleName) { linkedMapOf() }
+                        .putIfAbsent(declaration.name, declaration)
+                }
+                is AstEnum -> {
+                    sourceTypeDeclarationsByModule.getOrPut(moduleName) { linkedMapOf() }
+                        .putIfAbsent(declaration.name, declaration)
+                }
+                else -> Unit
+            }
+        }
+        val moduleTypeBindingRefs = linkedMapOf<String, MutableMap<String, SourceTypeBindingRef>>()
+        val moduleDeclarationLists = if (program.modules.isEmpty()) {
+            mapOf(defaultModule to program.declarations)
+        } else {
+            program.modules.associate { it.name to it.declarations }
+        }
+        moduleDeclarationLists.forEach { (moduleName, declarations) ->
+            declarations.filterIsInstance<AstImport>().forEach { import ->
+                if (import.module.startsWith("c.") || import.names.isEmpty()) return@forEach
+                val targetNames = moduleTargetNames(import.module)
+                val targetModule = targetNames.firstOrNull { it in sourceTypeDeclarationsByModule }
+                    ?: return@forEach
+                val targetTypes = sourceTypeDeclarationsByModule[targetModule].orEmpty()
+                import.names.forEach { importedName ->
+                    val declaration = targetTypes[importedName] ?: return@forEach
+                    val localName = import.nameAliases[importedName] ?: importedName
+                    val localTypeExists = sourceTypeDeclarationsByModule[moduleName]?.containsKey(localName) == true
+                    val bindings = moduleTypeBindingRefs.getOrPut(moduleName) { linkedMapOf() }
+                    if (localTypeExists || localName in bindings) {
+                        diagnostics.error(
+                            "imported type name '$localName' conflicts in module '$moduleName'",
+                            rangeOf(import.origin),
+                            "SEM405"
+                        )
+                    } else {
+                        if (!declaration.isPublic) {
+                            diagnostics.error(
+                                "imported type '$importedName' is not public in module '${import.module}'",
+                                rangeOf(import.origin),
+                                "SEM406"
+                            )
+                        }
+                        bindings[localName] = SourceTypeBindingRef(importedName, targetModule)
+                    }
+                }
             }
         }
         val modulePackages = linkedMapOf<String, String>()
@@ -547,6 +629,10 @@ class SemanticAnalyzer(
         fun defineBinding(moduleName: String?, name: String, symbol: SymbolId) {
             scopes.define(rootScope, name, symbol)
             moduleName?.let { scopes.define(moduleScope(it), name, symbol) }
+        }
+
+        fun defineTypeBinding(moduleName: String, name: String, symbol: SymbolId) {
+            scopes.define(moduleScope(moduleName), name, symbol)
         }
 
         (declarationModules.values + defaultModule).distinct().forEach(::moduleScope)
@@ -581,14 +667,57 @@ class SemanticAnalyzer(
             return abi
         }
 
-        lateinit var resolveAlias: (String) -> AliasType?
+        lateinit var resolveAlias: (String, String) -> AliasType?
 
-        fun resolve(reference: AstTypeRef, dimensions: List<String> = emptyList()): CType {
-            if (reference.name in aliasDeclarations && reference.name !in aliases) {
-                resolveAlias(reference.name)
+        fun sourceType(reference: SourceTypeBindingRef): CType? = when (
+            val declaration = sourceTypeDeclarationsByModule[reference.ownerModule]?.get(reference.declarationName)
+        ) {
+            is AstAlias -> resolveAlias(reference.declarationName, reference.ownerModule)
+            is AstStruct -> structs[reference.declarationName]
+            is AstUnion -> unions[reference.declarationName]
+            is AstEnum -> enums[reference.declarationName]
+            else -> null
+        }
+
+        fun resolve(
+            reference: AstTypeRef,
+            moduleName: String = defaultModule,
+            dimensions: List<String> = emptyList()
+        ): CType {
+            val importedType = moduleTypeBindingRefs[moduleName]?.get(reference.name)
+            val baseReference = reference.copy(pointerDepth = 0, functionParameters = null, functionPointerDepth = 0)
+            var resolved = when {
+                importedType != null -> sourceType(importedType) ?: UnknownType(TypeId(-1))
+                else -> {
+                    if (reference.name in aliasDeclarationsByModule[moduleName].orEmpty() && reference.name !in aliases) {
+                        resolveAlias(reference.name, moduleName)
+                    }
+                    resolveType(baseReference, structs, unions, enums, aliases, foreignTypes, ::primitive, diagnostics)
+                }
             }
-            return resolveType(reference, structs, unions, enums, aliases, foreignTypes, ::primitive, diagnostics, dimensions).also { resolved ->
-                if (resolved !is UnknownType && types.none { it.id == resolved.id }) types += resolved
+            reference.functionParameters?.let { parameters ->
+                val parameterTypes = parameters.map { parameter ->
+                    resolve(parameter.type, moduleName, parameter.arrayDimensions)
+                }
+                var functionType: CType = FunctionType(
+                    TypeId(-1),
+                    resolved,
+                    parameterTypes,
+                    reference.functionVariadic
+                )
+                repeat(reference.functionPointerDepth) {
+                    functionType = PointerType(TypeId(nextTypeId.next()), functionType)
+                }
+                resolved = functionType
+            }
+            repeat(reference.pointerDepth) {
+                resolved = PointerType(TypeId(nextTypeId.next()), resolved)
+            }
+            if (dimensions.isNotEmpty()) {
+                resolved = ArrayType(TypeId(nextTypeId.next()), resolved, dimensions)
+            }
+            return resolved.also { type ->
+                if (type !is UnknownType && types.none { it.id == type.id }) types += type
             }
         }
 
@@ -746,15 +875,18 @@ class SemanticAnalyzer(
         fun declarationVisibility(declaration: AstDeclaration): Visibility =
             if (declaration.isPublic) Visibility.PUBLIC else Visibility.PRIVATE
 
-        resolveAlias = { name ->
+        resolveAlias = { name, ownerModule ->
             aliases[name] ?: run {
-                val declaration = aliasDeclarations[name]?.singleOrNull() ?: return@run null
-                if (!resolvingAliases.add(name)) {
+                val declaration = aliasDeclarationsByModule[ownerModule]?.get(name)
+                    ?: aliasDeclarations[name]?.singleOrNull()
+                    ?: return@run null
+                val resolvingKey = "$ownerModule::$name"
+                if (!resolvingAliases.add(resolvingKey)) {
                     diagnostics.error("cyclic type alias '$name'", rangeOf(declaration.origin), "SEM110")
                     return@run null
                 }
-                val target = resolve(declaration.target, declaration.arrayDimensions)
-                resolvingAliases.remove(name)
+                val target = resolve(declaration.target, ownerModule, declaration.arrayDimensions)
+                resolvingAliases.remove(resolvingKey)
                 AliasType(TypeId(nextTypeId.next()), name, target).also { type ->
                     aliases[name] = type
                     types += type
@@ -766,7 +898,7 @@ class SemanticAnalyzer(
                         declarationModules[declaration] ?: defaultModule,
                         if (declaration.isPublic) Visibility.PUBLIC else Visibility.PRIVATE
                     )
-                    defineBinding(declarationModules[declaration] ?: defaultModule, symbol.name, symbol.id)
+                    defineTypeBinding(declarationModules[declaration] ?: defaultModule, symbol.name, symbol.id)
                 }
             }
         }
@@ -780,6 +912,45 @@ class SemanticAnalyzer(
             }
         }
 
+        // Catalogue aggregate shells before resolving aliases, signatures, or fields so
+        // references are independent of source-file declaration order.
+        program.declarations.forEach { declaration ->
+            val moduleName = declarationModules[declaration] ?: defaultModule
+            when (declaration) {
+                is AstUnion -> if (unions.containsKey(declaration.name)) {
+                    diagnostics.error("duplicate union '${declaration.name}'", rangeOf(declaration.origin), "SEM005")
+                } else {
+                    val type = UnionType(TypeId(nextTypeId.next()), declaration.name, emptyList())
+                    unions[declaration.name] = type
+                    types += type
+                    val symbol = newSymbol(declaration.name, SymbolKind.UNION, type, declaration.origin, moduleName, declarationVisibility(declaration))
+                    defineTypeBinding(moduleName, symbol.name, symbol.id)
+                    typeScopes[symbol.id] = scopes.create(ScopeKind.TYPE, moduleScope(moduleName), symbol.id)
+                }
+                is AstEnum -> if (enums.containsKey(declaration.name)) {
+                    diagnostics.error("duplicate enum '${declaration.name}'", rangeOf(declaration.origin), "SEM006")
+                } else {
+                    val type = EnumType(TypeId(nextTypeId.next()), declaration.name, declaration.values.map { it.name })
+                    enums[declaration.name] = type
+                    types += type
+                    val symbol = newSymbol(declaration.name, SymbolKind.ENUM, type, declaration.origin, moduleName, declarationVisibility(declaration))
+                    defineTypeBinding(moduleName, symbol.name, symbol.id)
+                    typeScopes[symbol.id] = scopes.create(ScopeKind.TYPE, moduleScope(moduleName), symbol.id)
+                }
+                is AstStruct -> if (structs.containsKey(declaration.name)) {
+                    diagnostics.error("duplicate structure '${declaration.name}'", rangeOf(declaration.origin), "SEM001")
+                } else {
+                    val type = StructType(TypeId(nextTypeId.next()), declaration.name, emptyList())
+                    structs[declaration.name] = type
+                    types += type
+                    val symbol = newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin, moduleName, declarationVisibility(declaration))
+                    defineTypeBinding(moduleName, symbol.name, symbol.id)
+                    typeScopes[symbol.id] = scopes.create(ScopeKind.TYPE, moduleScope(moduleName), symbol.id)
+                }
+                else -> Unit
+            }
+        }
+
         program.declarations.forEach { declaration ->
             val moduleName = declarationModules[declaration] ?: defaultModule
             when (declaration) {
@@ -788,54 +959,19 @@ class SemanticAnalyzer(
                     if (aliasDeclarations[declaration.name]?.singleOrNull() !== declaration) {
                         diagnostics.error("duplicate type alias '${declaration.name}'", rangeOf(declaration.origin), "SEM008")
                     } else {
-                        resolveAlias(declaration.name)
+                        resolveAlias(declaration.name, moduleName)
                     }
                 }
-                is AstUnion -> {
-                    if (unions.containsKey(declaration.name)) {
-                        diagnostics.error("duplicate union '${declaration.name}'", rangeOf(declaration.origin), "SEM005")
-                    } else {
-                        val type = UnionType(TypeId(nextTypeId.next()), declaration.name, emptyList())
-                        unions[declaration.name] = type
-                        types += type
-                        val symbol = newSymbol(declaration.name, SymbolKind.UNION, type, declaration.origin, moduleName, declarationVisibility(declaration))
-                        defineBinding(moduleName, symbol.name, symbol.id)
-                        typeScopes[symbol.id] = scopes.create(ScopeKind.TYPE, moduleScope(moduleName), symbol.id)
-                    }
-                }
-                is AstEnum -> {
-                    if (enums.containsKey(declaration.name)) {
-                        diagnostics.error("duplicate enum '${declaration.name}'", rangeOf(declaration.origin), "SEM006")
-                    } else {
-                        val type = EnumType(TypeId(nextTypeId.next()), declaration.name, declaration.values.map { it.name })
-                        enums[declaration.name] = type
-                        types += type
-                        val symbol = newSymbol(declaration.name, SymbolKind.ENUM, type, declaration.origin, moduleName, declarationVisibility(declaration))
-                        defineBinding(moduleName, symbol.name, symbol.id)
-                        typeScopes[symbol.id] = scopes.create(ScopeKind.TYPE, moduleScope(moduleName), symbol.id)
-                    }
-                }
-                is AstStruct -> {
-                    if (structs.containsKey(declaration.name)) {
-                        diagnostics.error("duplicate structure '${declaration.name}'", rangeOf(declaration.origin), "SEM001")
-                    } else {
-                        val type = StructType(TypeId(nextTypeId.next()), declaration.name, emptyList())
-                        structs[declaration.name] = type
-                        types += type
-                        val symbol = newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin, moduleName, declarationVisibility(declaration))
-                        defineBinding(moduleName, symbol.name, symbol.id)
-                        typeScopes[symbol.id] = scopes.create(ScopeKind.TYPE, moduleScope(moduleName), symbol.id)
-                    }
-                }
+                is AstUnion, is AstEnum, is AstStruct -> Unit
                 is AstFunction -> {
                     val existing = functions[declaration.name]
                     if (existing != null && !(existing.symbol.kind == SymbolKind.FOREIGN && declaration.body == null)) {
                         diagnostics.error("duplicate function '${declaration.name}'", rangeOf(declaration.origin), "SEM002")
                     } else if (existing == null) {
                         val abi = abiOf(declaration.attributes, declaration.origin)
-                        val returnType = resolve(declaration.returnType)
+                        val returnType = resolve(declaration.returnType, moduleName)
                         val parameterSymbols = declaration.parameters.map { parameter ->
-                            val type = resolve(parameter.type, parameter.arrayDimensions)
+                            val type = resolve(parameter.type, moduleName, parameter.arrayDimensions)
                             newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin, moduleName)
                         }
                         val signature = FunctionType(
@@ -867,7 +1003,7 @@ class SemanticAnalyzer(
                     if (globals.containsKey(declaration.name)) {
                         diagnostics.error("duplicate global '${declaration.name}'", rangeOf(declaration.origin), "SEM003")
                     } else {
-                        val type = resolve(declaration.type, declaration.arrayDimensions)
+                        val type = resolve(declaration.type, moduleName, declaration.arrayDimensions)
                         val symbol = newSymbol(declaration.name, SymbolKind.VARIABLE, type, declaration.origin, moduleName, declarationVisibility(declaration))
                         globals[declaration.name] = symbol
                         defineBinding(moduleName, symbol.name, symbol.id)
@@ -941,16 +1077,16 @@ class SemanticAnalyzer(
             }
             val ownerScope = ownerSymbol?.id?.let(typeScopes::get)
             val fields = declaration.fields.map { field ->
-                val type = resolve(field.type, field.arrayDimensions)
+                val type = resolve(field.type, moduleName, field.arrayDimensions)
                 val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin, moduleName)
                 ownerScope?.let { scopes.define(it, field.name, symbol.id) }
                 FieldSymbol(symbol, struct)
             }
             val methodSymbols = declaration.methods.associate { method ->
                 val abi = abiOf(method.attributes, method.origin)
-                val returnType = resolve(method.returnType)
+                val returnType = resolve(method.returnType, moduleName)
                 val parameterSymbols = method.parameters.filterNot { it.isReceiver }.map { parameter ->
-                    val parameterType = resolve(parameter.type, parameter.arrayDimensions)
+                    val parameterType = resolve(parameter.type, moduleName, parameter.arrayDimensions)
                     newSymbol(parameter.name, SymbolKind.PARAMETER, parameterType, parameter.origin, moduleName)
                 }
                 val receiverKind = if (method.parameters.any { it.isReceiver }) ReceiverKind.INSTANCE else ReceiverKind.STATIC
@@ -990,7 +1126,7 @@ class SemanticAnalyzer(
             }
             val ownerScope = ownerSymbol?.id?.let(typeScopes::get)
             val fields = declaration.fields.map { field ->
-                val type = resolve(field.type, field.arrayDimensions)
+                val type = resolve(field.type, moduleName, field.arrayDimensions)
                 val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin, moduleName)
                 ownerScope?.let { scopes.define(it, field.name, symbol.id) }
                 FieldSymbol(symbol, union)
@@ -1014,12 +1150,52 @@ class SemanticAnalyzer(
         val visibleFunctions = resolveImportedFunctions(
             program,
             moduleFunctions,
+            sourceTypeDeclarationsByModule,
             foreignTypes,
             foreignGlobals,
             foreignSourceFunctions,
             diagnostics,
             knownModules
         )
+        moduleTypeBindingRefs.forEach { (moduleName, bindings) ->
+            bindings.keys.forEach { localName ->
+                if (visibleFunctions[moduleName]?.containsKey(localName) == true) {
+                    val importOrigin = moduleDeclarationLists[moduleName]
+                        .orEmpty()
+                        .filterIsInstance<AstImport>()
+                        .firstOrNull { import ->
+                            import.nameAliases.values.any { it == localName } ||
+                                (localName in import.names && localName !in import.nameAliases)
+                        }
+                        ?.origin
+                    diagnostics.error(
+                        "imported type name '$localName' conflicts in module '$moduleName'",
+                        importOrigin?.let(::rangeOf),
+                        "SEM405"
+                    )
+                }
+            }
+        }
+        val moduleTypeEnvironments = moduleDeclarationLists.keys.associateWith { moduleName ->
+            val moduleStructs = structs.toMutableMap()
+            val moduleUnions = unions.toMutableMap()
+            val moduleEnums = enums.toMutableMap()
+            val moduleAliases = aliases.toMutableMap()
+            moduleTypeBindingRefs[moduleName].orEmpty().forEach { (localName, binding) ->
+                when (val type = sourceType(binding)) {
+                    is StructType -> moduleStructs[localName] = type
+                    is UnionType -> moduleUnions[localName] = type
+                    is EnumType -> moduleEnums[localName] = type
+                    is AliasType -> moduleAliases[localName] = type
+                    else -> Unit
+                }
+                symbols.firstOrNull {
+                    it.name == binding.declarationName && it.moduleName == binding.ownerModule &&
+                        it.kind in setOf(SymbolKind.ALIAS, SymbolKind.STRUCT, SymbolKind.UNION, SymbolKind.ENUM)
+                }?.let { symbol -> defineTypeBinding(moduleName, localName, symbol.id) }
+            }
+            ModuleTypeEnvironment(moduleStructs, moduleUnions, moduleEnums, moduleAliases)
+        }
 
         program.declarations.filterIsInstance<AstGlobalVariable>().forEach { declaration ->
             val initializer = declaration.initializer ?: return@forEach
@@ -1050,6 +1226,8 @@ class SemanticAnalyzer(
             val function = functions[declaration.name] ?: return@forEach
             val moduleName = declarationModules[declaration] ?: defaultModule
             val availableFunctions = visibleFunctions[moduleName] ?: functions
+            val typeEnvironment = moduleTypeEnvironments[moduleName]
+                ?: ModuleTypeEnvironment(structs, unions, enums, aliases)
             val locals = linkedMapOf<String, Symbol>()
             function.parameters.forEach { locals[it.name] = it }
             declaration.body?.let { statement ->
@@ -1059,10 +1237,10 @@ class SemanticAnalyzer(
                     locals,
                     availableFunctions,
                     globals,
-                    structs,
-                    unions,
-                    enums,
-                    aliases,
+                    typeEnvironment.structs,
+                    typeEnvironment.unions,
+                    typeEnvironment.enums,
+                    typeEnvironment.aliases,
                     foreignTypes,
                     methods,
                     expressionTypes,
@@ -1076,7 +1254,10 @@ class SemanticAnalyzer(
 
         program.declarations.filterIsInstance<AstStruct>().forEach { declaration ->
             val owner = structs[declaration.name] ?: return@forEach
-            val availableFunctions = visibleFunctions[declarationModules[declaration] ?: defaultModule] ?: functions
+            val moduleName = declarationModules[declaration] ?: defaultModule
+            val availableFunctions = visibleFunctions[moduleName] ?: functions
+            val typeEnvironment = moduleTypeEnvironments[moduleName]
+                ?: ModuleTypeEnvironment(structs, unions, enums, aliases)
             declaration.methods.forEach { method ->
                 val methodSymbol = methods[owner.name]?.get(method.name) ?: return@forEach
                 val locals = linkedMapOf<String, Symbol>()
@@ -1084,7 +1265,7 @@ class SemanticAnalyzer(
                     val type = if (parameter.isReceiver) {
                         methods[owner.name]?.get(method.name)?.receiverType ?: owner
                     } else {
-                        resolve(parameter.type, parameter.arrayDimensions)
+                        resolve(parameter.type, moduleName, parameter.arrayDimensions)
                     }
                     locals[parameter.name] = newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
                 }
@@ -1098,16 +1279,16 @@ class SemanticAnalyzer(
                         locals,
                         availableFunctions,
                         globals,
-                        structs,
-                        unions,
-                        enums,
-                        aliases,
+                        typeEnvironment.structs,
+                        typeEnvironment.unions,
+                        typeEnvironment.enums,
+                        typeEnvironment.aliases,
                         foreignTypes,
                         methods,
                         expressionTypes,
                         diagnostics,
                         ::primitive,
-                        functionScopes[methodSymbol.symbol.id] ?: moduleScope(declarationModules[declaration] ?: defaultModule),
+                        functionScopes[methodSymbol.symbol.id] ?: moduleScope(moduleName),
                         scopes
                     )
                 }
@@ -1130,13 +1311,26 @@ class SemanticAnalyzer(
             .toMap()
         ModuleTypeReferenceCollector.collect(program).forEach { reference ->
             val ownerModule = sourceTypeOwners[reference.type.name]
-            if (ownerModule != null && ownerModule != reference.moduleName) {
+            val imported = moduleTypeBindingRefs[reference.moduleName]?.containsKey(reference.type.name) == true
+            if (ownerModule != null && ownerModule != reference.moduleName && !imported) {
                 diagnostics.error(
                     "type '${reference.type.name}' belongs to module '$ownerModule' and is not imported into module '${reference.moduleName}'",
                     rangeOf(reference.type.origin),
                     "SEM410"
                 )
             }
+        }
+
+        val resolvedModuleTypeBindings = moduleTypeBindingRefs.mapValues { (moduleName, bindings) ->
+            bindings.mapNotNull { (localName, binding) ->
+                val symbol = symbols.firstOrNull {
+                    it.name == binding.declarationName && it.moduleName == binding.ownerModule &&
+                        it.kind in setOf(SymbolKind.ALIAS, SymbolKind.STRUCT, SymbolKind.UNION, SymbolKind.ENUM)
+                }
+                symbol?.let {
+                    localName to SourceTypeBinding(binding.declarationName, binding.ownerModule, it)
+                }
+            }.toMap()
         }
 
         val initialModel = SemanticModel(
@@ -1160,7 +1354,8 @@ class SemanticAnalyzer(
             },
             modulePackages,
             modulePackages.entries.groupBy({ it.value }, { it.key }).mapValues { (_, modules) -> modules.toSet() },
-            foreignGlobals
+            foreignGlobals,
+            moduleTypeBindings = resolvedModuleTypeBindings
         )
         val cataloguedModel = initialModel.copy(
             declarationCatalogue = buildDeclarationCatalogue(
@@ -1181,6 +1376,7 @@ class SemanticAnalyzer(
     private fun resolveImportedFunctions(
         program: AstProgram,
         moduleFunctions: Map<String, Map<String, FunctionSymbol>>,
+        sourceTypeDeclarationsByModule: Map<String, Map<String, AstDeclaration>>,
         foreignTypes: Map<String, ForeignType>,
         foreignGlobals: Map<String, Symbol>,
         foreignSourceFunctions: Map<String, FunctionSymbol>,
@@ -1198,7 +1394,10 @@ class SemanticAnalyzer(
             foreignSourceFunctions.forEach { (name, function) -> visible.putIfAbsent(name, function) }
             declarations.filterIsInstance<AstImport>().forEach { import ->
                 val targetNames = moduleTargetNames(import.module)
-                val targetName = targetNames.getOrElse(1) { targetNames.first() }
+                val targetSourceTypes = targetNames.asSequence()
+                    .mapNotNull(sourceTypeDeclarationsByModule::get)
+                    .firstOrNull()
+                    .orEmpty()
                 val targetFunctions = targetNames.asSequence()
                     .mapNotNull(moduleFunctions::get)
                     .firstOrNull()
@@ -1212,7 +1411,7 @@ class SemanticAnalyzer(
                         diagnostics.error("module import '${import.module}' cannot be resolved", rangeOf(import.origin), "SEM402")
                     } else if (import.names.isNotEmpty()) {
                         import.names.forEach { name ->
-                            if (name !in foreignTypes && name !in foreignGlobals) {
+                            if (name !in foreignTypes && name !in foreignGlobals && name !in targetSourceTypes) {
                                 diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
                             }
                         }
@@ -1226,6 +1425,7 @@ class SemanticAnalyzer(
                     return@forEach
                 }
                 import.names.forEach { name ->
+                    if (name in targetSourceTypes) return@forEach
                     if (name in foreignTypes || name in foreignGlobals) return@forEach
                     val function = targetFunctions[name]
                     if (function == null) {

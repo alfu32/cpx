@@ -10,6 +10,7 @@ import cplus.core.SourceFileId
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
@@ -88,6 +89,166 @@ class SemanticTypeTest {
         assertEquals(4, result.diagnostics.count { it.code == "SEM410" }, result.diagnostics.joinToString())
         assertTrue(result.diagnostics.none { it.message.contains("LocalLater") }, result.diagnostics.joinToString())
         assertTrue(!result.isSuccessful)
+    }
+
+    @Test
+    fun selectivelyImportsAndRenamesTypesFromLaterMixedExportModule() {
+        val clientText = """
+            import { Record as Item, count_t as Count, make_count } from "./types.cp";
+            struct Holder { Item* item; Count count; };
+            int consume(Count value) { return value; }
+            int main() {
+                Item item;
+                Count value = make_count();
+                return consume(value);
+            }
+        """.trimIndent()
+        val providerText = """
+            pub struct Record { int value; };
+            pub typedef long count_t;
+            pub int make_count() { return 9; }
+        """.trimIndent()
+        val clientSource = SourceFile(SourceFileId(32), Path.of("client.cp"), clientText, 1)
+        val providerSource = SourceFile(SourceFileId(33), Path.of("types.cp"), providerText, 1)
+        val clientParsed = Parser(Lexer().lex(clientSource)).parse()
+        val providerParsed = Parser(Lexer().lex(providerSource)).parse()
+        assertTrue(clientParsed.diagnostics.isEmpty(), clientParsed.diagnostics.joinToString())
+        assertTrue(providerParsed.diagnostics.isEmpty(), providerParsed.diagnostics.joinToString())
+        val clientDeclarations = AstBuilder().build(clientParsed.syntax).declarations
+        val providerDeclarations = AstBuilder().build(providerParsed.syntax).declarations
+        val program = AstProgram(
+            clientDeclarations + providerDeclarations,
+            clientParsed.syntax.origin,
+            listOf(AstModule("client", clientDeclarations), AstModule("types", providerDeclarations))
+        )
+
+        val result = SemanticAnalyzer().analyze(program, knownModules = setOf("types"))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = result.model!!
+        val clientBindings = model.moduleTypeBindings.getValue("client")
+        assertEquals("Record", clientBindings.getValue("Item").declarationName)
+        assertEquals("types", clientBindings.getValue("Item").ownerModule)
+        assertEquals("STRUCT", clientBindings.getValue("Item").symbol.kind.name)
+        assertEquals("count_t", clientBindings.getValue("Count").declarationName)
+        assertEquals("make_count", model.moduleFunctions.getValue("client").keys.single { it == "make_count" })
+        val importedItemId = clientBindings.getValue("Item").symbol.id
+        val moduleScopes = model.scopes.all.filter { it.kind == ScopeKind.MODULE }
+        assertEquals(1, moduleScopes.count { it.bindings["Item"] == listOf(importedItemId) })
+        val packageScope = model.scopes.all.single { it.kind == ScopeKind.PACKAGE }
+        assertFalse("Record" in packageScope.bindings)
+        assertFalse("count_t" in packageScope.bindings)
+    }
+
+    @Test
+    fun selectivelyImportsFromTypeOnlyModuleWithoutFunctionImportErrors() {
+        val clientText = """
+            import { Record as Item } from "./types.cp";
+            int main() { Item value; return 0; }
+        """.trimIndent()
+        val providerText = "pub struct Record { int value; };"
+        val clientSource = SourceFile(SourceFileId(38), Path.of("client.cp"), clientText, 1)
+        val providerSource = SourceFile(SourceFileId(39), Path.of("types.cp"), providerText, 1)
+        val clientParsed = Parser(Lexer().lex(clientSource)).parse()
+        val providerParsed = Parser(Lexer().lex(providerSource)).parse()
+        assertTrue(clientParsed.diagnostics.isEmpty(), clientParsed.diagnostics.joinToString())
+        assertTrue(providerParsed.diagnostics.isEmpty(), providerParsed.diagnostics.joinToString())
+        val clientDeclarations = AstBuilder().build(clientParsed.syntax).declarations
+        val providerDeclarations = AstBuilder().build(providerParsed.syntax).declarations
+        val program = AstProgram(
+            clientDeclarations + providerDeclarations,
+            clientParsed.syntax.origin,
+            listOf(AstModule("client", clientDeclarations), AstModule("types", providerDeclarations))
+        )
+
+        val result = SemanticAnalyzer().analyze(program, knownModules = setOf("types"))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("Record", result.model!!.moduleTypeBindings.getValue("client").getValue("Item").declarationName)
+    }
+
+    @Test
+    fun diagnosesPrivateAndMissingSelectiveTypeImports() {
+        val clientText = """
+            import { PrivateType as Hidden, MissingType } from "./types.cp";
+            int main() { Hidden value; return 0; }
+        """.trimIndent()
+        val providerText = "struct PrivateType { int value; };"
+        val clientSource = SourceFile(SourceFileId(34), Path.of("client.cp"), clientText, 1)
+        val providerSource = SourceFile(SourceFileId(35), Path.of("types.cp"), providerText, 1)
+        val clientParsed = Parser(Lexer().lex(clientSource)).parse()
+        val providerParsed = Parser(Lexer().lex(providerSource)).parse()
+        assertTrue(clientParsed.diagnostics.isEmpty(), clientParsed.diagnostics.joinToString())
+        assertTrue(providerParsed.diagnostics.isEmpty(), providerParsed.diagnostics.joinToString())
+        val clientDeclarations = AstBuilder().build(clientParsed.syntax).declarations
+        val providerDeclarations = AstBuilder().build(providerParsed.syntax).declarations
+        val program = AstProgram(
+            clientDeclarations + providerDeclarations,
+            clientParsed.syntax.origin,
+            listOf(AstModule("client", clientDeclarations), AstModule("types", providerDeclarations))
+        )
+
+        val result = SemanticAnalyzer().analyze(program, knownModules = setOf("types"))
+
+        assertEquals(1, result.diagnostics.count { it.code == "SEM406" }, result.diagnostics.joinToString())
+        assertEquals(1, result.diagnostics.count { it.code == "SEM404" }, result.diagnostics.joinToString())
+        assertTrue(result.diagnostics.none { it.code == "SEM410" }, result.diagnostics.joinToString())
+    }
+
+    @Test
+    fun diagnosesSelectiveTypeAliasCollisionWithLocalType() {
+        val clientText = """
+            import { Record as LocalRecord } from "./types.cp";
+            struct LocalRecord { int own; };
+            int main() { return 0; }
+        """.trimIndent()
+        val providerText = "pub struct Record { int value; };"
+        val clientSource = SourceFile(SourceFileId(36), Path.of("client.cp"), clientText, 1)
+        val providerSource = SourceFile(SourceFileId(37), Path.of("types.cp"), providerText, 1)
+        val clientParsed = Parser(Lexer().lex(clientSource)).parse()
+        val providerParsed = Parser(Lexer().lex(providerSource)).parse()
+        assertTrue(clientParsed.diagnostics.isEmpty(), clientParsed.diagnostics.joinToString())
+        assertTrue(providerParsed.diagnostics.isEmpty(), providerParsed.diagnostics.joinToString())
+        val clientDeclarations = AstBuilder().build(clientParsed.syntax).declarations
+        val providerDeclarations = AstBuilder().build(providerParsed.syntax).declarations
+        val program = AstProgram(
+            clientDeclarations + providerDeclarations,
+            clientParsed.syntax.origin,
+            listOf(AstModule("client", clientDeclarations), AstModule("types", providerDeclarations))
+        )
+
+        val result = SemanticAnalyzer().analyze(program, knownModules = setOf("types"))
+
+        assertEquals(1, result.diagnostics.count { it.code == "SEM405" }, result.diagnostics.joinToString())
+    }
+
+    @Test
+    fun diagnosesSelectiveTypeAndFunctionAliasCollision() {
+        val clientText = """
+            import { Record as Shared, make_value as Shared } from "./types.cp";
+            int main() { return 0; }
+        """.trimIndent()
+        val providerText = """
+            pub struct Record { int value; };
+            pub int make_value() { return 1; }
+        """.trimIndent()
+        val clientSource = SourceFile(SourceFileId(40), Path.of("client.cp"), clientText, 1)
+        val providerSource = SourceFile(SourceFileId(41), Path.of("types.cp"), providerText, 1)
+        val clientParsed = Parser(Lexer().lex(clientSource)).parse()
+        val providerParsed = Parser(Lexer().lex(providerSource)).parse()
+        assertTrue(clientParsed.diagnostics.isEmpty(), clientParsed.diagnostics.joinToString())
+        assertTrue(providerParsed.diagnostics.isEmpty(), providerParsed.diagnostics.joinToString())
+        val clientDeclarations = AstBuilder().build(clientParsed.syntax).declarations
+        val providerDeclarations = AstBuilder().build(providerParsed.syntax).declarations
+        val program = AstProgram(
+            clientDeclarations + providerDeclarations,
+            clientParsed.syntax.origin,
+            listOf(AstModule("client", clientDeclarations), AstModule("types", providerDeclarations))
+        )
+
+        val result = SemanticAnalyzer().analyze(program, knownModules = setOf("types"))
+
+        assertEquals(1, result.diagnostics.count { it.code == "SEM405" }, result.diagnostics.joinToString())
     }
 
     @Test

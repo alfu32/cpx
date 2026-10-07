@@ -11,14 +11,14 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    27/49 evidenced on Linux
+Roadmap leaf tasks:    28/49 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R1.4.3 — bind selective type imports and aliases
+Current task:          R1.4.4 — resolve qualified module type imports and generated C
 Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 10/15 primitive, ABI, type-import, and user-alias conformance open
+R1 [DOING] 11/15 primitive, ABI, type-import, and user-alias conformance open
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
@@ -27,7 +27,7 @@ R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       27/49 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       28/49 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -3484,7 +3484,7 @@ of R1–R8 or deliberately recorded as a post-release extension.
     initializer/lvalue rules across parser, semantic analysis, and lowering.
   - R1.3.3 [DONE] — add stable unsupported-declarator diagnostics and recovery
     fixtures so parser acceptance cannot outrun backend support.
-- R1.4 [DOING] [2/5] — implement kind-aware source type imports and
+- R1.4 [DOING] [3/5] — implement kind-aware source type imports and
   module-scoped visibility. This is a prerequisite for R1.2.4.
   - R1.4.1 [DONE] — catalogue module-owned source type declarations and their
     public/private export status, including aliases, structs, unions, and
@@ -3502,9 +3502,22 @@ of R1–R8 or deliberately recorded as a post-release extension.
       references remain valid. C-header type imports remain unaffected.
     - `:semantic:test` and `:compiler:test` pass on Linux, including the
       explicit unimported-type and local-forward-reference cases.
-  - R1.4.3 [TODO] — bind selective type imports and `as` renames into the
+  - R1.4.3 [DONE] — bind selective type imports and `as` renames into the
     importing module; validate missing/private exports, mixed symbol kinds,
     and collisions with stable diagnostics.
+    - Added module-owned type bindings to `SemanticModel`; selective imported
+      aliases resolve to their original source declaration without becoming
+      visible in other modules. Aggregate shells are catalogued before
+      signature and alias resolution, so provider-file order does not affect
+      type imports.
+    - Type-only and mixed type/function imports are classified by declaration
+      kind. Private types report SEM406, missing selected names report SEM404,
+      and conflicting local type/function bindings report SEM405.
+    - Semantic tests cover type-only and mixed exports; renamed struct and
+      typedef imports in fields, pointers, function signatures, and locals;
+      provider modules appearing later in the workspace; and private, missing,
+      type/type, and type/function collisions. `:semantic:test` and
+      `:compiler:test` pass on Linux.
   - R1.4.4 [TODO] — resolve exported types through module aliases and support
     qualified and selectively imported types in fields, pointers, signatures,
     casts, aliases, and generated C declarations.
