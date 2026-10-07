@@ -15,6 +15,7 @@ import cplus.compiler.LinkDriver
 import cplus.compiler.LinkRequest
 import cplus.compiler.SdkManifestLocator
 import cplus.compiler.TargetInfo
+import cplus.compiler.defaultHostTargetTriple
 import cplus.core.*
 import java.nio.file.Files
 import java.nio.file.Path
@@ -262,7 +263,7 @@ internal class Cli {
             System.err.println("audit requires a binary path")
             return 2
         }
-        val targetName = arguments.windowed(2).firstOrNull { it[0] == "--target" }?.get(1) ?: "linux-x86_64"
+        val targetName = arguments.windowed(2).firstOrNull { it[0] == "--target" }?.get(1) ?: defaultHostTargetTriple()
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val descriptor = TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor
             ?: return 1
@@ -373,7 +374,7 @@ internal class Cli {
         var externalSysroot: Path? = null
         var runtime: RuntimeProfile? = null
         var libc: LibcProfile? = null
-        var targetTriple = "linux-x86_64"
+        var targetTriple = defaultHostTargetTriple()
         var cCompiler: String? = null
         var output: Path? = null
         var headerOutput: Path? = null

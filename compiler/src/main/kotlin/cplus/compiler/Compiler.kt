@@ -15,6 +15,17 @@ import java.nio.file.Path
 import java.util.concurrent.Executors
 import kotlin.io.path.readText
 
+fun defaultHostTargetTriple(): String {
+    val operatingSystem = System.getProperty("os.name").lowercase()
+    val architecture = System.getProperty("os.arch").lowercase()
+    val isAarch64 = architecture in setOf("aarch64", "arm64")
+    return when {
+        operatingSystem.contains("windows") -> if (isAarch64) "windows-aarch64" else "windows-x86_64"
+        operatingSystem.contains("mac") || operatingSystem.contains("darwin") -> if (isAarch64) "darwin-aarch64" else "darwin-x86_64"
+        else -> if (isAarch64) "linux-aarch64" else "linux-x86_64"
+    }
+}
+
 data class TargetInfo(
     val cDialect: String = "c17",
     val buildProfile: BuildProfile = BuildProfile(),

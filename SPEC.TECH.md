@@ -2691,6 +2691,11 @@ MSVC-style drivers; users do not choose a host libc profile.
 forbidden host libc, undeclared OS imports, dynamic interpreters, and
 unresolved compiler-runtime dependencies.
 
+When the CLI does not receive `--target`, it derives the host target triple
+from the host OS and architecture. An explicit target remains authoritative and
+is required for cross-compilation; host inference SHALL never select a libc
+profile or replace the SDK target adapter.
+
 The intrinsic catalogue is data-driven and target-checked. Syscall, atomic,
 varargs, context, and other compiler-owned operations are not ordinary library
 functions: availability, arity, feature requirements, and lowering identity

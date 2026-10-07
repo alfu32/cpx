@@ -3186,6 +3186,7 @@ all create correct bindings.
 - Added `LinkDriver`/`LinkRequest` as the target-aware downstream compiler boundary and wired the CLI build/run path through it.
 - Added explicit GCC/Clang/TCC/unknown capability classification and self-hosted flag validation.
 - Added automatic target compiler selection, `--target`/`--c-compiler` CLI controls, GNU/Clang and MSVC-style invocation adapters, compiler-provided C17 headers, no-PIE Linux linking, and explicit Windows OS-import linking.
+- CLI target omission now infers the host OS/architecture, so Windows builds do not accidentally select Linux startup; explicit `--target` remains the cross-compilation override.
 - Routed generated C through the SDK-owned libc compatibility headers before runtime or user include directories, including freestanding `stddef.h`, `stdarg.h`, and `stdio.h` contracts, so host CRT declarations cannot leak into self-hosted products.
 
 **Depends**
