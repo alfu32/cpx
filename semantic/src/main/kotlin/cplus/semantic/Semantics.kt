@@ -183,7 +183,9 @@ data class SemanticModel(
     val canonicalTypeIds: Map<String, TypeId> = emptyMap(),
     val modulePackages: Map<String, String> = emptyMap(),
     val packageModules: Map<String, Set<String>> = emptyMap(),
-    val foreignGlobals: Map<String, Symbol> = emptyMap()
+    val foreignGlobals: Map<String, Symbol> = emptyMap(),
+    val nodeIds: Map<NodeId, AstNode> = emptyMap(),
+    val referenceIndex: ReferenceIndex = ReferenceIndex()
 ) {
     val foreignFunctions: Map<String, FunctionSymbol>
         get() = functions.filterValues { it.symbol.kind == SymbolKind.FOREIGN }
@@ -208,6 +210,9 @@ data class SemanticModel(
         ?: moduleFunctions.values.asSequence().mapNotNull { it[name] }.firstOrNull()
 
     fun canonicalTypeId(type: CType): TypeId = canonicalTypeIds[canonicalTypeKey(type)] ?: type.id
+
+    val resolvedAst: ResolvedAst
+        get() = ResolvedAst(program, nodeIds, referenceIndex)
 }
 
 data class SemanticResult(
@@ -668,7 +673,7 @@ class SemanticAnalyzer(
             }
         }
 
-        val model = SemanticModel(
+        val initialModel = SemanticModel(
             program,
             symbols,
             types,
@@ -690,6 +695,11 @@ class SemanticAnalyzer(
             modulePackages,
             modulePackages.entries.groupBy({ it.value }, { it.key }).mapValues { (_, modules) -> modules.toSet() },
             foreignGlobals
+        )
+        val resolvedAst = ReferenceCollector.collect(initialModel)
+        val model = initialModel.copy(
+            nodeIds = resolvedAst.nodes,
+            referenceIndex = resolvedAst.referenceIndex
         )
         return SemanticResult(model, diagnostics.diagnostics)
     }

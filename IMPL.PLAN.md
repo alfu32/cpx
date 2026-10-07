@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 87/113
+Overall: 88/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [13/20] 3. Compile-time and CPX system
-[DOING] [31/34] 4. Lowering and C backend
+[DOING] [32/34] 4. Lowering and C backend
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-4.1.1 — compiler context and pass API
+4.2.2 — inner functions and closure lowering
 
 Current milestone:
 M4 — Full compile-time model
@@ -1264,7 +1264,7 @@ all create correct bindings.
 
 ---
 
-## 4.1 [DOING] [3/4] Compiler pass and rewrite framework
+## 4.1 [DONE] [4/4] Compiler pass and rewrite framework
 
 ### 4.1.1 [DONE] Compiler context and pass API
 
@@ -1331,7 +1331,7 @@ all create correct bindings.
 - `PASSINV001` diagnostics identify the pass, invariant kind/name, offending node, and failure message.
 - Tests cover precondition short-circuiting and postcondition diagnostics appended to pass output.
 
-### 4.1.4 [TODO] Resolved-AST and reference index integration
+### 4.1.4 [DONE] Resolved-AST and reference index integration
 
 **Technical**
 - TS §29–30
@@ -1344,6 +1344,14 @@ all create correct bindings.
 **Depends**
 - 2
 - 4.1.2
+
+**Implementation**
+- `SymbolReference` records stable `NodeId`, resolved `SymbolId`, origin, and reference kind.
+- `ReferenceIndex` supports rebuild, symbol lookup, node lookup, enumeration, and targeted invalidation.
+- `SemanticModel.resolvedAst` exposes the AST node map and reference index without mutating immutable AST nodes.
+- Semantic analysis now collects global, function, type, member, call, and local binding references into the sidecar model.
+- Rewrite invalidation can connect directly to `ReferenceIndex.invalidate` through `SemanticIndexInvalidator`.
+- Tests verify resolved identifier symbol identity and targeted reference invalidation.
 
 ---
 
