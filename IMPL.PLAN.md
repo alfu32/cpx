@@ -3,17 +3,17 @@
 ## Dashboard
 
 ```text
-Overall: 115/145
+Overall: 116/145
 
 [DONE] [16/16] 1. Language front-end
 [DONE] [30/30] 2. Semantic model and modules
 [DONE] [20/20] 3. Compile-time and CPX system
 [DONE] [34/34] 4. Lowering and C backend
 [DONE] [14/14] 5. Tooling, integration and quality
-[TODO] [2/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
+[TODO] [3/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-6.1.1.2 — Implement runtime and libc profile selection
+6.1.1.4 — Add SDK semantic metadata and reproducible cache format
 
 Current milestone:
 M7 — Self-hosted C+ SDK/runtime foundation
@@ -2425,7 +2425,7 @@ all create correct bindings.
 
 ---
 
-## 6.1 [TODO] [2/8] SDK packaging and runtime foundation
+## 6.1 [TODO] [3/8] SDK packaging and runtime foundation
 
 **SDK**
 - SDK §2–6
@@ -2435,7 +2435,7 @@ all create correct bindings.
 - SDK §78–81
 - SDK §93–101
 
-### 6.1.1 [TODO] [2/4] SDK distribution, profiles and resolver
+### 6.1.1 [TODO] [3/4] SDK distribution, profiles and resolver
 
 #### 6.1.1.1 [DONE] [4/4] Define SDK manifest and ABI/runtime version contract
 
@@ -2499,7 +2499,7 @@ all create correct bindings.
 - 6.1.1.1
 - 5.2.2
 
-#### 6.1.1.3 [TODO] Implement SDK resolver and SDK-as-sysroot model
+#### 6.1.1.3 [DONE] [4/4] Implement SDK resolver and SDK-as-sysroot model
 
 **SDK**
 - SDK §58 SDK Semantic Metadata
@@ -2516,6 +2516,13 @@ all create correct bindings.
 - external sysroots remain separately configurable for foreign C/vendor ecosystems.
 - target SDK resolution never falls back silently to host headers/libraries.
 - resolver diagnostics identify missing SDK components precisely.
+
+**Implementation**
+- Added `SdkLayout`, `SdkResolver`, and `SdkResolution` to resolve source-first SDK roots for the selected target triple.
+- Added explicit `CompileRequest.externalSysroot` and CLI `--sysroot` handling; invalid external roots produce `SDK009`.
+- Added SDK resolution to compiler results and incremental cache identity.
+- Added the initial source SDK tree for standard core, libc, runtime, platform API, Linux PAL, intrinsics, ABI metadata, startup, and headers.
+- Added resolver tests for the default target and host-fallback rejection.
 
 **Depends**
 - 6.1.1.1

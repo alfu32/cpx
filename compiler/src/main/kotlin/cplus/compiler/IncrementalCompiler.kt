@@ -41,7 +41,8 @@ data class IncrementalCacheKey(
     val options: CompilerOptions,
     val cLibraries: List<String>,
     val cIncludeDirectories: List<Path>,
-    val sdkIdentity: SdkManifestIdentity
+    val sdkIdentity: SdkManifestIdentity,
+    val externalSysroot: Path?
 )
 
 /**
@@ -79,7 +80,8 @@ class IncrementalCompiler(
             canonicalRequest.options,
             canonicalRequest.cLibraries,
             canonicalRequest.cIncludeDirectories,
-            sdkIdentity
+            sdkIdentity,
+            canonicalRequest.externalSysroot
         )
         val configuration = RequestConfiguration.from(canonicalRequest)
         val previous = state
@@ -269,7 +271,8 @@ class IncrementalCompiler(
         val cSources: List<Path>,
         val cLibraries: List<String>,
         val cIncludeDirectories: List<Path>,
-        val sdkIdentity: SdkManifestIdentity
+        val sdkIdentity: SdkManifestIdentity,
+        val externalSysroot: Path?
     ) {
         companion object {
             fun from(request: CompileRequest): RequestConfiguration {
@@ -281,7 +284,8 @@ class IncrementalCompiler(
                 request.cSources,
                 request.cLibraries,
                 request.cIncludeDirectories,
-                sdk.manifest!!.identity
+                sdk.manifest!!.identity,
+                request.externalSysroot
                 )
             }
         }

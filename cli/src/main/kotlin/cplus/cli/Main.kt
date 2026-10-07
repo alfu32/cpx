@@ -53,6 +53,7 @@ internal class Cli {
                 cLibraries = parsed.libraries,
                 cIncludeDirectories = parsed.includeDirectories,
                 sdkManifest = parsed.sdkManifest,
+                externalSysroot = parsed.externalSysroot,
                 target = parsed.target
             )
         )
@@ -81,6 +82,7 @@ internal class Cli {
                 cLibraries = parsed.libraries,
                 cIncludeDirectories = parsed.includeDirectories,
                 sdkManifest = parsed.sdkManifest,
+                externalSysroot = parsed.externalSysroot,
                 target = parsed.target
             )
         )
@@ -98,6 +100,7 @@ internal class Cli {
                 cLibraries = parsed.libraries,
                 cIncludeDirectories = parsed.includeDirectories,
                 sdkManifest = parsed.sdkManifest,
+                externalSysroot = parsed.externalSysroot,
                 target = parsed.target
             )
         )
@@ -116,6 +119,7 @@ internal class Cli {
                 cLibraries = parsed.libraries,
                 cIncludeDirectories = parsed.includeDirectories,
                 sdkManifest = parsed.sdkManifest,
+                externalSysroot = parsed.externalSysroot,
                 target = parsed.target
             )
         )
@@ -137,6 +141,7 @@ internal class Cli {
             parsed.libraries,
             parsed.includeDirectories,
             parsed.sdkManifest,
+            parsed.externalSysroot,
             parsed.target
         )
     }
@@ -153,6 +158,7 @@ internal class Cli {
             parsed.libraries,
             parsed.includeDirectories,
             parsed.sdkManifest,
+            parsed.externalSysroot,
             parsed.target
         )
         if (buildExitCode != 0) return buildExitCode
@@ -176,6 +182,7 @@ internal class Cli {
         libraries: List<String> = emptyList(),
         includeDirectories: List<Path> = emptyList(),
         sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
+        externalSysroot: Path? = null,
         target: TargetInfo = TargetInfo()
     ): Int {
         val compiler = CPlusCompiler()
@@ -186,6 +193,7 @@ internal class Cli {
                 cLibraries = libraries,
                 cIncludeDirectories = includeDirectories,
                 sdkManifest = sdkManifest,
+                externalSysroot = externalSysroot,
                 target = target
             )
         )
@@ -259,6 +267,7 @@ internal class Cli {
         val libraries = mutableListOf<String>()
         val includeDirectories = mutableListOf<Path>()
         var sdkManifest: Path? = null
+        var externalSysroot: Path? = null
         var runtime: RuntimeProfile? = null
         var libc: LibcProfile? = null
         var output: Path? = null
@@ -325,6 +334,15 @@ internal class Cli {
                     runtime = parseRuntime(value, argument) ?: return null
                     index += 2
                 }
+                "--sysroot" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    if (value == null) {
+                        System.err.println("missing sysroot path after $argument")
+                        return null
+                    }
+                    externalSysroot = Path.of(value)
+                    index += 2
+                }
                 "--libc" -> {
                     val value = arguments.getOrNull(index + 1)
                     libc = parseLibc(value, argument) ?: return null
@@ -359,6 +377,7 @@ internal class Cli {
             libraries,
             includeDirectories,
             sdkManifest ?: SdkManifestLocator.defaultManifestPath(),
+            externalSysroot,
             TargetInfo(buildProfile = BuildProfile(selectedRuntime, selectedLibc))
         )
     }
@@ -450,7 +469,7 @@ internal class Cli {
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
         stream.println("C+ CLI transcoder")
-        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--runtime <profile>] [--libc <profile>] [--sdk <manifest>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
+        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--runtime <profile>] [--libc <profile>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
         stream.println()
         stream.println("commands:")
         stream.println("  transcode   translate one C+ source file to C")
@@ -471,6 +490,7 @@ internal class Cli {
         val libraries: List<String>,
         val includeDirectories: List<Path>,
         val sdkManifest: Path,
+        val externalSysroot: Path?,
         val target: TargetInfo
     )
 

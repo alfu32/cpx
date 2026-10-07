@@ -1948,7 +1948,9 @@ class CPlusCompiler {
 data class CompileRequest(
     val sources: List<Path>,
     val target: TargetInfo,
-    val options: CompilerOptions
+    val options: CompilerOptions,
+    val sdkManifest: Path,
+    val externalSysroot: Path?
 )
 ```
 
@@ -1958,9 +1960,22 @@ Result:
 data class CompileResult(
     val diagnostics: List<Diagnostic>,
     val generatedUnits: List<GeneratedCUnit>,
-    val semanticModel: SemanticModel?
+    val semanticModel: SemanticModel?,
+    val sdkResolution: SdkResolution?
 )
 ```
+
+Before parsing source-dependent phases, the compiler loads the selected SDK
+manifest and resolves a source-first `SdkLayout` for the target triple. The
+resolver supplies standard-library, libc, runtime, platform, ABI, intrinsic,
+and startup roots to the request. An external sysroot is an explicit separate
+input; failure to resolve an SDK component is diagnostic and never silently
+falls back to host headers or libraries.
+
+The selected runtime/libc profile is part of `TargetInfo`, is included in
+incremental cache identity, and is copied into `ComptimeTargetInfo` for target
+selection. The current repository SDK provides the initial Linux x86_64
+layout and C17 profile.
 
 ---
 

@@ -17,7 +17,8 @@ import kotlin.io.path.readText
 
 data class TargetInfo(
     val cDialect: String = "c17",
-    val buildProfile: BuildProfile = BuildProfile()
+    val buildProfile: BuildProfile = BuildProfile(),
+    val targetTriple: String = "linux-x86_64"
 )
 
 data class CompilerOptions(
@@ -37,7 +38,8 @@ data class CompileRequest(
     val cSources: List<Path> = emptyList(),
     val cLibraries: List<String> = emptyList(),
     val cIncludeDirectories: List<Path> = emptyList(),
-    val sdkManifest: Path = SdkManifestLocator.defaultManifestPath()
+    val sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
+    val externalSysroot: Path? = null
 )
 
 data class TextSource(
@@ -82,7 +84,8 @@ data class CompileResult(
     val moduleGraph: ModuleGraph? = null,
     val cSourceDependencies: List<CSourceDependency> = emptyList(),
     val generatedHeaders: List<GeneratedCUnit> = emptyList(),
-    val cLinkDependencies: List<CLinkDependency> = emptyList()
+    val cLinkDependencies: List<CLinkDependency> = emptyList(),
+    val sdkResolution: SdkResolution? = null
 ) {
     val isSuccessful: Boolean
         get() = diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
@@ -142,6 +145,8 @@ class CPlusCompiler(
         if (!sdk.isSuccessful) return sdkFailure(sdk.diagnostics)
         val profileDiagnostics = BuildProfileValidator.validate(request.target.buildProfile, sdk.manifest!!)
         if (profileDiagnostics.isNotEmpty()) return sdkFailure(profileDiagnostics)
+        val sdkResolution = SdkResolver.resolve(sdk.manifest, request.target, request.externalSysroot)
+        if (!sdkResolution.isSuccessful) return sdkFailure(sdkResolution.diagnostics)
         context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(request.target))
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
@@ -152,10 +157,17 @@ class CPlusCompiler(
                 artifacts,
                 cSourceDependencies = dependencies(request.cSources),
                 additionalDiagnostics = foreignInputs.diagnostics + linkDiagnostics,
-                cLinkDependencies = cLinkDependencies
+                cLinkDependencies = cLinkDependencies,
+                sdkResolution = sdkResolution.resolution
             )
         }
-        return compileWorkspace(request, foreignInputs, cLinkDependencies, linkDiagnostics)
+        return compileWorkspace(
+            request,
+            foreignInputs,
+            cLinkDependencies,
+            linkDiagnostics,
+            sdkResolution = sdkResolution.resolution
+        )
     }
 
     /**
@@ -175,6 +187,8 @@ class CPlusCompiler(
         if (!sdk.isSuccessful) return IncrementalPipeline(sdkFailure(sdk.diagnostics), emptyMap())
         val profileDiagnostics = BuildProfileValidator.validate(request.target.buildProfile, sdk.manifest!!)
         if (profileDiagnostics.isNotEmpty()) return IncrementalPipeline(sdkFailure(profileDiagnostics), emptyMap())
+        val sdkResolution = SdkResolver.resolve(sdk.manifest, request.target, request.externalSysroot)
+        if (!sdkResolution.isSuccessful) return IncrementalPipeline(sdkFailure(sdkResolution.diagnostics), emptyMap())
         context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(request.target))
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
@@ -204,7 +218,8 @@ class CPlusCompiler(
                 artifacts,
                 cSourceDependencies = dependencies(request.cSources),
                 additionalDiagnostics = foreignInputs.diagnostics + linkDiagnostics,
-                cLinkDependencies = cLinkDependencies
+                cLinkDependencies = cLinkDependencies,
+                sdkResolution = sdkResolution.resolution
             )
         } else {
             compileWorkspace(
@@ -212,7 +227,8 @@ class CPlusCompiler(
                 foreignInputs,
                 cLinkDependencies,
                 linkDiagnostics,
-                units
+                units,
+                sdkResolution.resolution
             )
         }
         return IncrementalPipeline(result, entries)
@@ -238,13 +254,15 @@ class CPlusCompiler(
         if (!sdk.isSuccessful) return sdkFailure(sdk.diagnostics)
         val profileDiagnostics = BuildProfileValidator.validate(target.buildProfile, sdk.manifest!!)
         if (profileDiagnostics.isNotEmpty()) return sdkFailure(profileDiagnostics)
+        val sdkResolution = SdkResolver.resolve(sdk.manifest, target, null)
+        if (!sdkResolution.isSuccessful) return sdkFailure(sdkResolution.diagnostics)
         context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(target))
         val sourceFiles = sources
             .distinctBy { it.path.toAbsolutePath().normalize() }
             .map { source -> context.sourceRepository.put(source.path, source.text) }
         val frontends = sourceFiles.map(::frontend)
         if (frontends.size <= 1) {
-            return resultOf(frontends.map { compileFrontend(it, options) })
+            return resultOf(frontends.map { compileFrontend(it, options) }, sdkResolution = sdkResolution.resolution)
         }
         val request = CompileRequest(sourceFiles.map { it.path }, target = target, options = options, sdkManifest = sdkManifest)
         return compileWorkspace(
@@ -252,7 +270,8 @@ class CPlusCompiler(
             ForeignInputs(emptyList(), emptyList()),
             emptyList(),
             emptyList(),
-            frontends
+            frontends,
+            sdkResolution = sdkResolution.resolution
         )
     }
 
@@ -307,7 +326,8 @@ class CPlusCompiler(
         foreignInputs: ForeignInputs,
         cLinkDependencies: List<CLinkDependency>,
         linkDiagnostics: List<Diagnostic>,
-        units: List<FrontendUnit> = request.sources.map { frontend(it) }
+        units: List<FrontendUnit> = request.sources.map { frontend(it) },
+        sdkResolution: SdkResolution? = null
     ): CompileResult {
         val moduleGraph = ModuleGraphBuilder().build(
             units.map { ModuleSource(it.source, it.expanded?.program ?: it.parsed.syntax) }
@@ -322,7 +342,8 @@ class CPlusCompiler(
                 emptyList(),
                 moduleGraph,
                 cSourceDependencies,
-                cLinkDependencies = cLinkDependencies
+                cLinkDependencies = cLinkDependencies,
+                sdkResolution = sdkResolution
             )
         }
 
@@ -357,7 +378,8 @@ class CPlusCompiler(
                 ),
                 moduleGraph,
                 cSourceDependencies,
-                cLinkDependencies = cLinkDependencies
+                cLinkDependencies = cLinkDependencies,
+                sdkResolution = sdkResolution
             )
         }
         val model = semantic.model
@@ -378,7 +400,8 @@ class CPlusCompiler(
                 ),
                 moduleGraph,
                 cSourceDependencies,
-                cLinkDependencies = cLinkDependencies
+                cLinkDependencies = cLinkDependencies,
+                sdkResolution = sdkResolution
             )
         }
         if (units.any { unit -> unit.diagnostics().any { it.severity == DiagnosticSeverity.ERROR } }) {
@@ -398,7 +421,8 @@ class CPlusCompiler(
                 ),
                 moduleGraph,
                 cSourceDependencies,
-                cLinkDependencies = cLinkDependencies
+                cLinkDependencies = cLinkDependencies,
+                sdkResolution = sdkResolution
             )
         }
         val backend = BackendProcessingPipeline(context.cLowererFactory(model), context.cEmitter).run(mergedAst, model)
@@ -419,7 +443,8 @@ class CPlusCompiler(
                 ),
                 moduleGraph,
                 cSourceDependencies,
-                cLinkDependencies = cLinkDependencies
+                cLinkDependencies = cLinkDependencies,
+                sdkResolution = sdkResolution
             )
         }
         return resultOf(
@@ -439,7 +464,8 @@ class CPlusCompiler(
             ),
             moduleGraph,
             cSourceDependencies,
-            cLinkDependencies = cLinkDependencies
+            cLinkDependencies = cLinkDependencies,
+            sdkResolution = sdkResolution
         )
     }
 
@@ -448,7 +474,8 @@ class CPlusCompiler(
         moduleGraph: ModuleGraph? = null,
         cSourceDependencies: List<CSourceDependency> = emptyList(),
         additionalDiagnostics: List<Diagnostic> = emptyList(),
-        cLinkDependencies: List<CLinkDependency> = emptyList()
+        cLinkDependencies: List<CLinkDependency> = emptyList(),
+        sdkResolution: SdkResolution? = null
     ): CompileResult = CompileResult(
         diagnostics = artifacts.flatMap { it.allDiagnostics() } + additionalDiagnostics,
         generatedUnits = artifacts.mapNotNull { it.generated },
@@ -457,7 +484,8 @@ class CPlusCompiler(
         moduleGraph = moduleGraph,
         cSourceDependencies = cSourceDependencies,
         generatedHeaders = artifacts.mapNotNull { it.header },
-        cLinkDependencies = cLinkDependencies
+        cLinkDependencies = cLinkDependencies,
+        sdkResolution = sdkResolution
     )
 
     private fun dependencies(paths: List<Path>): List<CSourceDependency> = paths

@@ -67,6 +67,27 @@ class SdkManifestTest {
         assertEquals("none", comptimeTarget.libcProfile)
     }
 
+    @Test
+    fun resolvesSourceFirstSdkLayoutForDefaultTarget() {
+        val manifest = assertNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+
+        val result = SdkResolver.resolve(manifest, TargetInfo())
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("linux-x86_64.toml", result.resolution!!.layout.abiDescriptor.fileName.toString())
+        assertTrue(result.resolution.layout.stdSource.endsWith("std/src"))
+    }
+
+    @Test
+    fun rejectsMissingExternalSysrootInsteadOfFallingBackToHost() {
+        val manifest = assertNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+
+        val result = SdkResolver.resolve(manifest, TargetInfo(), Files.createTempDirectory("cplus-sysroot").resolve("missing"))
+
+        assertTrue(result.diagnostics.any { it.code == "SDK009" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
     private fun manifestText(): String = """
         sdk_version = "0.1.0"
         language_abi_version = "1"
