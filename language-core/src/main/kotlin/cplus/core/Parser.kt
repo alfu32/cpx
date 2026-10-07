@@ -5,6 +5,19 @@ class Parser(private val lexed: LexedSource) {
     private var index = 0
     private val diagnostics = DiagnosticBag()
 
+    data class ParsedExpression(
+        val expression: SyntaxExpression?,
+        val diagnostics: List<Diagnostic>
+    )
+
+    fun parseExpressionFragment(): ParsedExpression {
+        val expression = parseExpression()
+        if (expression != null && !atEnd()) {
+            diagnostics.error("unexpected token after expression", peek().range, "PARSE403")
+        }
+        return ParsedExpression(expression, lexed.diagnostics + diagnostics.diagnostics)
+    }
+
     fun parse(): ParsedSource {
         val declarations = mutableListOf<SyntaxDeclaration>()
         while (!atEnd()) {
@@ -446,11 +459,26 @@ class Parser(private val lexed: LexedSource) {
     private fun parseExpression(minPrecedence: Int = 0): SyntaxExpression? {
         var left = parsePrefix() ?: return null
         while (true) {
+            if (peek().isLexeme("?") && 2 >= minPrecedence) {
+                val question = advance()
+                val thenBranch = parseExpression() ?: run {
+                    diagnostics.error("expected expression after '?'", question.range, "PARSE406")
+                    SyntaxErrorExpression(question.range, direct(question.range))
+                }
+                expect(":", "expected ':' in conditional expression")
+                val elseBranch = parseExpression(2) ?: run {
+                    diagnostics.error("expected expression after ':'", peek().range, "PARSE407")
+                    SyntaxErrorExpression(previous().range, direct(previous().range))
+                }
+                val range = span(left.range, elseBranch.range)
+                left = SyntaxConditional(left, thenBranch, elseBranch, range, direct(range))
+                continue
+            }
             val operator = peek().lexeme
             val precedence = binaryPrecedence(operator)
             if (precedence < minPrecedence) break
             advance()
-            val right = parseExpression(if (operator == "=") precedence else precedence + 1)
+            val right = parseExpression(if (operator in assignmentOperators) precedence else precedence + 1)
             if (right == null) {
                 diagnostics.error("expected expression after '$operator'", peek().range, "PARSE401")
                 break
@@ -464,13 +492,18 @@ class Parser(private val lexed: LexedSource) {
     private fun parsePrefix(): SyntaxExpression? {
         val token = peek()
         var expression = when {
+            match("++") || match("--") -> {
+                val operator = previous()
+                val operand = parsePrefix() ?: return null
+                SyntaxUpdate(operand, operator.lexeme, true, span(operator.range, operand.range), direct(span(operator.range, operand.range)))
+            }
             match("-") || match("!") || match("~") || match("&") || match("*") -> {
                 val operator = previous()
                 val operand = parsePrefix() ?: return null
                 SyntaxUnary(operator.lexeme, operand, span(operator.range, operand.range), direct(span(operator.range, operand.range)))
             }
             matchKind(TokenKind.INTEGER_LITERAL) -> SyntaxIntegerLiteral(token.lexeme, token.range, direct(token.range))
-            matchKind(TokenKind.STRING_LITERAL) -> SyntaxStringLiteral(token.lexeme, token.range, direct(token.range))
+            matchKind(TokenKind.STRING_LITERAL) -> parseStringLiteral(token)
             matchKind(TokenKind.CHARACTER_LITERAL) -> SyntaxCharacterLiteral(token.lexeme, token.range, direct(token.range))
             matchKind(TokenKind.IDENTIFIER) || matchKind(TokenKind.KEYWORD) -> SyntaxIdentifier(token.lexeme, token.range, direct(token.range))
             match("(") -> {
@@ -506,9 +539,49 @@ class Parser(private val lexed: LexedSource) {
                     val close = expect("]", "expected ']' after index expression") ?: previous()
                     SyntaxIndexAccess(expression, index, span(expression.range, close.range), direct(span(expression.range, close.range)))
                 }
+                match("++") || match("--") -> {
+                    val operator = previous()
+                    SyntaxUpdate(expression, operator.lexeme, false, span(expression.range, operator.range), direct(span(expression.range, operator.range)))
+                }
                 else -> return expression
             }
         }
+    }
+
+    private fun parseStringLiteral(token: Token): SyntaxExpression {
+        val content = token.lexeme.removePrefix("\"").removeSuffix("\"")
+        val marker = "${'$'}{"
+        if (marker !in content) return SyntaxStringLiteral(token.lexeme, token.range, direct(token.range))
+
+        val parts = mutableListOf<SyntaxStringTemplatePart>()
+        var cursor = 0
+        while (cursor < content.length) {
+            val open = content.indexOf(marker, cursor)
+            if (open < 0) {
+                if (cursor < content.length) parts += SyntaxStringTextPart(content.substring(cursor))
+                break
+            }
+            if (open > cursor) parts += SyntaxStringTextPart(content.substring(cursor, open))
+            val close = content.indexOf('}', open + marker.length)
+            if (close < 0) {
+                diagnostics.error("unterminated string interpolation", token.range, "PARSE404")
+                parts += SyntaxStringTextPart(content.substring(open))
+                break
+            }
+            val expressionText = content.substring(open + marker.length, close).trim()
+            if (expressionText.isEmpty()) {
+                diagnostics.error("string interpolation requires an expression", token.range, "PARSE405")
+            } else {
+                val expressionStart = token.range.startOffset + 1 + open + marker.length
+                val padded = " ".repeat(expressionStart) + expressionText
+                val nestedSource = lexed.source.copy(text = padded)
+                val nested = Parser(Lexer().lex(nestedSource)).parseExpressionFragment()
+                diagnostics.addAll(nested.diagnostics.filter { it !in lexed.diagnostics })
+                nested.expression?.let { parts += SyntaxStringExpressionPart(it) }
+            }
+            cursor = close + 1
+        }
+        return SyntaxStringTemplate(parts, token.range, direct(token.range))
     }
 
     private fun parseType(): TypeSyntax? {
@@ -541,15 +614,21 @@ class Parser(private val lexed: LexedSource) {
     }
 
     private fun binaryPrecedence(operator: String): Int = when (operator) {
-        "=" -> 1
+        "=", "+=", "-=", "*=", "/=", "%=" -> 1
         "||" -> 2
         "&&" -> 3
         "==", "!=" -> 4
         "<", ">", "<=", ">=" -> 5
         "+", "-" -> 10
+        "|" -> 6
+        "^" -> 7
+        "&" -> 8
+        "<<", ">>" -> 9
         "*", "/", "%" -> 20
         else -> -1
     }
+
+    private val assignmentOperators = setOf("=", "+=", "-=", "*=", "/=", "%=")
 
     private fun recoverDeclaration(): SyntaxDeclaration? {
         recoverTo(";")

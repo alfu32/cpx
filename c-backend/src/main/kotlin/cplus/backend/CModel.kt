@@ -9,7 +9,8 @@ data class CTranslationUnit(
     val enums: List<CEnumDeclaration>,
     val aliases: List<CAliasDeclaration>,
     val globals: List<CGlobalDeclaration>,
-    val functions: List<CFunction>
+    val functions: List<CFunction>,
+    val requiresStringTemplateRuntime: Boolean = false
 )
 
 data class CStructDeclaration(
@@ -164,6 +165,19 @@ data class CCharacterLiteral(val text: String, override val origin: Origin) : CE
 data class CIdentifier(val name: String, override val origin: Origin) : CExpression
 data class CUnary(val operator: String, val operand: CExpression, override val origin: Origin) : CExpression
 data class CBinary(val left: CExpression, val operator: String, val right: CExpression, override val origin: Origin) : CExpression
+data class CAssignment(val left: CExpression, val operator: String, val right: CExpression, override val origin: Origin) : CExpression
+data class CConditional(
+    val condition: CExpression,
+    val thenBranch: CExpression,
+    val elseBranch: CExpression,
+    override val origin: Origin
+) : CExpression
+data class CUpdate(
+    val operand: CExpression,
+    val operator: String,
+    val prefix: Boolean,
+    override val origin: Origin
+) : CExpression
 data class CCall(val callee: CExpression, val arguments: List<CExpression>, override val origin: Origin) : CExpression
 data class CMemberAccess(
     val receiver: CExpression,

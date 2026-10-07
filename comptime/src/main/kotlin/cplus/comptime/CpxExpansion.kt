@@ -396,10 +396,26 @@ class CpxExpander(
     private fun reorigin(expression: SyntaxExpression, origin: Origin): SyntaxExpression = when (expression) {
         is SyntaxIntegerLiteral -> expression.copy(origin = origin)
         is SyntaxStringLiteral -> expression.copy(origin = origin)
+        is SyntaxStringTemplate -> expression.copy(
+            parts = expression.parts.map { part ->
+                when (part) {
+                    is SyntaxStringTextPart -> part
+                    is SyntaxStringExpressionPart -> part.copy(expression = reorigin(part.expression, origin))
+                }
+            },
+            origin = origin
+        )
         is SyntaxCharacterLiteral -> expression.copy(origin = origin)
         is SyntaxIdentifier -> expression.copy(origin = origin)
         is SyntaxUnary -> expression.copy(operand = reorigin(expression.operand, origin), origin = origin)
         is SyntaxBinary -> expression.copy(left = reorigin(expression.left, origin), right = reorigin(expression.right, origin), origin = origin)
+        is SyntaxConditional -> expression.copy(
+            condition = reorigin(expression.condition, origin),
+            thenBranch = reorigin(expression.thenBranch, origin),
+            elseBranch = reorigin(expression.elseBranch, origin),
+            origin = origin
+        )
+        is SyntaxUpdate -> expression.copy(operand = reorigin(expression.operand, origin), origin = origin)
         is SyntaxCall -> expression.copy(callee = reorigin(expression.callee, origin), arguments = expression.arguments.map { reorigin(it, origin) }, origin = origin)
         is SyntaxMemberAccess -> expression.copy(receiver = reorigin(expression.receiver, origin), origin = origin)
         is SyntaxIndexAccess -> expression.copy(receiver = reorigin(expression.receiver, origin), index = reorigin(expression.index, origin), origin = origin)

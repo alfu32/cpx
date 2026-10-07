@@ -113,6 +113,18 @@ class SemanticTypeTest {
     }
 
     @Test
+    fun nonAssignableExpressionProducesAssignmentDiagnostic() {
+        val text = "int main() { return 1 = 2; }"
+        val source = SourceFile(SourceFileId(12), Path.of("invalid-assignment.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        val result = SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+
+        assertTrue(result.diagnostics.any { it.code == "SEM307" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun equivalentAliasAndPointerSpellingSharesCanonicalTypeIdentity() {
         val text = """
             typedef int count_t;

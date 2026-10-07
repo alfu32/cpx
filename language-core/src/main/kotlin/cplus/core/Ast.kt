@@ -187,10 +187,34 @@ sealed interface AstExpression : AstNode
 
 data class AstIntegerLiteral(val text: String, override val origin: Origin) : AstExpression
 data class AstStringLiteral(val text: String, override val origin: Origin) : AstExpression
+
+sealed interface AstStringTemplatePart
+
+data class AstStringTextPart(val text: String) : AstStringTemplatePart
+
+data class AstStringExpressionPart(val expression: AstExpression) : AstStringTemplatePart
+
+data class AstStringTemplate(
+    val parts: List<AstStringTemplatePart>,
+    override val origin: Origin
+) : AstExpression
+
 data class AstCharacterLiteral(val text: String, override val origin: Origin) : AstExpression
 data class AstIdentifier(val name: String, override val origin: Origin) : AstExpression
 data class AstUnary(val operator: String, val operand: AstExpression, override val origin: Origin) : AstExpression
 data class AstBinary(val left: AstExpression, val operator: String, val right: AstExpression, override val origin: Origin) : AstExpression
+data class AstConditional(
+    val condition: AstExpression,
+    val thenBranch: AstExpression,
+    val elseBranch: AstExpression,
+    override val origin: Origin
+) : AstExpression
+data class AstUpdate(
+    val operand: AstExpression,
+    val operator: String,
+    val prefix: Boolean,
+    override val origin: Origin
+) : AstExpression
 data class AstCall(val callee: AstExpression, val arguments: List<AstExpression>, override val origin: Origin) : AstExpression
 data class AstMemberAccess(val receiver: AstExpression, val member: String, override val origin: Origin) : AstExpression
 data class AstIndexAccess(val receiver: AstExpression, val index: AstExpression, override val origin: Origin) : AstExpression

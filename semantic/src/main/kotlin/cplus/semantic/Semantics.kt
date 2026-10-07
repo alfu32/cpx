@@ -893,6 +893,12 @@ class SemanticAnalyzer(
         val type = when (expression) {
             is AstIntegerLiteral -> primitive("int")
             is AstStringLiteral -> PointerType(TypeId(-1), primitive("char"))
+            is AstStringTemplate -> {
+                expression.parts.filterIsInstance<AstStringExpressionPart>().forEach { part ->
+                    validateExpression(part.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                }
+                PointerType(TypeId(-1), primitive("char"))
+            }
             is AstCharacterLiteral -> primitive("char")
             is AstIdentifier -> {
                     locals[expression.name]?.type
@@ -907,8 +913,31 @@ class SemanticAnalyzer(
             is AstUnary -> validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstBinary -> {
                 val left = validateExpression(expression.left, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                validateExpression(expression.right, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                val right = validateExpression(expression.right, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                if (expression.operator in assignmentOperators) {
+                    if (!isAssignable(expression.left, locals, globals)) {
+                        diagnostics.error("left side of '${expression.operator}' is not assignable", rangeOf(expression.left.origin), "SEM307")
+                    } else if (right !is UnknownType && !argumentCompatible(left, right)) {
+                        diagnostics.error("cannot assign '${right.name}' to '${left.name}'", rangeOf(expression.origin), "SEM308")
+                    }
+                }
                 left
+            }
+            is AstConditional -> {
+                validateExpression(expression.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                val thenType = validateExpression(expression.thenBranch, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                val elseType = validateExpression(expression.elseBranch, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                if (thenType !is UnknownType && elseType !is UnknownType && !argumentCompatible(thenType, elseType)) {
+                    diagnostics.error("conditional branches have incompatible types", rangeOf(expression.origin), "SEM309")
+                }
+                thenType
+            }
+            is AstUpdate -> {
+                val operandType = validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                if (!isAssignable(expression.operand, locals, globals)) {
+                    diagnostics.error("operand of '${expression.operator}' is not assignable", rangeOf(expression.origin), "SEM307")
+                }
+                operandType
             }
             is AstCall -> {
                 val function = (expression.callee as? AstIdentifier)?.let { functions[it.name] }
@@ -1028,8 +1057,25 @@ class SemanticAnalyzer(
 
     private fun argumentCompatible(expected: CType, actual: CType): Boolean = when {
         expected is ArrayType && actual is ArrayType -> equivalentTypes(expected.element, actual.element)
+        expected is PrimitiveType && actual is PrimitiveType && expected.name in numericPrimitiveNames && actual.name in numericPrimitiveNames -> true
         else -> equivalentTypes(expected, actual)
     }
+
+    private fun isAssignable(
+        expression: AstExpression,
+        locals: Map<String, Symbol>,
+        globals: Map<String, Symbol>
+    ): Boolean = when (expression) {
+        is AstIdentifier -> locals[expression.name]?.kind == SymbolKind.VARIABLE || globals[expression.name]?.kind == SymbolKind.VARIABLE
+        is AstMemberAccess, is AstIndexAccess -> true
+        is AstUnary -> expression.operator == "*"
+        is AstParenthesized -> isAssignable(expression.expression, locals, globals)
+        else -> false
+    }
+
+    private val assignmentOperators = setOf("=", "+=", "-=", "*=", "/=", "%=")
+
+    private val numericPrimitiveNames = setOf("bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned")
 
     private fun canonicalType(type: CType): CType = when (type) {
         is AliasType -> canonicalType(type.target)

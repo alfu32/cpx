@@ -228,6 +228,18 @@ data class SyntaxStringLiteral(
     override val origin: Origin
 ) : SyntaxExpression
 
+sealed interface SyntaxStringTemplatePart
+
+data class SyntaxStringTextPart(val text: String) : SyntaxStringTemplatePart
+
+data class SyntaxStringExpressionPart(val expression: SyntaxExpression) : SyntaxStringTemplatePart
+
+data class SyntaxStringTemplate(
+    val parts: List<SyntaxStringTemplatePart>,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxExpression
+
 data class SyntaxCharacterLiteral(
     val text: String,
     override val range: SourceRange,
@@ -251,6 +263,22 @@ data class SyntaxBinary(
     val left: SyntaxExpression,
     val operator: String,
     val right: SyntaxExpression,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxExpression
+
+data class SyntaxConditional(
+    val condition: SyntaxExpression,
+    val thenBranch: SyntaxExpression,
+    val elseBranch: SyntaxExpression,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxExpression
+
+data class SyntaxUpdate(
+    val operand: SyntaxExpression,
+    val operator: String,
+    val prefix: Boolean,
     override val range: SourceRange,
     override val origin: Origin
 ) : SyntaxExpression

@@ -285,10 +285,22 @@ private class AstPrinter {
     private fun expression(expression: AstExpression): String = when (expression) {
         is AstIntegerLiteral -> expression.text
         is AstStringLiteral -> expression.text
+        is AstStringTemplate -> expression.parts.joinToString(separator = "", prefix = "\"", postfix = "\"") { part ->
+            when (part) {
+                is AstStringTextPart -> part.text
+                is AstStringExpressionPart -> "${'$'}{${expression(part.expression)}}"
+            }
+        }
         is AstCharacterLiteral -> expression.text
         is AstIdentifier -> expression.name
         is AstUnary -> "${expression.operator}${expression(expression.operand)}"
         is AstBinary -> "(${expression(expression.left)} ${expression.operator} ${expression(expression.right)})"
+        is AstConditional -> "(${expression(expression.condition)} ? ${expression(expression.thenBranch)} : ${expression(expression.elseBranch)})"
+        is AstUpdate -> if (expression.prefix) {
+            "${expression.operator}${expression(expression.operand)}"
+        } else {
+            "${expression(expression.operand)}${expression.operator}"
+        }
         is AstCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
         is AstMemberAccess -> "${expression(expression.receiver)}.${expression.member}"
         is AstIndexAccess -> "${expression(expression.receiver)}[${expression(expression.index)}]"

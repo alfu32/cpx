@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 50/98
+Overall: 52/99
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
-[DOING] [7/20] 4. Lowering and C backend
+[DOING] [9/21] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.4.4.2 — language-server foreign-symbol integration
+4.2.4.3.2 — remaining expression and lvalue lowering
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1193,7 +1193,7 @@ all create correct bindings.
 
 ---
 
-# 4. [DOING] [2/16] Lowering and C backend
+# 4. [DOING] [9/21] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1272,7 +1272,7 @@ all create correct bindings.
 
 ---
 
-## 4.2 [DOING] [5/8] C+ feature lowering
+## 4.2 [DOING] [6/9] C+ feature lowering
 
 ### 4.2.1 [DONE] Method lowering
 
@@ -1358,7 +1358,7 @@ all create correct bindings.
 **Depends**
 - 4.2.3.2
 
-### 4.2.4 [DOING] [1/3] String-template and remaining expression lowering
+### 4.2.4 [DOING] [3/4] String-template and remaining expression lowering
 
 **Language**
 - LS §16
@@ -1385,7 +1385,7 @@ all create correct bindings.
 - 1.3
 - 4.3.1
 
-#### 4.2.4.2 [TODO] String-template lowering
+#### 4.2.4.2 [DONE] String-template lowering
 
 **Acceptance**
 - string templates lower to valid ordinary C+ or C constructs.
@@ -1394,7 +1394,11 @@ all create correct bindings.
 **Depends**
 - 4.2.4.1
 
-#### 4.2.4.3 [TODO] Complete remaining expression and lvalue lowering
+**Implementation note**
+- The first supported runtime form is `${expression}` inside an ordinary C string literal.
+- Lowering uses a generated bounded `vsnprintf` helper and preserves interpolation origins.
+
+#### 4.2.4.3 [DOING] [1/2] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1402,6 +1406,26 @@ all create correct bindings.
 
 **Depends**
 - 4.2.4.1
+
+#### 4.2.4.3.1 [DONE] Lower assignment, update, conditional, and bitwise expressions
+
+**Acceptance**
+- assignment and compound-assignment operators lower through explicit C assignment nodes.
+- prefix and postfix updates lower with preserved evaluation order.
+- conditional and bitwise expressions lower to explicit C expression nodes.
+- non-assignable lvalues produce semantic diagnostics before C emission.
+
+**Depends**
+- 4.2.4.2
+
+#### 4.2.4.3.2 [TODO] Complete remaining expression and lvalue lowering
+
+**Acceptance**
+- supported C+ expression and lvalue forms have explicit C AST nodes.
+- unsupported forms produce diagnostics before emission.
+
+**Depends**
+- 4.2.4.3.1
 
 ---
 

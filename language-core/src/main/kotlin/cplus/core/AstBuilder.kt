@@ -72,10 +72,26 @@ class AstBuilder {
     private fun expression(node: SyntaxExpression): AstExpression = when (node) {
         is SyntaxIntegerLiteral -> AstIntegerLiteral(node.text, node.origin)
         is SyntaxStringLiteral -> AstStringLiteral(node.text, node.origin)
+        is SyntaxStringTemplate -> AstStringTemplate(
+            node.parts.map { part ->
+                when (part) {
+                    is SyntaxStringTextPart -> AstStringTextPart(part.text)
+                    is SyntaxStringExpressionPart -> AstStringExpressionPart(expression(part.expression))
+                }
+            },
+            node.origin
+        )
         is SyntaxCharacterLiteral -> AstCharacterLiteral(node.text, node.origin)
         is SyntaxIdentifier -> AstIdentifier(node.name, node.origin)
         is SyntaxUnary -> AstUnary(node.operator, expression(node.operand), node.origin)
         is SyntaxBinary -> AstBinary(expression(node.left), node.operator, expression(node.right), node.origin)
+        is SyntaxConditional -> AstConditional(
+            expression(node.condition),
+            expression(node.thenBranch),
+            expression(node.elseBranch),
+            node.origin
+        )
+        is SyntaxUpdate -> AstUpdate(expression(node.operand), node.operator, node.prefix, node.origin)
         is SyntaxCall -> AstCall(expression(node.callee), node.arguments.map(::expression), node.origin)
         is SyntaxMemberAccess -> AstMemberAccess(expression(node.receiver), node.member, node.origin)
         is SyntaxIndexAccess -> AstIndexAccess(expression(node.receiver), expression(node.index), node.origin)

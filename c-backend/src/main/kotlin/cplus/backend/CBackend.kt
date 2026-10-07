@@ -12,6 +12,7 @@ class CLowerer(private val semantic: SemanticModel) {
     private val diagnostics = DiagnosticBag()
 
     fun lower(program: AstProgram): LoweredCResult {
+        val requiresStringTemplateRuntime = program.declarations.any(::containsStringTemplate)
         val includes = program.declarations
             .filterIsInstance<AstImport>()
             .flatMap { import ->
@@ -22,6 +23,10 @@ class CLowerer(private val semantic: SemanticModel) {
                     "c.math" -> listOf("math.h")
                     else -> emptyList()
                 }
+            }
+            .distinct()
+            .let { imports ->
+                if (requiresStringTemplateRuntime) imports + listOf("stdarg.h", "stdio.h") else imports
             }
             .distinct()
             .sorted()
@@ -96,7 +101,49 @@ class CLowerer(private val semantic: SemanticModel) {
                 )
             }
         val functions = programFunctions + foreignFunctions
-        return LoweredCResult(CTranslationUnit(includes, structs, unions, enums, aliases, globals, functions), diagnostics.diagnostics)
+        return LoweredCResult(
+            CTranslationUnit(includes, structs, unions, enums, aliases, globals, functions, requiresStringTemplateRuntime),
+            diagnostics.diagnostics
+        )
+    }
+
+    private fun containsStringTemplate(declaration: AstDeclaration): Boolean = when (declaration) {
+        is AstGlobalVariable -> declaration.initializer?.let(::containsStringTemplate) == true
+        is AstFunction -> declaration.body?.let(::containsStringTemplate) == true
+        is AstStruct -> declaration.methods.any { it.body?.let(::containsStringTemplate) == true }
+        else -> false
+    }
+
+    private fun containsStringTemplate(statement: AstStatement): Boolean = when (statement) {
+        is AstBlock -> statement.statements.any(::containsStringTemplate)
+        is AstReturn -> statement.expression?.let(::containsStringTemplate) == true
+        is AstExpressionStatement -> containsStringTemplate(statement.expression)
+        is AstDefer -> containsStringTemplate(statement.expression)
+        is AstIf -> containsStringTemplate(statement.condition) ||
+            containsStringTemplate(statement.thenBranch) ||
+            (statement.elseBranch?.let(::containsStringTemplate) == true)
+        is AstWhile -> containsStringTemplate(statement.condition) || containsStringTemplate(statement.body)
+        is AstFor -> (statement.initializer?.let(::containsStringTemplate) == true) ||
+            (statement.condition?.let(::containsStringTemplate) == true) ||
+            (statement.increment?.let(::containsStringTemplate) == true) ||
+            containsStringTemplate(statement.body)
+        is AstBreak, is AstContinue -> false
+        is AstVariableDeclaration -> statement.initializer?.let(::containsStringTemplate) == true
+    }
+
+    private fun containsStringTemplate(expression: AstExpression): Boolean = when (expression) {
+        is AstStringTemplate -> true
+        is AstUnary -> containsStringTemplate(expression.operand)
+        is AstBinary -> containsStringTemplate(expression.left) || containsStringTemplate(expression.right)
+        is AstConditional -> containsStringTemplate(expression.condition) ||
+            containsStringTemplate(expression.thenBranch) ||
+            containsStringTemplate(expression.elseBranch)
+        is AstUpdate -> containsStringTemplate(expression.operand)
+        is AstCall -> containsStringTemplate(expression.callee) || expression.arguments.any(::containsStringTemplate)
+        is AstMemberAccess -> containsStringTemplate(expression.receiver)
+        is AstIndexAccess -> containsStringTemplate(expression.receiver) || containsStringTemplate(expression.index)
+        is AstParenthesized -> containsStringTemplate(expression.expression)
+        else -> false
     }
 
     private fun foreignType(type: cplus.semantic.CType): CType {
@@ -327,15 +374,23 @@ class CLowerer(private val semantic: SemanticModel) {
     private fun expression(node: AstExpression, ownerName: String? = null, instanceMethod: Boolean = false): CExpression = when (node) {
         is AstIntegerLiteral -> CIntegerLiteral(node.text, node.origin)
         is AstStringLiteral -> CStringLiteral(node.text, node.origin)
+        is AstStringTemplate -> lowerStringTemplate(node, ownerName, instanceMethod)
         is AstCharacterLiteral -> CCharacterLiteral(node.text, node.origin)
         is AstIdentifier -> CIdentifier(node.name, node.origin)
         is AstUnary -> CUnary(node.operator, expression(node.operand, ownerName, instanceMethod), node.origin)
-        is AstBinary -> CBinary(
-            expression(node.left, ownerName, instanceMethod),
-            node.operator,
-            expression(node.right, ownerName, instanceMethod),
+        is AstBinary -> {
+            val left = expression(node.left, ownerName, instanceMethod)
+            val right = expression(node.right, ownerName, instanceMethod)
+            if (node.operator in assignmentOperators) CAssignment(left, node.operator, right, node.origin)
+            else CBinary(left, node.operator, right, node.origin)
+        }
+        is AstConditional -> CConditional(
+            expression(node.condition, ownerName, instanceMethod),
+            expression(node.thenBranch, ownerName, instanceMethod),
+            expression(node.elseBranch, ownerName, instanceMethod),
             node.origin
         )
+        is AstUpdate -> CUpdate(expression(node.operand, ownerName, instanceMethod), node.operator, node.prefix, node.origin)
         is AstCall -> lowerCall(node, ownerName, instanceMethod)
         is AstMemberAccess -> {
             val receiver = node.receiver
@@ -354,6 +409,46 @@ class CLowerer(private val semantic: SemanticModel) {
         is AstParenthesized -> CParenthesized(expression(node.expression, ownerName, instanceMethod), node.origin)
         is AstErrorExpression -> CIntegerLiteral("0", node.origin)
     }
+
+    private fun lowerStringTemplate(node: AstStringTemplate, ownerName: String?, instanceMethod: Boolean): CExpression {
+        val format = buildString {
+            node.parts.forEach { part ->
+                when (part) {
+                    is AstStringTextPart -> append(part.text.replace("%", "%%"))
+                    is AstStringExpressionPart -> append(templateSpecifier(part.expression))
+                }
+            }
+        }
+        val arguments = buildList {
+            add(CStringLiteral("\"$format\"", node.origin))
+            node.parts.filterIsInstance<AstStringExpressionPart>().forEach { part ->
+                add(expression(part.expression, ownerName, instanceMethod))
+            }
+        }
+        return CCall(CIdentifier("__cplus_format", node.origin), arguments, node.origin)
+    }
+
+    private fun templateSpecifier(expression: AstExpression): String = templateSpecifier(semantic.expressionTypes[expression])
+
+    private fun templateSpecifier(type: cplus.semantic.CType?): String = when (val resolved = unwrapAlias(type)) {
+        is cplus.semantic.PointerType -> {
+            val pointee = unwrapAlias(resolved.pointee)
+            if (pointee is cplus.semantic.PrimitiveType && pointee.name == "char") "%s" else "%p"
+        }
+        is cplus.semantic.PrimitiveType -> when (resolved.name) {
+            "char" -> "%c"
+            "float", "double" -> "%g"
+            else -> "%d"
+        }
+        else -> "%p"
+    }
+
+    private fun unwrapAlias(type: cplus.semantic.CType?): cplus.semantic.CType? = when (type) {
+        is cplus.semantic.AliasType -> unwrapAlias(type.target)
+        else -> type
+    }
+
+    private val assignmentOperators = setOf("=", "+=", "-=", "*=", "/=", "%=")
 
     private fun lowerCall(node: AstCall, ownerName: String?, instanceMethod: Boolean): CExpression {
         val member = node.callee as? AstMemberAccess
@@ -490,6 +585,18 @@ class CEmitter {
         }
         if (unit.aliases.isNotEmpty() && (unit.globals.isNotEmpty() || unit.functions.isNotEmpty())) appendLine()
 
+        if (unit.requiresStringTemplateRuntime) {
+            appendLine("static const char* __cplus_format(const char* format, ...) {")
+            appendLine("    static char buffer[1024];")
+            appendLine("    va_list arguments;")
+            appendLine("    va_start(arguments, format);")
+            appendLine("    vsnprintf(buffer, sizeof(buffer), format, arguments);")
+            appendLine("    va_end(arguments);")
+            appendLine("    return buffer;")
+            appendLine("}")
+            if (unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
+        }
+
         unit.globals.forEach { global ->
             val initializer = global.initializer?.let { " = ${expression(it)}" } ?: ""
             appendLine("${global.type.render()} ${global.name}${arraySuffix(global.arrayDimensions)}$initializer;", global.origin)
@@ -607,6 +714,13 @@ class CEmitter {
         is CIdentifier -> expression.name
         is CUnary -> "${expression.operator}${parenthesizeIfBinary(expression.operand)}"
         is CBinary -> "(${expression(expression.left)} ${expression.operator} ${expression(expression.right)})"
+        is CAssignment -> "(${expression(expression.left)} ${expression.operator} ${expression(expression.right)})"
+        is CConditional -> "(${expression(expression.condition)} ? ${expression(expression.thenBranch)} : ${expression(expression.elseBranch)})"
+        is CUpdate -> if (expression.prefix) {
+            "${expression.operator}${expression(expression.operand)}"
+        } else {
+            "${expression(expression.operand)}${expression.operator}"
+        }
         is CCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
         is CMemberAccess -> "${expression(expression.receiver)}${if (expression.pointerReceiver) "->" else "."}${expression.member}"
         is CIndexAccess -> "${expression(expression.receiver)}[${expression(expression.index)}]"

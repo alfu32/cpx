@@ -144,6 +144,39 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun runtimeStringTemplatesLowerThroughFormattingHelper() {
+        val source = """
+            import { puts } from c.stdio;
+
+            int main() {
+                int value = 7;
+                puts("value=${'$'}{value}");
+                return 0;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-string-template", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("#include <stdarg.h>"))
+        assertTrue(generated.contains("static const char* __cplus_format"))
+        assertTrue(!generated.contains("${'$'}{value}"))
+
+        val directory = Files.createTempDirectory("cplus-string-template-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(0, execution.waitFor())
+        assertEquals("value=7\n", execution.inputStream.bufferedReader().readText())
+    }
+
+    @Test
     fun typeAliasesResolveAndEmitAsTypedefs() {
         val source = """
             count_t total;
@@ -223,6 +256,39 @@ class CompilerIntegrationTest {
 
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         assertEquals(4, execution.waitFor())
+    }
+
+    @Test
+    fun assignmentsUpdatesAndConditionalExpressionsLowerToC() {
+        val source = """
+            int main() {
+                int value = 1;
+                value += 2;
+                ++value;
+                value--;
+                return value >= 3 ? value : 0;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-expressions", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("(value += 2)"))
+        assertTrue(generated.contains("++value"))
+        assertTrue(generated.contains("value--"))
+        assertTrue(generated.contains("? value : 0"))
+
+        val directory = Files.createTempDirectory("cplus-expressions-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(3, execution.waitFor())
     }
 
     @Test
