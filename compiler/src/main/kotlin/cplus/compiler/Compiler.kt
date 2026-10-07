@@ -119,7 +119,7 @@ class CPlusCompiler(
             }
         )
         val semantic = context.semanticAnalyzer.analyze(mergedAst, moduleGraph.moduleNames)
-        val additionalDiagnostics = units.drop(1).flatMap { it.diagnostics() }
+        val additionalDiagnostics = units.drop(1).flatMap { it.diagnostics() } + unresolvedImportCycleDiagnostics(moduleGraph, semantic.diagnostics)
         val base = first
         if (!semantic.isSuccessful) {
             return resultOf(
@@ -203,6 +203,22 @@ class CPlusCompiler(
         artifacts = artifacts,
         moduleGraph = moduleGraph
     )
+
+    private fun unresolvedImportCycleDiagnostics(
+        moduleGraph: ModuleGraph,
+        diagnostics: List<Diagnostic>
+    ): List<Diagnostic> {
+        val unresolvedImportCodes = setOf("SEM402", "SEM404", "SEM406")
+        if (diagnostics.none { it.code in unresolvedImportCodes }) return emptyList()
+        return moduleGraph.cyclicComponents.map { component ->
+            Diagnostic(
+                DiagnosticSeverity.ERROR,
+                "module import cycle cannot reach a declaration fixed point: ${component.modules.joinToString(" -> ") { it.value }}",
+                null,
+                "MOD201"
+            )
+        }
+    }
 
     private fun CompilationArtifacts.allDiagnostics(): List<Diagnostic> = buildList {
         addAll(lexed.diagnostics)

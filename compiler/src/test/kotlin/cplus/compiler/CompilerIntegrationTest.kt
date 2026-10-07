@@ -439,6 +439,42 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun unresolvedBindingInCircularImportGetsCycleDiagnostic() {
+        val directory = Files.createTempDirectory("cplus-circular-import-error")
+        val first = directory.resolve("first.cp")
+        val second = directory.resolve("second.cp")
+        first.writeText(
+            """
+                import { missing } from second;
+                import { secondValue } from second;
+
+                pub int firstValue() {
+                    return secondValue();
+                }
+
+                int main() {
+                    return firstValue();
+                }
+            """.trimIndent()
+        )
+        second.writeText(
+            """
+                import { firstValue } from first;
+
+                pub int secondValue() {
+                    return 9;
+                }
+            """.trimIndent()
+        )
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(first, second)))
+
+        assertTrue(result.diagnostics.any { it.code == "MOD201" }, result.diagnostics.joinToString())
+        assertTrue(result.diagnostics.any { it.message.contains("first") && it.message.contains("second") })
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun nestedScopeReturnRunsDeferredActionsFromInnerToOuter() {
         val source = """
             import { printf } from c.stdio;

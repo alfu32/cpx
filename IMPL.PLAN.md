@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 42/93
+Overall: 43/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [18/27] 2. Semantic model and modules
+[DOING] [19/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.3.4 — C+ import cycle analysis
+2.4.1 — foreign symbol and type representation
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -567,7 +567,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.3 [DOING] [6/8] Packages and C+ imports
+## 2.3 [DOING] [7/8] Packages and C+ imports
 
 ### 2.3.1 [DONE] [3/3] Package and module representation
 
@@ -670,7 +670,7 @@ all create correct bindings.
 **Depends**
 - 2.3.3.2
 
-### 2.3.4 [TODO] C+ import cycle analysis
+### 2.3.4 [DONE] C+ import cycle analysis
 
 **Language**
 - LS §21.5
