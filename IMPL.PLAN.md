@@ -2396,7 +2396,7 @@ all create correct bindings.
 
 ---
 
-# 6. [TODO] [0/32] C+ Standard Library, Runtime, SDK and Platform ABI
+# 6. [DONE] [32/32] C+ Standard Library, Runtime, SDK and Platform ABI
 
 **Purpose:** Make the C+ SDK self-hosting at the runtime/library level: source-delivered standard library and libc compatibility, explicit target/ABI metadata, platform abstraction layers, compiler/runtime intrinsics, target startup/link orchestration, and conformance tooling.
 
