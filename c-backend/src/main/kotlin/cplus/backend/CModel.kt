@@ -106,6 +106,7 @@ data class CParameter(
 
 sealed interface CType {
     fun render(): String
+    fun renderDeclaration(name: String): String = "${render()} $name"
 
     data class Primitive(
         val name: String,
@@ -150,6 +151,37 @@ sealed interface CType {
         val pointerQualifiers: List<Set<String>> = emptyList()
     ) : CType {
         override fun render(): String = renderCType(name, pointerDepth, qualifiers, pointerQualifiers)
+    }
+
+    data class FunctionPointer(
+        val returnType: CType,
+        val parameterTypes: List<CType>,
+        val isVariadic: Boolean = false,
+        val pointerDepth: Int = 1,
+        val pointerQualifiers: List<Set<String>> = emptyList()
+    ) : CType {
+        override fun render(): String = renderFunctionPointer("")
+
+        override fun renderDeclaration(name: String): String = renderFunctionPointer(name)
+
+        private fun renderFunctionPointer(name: String): String = buildString {
+            append(returnType.render())
+            append(" (")
+            repeat(pointerDepth) { index ->
+                append('*')
+                pointerQualifiers.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let {
+                    append(' ').append(it.joinToString(" "))
+                }
+            }
+            append(name)
+            append(")(")
+            append(parameterTypes.joinToString(", ") { it.render() })
+            if (isVariadic) {
+                if (parameterTypes.isNotEmpty()) append(", ")
+                append("...")
+            }
+            append(')')
+        }
     }
 
     data object Unknown : CType {

@@ -65,6 +65,22 @@ class AstGoldenTest {
     }
 
     @Test
+    fun parserRetainsFunctionPointerDeclarators() {
+        val text = "int apply(int (*callback)(int value), int value) { return callback(value); }"
+        val source = SourceFile(SourceFileId(10), Path.of("function-pointers.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val ast = AstBuilder().build(parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        val callback = ast.declarations.filterIsInstance<AstFunction>().single().parameters.first()
+        assertEquals("callback", callback.name)
+        assertEquals(1, callback.type.functionPointerDepth)
+        assertEquals("int", callback.type.name)
+        assertEquals(listOf("value"), callback.type.functionParameters!!.map { it.name })
+        assertEquals("int", callback.type.functionParameters!!.single().type.name)
+    }
+
+    @Test
     fun astArenaProvidesStableAddressableNodes() {
         val range = SourceRange(SourceFileId(1), 0, 1)
         val first = AstIntegerLiteral("1", Origin.Direct(range))

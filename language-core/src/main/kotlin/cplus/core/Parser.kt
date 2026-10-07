@@ -76,20 +76,19 @@ class Parser(private val lexed: LexedSource) {
         }
 
         val type = parseType() ?: return recoverDeclaration()
-        val name = expectIdentifier("expected declaration name") ?: return recoverDeclaration()
-        return if (match("(")) {
-            parseFunction(type, name, isPublic = isPublic, attributes = attributes)
+        val declarator = parseDeclarator(type, "declaration") ?: return recoverDeclaration()
+        return if (declarator.type.functionPointerDepth == 0 && match("(")) {
+            parseFunction(declarator.type, declarator.name, isPublic = isPublic, attributes = attributes)
         } else {
-            val arrayDimensions = parseArrayDimensions()
             val initializer = if (match("=")) parseExpression() else null
             expect(";", "expected ';' after global declaration")
             SyntaxGlobalVariable(
-                type,
-                name.lexeme,
+                declarator.type,
+                declarator.name.lexeme,
                 initializer,
-                span(type.range, previous().range),
-                direct(span(type.range, previous().range)),
-                arrayDimensions,
+                span(declarator.type.range, previous().range),
+                direct(span(declarator.type.range, previous().range)),
+                declarator.arrayDimensions,
                 isPublic
             )
         }
@@ -243,20 +242,19 @@ class Parser(private val lexed: LexedSource) {
                 match(";")
                 continue
             }
-            val fieldName = expectIdentifier("expected field name")
-            if (fieldName == null) {
+            val declarator = parseDeclarator(type, "field")
+            if (declarator == null) {
                 recoverTo(";", "}")
                 match(";")
                 continue
             }
-            if (match("(")) {
-                methods += parseFunction(type, fieldName, isMethod = true, ownerName = name.lexeme, attributes = attributes)
+            if (declarator.type.functionPointerDepth == 0 && match("(")) {
+                methods += parseFunction(declarator.type, declarator.name, isMethod = true, ownerName = name.lexeme, attributes = attributes)
                 continue
             }
-            val arrayDimensions = parseArrayDimensions()
             expect(";", "expected ';' after field declaration")
             val fieldRange = span(start.range, previous().range)
-            fields += SyntaxField(type, fieldName.lexeme, fieldRange, direct(fieldRange), arrayDimensions)
+            fields += SyntaxField(declarator.type, declarator.name.lexeme, fieldRange, direct(fieldRange), declarator.arrayDimensions)
         }
         val close = expect("}", "expected '}' after structure body") ?: previous()
         expect(";", "expected ';' after structure declaration")
@@ -276,16 +274,15 @@ class Parser(private val lexed: LexedSource) {
                 match(";")
                 continue
             }
-            val fieldName = expectIdentifier("expected union field name")
-            if (fieldName == null) {
+            val declarator = parseDeclarator(type, "union field")
+            if (declarator == null) {
                 recoverTo(";", "}")
                 match(";")
                 continue
             }
-            val arrayDimensions = parseArrayDimensions()
             expect(";", "expected ';' after union field declaration")
             val fieldRange = span(start.range, previous().range)
-            fields += SyntaxField(type, fieldName.lexeme, fieldRange, direct(fieldRange), arrayDimensions)
+            fields += SyntaxField(declarator.type, declarator.name.lexeme, fieldRange, direct(fieldRange), declarator.arrayDimensions)
         }
         val close = expect("}", "expected '}' after union body") ?: previous()
         expect(";", "expected ';' after union declaration")
@@ -331,12 +328,82 @@ class Parser(private val lexed: LexedSource) {
         isPublic: Boolean = false,
         attributes: Map<String, String> = emptyMap()
     ): SyntaxFunction {
+        val parsedParameters = parseParameterList(isMethod)
+        val body = if (peek().isLexeme("{")) parseStatement() else {
+            expect(";", "expected function body or declaration terminator")
+            null
+        }
+        val functionRange = span(returnType.range, body?.range ?: previousSyntaxToken().range)
+        return SyntaxFunction(
+            returnType,
+            name.lexeme,
+            parsedParameters.parameters,
+            body,
+            isMethod,
+            ownerName,
+            functionRange,
+            direct(functionRange),
+            isPublic,
+            attributes,
+            parsedParameters.isVariadic
+        )
+    }
+
+    private data class ParsedDeclarator(
+        val type: TypeSyntax,
+        val name: Token,
+        val arrayDimensions: List<String> = emptyList()
+    )
+
+    private data class ParsedParameterList(
+        val parameters: List<SyntaxParameter>,
+        val isVariadic: Boolean
+    )
+
+    private fun parseDeclarator(baseType: TypeSyntax, context: String, allowUnnamed: Boolean = false): ParsedDeclarator? {
+        if (peek().isLexeme("(") && peek(1).isLexeme("*")) {
+            advance()
+            var pointerDepth = 0
+            val pointerQualifiers = mutableListOf<Set<String>>()
+            do {
+                expect("*", "expected '*' in function-pointer declarator")
+                pointerDepth++
+                val qualifiers = linkedSetOf<String>()
+                while (peek().lexeme in typeQualifiers) qualifiers += advance().lexeme
+                pointerQualifiers += qualifiers
+            } while (peek().isLexeme("*"))
+            val name = expectIdentifier("expected $context name in function-pointer declarator") ?: return null
+            expect(")", "expected ')' after function-pointer declarator")
+            expect("(", "expected '(' after function-pointer name")
+            val parameters = parseParameterList(false)
+            val type = baseType.copy(
+                functionParameters = parameters.parameters,
+                functionVariadic = parameters.isVariadic,
+                functionPointerDepth = pointerDepth,
+                functionPointerQualifiers = pointerQualifiers
+            )
+            return ParsedDeclarator(type, name, parseArrayDimensions())
+        }
+        val name = if (allowUnnamed && (peek().isLexeme(",") || peek().isLexeme(")"))) {
+            syntheticToken("parameter", baseType.range)
+        } else {
+            expectIdentifier("expected $context name") ?: return null
+        }
+        return ParsedDeclarator(baseType, name, parseArrayDimensions())
+    }
+
+    private fun parseParameterList(isMethod: Boolean): ParsedParameterList {
         val parameters = mutableListOf<SyntaxParameter>()
+        var isVariadic = false
         if (!peek().isLexeme(")")) {
             if (peek().isLexeme("void") && peek(1).isLexeme(")")) {
                 advance()
             } else {
-                do {
+                while (true) {
+                    if (match("...")) {
+                        isVariadic = true
+                        break
+                    }
                     if (isMethod && peek().isLexeme("self")) {
                         val receiver = advance()
                         val pointerReceiver = match("*")
@@ -350,40 +417,30 @@ class Parser(private val lexed: LexedSource) {
                             direct(receiverRange),
                             isPointerReceiver = pointerReceiver
                         )
-                        continue
+                    } else {
+                        val type = parseType()
+                        if (type == null) {
+                            recoverTo(",", ")")
+                            if (match(",")) continue
+                            break
+                        }
+                        val declarator = parseDeclarator(type, "parameter", allowUnnamed = true) ?: break
+                        val parameterRange = span(type.range, declarator.name.range)
+                        parameters += SyntaxParameter(
+                            declarator.type,
+                            declarator.name.lexeme,
+                            false,
+                            parameterRange,
+                            direct(parameterRange),
+                            declarator.arrayDimensions
+                        )
                     }
-                    val type = parseType()
-                    if (type == null) {
-                        recoverTo(",", ")")
-                        if (match(",")) continue
-                        break
-                    }
-                    val parameterName = expectIdentifier("expected parameter name")
-                        ?: syntheticToken("parameter", type.range)
-                    val arrayDimensions = parseArrayDimensions()
-                    val parameterRange = span(type.range, parameterName.range)
-                    parameters += SyntaxParameter(type, parameterName.lexeme, false, parameterRange, direct(parameterRange), arrayDimensions)
-                } while (match(","))
+                    if (!match(",")) break
+                }
             }
         }
         expect(")", "expected ')' after parameter list")
-        val body = if (peek().isLexeme("{")) parseStatement() else {
-            expect(";", "expected function body or declaration terminator")
-            null
-        }
-        val functionRange = span(returnType.range, body?.range ?: previousSyntaxToken().range)
-        return SyntaxFunction(
-            returnType,
-            name.lexeme,
-            parameters,
-            body,
-            isMethod,
-            ownerName,
-            functionRange,
-            direct(functionRange),
-            isPublic,
-            attributes
-        )
+        return ParsedParameterList(parameters, isVariadic)
     }
 
     private fun parseAttributes(): Map<String, String> {
@@ -500,12 +557,11 @@ class Parser(private val lexed: LexedSource) {
 
     private fun parseVariableDeclaration(): SyntaxVariableDeclaration? {
         val type = parseType() ?: return null
-        val name = expectIdentifier("expected local variable name") ?: return null
-        val arrayDimensions = parseArrayDimensions()
+        val declarator = parseDeclarator(type, "local variable") ?: return null
         val initializer = if (match("=")) parseExpression() else null
         expect(";", "expected ';' after local declaration")
         val range = span(type.range, previous().range)
-        return SyntaxVariableDeclaration(type, name.lexeme, initializer, range, direct(range), arrayDimensions)
+        return SyntaxVariableDeclaration(declarator.type, declarator.name.lexeme, initializer, range, direct(range), declarator.arrayDimensions)
     }
 
     private fun parseInnerFunction(): SyntaxInnerFunction? {
@@ -517,7 +573,7 @@ class Parser(private val lexed: LexedSource) {
             val range = parsed.range
             SyntaxBlock(emptyList(), range, direct(range))
         }
-        return SyntaxInnerFunction(returnType, name.lexeme, parsed.parameters, body, parsed.range, parsed.origin)
+        return SyntaxInnerFunction(returnType, name.lexeme, parsed.parameters, body, parsed.range, parsed.origin, parsed.isVariadic)
     }
 
     private fun parseArrayDimensions(): List<String> {

@@ -527,6 +527,39 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun functionPointerCallbacksCompileAndExecuteThroughGeneratedC() {
+        val source = """
+            int add_one(int value) {
+                return value + 1;
+            }
+
+            int apply(int (*callback)(int value), int value) {
+                return callback(value);
+            }
+
+            int main() {
+                return apply(add_one, 4) == 5 ? 0 : 1;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-function-pointer", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val directory = Files.createTempDirectory("cplus-function-pointer-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(result.generatedUnits.single().text) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(0, execution.waitFor())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("int (*callback)(int)"), generated)
+        assertTrue(generated.contains("return callback(value);"), generated)
+    }
+
+    @Test
     fun configuredHeaderDeclarationsResolveForeignFunctionSignatures() {
         val source = """
             import { puts } from c.stdio;

@@ -895,6 +895,11 @@ selected C dialect. Qualifiers and pointer declarators SHALL remain distinct in
 the generated declaration, and qualifier-only differences SHALL not alter ABI
 size or alignment.
 
+Function-pointer callback parameters SHALL retain their complete signature
+through foreign declarations and generated headers. Callback ABI tests SHALL
+cover both a C+ caller passing a C+ function and an independently compiled C
+caller invoking a generated C+ callback entry point.
+
 C+ SHALL support ABI-qualified foreign declarations.
 
 Canonical conceptual form:

@@ -64,6 +64,10 @@ class CHeaderGenerator {
                     selectedAliasNames += it.name
                     collectType(it.target)
                 }
+                is CType.FunctionPointer -> {
+                    collectType(type.returnType)
+                    type.parameterTypes.forEach(collectType)
+                }
                 is CType.Primitive, is CType.Enum, CType.Unknown -> Unit
             }
         }
@@ -111,7 +115,7 @@ class CHeaderGenerator {
                 is CUnionDeclaration -> appendLine("union ${aggregate.name} {", aggregate.origin)
             }
             aggregate.fields.forEach { field ->
-                appendLine("    ${field.type.render()} ${field.name}${arraySuffix(field.arrayDimensions)};", field.origin)
+                appendLine("    ${field.type.renderDeclaration(field.name)}${arraySuffix(field.arrayDimensions)};", field.origin)
             }
             appendLine("};", aggregate.origin)
             if (index != selectedKeys.size - 1 || unit.enums.any { it.isPublic } || unit.aliases.any { it.name in selectedAliasNames } || unit.globals.any { it.isPublic } || unit.functions.any { it.isPublic }) {
@@ -131,13 +135,13 @@ class CHeaderGenerator {
 
         val headerAliases = unit.aliases.filter { it.name in selectedAliasNames }
         headerAliases.forEachIndexed { index, alias ->
-            appendLine("typedef ${alias.target.render()} ${alias.name}${arraySuffix(alias.arrayDimensions)};", alias.origin)
+            appendLine("typedef ${alias.target.renderDeclaration(alias.name)}${arraySuffix(alias.arrayDimensions)};", alias.origin)
             if (index != headerAliases.lastIndex || unit.globals.any { it.isPublic } || unit.functions.any { it.isPublic }) appendLine()
         }
 
         val publicGlobals = unit.globals.filter { it.isPublic }
         publicGlobals.forEach { global ->
-            appendLine("extern ${global.type.render()} ${global.name}${arraySuffix(global.arrayDimensions)};", global.origin)
+            appendLine("extern ${global.type.renderDeclaration(global.name)}${arraySuffix(global.arrayDimensions)};", global.origin)
         }
         if (publicGlobals.isNotEmpty() && unit.functions.any { it.isPublic }) appendLine()
 
@@ -171,6 +175,7 @@ class CHeaderGenerator {
         fun typeUsesBool(type: CType): Boolean = when (type) {
             is CType.Primitive -> type.name == "bool"
             is CType.Named -> aliases[type.name]?.let { typeUsesBool(it.target) } == true
+            is CType.FunctionPointer -> typeUsesBool(type.returnType) || type.parameterTypes.any(::typeUsesBool)
             else -> false
         }
         return selectedKeys.any { key -> aggregateByKey[key]?.fields?.any { typeUsesBool(it.type) } == true } ||
@@ -182,7 +187,7 @@ class CHeaderGenerator {
     }
 
     private fun parameters(parameters: List<CParameter>, isVariadic: Boolean): String = buildList {
-        addAll(parameters.map { "${it.type.render()} ${it.name}${arraySuffix(it.arrayDimensions)}" })
+        addAll(parameters.map { "${it.type.renderDeclaration(it.name)}${arraySuffix(it.arrayDimensions)}" })
         if (isVariadic) add("...")
     }.joinToString(", ")
 

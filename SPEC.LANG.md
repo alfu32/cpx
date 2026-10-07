@@ -1746,6 +1746,21 @@ underlying semantic type when the selected header catalogue provides it. ABI
 layout queries SHALL use the underlying type while C emission SHALL continue to
 use the external typedef spelling.
 
+Function-pointer declarators SHALL be represented as callable types wrapped in
+the required pointer depth. A declaration such as:
+
+```cplus
+int apply(int (*callback)(int value), int value) {
+    return callback(value);
+}
+```
+
+SHALL preserve the callback signature through semantic checking and lower to a
+C function-pointer declarator. A named C+ function MAY be passed to a matching
+function-pointer parameter using the selected C ABI's function-to-pointer
+conversion. Calling a function-pointer value SHALL validate its argument count,
+argument types, and return type exactly as a direct call does.
+
 The native filesystem API MUST accept UTF-8 paths whose separators are `/`.
 Portable C+ source MUST NOT select Windows separators, drive spelling, or a
 host character encoding. The selected PAL adapter owns conversion to the

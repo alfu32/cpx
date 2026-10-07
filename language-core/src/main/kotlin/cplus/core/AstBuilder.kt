@@ -47,7 +47,8 @@ class AstBuilder {
         ownerName,
         node.origin,
         node.isPublic,
-        node.attributes
+        node.attributes,
+        node.isVariadic
     )
 
     private fun field(node: SyntaxField): AstField = AstField(type(node.type), node.name, node.origin, node.arrayDimensions)
@@ -59,7 +60,20 @@ class AstBuilder {
         node.origin,
         node.declarationKind,
         node.qualifiers,
-        node.pointerQualifiers
+        node.pointerQualifiers,
+        node.functionParameters?.map {
+            AstParameter(
+                type(it.type),
+                it.name,
+                it.isReceiver,
+                it.origin,
+                it.arrayDimensions,
+                it.isPointerReceiver
+            )
+        },
+        node.functionVariadic,
+        node.functionPointerDepth,
+        node.functionPointerQualifiers
     )
 
     private fun statement(node: SyntaxStatement): AstStatement = when (node) {
@@ -86,14 +100,15 @@ class AstBuilder {
             is SyntaxVariableDeclaration -> AstVariableDeclaration(type(node.type), node.name, node.initializer?.let(::expression), node.origin, node.arrayDimensions)
             is SyntaxInnerFunction -> AstInnerFunction(
                 function(
-                    SyntaxFunction(
-                        node.returnType,
-                        node.name,
-                        node.parameters,
-                        node.body,
-                        range = node.range,
-                        origin = node.origin
-                    ),
+                SyntaxFunction(
+                    node.returnType,
+                    node.name,
+                    node.parameters,
+                    node.body,
+                    range = node.range,
+                    origin = node.origin,
+                    isVariadic = node.isVariadic
+                ),
                     null
                 ),
                 node.origin

@@ -90,6 +90,10 @@ class CSubsetValidator {
             is CType.Struct -> validateIdentifier(type.name, origin, diagnostics)
             is CType.Union -> validateIdentifier(type.name, origin, diagnostics)
             is CType.Enum -> validateIdentifier(type.name, origin, diagnostics)
+            is CType.FunctionPointer -> {
+                validateType(type.returnType, origin, diagnostics, allowVoid = true)
+                type.parameterTypes.forEach { validateType(it, origin, diagnostics) }
+            }
         }
     }
 

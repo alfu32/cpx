@@ -60,7 +60,11 @@ data class AstTypeRef(
     override val origin: Origin,
     val declarationKind: String = "named",
     val qualifiers: Set<String> = emptySet(),
-    val pointerQualifiers: List<Set<String>> = emptyList()
+    val pointerQualifiers: List<Set<String>> = emptyList(),
+    val functionParameters: List<AstParameter>? = null,
+    val functionVariadic: Boolean = false,
+    val functionPointerDepth: Int = 0,
+    val functionPointerQualifiers: List<Set<String>> = emptyList()
 ) : AstNode
 
 data class AstStruct(
@@ -121,7 +125,8 @@ data class AstFunction(
     val ownerName: String? = null,
     override val origin: Origin,
     override val isPublic: Boolean = false,
-    val attributes: Map<String, String> = emptyMap()
+    val attributes: Map<String, String> = emptyMap(),
+    val isVariadic: Boolean = false
 ) : AstDeclaration
 
 data class AstParameter(

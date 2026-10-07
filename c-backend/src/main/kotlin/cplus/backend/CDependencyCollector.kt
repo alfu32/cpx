@@ -116,6 +116,10 @@ class CDependencyCollector {
         when (type) {
             is CType.Named -> includeForTypeName(type.name)?.let(includes::add)
             is CType.Primitive -> if (type.name in setOf("size_t", "ptrdiff_t", "max_align_t")) includes += "stddef.h"
+            is CType.FunctionPointer -> {
+                includeForCType(type.returnType, includes)
+                type.parameterTypes.forEach { includeForCType(it, includes) }
+            }
             is CType.Struct, is CType.Union, is CType.Enum, CType.Unknown -> Unit
         }
     }

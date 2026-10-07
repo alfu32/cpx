@@ -555,6 +555,13 @@ data class AliasType(...)
 data class ForeignType(...)
 ```
 
+`FunctionType` MAY be wrapped in `PointerType` to represent a callback value.
+The C AST has a dedicated function-pointer declarator representation so the
+function name is emitted inside `(*name)(...)` rather than appended after a
+flattened type string. Indirect calls resolve their callable signature from the
+shared semantic expression-type table and reuse the direct-call argument
+validator.
+
 Each canonical type SHOULD have a stable:
 
 ```kotlin

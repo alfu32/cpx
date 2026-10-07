@@ -1219,7 +1219,34 @@ class SemanticAnalyzer(
                 }
             }
         }
-        var resolved = base
+        val functionParameters = reference.functionParameters
+        var resolved: CType = if (functionParameters != null) {
+            val parameterTypes = functionParameters.map { parameter ->
+                resolveType(
+                    parameter.type,
+                    structs,
+                    unions,
+                    enums,
+                    aliases,
+                    foreignTypes,
+                    primitive,
+                    diagnostics,
+                    parameter.arrayDimensions
+                )
+            }
+            var function: CType = FunctionType(
+                TypeId(-1),
+                base,
+                parameterTypes,
+                reference.functionVariadic
+            )
+            repeat(reference.functionPointerDepth) {
+                function = PointerType(TypeId(-1), function)
+            }
+            function
+        } else {
+            base
+        }
         repeat(reference.pointerDepth) {
             resolved = PointerType(TypeId(nextTypeId.next()), resolved)
         }
@@ -1514,6 +1541,21 @@ class SemanticAnalyzer(
                     val owner = ownerStruct(methodCall.receiver, receiverType, structs)
                     owner?.methods?.firstOrNull { it.symbol.name == methodCall.member }
                 } else null
+                val indirectSignature = if (function == null && qualifiedFunction == null && resolvedMethod == null) {
+                    callableSignature(
+                        validateExpression(
+                            expression.callee,
+                            locals,
+                            functions,
+                            globals,
+                            structs,
+                            methods,
+                            expressionTypes,
+                            diagnostics,
+                            primitive
+                        )
+                    )
+                } else null
                 when {
                     function != null -> {
                         validateCallArguments(function.symbol.name, function.parameters, function.isVariadic, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
@@ -1526,6 +1568,22 @@ class SemanticAnalyzer(
                     resolvedMethod != null -> {
                         validateCallArguments(resolvedMethod.symbol.name, resolvedMethod.parameters, false, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                         resolvedMethod.returnType
+                    }
+                    indirectSignature != null -> {
+                        validateCallableArguments(
+                            "indirect call",
+                            indirectSignature,
+                            expression,
+                            locals,
+                            functions,
+                            globals,
+                            structs,
+                            methods,
+                            expressionTypes,
+                            diagnostics,
+                            primitive
+                        )
+                        indirectSignature.returnType
                     }
                     else -> {
                         diagnostics.error("call target is not a known function or method", rangeOf(expression.callee.origin), "SEM302")
@@ -1586,6 +1644,36 @@ class SemanticAnalyzer(
         diagnostics: DiagnosticBag,
         primitive: (String) -> PrimitiveType
     ) {
+        validateCallableArguments(
+            name,
+            FunctionType(TypeId(-1), primitive("void"), parameters.map { it.type }, isVariadic),
+            call,
+            locals,
+            functions,
+            globals,
+            structs,
+            methods,
+            expressionTypes,
+            diagnostics,
+            primitive
+        )
+    }
+
+    private fun validateCallableArguments(
+        name: String,
+        signature: FunctionType,
+        call: AstCall,
+        locals: Map<String, Symbol>,
+        functions: Map<String, FunctionSymbol>,
+        globals: Map<String, Symbol>,
+        structs: Map<String, StructType>,
+        methods: Map<String, Map<String, MethodSymbol>>,
+        expressionTypes: MutableMap<AstExpression, CType>,
+        diagnostics: DiagnosticBag,
+        primitive: (String) -> PrimitiveType
+    ) {
+        val parameters = signature.parameterTypes
+        val isVariadic = signature.isVariadic
         if ((!isVariadic && parameters.size != call.arguments.size) || call.arguments.size < parameters.size) {
             diagnostics.error(
                 "function '$name' expects ${parameters.size} arguments but received ${call.arguments.size}",
@@ -1597,9 +1685,9 @@ class SemanticAnalyzer(
             validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
         }
         parameters.zip(actualTypes).forEach { (parameter, actual) ->
-            if (actual !is UnknownType && !argumentCompatible(parameter.type, actual)) {
+            if (actual !is UnknownType && !argumentCompatible(parameter, actual)) {
                 diagnostics.error(
-                    "argument for '${parameter.name}' has type '${actual.name}', expected '${parameter.type.name}'",
+                    "argument for '$name' has type '${actual.name}', expected '${parameter.name}'",
                     rangeOf(call.origin),
                     "SEM306"
                 )
@@ -1607,11 +1695,22 @@ class SemanticAnalyzer(
         }
     }
 
+    private fun callableSignature(type: CType?): FunctionType? = when (type) {
+        is FunctionType -> type
+        is PointerType -> type.pointee as? FunctionType
+        is AliasType -> callableSignature(type.target)
+        else -> null
+    }
+
     private fun equivalentTypes(left: CType, right: CType): Boolean = canonicalTypeKey(left) == canonicalTypeKey(right)
 
     private fun argumentCompatible(expected: CType, actual: CType): Boolean = when {
         expected is ArrayType && actual is ArrayType -> equivalentTypes(expected.element, actual.element)
         expected is PrimitiveType && actual is PrimitiveType && expected.name in numericPrimitiveNames && actual.name in numericPrimitiveNames -> true
+        expected is PointerType && expected.pointee is FunctionType && actual is FunctionType ->
+            equivalentTypes(expected.pointee, actual)
+        expected is PointerType && expected.pointee is FunctionType && actual is PointerType && actual.pointee is FunctionType ->
+            equivalentTypes(expected.pointee, actual.pointee)
         else -> equivalentTypes(expected, actual)
     }
 

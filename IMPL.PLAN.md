@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R1.3 — declaration and function-pointer matrix
+R1.3.2 — declaration and expression reconciliation
 
 Current milestone:
 R1 — Language and front-end conformance
@@ -3374,9 +3374,9 @@ of R1–R8 or deliberately recorded as a post-release extension.
     declarators through C emission, and resolve foreign fixed-width/`stddef`
     aliases against their underlying target-aware types.
 - R1.3 [DOING] — close the remaining declaration matrix in dependency order.
-  - R1.3.1 [TODO] — represent function types and function-pointer declarators
-    from source through semantic validation and C emission.
-  - R1.3.2 [TODO] — reconcile arrays, pointer arithmetic, casts, globals, and
+  - R1.3.1 [DONE] — represent function types and function-pointer declarators
+    from source through semantic validation, indirect calls, and C emission.
+  - R1.3.2 [DOING] — reconcile arrays, pointer arithmetic, casts, globals, and
     initializer/lvalue rules across parser, semantic analysis, and lowering.
   - R1.3.3 [TODO] — add stable unsupported-declarator diagnostics and recovery
     fixtures so parser acceptance cannot outrun backend support.
@@ -3432,6 +3432,20 @@ The stage gate is a clean Linux and Windows suite plus independently compiled C
 caller and C+ caller fixtures for function pointers and callbacks. No R1.3
 subtask is complete from parser-only output or declarations without execution
 evidence.
+
+### R1.3.1 completion record
+
+Implemented and tested on Linux:
+
+- C-style function-pointer declarators are retained in syntax and AST records;
+- semantic `FunctionType` values can be wrapped in callable pointer types;
+- indirect calls validate signatures and accept matching named functions as
+  callback arguments;
+- C emission renders callback names inside valid `(*name)(...)` declarators;
+- a generated callback program is compiled with C17 and executed successfully.
+
+Windows execution remains part of the final cross-platform validation pass by
+project policy.
 
 ## R2 [TODO] CPX, generics and reflection conformance
 

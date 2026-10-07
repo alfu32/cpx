@@ -271,6 +271,11 @@ class CLowerer(
             is PrimitiveType -> CType.Primitive(current.name)
             is ForeignType -> CType.Named(current.externalName)
             is AliasType -> foreignType(current.target)
+            is FunctionType -> CType.FunctionPointer(
+                foreignType(current.returnType),
+                current.parameterTypes.map(::foreignType),
+                current.isVariadic
+            )
             is StructType -> CType.Struct(current.name)
             is UnionType -> CType.Union(current.name)
             is EnumType -> CType.Enum(current.name)
@@ -282,6 +287,7 @@ class CLowerer(
             is CType.Struct -> base.copy(pointerDepth = base.pointerDepth + pointerDepth)
             is CType.Union -> base.copy(pointerDepth = base.pointerDepth + pointerDepth)
             is CType.Enum -> base.copy(pointerDepth = base.pointerDepth + pointerDepth)
+            is CType.FunctionPointer -> base.copy(pointerDepth = base.pointerDepth + pointerDepth)
             CType.Unknown -> CType.Unknown
         }
     }
@@ -305,7 +311,22 @@ class CLowerer(
     }
 
     private fun type(reference: AstTypeRef): CType {
+        val functionParameters = reference.functionParameters
         val result = when {
+            functionParameters != null -> CType.FunctionPointer(
+                type(
+                    reference.copy(
+                        functionParameters = null,
+                        functionVariadic = false,
+                        functionPointerDepth = 0,
+                        functionPointerQualifiers = emptyList()
+                    )
+                ),
+                functionParameters.map { type(it.type) },
+                reference.functionVariadic,
+                reference.functionPointerDepth,
+                reference.functionPointerQualifiers
+            )
             semantic.aliases.containsKey(reference.name) -> CType.Named(
                 reference.name,
                 reference.pointerDepth,
@@ -746,7 +767,7 @@ class CEmitter {
                 is CStructDeclaration -> {
                     appendLine("struct ${aggregate.name} {", aggregate.origin)
                     aggregate.fields.forEach { field ->
-                        appendLine("    ${field.type.render()} ${field.name}${arraySuffix(field.arrayDimensions)};", field.origin)
+                        appendLine("    ${field.type.renderDeclaration(field.name)}${arraySuffix(field.arrayDimensions)};", field.origin)
                     }
                     appendLine("};", aggregate.origin)
                 }
@@ -772,7 +793,7 @@ class CEmitter {
         }
 
         unit.aliases.forEach { alias ->
-            appendLine("typedef ${alias.target.render()} ${alias.name}${arraySuffix(alias.arrayDimensions)};", alias.origin)
+            appendLine("typedef ${alias.target.renderDeclaration(alias.name)}${arraySuffix(alias.arrayDimensions)};", alias.origin)
         }
         if (unit.aliases.isNotEmpty() && (unit.globals.isNotEmpty() || unit.functions.isNotEmpty())) appendLine()
 
@@ -784,7 +805,7 @@ class CEmitter {
         unit.globals.forEach { global ->
             val initializer = global.initializer?.let { " = ${expression(it)}" } ?: ""
             val storage = if (global.isExtern) "extern " else ""
-            appendLine("$storage${global.type.render()} ${global.name}${arraySuffix(global.arrayDimensions)}$initializer;", global.origin)
+            appendLine("$storage${global.type.renderDeclaration(global.name)}${arraySuffix(global.arrayDimensions)}$initializer;", global.origin)
         }
         if (unit.globals.isNotEmpty() && unit.functions.isNotEmpty()) appendLine()
 
@@ -849,7 +870,7 @@ class CEmitter {
             is CExpressionStatement -> appendLine("$prefix${expression(statement.expression)};", statement.origin)
             is CVariableDeclaration -> {
                 val initializer = statement.initializer?.let { " = ${expression(it)}" } ?: ""
-                appendLine("$prefix${statement.type.render()} ${statement.name}${arraySuffix(statement.arrayDimensions)}$initializer;", statement.origin)
+                appendLine("$prefix${statement.type.renderDeclaration(statement.name)}${arraySuffix(statement.arrayDimensions)}$initializer;", statement.origin)
             }
             is CIf -> {
                 appendLine("${prefix}if (${expression(statement.condition)})", statement.origin)
@@ -878,7 +899,7 @@ class CEmitter {
     private fun forInitializer(statement: CStatement): String = when (statement) {
         is CVariableDeclaration -> {
             val initializer = statement.initializer?.let { " = ${expression(it)}" }.orEmpty()
-            "${statement.type.render()} ${statement.name}${arraySuffix(statement.arrayDimensions)}$initializer"
+            "${statement.type.renderDeclaration(statement.name)}${arraySuffix(statement.arrayDimensions)}$initializer"
         }
         is CExpressionStatement -> expression(statement.expression)
         is CBlock -> statement.statements.joinToString(" ") { forInitializer(it) }
@@ -886,7 +907,7 @@ class CEmitter {
     }
 
     private fun parameters(parameters: List<CParameter>, isVariadic: Boolean = false): String = buildList {
-        addAll(parameters.map { "${it.type.render()} ${it.name}${arraySuffix(it.arrayDimensions)}" })
+        addAll(parameters.map { "${it.type.renderDeclaration(it.name)}${arraySuffix(it.arrayDimensions)}" })
         if (isVariadic) add("...")
     }.joinToString(", ")
 

@@ -62,7 +62,11 @@ data class TypeSyntax(
     override val origin: Origin,
     val declarationKind: String = "named",
     val qualifiers: Set<String> = emptySet(),
-    val pointerQualifiers: List<Set<String>> = emptyList()
+    val pointerQualifiers: List<Set<String>> = emptyList(),
+    val functionParameters: List<SyntaxParameter>? = null,
+    val functionVariadic: Boolean = false,
+    val functionPointerDepth: Int = 0,
+    val functionPointerQualifiers: List<Set<String>> = emptyList()
 ) : SyntaxNode
 
 data class SyntaxStruct(
@@ -137,7 +141,8 @@ data class SyntaxFunction(
     override val range: SourceRange,
     override val origin: Origin,
     override val isPublic: Boolean = false,
-    val attributes: Map<String, String> = emptyMap()
+    val attributes: Map<String, String> = emptyMap(),
+    val isVariadic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxParameter(
@@ -225,7 +230,8 @@ data class SyntaxInnerFunction(
     val parameters: List<SyntaxParameter>,
     val body: SyntaxStatement,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    val isVariadic: Boolean = false
 ) : SyntaxStatement
 
 sealed interface SyntaxExpression : SyntaxNode
