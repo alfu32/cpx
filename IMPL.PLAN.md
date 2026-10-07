@@ -11,16 +11,16 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 (complete; retained for traceability)
-Roadmap leaf work:     30/45 evidenced on Linux
-Phase gates:           3/9 complete; 2 active; 4 queued
-Current task:          R5.2 — extend the file PAL beyond basic stream operations
-Current milestone:     R5 — native standard library and platform services
+Roadmap leaf tasks:    22/42 evidenced on Linux
+Phase gates:           2/9 complete; 4 active; 3 queued
+Current task:          R1.1.1 — parse complete C primitive type specifiers
+Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DONE]  8/8  language and front-end conformance
-R2 [DONE]  9/9  CPX, generics and reflection conformance
-R3 [DOING] 6/6  C backend and ABI evidence on Linux; Windows gate pending
+R1 [DOING] 4/8  primitive parsing and ABI fidelity reopened
+R2 [DONE]  7/7  CPX, generics and reflection conformance
+R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
 R5 [DOING] 1/5  native std foundations complete; file PAL extensions next
 R6 [TODO]  0/4  CLI transcoder and build-product completion
@@ -32,21 +32,25 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R5.2 — add file seek, metadata, create/remove, directory iteration, and
-   stream adapters above the basic PAL.
-2. R6–R8 — finish CLI/product, LSP/extension, SDK packaging, then perform the
-   deferred Windows validation and patch pass.
+1. R1.1.1–R1.1.2 — complete primitive specifier parsing and verify consistent
+   diagnostics through CLI, LSP, and generated C.
+2. R1.2.1/R1.2.3 — preserve primitive signedness, target widths, and one
+   canonical type identity through semantic analysis, ABI layout, and C output.
+3. R3.1.3 — verify parsed spellings through emitted C and independent ABI
+   fixtures.
+4. R5.2 onward — resume native std and platform work after the type boundary
+   is reliable, then finish R6–R8 and perform the deferred Windows validation
+   and patch pass.
 
 Latest completed implementation commits:
 
-- `8d71ad3` — independent C caller ABI round trips;
-- `5b105ca` — ABI products, diagnostics, and runtime-helper audit;
-- `f95f788` — page-backed PAL allocator;
-- `68e077f` — self-hosted memory/string/conversion core;
+- `c7e6817` — target-neutral native std value foundations;
+- `0fd8835` — executable Linux C17 conformance gate;
+- `a6cc980` — advanced Linux C17 runtime families;
 - `f8be29e` — self-hosted stdio/time/basic C17 families.
-All tasks initially have status `TODO`.
-
-`completed/total` counts terminal tasks in the complete subtree.
+`completed/total` counts only terminal numbered tasks in each phase subtree;
+parent work items are completion gates and are not counted again when they
+contain subtasks.
 
 ---
 
@@ -3341,10 +3345,10 @@ specifications.
 
 ```text
 Foundation tasks: 146/146
-Completion phases: [DOING] [3/9 gates complete]
+Completion phases: [DOING] [2/9 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
-[DONE]  R1 — language and front-end conformance
+[DOING] R1 — language and front-end conformance; primitive type matrix reopened
 [DONE]  R2 — CPX, generics and reflection conformance
 [DOING] R3 — C backend and ABI interoperability conformance
 [DOING] R4 — runtime, allocator and libc behavior
@@ -3384,20 +3388,29 @@ The scope is now frozen around the normative requirements in `SPEC.LANG.md`,
 `SPEC.STDLIB.md`, and `SPEC.TECH.md`. New work MUST first be assigned to one
 of R1–R8 or deliberately recorded as a post-release extension.
 
-## R1 [DONE] Language and front-end conformance
+## R1 [DOING] Language and front-end conformance
 
 **Progress**
 
-- R1.1 [DONE] — combine multi-token primitive spellings such as `long long`
-  and `unsigned long long` in the syntax/AST path, with parser and generated-C
-  regression coverage.
-- R1.2 [DONE] — reconcile semantic primitive widths, qualifiers, declarators,
-  and fixed-width aliases across all target ABI descriptors.
-  - R1.2.1 [DONE] — apply LP64/LLP64 `long` layout rules and recognize all
-    parsed numeric primitive forms in argument compatibility.
+- R1.1 [DOING] — complete C primitive specifier parsing and normalization;
+  the initial `long long` coverage did not validate all legal spellings,
+  ordering variants, or preservation of signedness and rank.
+  - R1.1.1 [TODO] — parse the supported C integer specifier grammar without a
+    token-count limit, accept optional `int` and legal specifier ordering, and
+    preserve the canonical identity of each resulting type.
+  - R1.1.2 [TODO] — cover declarations, fields, parameters, returns, casts,
+    typedefs, generated C, and parity between CLI and LSP diagnostics; reject
+    invalid combinations with stable diagnostics.
+- R1.2 [DOING] — reconcile primitive signedness, semantic identity, target
+  widths, C emission, and fixed-width aliases across target ABI descriptors.
+  - R1.2.1 [DOING] — preserve `signed char` and integer rank/signedness through
+    semantic compatibility and verify LP64/LLP64 widths for all parsed forms.
   - R1.2.2 [DONE] — complete leading/pointer qualifiers, preserve structured
     declarators through C emission, and resolve foreign fixed-width/`stddef`
     aliases against their underlying target-aware types.
+  - R1.2.3 [TODO] — audit semantic, ABI-layout, reflection, and C-backend
+    primitive tables against one canonical type identity; keep SDK declarations
+    idiomatic C and remove unused custom integer aliases from `std.core`.
 - R1.3 [DONE] — close the remaining declaration matrix in dependency order.
   - R1.3.1 [DONE] — represent function types and function-pointer declarators
     from source through semantic validation, indirect calls, and C emission.
@@ -3409,8 +3422,14 @@ of R1–R8 or deliberately recorded as a post-release extension.
 **Deliverables**
 
 - complete C-compatible type spellings and declarators, including fixed-width
-  aliases, qualifiers, multi-token primitive forms, function pointers, and
-  target-correct widths;
+  aliases, qualifiers, every supported multi-token primitive form, function
+  pointers, and target-correct widths;
+- preserve the distinctions between plain `char`, `signed char`, and
+  `unsigned char`, and between `int`, `long`, and `long long` variants;
+- keep SDK public declarations in idiomatic C, using standard C names such as
+  `size_t`, `ptrdiff_t`, and `uintN_t` where appropriate; do not add custom
+  `u8`/`i8`-style SDK aliases. User code MAY define opt-in aliases with normal
+  `typedef` declarations, while 128-bit aliases require explicit target support;
 - close parser/AST/semantic gaps for initializers, lvalues, casts, pointer
   arithmetic, arrays, globals, declarations, control flow, and diagnostics;
 - make every normative language example compile or produce the specified
@@ -3423,6 +3442,26 @@ of R1–R8 or deliberately recorded as a post-release extension.
 The canonical language examples and the C-compatible declaration matrix pass
 on Linux x86_64 and Windows x86_64, with stable diagnostics for unsupported
 constructs and no parser-only acceptance that later fails at C emission.
+
+### R1.1 initial coverage review
+
+The earlier parser change combined `long long` and `unsigned long long` and
+added focused AST/generated-C coverage. Review against VS Code diagnostics
+found this was not a complete primitive spelling implementation:
+
+- the parser consumes at most three primitive specifier tokens, excluding
+  valid four-token forms such as `unsigned long long int`;
+- normalization changes `signed char` to plain `char`;
+- `signed long int` and `unsigned long int` normalize to `int`-rank spellings;
+- the C backend, semantic argument checks, and ABI layout maintain separate
+  spelling tables, so parser rewrites can hide types that consumers need to
+  distinguish.
+
+The LSP passes workspace text to the same `CPlusCompiler` frontend and only
+converts compiler diagnostics to LSP messages. Therefore the extension report
+is evidence for the shared parser/semantic path, not a separate extension type
+parser. R1.1 and R1.2 remain open until CLI and LSP cases agree with emitted C
+and target ABI results.
 
 ### R1.2.2 completion record
 
@@ -3438,8 +3477,8 @@ Implemented and tested:
 - focused parser, semantic, generated-C, ABI, and compiler integration tests
   cover the stage.
 
-Function-pointer declarators and the remaining declaration matrix stay in the
-next R1 work item; they are not implied by this stage's completion.
+This record covers qualifier placement and foreign typedef resolution only; it
+does not imply completion of the reopened primitive spelling and ABI matrix.
 
 ### R1.3 execution contract
 
@@ -3643,8 +3682,8 @@ declaration.
     C+/C caller round trips on Linux.
   - R3.1.2 [DONE] — execute globals, TLS, export/link-name, and aggregate-return
     interoperability fixtures.
-  - R3.1.3 [DONE] — audit generated declarations against target ABI layout and
-    calling-convention metadata.
+  - R3.1.3 [DOING] — extend target ABI audit from descriptor-level layouts to
+    parsed primitive declarations, emitted C, and independent ABI fixtures.
 - R3.2 [DONE] — complete headers, dependencies, source maps, and external C
   diagnostic remapping as one audited product.
 - R3.3 [DONE] — identify compiler-generated runtime helpers and either provide
@@ -3666,12 +3705,12 @@ Implemented and executed on Linux:
 - ordinary function and method lowering preserve the variadic bit through the
   C model, so generated prototypes retain `...`.
 
-R3.1.3 remains open for a target-matrix audit of generated declarations against
-the ABI descriptor's widths, alignment, calling convention, storage, and symbol
-rules. Windows execution is deferred to the final cross-platform validation
-pass by project policy.
+R3.1.3 is reopened: earlier checks validated descriptor-level primitive and
+aggregate layouts, but did not exercise every source spelling through parsing,
+semantic resolution, C emission, and an independent caller. Windows execution
+is deferred to the final cross-platform validation pass by project policy.
 
-### R3.1.3 completion record
+### R3.1.3 earlier partial evidence
 
 Implemented and tested on Linux:
 
@@ -3681,6 +3720,12 @@ Implemented and tested on Linux:
   aggregate alignment are checked against each declared target descriptor;
 - generated C retains the selected C declarators and the ABI identity metadata
   remains available for target validation.
+
+This is partial evidence only. R3.1.3 remains `DOING` until end-to-end fixtures
+prove that each supported multiword spelling preserves signedness, rank, and
+target width through the parser, semantic model, emitted C, and independent C
+caller. This specifically covers LP64 and LLP64 differences and the
+`char`/`signed char`/`unsigned char` distinction.
 
 ### R3.2/R3.3 completion record
 
@@ -3856,6 +3901,9 @@ dependencies.
   propagation, unavailable-service diagnostics, and dependency audits;
 - R5.5 [TODO] — record Darwin as either executablely supported or explicitly
   capability-gated, without claiming a partial adapter as complete.
+
+R5.2 is sequenced after R1.1.1–R1.2.3 and R3.1.3 because it extends public SDK
+function signatures and must use the verified C primitive and alias boundary.
 
 ### R5.1 completion record
 
