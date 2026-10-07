@@ -3,13 +3,16 @@ package cplus.cli
 import cplus.compiler.CPlusCompiler
 import cplus.compiler.CompileRequest
 import cplus.compiler.BuildProfile
+import cplus.compiler.C17ConformanceRunner
 import cplus.compiler.LibcProfile
 import cplus.compiler.RuntimeProfile
 import cplus.compiler.RuntimeLinker
 import cplus.compiler.RuntimeDependencyAuditor
 import cplus.compiler.RuntimeHelperCatalogue
 import cplus.compiler.SdkDoctor
+import cplus.compiler.SdkManifestLoader
 import cplus.compiler.SdkPackageIndex
+import cplus.compiler.SdkResolver
 import cplus.compiler.TargetRegistry
 import cplus.compiler.IntrinsicRegistry
 import cplus.compiler.LinkDriver
@@ -251,11 +254,37 @@ internal class Cli {
 
     private fun libc(arguments: List<String>): Int {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        if (arguments.firstOrNull() == "test") return libcTest(arguments.drop(1))
         val include = root.resolve("libc/include")
         val files = if (Files.isDirectory(include)) Files.list(include).use { it.filter(Files::isRegularFile).sorted().toList() } else emptyList()
         println("C17 headers: ${files.size}")
         files.forEach { println(it.fileName) }
         return if (files.isNotEmpty()) 0 else 1
+    }
+
+    private fun libcTest(arguments: List<String>): Int {
+        val targetName = arguments.windowed(2).firstOrNull { it[0] == "--target" }?.get(1)
+            ?: defaultHostTargetTriple()
+        val target = TargetInfo(targetTriple = targetName)
+        val manifestResult = SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath())
+        if (!manifestResult.isSuccessful) {
+            manifestResult.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            return 1
+        }
+        val resolutionResult = SdkResolver.resolve(manifestResult.manifest!!, target)
+        if (!resolutionResult.isSuccessful) {
+            resolutionResult.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            return 1
+        }
+        val report = C17ConformanceRunner.run(resolutionResult.resolution!!, target)
+        report.cases.forEach { check ->
+            println("[${check.status.uppercase()}] ${check.id}: ${check.notes}")
+        }
+        println(
+            "C17 conformance: pass=${report.passed.size} fail=${report.failed.size} " +
+                "unsupported=${report.unsupported.size} planned=${report.planned.size}"
+        )
+        return if (report.isComplete) 0 else 1
     }
 
     private fun audit(arguments: List<String>): Int {
@@ -613,7 +642,7 @@ internal class Cli {
         stream.println("  target      list or inspect target ABI descriptors")
         stream.println("  abi         verify target ABI descriptors")
         stream.println("  runtime     inspect runtime sources")
-        stream.println("  libc        list delivered libc headers")
+        stream.println("  libc        list delivered libc headers or run C17 conformance [test]")
         stream.println("  audit       inspect binary runtime dependencies [--target <triple>]")
         stream.println("  lsp         serve compiler diagnostics over stdio JSON-RPC")
     }

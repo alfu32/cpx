@@ -2335,6 +2335,13 @@ Tests SHALL include C programs compiled independently against C+ SDK headers and
 
 This prevents passing tests merely because both caller and library share the same compiler bug.
 
+The CLI command `cplus libc test` SHALL execute the SDK's independent C17
+fixtures for the selected target and print a machine-readable status line for
+each header, runtime source, fixture, and runtime-dependency audit. The command
+MUST return success only when every check is `pass`; unsupported target
+facilities and planned checks MUST remain visible and MUST produce a non-zero
+result.
+
 ---
 
 # 84. ABI round-trip testing

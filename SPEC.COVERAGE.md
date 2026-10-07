@@ -59,6 +59,9 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 - broad C17 conformance, target-specific context adapters, and final Windows
   execution remain incomplete even though the named Linux families have
   executable coverage.
+- `cplus libc test` now aggregates the Linux x86_64 C17 header/source audit,
+  independently compiled C fixtures, and post-link dependency checks; its
+  output is the evidence source for the R4.5 conformance gate.
 - `std.io`, process, time, thread, synchronization, networking, and math
   sources are primarily API contracts or declarations;
 - C17 headers are delivered, but broad behavioral libc and independent-C ABI

@@ -15,6 +15,8 @@ data class ConformanceReport(val cases: List<ConformanceCase>) {
     val passed: List<ConformanceCase> get() = cases.filter { it.status == "pass" }
     val failed: List<ConformanceCase> get() = cases.filter { it.status == "fail" }
     val planned: List<ConformanceCase> get() = cases.filter { it.status == "planned" }
+    val unsupported: List<ConformanceCase> get() = cases.filter { it.status == "unsupported" }
+    val isComplete: Boolean get() = failed.isEmpty() && planned.isEmpty() && unsupported.isEmpty()
 }
 
 object ConformanceMatrix {

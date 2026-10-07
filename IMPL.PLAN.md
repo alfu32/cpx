@@ -11,17 +11,17 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 (complete; retained for traceability)
-Roadmap leaf work:     28/45 evidenced on Linux
+Roadmap leaf work:     29/45 evidenced on Linux
 Phase gates:           3/9 complete; 2 active; 4 queued
-Current task:          R4.5 — independent C17 conformance and runtime audit
-Current milestone:     R4 — runtime, allocator and libc behavior
+Current task:          R5.1 — complete target-neutral native std foundations
+Current milestone:     R5 — native standard library and platform services
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DONE]  8/8  language and front-end conformance
 R2 [DONE]  9/9  CPX, generics and reflection conformance
 R3 [DOING] 6/6  C backend and ABI evidence on Linux; Windows gate pending
-R4 [DOING] 4/5  runtime, allocator and libc; R4.5 audit pending
+R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
 R5 [TODO]  0/5  native standard library and platform services
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
@@ -32,10 +32,8 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R4.5 — aggregate independent C17 fixtures, audit runtime symbols, and
-   replace optimistic conformance statuses with evidence.
-2. R5.1–R5.4 — complete native std and the remaining Linux PAL services.
-3. R6–R8 — finish CLI/product, LSP/extension, SDK packaging, then perform the
+1. R5.1–R5.4 — complete native std and the remaining Linux PAL services.
+2. R6–R8 — finish CLI/product, LSP/extension, SDK packaging, then perform the
    deferred Windows validation and patch pass.
 
 Latest completed implementation commits:
@@ -3733,8 +3731,12 @@ layout, source-map, and dependency audits.
 - R4.4 [DONE] — implement the claimed Linux C17 compatibility families in dependency
   order: stdio/varargs, time/math/locale, Unicode, signal, atomics, TLS, and
   setjmp/longjmp;
-- R4.5 [TODO] — execute independent C17 conformance fixtures, audit compiler
+- R4.5 [DONE] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and update the machine-checked conformance report.
+
+R4.5 is complete for Linux x86_64. The CLI conformance command reports the
+individual header, runtime source, fixture execution, and binary dependency
+checks; it returns non-zero for missing, planned, or unsupported checks.
 
 ### R4.1/R4.2 completion record
 
@@ -3803,8 +3805,23 @@ Implemented and executed on Linux x86_64:
 - TLS is used for `errno` and public C+ TLS globals, with unsupported
   target-specific context facilities left as capability-gated work.
 
-R4.5 is now active for independent C17 fixture aggregation, symbol/runtime
-dependency audits, and explicit unsupported-feature diagnostics.
+### R4.5 completion record
+
+Implemented and executed on Linux x86_64:
+
+- `cplus libc test` now checks all C17 SDK headers, required runtime source
+  families, the target runtime link plan, and target-specific context support;
+- independent C fixtures cover the combined C17 family surface and the
+  Linux x86_64 `setjmp`/`longjmp` context adapter;
+- each fixture is compiled and linked independently, executed, and inspected
+  for undeclared host-library or compiler-runtime dependencies;
+- missing, planned, and unsupported checks are retained in the report and make
+  the command fail rather than being silently counted as delivered;
+- the Linux x86_64 report completed with 38 pass, 0 fail, 0 unsupported, and
+  0 planned checks.
+
+Windows and AArch64 execution remains deferred until the final cross-platform
+validation pass.
 
 **Deliverables**
 
