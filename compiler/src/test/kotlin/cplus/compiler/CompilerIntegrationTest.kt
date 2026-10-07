@@ -567,6 +567,26 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun repeatedSelectiveImportsProduceCollisionDiagnostic() {
+        val directory = Files.createTempDirectory("cplus-import-collision")
+        val helper = directory.resolve("helpers.cp")
+        val main = directory.resolve("main.cp")
+        helper.writeText("pub int add(int left, int right) { return left + right; }")
+        main.writeText(
+            """
+                import { add } from helpers;
+                import { add } from helpers;
+                int main() { return add(1, 2); }
+            """.trimIndent()
+        )
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, helper)))
+
+        assertTrue(result.diagnostics.any { it.code == "SEM405" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun moduleAliasResolvesQualifiedFunctionCall() {
         val directory = Files.createTempDirectory("cplus-import-alias")
         val helper = directory.resolve("helpers.cp")

@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 41/93
+Overall: 42/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [17/27] 2. Semantic model and modules
+[DOING] [18/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.3.3.3 — diagnose import collisions and unresolved names
+2.3.4 — C+ import cycle analysis
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -567,7 +567,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.3 [DOING] [5/8] Packages and C+ imports
+## 2.3 [DOING] [6/8] Packages and C+ imports
 
 ### 2.3.1 [DONE] [3/3] Package and module representation
 
@@ -627,7 +627,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.3.1
 
-### 2.3.3 [DOING] [2/3] Import, alias and selective-import resolution
+### 2.3.3 [DONE] [3/3] Import, alias and selective-import resolution
 
 **Language**
 - LS §21.1–21.4
@@ -661,7 +661,7 @@ all create correct bindings.
 **Depends**
 - 2.3.3.1
 
-#### 2.3.3.3 [TODO] Diagnose import collisions and unresolved names
+#### 2.3.3.3 [DONE] Diagnose import collisions and unresolved names
 
 **Acceptance**
 - conflicting unqualified imports require qualification or aliasing.
