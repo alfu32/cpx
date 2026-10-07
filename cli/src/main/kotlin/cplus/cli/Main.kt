@@ -49,6 +49,11 @@ private class Cli {
         } else {
             parsed.output.writeText(generated)
         }
+        parsed.headerOutput?.let { headerPath ->
+            val header = result.generatedHeaders.singleOrNull()?.text ?: return 2
+            headerPath.parent?.let { Files.createDirectories(it) }
+            headerPath.writeText(header)
+        }
         return 0
     }
 
@@ -81,21 +86,27 @@ private class Cli {
     private fun build(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val executable = parsed.output ?: parsed.sources.first().resolveSibling(parsed.sources.first().nameWithoutExtension)
-        return buildExecutable(parsed.sources, parsed.cSources, executable)
+        return buildExecutable(parsed.sources, parsed.cSources, executable, parsed.headerOutput)
     }
 
     private fun runProgram(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val temporaryDirectory = Files.createTempDirectory("cplus-run")
         val executable = temporaryDirectory.resolve(parsed.sources.first().nameWithoutExtension)
-        val buildExitCode = buildExecutable(parsed.sources, parsed.cSources, executable)
+        val buildExitCode = buildExecutable(parsed.sources, parsed.cSources, executable, parsed.headerOutput)
         if (buildExitCode != 0) return buildExitCode
         val process = ProcessBuilder(executable.toString()).inheritIO().start()
         return process.waitFor()
     }
 
-    private fun buildExecutable(sources: List<Path>, cSources: List<Path>, executable: Path): Int {
-        val result = CPlusCompiler().compile(CompileRequest(sources, cSources = cSources))
+    private fun buildExecutable(
+        sources: List<Path>,
+        cSources: List<Path>,
+        executable: Path,
+        headerOutput: Path? = null
+    ): Int {
+        val compiler = CPlusCompiler()
+        val result = compiler.compile(CompileRequest(sources, cSources = cSources))
         printDiagnostics(result.diagnostics, sources.first())
         if (!result.isSuccessful) return 1
         val generated = result.generatedUnits.singleOrNull()?.text ?: return 2
@@ -103,6 +114,11 @@ private class Cli {
         cFile.parent?.let { Files.createDirectories(it) }
         executable.parent?.let { Files.createDirectories(it) }
         cFile.writeText(generated)
+        headerOutput?.let { headerPath ->
+            val header = result.generatedHeaders.singleOrNull()?.text ?: return 2
+            headerPath.parent?.let { Files.createDirectories(it) }
+            headerPath.writeText(header)
+        }
         val process = try {
             val dependencySources = result.cSourceDependencies.map { it.path.toString() }
             ProcessBuilder(listOf("cc", "-std=c17", cFile.toString()) + dependencySources + listOf("-o", executable.toString()))
@@ -114,9 +130,31 @@ private class Cli {
         }
         val output = process.inputStream.bufferedReader().readText()
         val exitCode = process.waitFor()
-        if (output.isNotBlank()) print(output)
+        if (output.isNotBlank()) {
+            val remapped = compiler.remapCCompilerDiagnostics(result, cFile, output)
+            if (remapped.isEmpty()) {
+                print(output)
+            } else {
+                printCCompilerDiagnostics(remapped)
+            }
+        }
         if (exitCode == 0) println("built ${executable.toAbsolutePath()}")
         return exitCode
+    }
+
+    private fun printCCompilerDiagnostics(diagnostics: List<cplus.compiler.RemappedCCompilerDiagnostic>) {
+        diagnostics.forEach { diagnostic ->
+            val source = diagnostic.source
+            val range = diagnostic.sourceRange
+            val location = if (source != null && range != null) {
+                val position = LineIndex.from(source.text).positionAt(range.startOffset)
+                "${source.path}:${position.line}:${position.column}"
+            } else {
+                "${diagnostic.generated.path}:${diagnostic.generated.line}:${diagnostic.generated.column}"
+            }
+            val generated = " (generated ${diagnostic.generated.path}:${diagnostic.generated.line}:${diagnostic.generated.column})"
+            System.err.println("$location: ${diagnostic.severity.name.lowercase()} [${if (diagnostic.origin == null) "CCOMP002" else "CCOMP001"}]: ${diagnostic.message}$generated")
+        }
     }
 
     private fun parseFileArguments(arguments: List<String>): FileArguments? {
@@ -124,6 +162,7 @@ private class Cli {
         val sources = mutableListOf<Path>()
         val cSources = mutableListOf<Path>()
         var output: Path? = null
+        var headerOutput: Path? = null
         var index = 0
         while (index < arguments.size) {
             when (val argument = arguments[index]) {
@@ -134,6 +173,15 @@ private class Cli {
                         return null
                     }
                     output = Path.of(value)
+                    index += 2
+                }
+                "--header" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    if (value == null) {
+                        System.err.println("missing header output path after $argument")
+                        return null
+                    }
+                    headerOutput = Path.of(value)
                     index += 2
                 }
                 "--c-source", "--c-file" -> {
@@ -156,7 +204,7 @@ private class Cli {
             System.err.println("a source file is required")
             return null
         }
-        return FileArguments(listOf(source) + sources, cSources, output)
+        return FileArguments(listOf(source) + sources, cSources, output, headerOutput)
     }
 
     private fun printDiagnostics(diagnostics: List<Diagnostic>, source: Path) {
@@ -173,7 +221,7 @@ private class Cli {
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
         stream.println("C+ CLI transcoder")
-        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--c-source <file>] [--output <file>]")
+        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--c-source <file>] [--output <file>] [--header <file>]")
         stream.println()
         stream.println("commands:")
         stream.println("  transcode   translate one C+ source file to C")
@@ -185,7 +233,12 @@ private class Cli {
         stream.println("  run         build and execute one source file")
     }
 
-    private data class FileArguments(val sources: List<Path>, val cSources: List<Path>, val output: Path?)
+    private data class FileArguments(
+        val sources: List<Path>,
+        val cSources: List<Path>,
+        val output: Path?,
+        val headerOutput: Path?
+    )
 }
 
 private class AstPrinter {

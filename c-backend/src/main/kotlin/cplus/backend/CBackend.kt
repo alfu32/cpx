@@ -8,49 +8,39 @@ data class LoweredCResult(
     val diagnostics: List<Diagnostic>
 )
 
-class CLowerer(private val semantic: SemanticModel) {
+class CLowerer(
+    private val semantic: SemanticModel,
+    private val names: CNameMangler = DefaultCNameMangler()
+) {
     private val diagnostics = DiagnosticBag()
 
     fun lower(program: AstProgram): LoweredCResult {
         val requiresStringTemplateRuntime = program.declarations.any(::containsStringTemplate)
-        val includes = program.declarations
-            .filterIsInstance<AstImport>()
-            .flatMap { import ->
-                when (import.module) {
-                    "c.stdio" -> listOf("stdio.h")
-                    "c.stddef" -> listOf("stddef.h")
-                    "c.stdlib" -> listOf("stdlib.h")
-                    "c.math" -> listOf("math.h")
-                    else -> emptyList()
-                }
-            }
-            .distinct()
-            .let { imports ->
-                if (requiresStringTemplateRuntime) imports + listOf("stdarg.h", "stdio.h") else imports
-            }
-            .distinct()
-            .sorted()
+        val includes = CDependencyCollector().collect(program, semantic, requiresStringTemplateRuntime)
         val structs = program.declarations.filterIsInstance<AstStruct>().map { declaration ->
             CStructDeclaration(
                 declaration.name,
                 declaration.fields.map { field ->
                     CField(type(field.type), field.name, field.origin, field.arrayDimensions)
                 },
-                declaration.origin
+                declaration.origin,
+                declaration.isPublic
             )
         }
         val unions = program.declarations.filterIsInstance<AstUnion>().map { declaration ->
             CUnionDeclaration(
                 declaration.name,
                 declaration.fields.map { field -> CField(type(field.type), field.name, field.origin, field.arrayDimensions) },
-                declaration.origin
+                declaration.origin,
+                declaration.isPublic
             )
         }
         val enums = program.declarations.filterIsInstance<AstEnum>().map { declaration ->
             CEnumDeclaration(
                 declaration.name,
                 declaration.values.map { value -> CEnumValue(value.name, value.value, value.origin) },
-                declaration.origin
+                declaration.origin,
+                declaration.isPublic
             )
         }
         val aliases = program.declarations.filterIsInstance<AstAlias>().map { declaration ->
@@ -58,7 +48,8 @@ class CLowerer(private val semantic: SemanticModel) {
                 declaration.name,
                 type(declaration.target),
                 declaration.arrayDimensions,
-                declaration.origin
+                declaration.origin,
+                declaration.isPublic
             )
         }
         val aggregatesInSourceOrder = buildList<CAggregateDeclaration> {
@@ -142,7 +133,8 @@ class CLowerer(private val semantic: SemanticModel) {
                 declaration.name,
                 declaration.initializer?.let(::expression),
                 declaration.origin,
-                declaration.arrayDimensions
+                declaration.arrayDimensions,
+                isPublic = declaration.isPublic
             )
         }
         val declaredGlobalNames = programGlobals.mapTo(mutableSetOf()) { it.name }
@@ -165,13 +157,14 @@ class CLowerer(private val semantic: SemanticModel) {
         val programFunctions = program.declarations.filterIsInstance<AstFunction>().map { declaration ->
             CFunction(
                 type(declaration.returnType),
-                declaration.name,
+                semantic.functions[declaration.name]?.symbol?.let(names::nameOf) ?: declaration.name,
                 declaration.parameters.map { CParameter(type(it.type), it.name, it.origin, it.arrayDimensions) },
                 declaration.body?.let { lowerBody(it, declaration.ownerName, declaration.isMethod) },
-                declaration.origin
+                declaration.origin,
+                isPublic = declaration.isPublic
             )
         } + program.declarations.filterIsInstance<AstStruct>().flatMap { structure ->
-            structure.methods.map { method -> lowerMethod(structure.name, method) }
+            structure.methods.map { method -> lowerMethod(structure.name, method).copy(isPublic = structure.isPublic || method.isPublic) }
         }
         val declaredFunctionNames = programFunctions.mapTo(mutableSetOf()) { it.name }
         val foreignFunctions = semantic.functions.values
@@ -183,7 +176,7 @@ class CLowerer(private val semantic: SemanticModel) {
             .map { function ->
                 CFunction(
                     foreignType(function.returnType),
-                    function.symbol.externalName ?: function.symbol.name,
+                    names.nameOf(function.symbol),
                     function.parameters.map { parameter ->
                         CParameter(foreignType(parameter.type), parameter.name, parameter.origin)
                     },
@@ -193,8 +186,16 @@ class CLowerer(private val semantic: SemanticModel) {
                 )
             }
         val functions = programFunctions + foreignFunctions
-        return LoweredCResult(
-            CTranslationUnit(
+        functions.groupBy { it.name }
+            .filterValues { it.size > 1 }
+            .forEach { (name, declarations) ->
+                diagnostics.error(
+                    "multiple declarations lower to C symbol '$name'",
+                    declarations.first().origin.primaryRange,
+                    "LOW401"
+                )
+            }
+        val unit = CTranslationUnit(
                 includes,
                 structs,
                 unions,
@@ -205,7 +206,13 @@ class CLowerer(private val semantic: SemanticModel) {
                 requiresStringTemplateRuntime,
                 forwardDeclarations,
                 orderedAggregates
-            ),
+            )
+        val unitWithDependencies = unit.copy(
+            publicIncludes = CDependencyCollector().collectPublic(program, unit)
+        )
+        diagnostics.addAll(CSubsetValidator().validate(unitWithDependencies))
+        return LoweredCResult(
+            unitWithDependencies,
             diagnostics.diagnostics
         )
     }
@@ -287,7 +294,8 @@ class CLowerer(private val semantic: SemanticModel) {
         }
         return CFunction(
             type(method.returnType),
-            "${ownerName}__${method.name}",
+            semantic.methods[ownerName]?.get(method.name)?.let { names.methodName(it.owner, it) }
+                ?: "${ownerName}__${method.name}",
             parameters,
             method.body?.let { lowerBody(it, ownerName, instance) },
             method.origin
@@ -565,8 +573,11 @@ class CLowerer(private val semantic: SemanticModel) {
     private fun lowerCall(node: AstCall, ownerName: String?, instanceMethod: Boolean): CExpression {
         val member = node.callee as? AstMemberAccess
         if (member == null) {
+            val directFunction = (node.callee as? AstIdentifier)?.let { semantic.resolveFunction(it.name) }
+            val callee = directFunction?.let { CIdentifier(names.nameOf(it.symbol), node.callee.origin) }
+                ?: expression(node.callee, ownerName, instanceMethod)
             return CCall(
-                expression(node.callee, ownerName, instanceMethod),
+                callee,
                 node.arguments.map { expression(it, ownerName, instanceMethod) },
                 node.origin
             )
@@ -576,8 +587,9 @@ class CLowerer(private val semantic: SemanticModel) {
             "${receiver.name}.${member.member}"
         }
         if (qualifiedName != null && qualifiedName in semantic.qualifiedFunctionNames) {
+            val qualifiedFunction = semantic.resolveFunction(qualifiedName)
             return CCall(
-                CIdentifier(member.member, node.origin),
+                CIdentifier(qualifiedFunction?.let { names.nameOf(it.symbol) } ?: member.member, node.origin),
                 node.arguments.map { expression(it, ownerName, instanceMethod) },
                 node.origin
             )
@@ -594,7 +606,7 @@ class CLowerer(private val semantic: SemanticModel) {
                 node.origin
             )
         }
-        val target = CIdentifier("${owner.name}__${member.member}", node.origin)
+        val target = CIdentifier(names.methodName(owner, method), node.origin)
         val arguments = buildList {
             if (method.receiverKind == cplus.semantic.ReceiverKind.INSTANCE) {
                 val receiver = member.receiver

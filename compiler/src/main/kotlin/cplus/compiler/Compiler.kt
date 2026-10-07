@@ -35,7 +35,8 @@ data class CompilationArtifacts(
     val semantic: SemanticResult,
     val lowered: LoweredCResult?,
     val generated: GeneratedCUnit?,
-    val additionalDiagnostics: List<Diagnostic> = emptyList()
+    val additionalDiagnostics: List<Diagnostic> = emptyList(),
+    val header: GeneratedCUnit? = null
 )
 
 data class CompileResult(
@@ -44,7 +45,8 @@ data class CompileResult(
     val semanticModel: SemanticModel?,
     val artifacts: List<CompilationArtifacts>,
     val moduleGraph: ModuleGraph? = null,
-    val cSourceDependencies: List<CSourceDependency> = emptyList()
+    val cSourceDependencies: List<CSourceDependency> = emptyList(),
+    val generatedHeaders: List<GeneratedCUnit> = emptyList()
 ) {
     val isSuccessful: Boolean
         get() = diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
@@ -70,6 +72,19 @@ class CompilerContext(
 class CPlusCompiler(
     private val context: CompilerContext = CompilerContext()
 ) {
+    fun remapCCompilerDiagnostics(
+        result: CompileResult,
+        generatedPath: Path,
+        compilerOutput: String
+    ): List<RemappedCCompilerDiagnostic> {
+        val generated = result.generatedUnits.singleOrNull() ?: return emptyList()
+        return CCompilerDiagnosticRemapper(context.sourceRepository).remap(
+            compilerOutput,
+            generatedPath,
+            generated
+        )
+    }
+
     fun compile(request: CompileRequest): CompileResult {
         val foreignInputs = loadForeignSources(request.cSources)
         if (request.sources.size <= 1) {
@@ -112,7 +127,8 @@ class CPlusCompiler(
             return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, null)
         }
         val generated = context.cEmitter.emit(lowered.unit)
-        return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, generated)
+        val header = CHeaderGenerator().generate(lowered.unit)
+        return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, generated, header = header)
     }
 
     private fun compileWorkspace(request: CompileRequest, foreignInputs: ForeignInputs): CompileResult {
@@ -197,6 +213,7 @@ class CPlusCompiler(
             )
         }
         val generated = context.cEmitter.emit(lowered.unit)
+        val header = CHeaderGenerator().generate(lowered.unit)
         return resultOf(
             listOf(
                 CompilationArtifacts(
@@ -208,7 +225,8 @@ class CPlusCompiler(
                     semantic,
                     lowered,
                     generated,
-                    additionalDiagnostics
+                    additionalDiagnostics,
+                    header
                 )
             ),
             moduleGraph,
@@ -227,7 +245,8 @@ class CPlusCompiler(
         semanticModel = artifacts.singleOrNull()?.semantic?.model,
         artifacts = artifacts,
         moduleGraph = moduleGraph,
-        cSourceDependencies = cSourceDependencies
+        cSourceDependencies = cSourceDependencies,
+        generatedHeaders = artifacts.mapNotNull { it.header }
     )
 
     private fun dependencies(paths: List<Path>): List<CSourceDependency> = paths

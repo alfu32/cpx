@@ -1,5 +1,10 @@
 package cplus.compiler
 
+import cplus.backend.GeneratedCUnit
+import cplus.backend.SourceMapping
+import cplus.core.Origin
+import cplus.core.SourceRange
+import cplus.core.SourceRepository
 import cplus.semantic.SymbolKind
 import java.nio.file.Files
 import kotlin.io.path.writeText
@@ -8,6 +13,34 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
+    @Test
+    fun externalCCompilerDiagnosticsMapGeneratedRangesAndRetainForeignLocations() {
+        val directory = Files.createTempDirectory("cplus-c-diagnostics")
+        val source = SourceRepository().let { repository ->
+            val sourceFile = repository.put(directory.resolve("main.cp"), "int main() { return 0; }")
+            val origin = Origin.Direct(SourceRange(sourceFile.id, 0, 3))
+            val generated = GeneratedCUnit(
+                "int main() {\n    return 0;\n}\n",
+                listOf(SourceMapping(1, origin, 0, 12))
+            )
+            val diagnostics = CCompilerDiagnosticRemapper(repository).remap(
+                "${directory.resolve("generated.c")}:1:5: error: expected expression\n" +
+                    "${directory.resolve("helper.c")}:4:2: warning: foreign warning",
+                directory.resolve("generated.c"),
+                generated
+            )
+            Triple(repository, sourceFile, diagnostics)
+        }
+
+        assertEquals(2, source.third.size)
+        assertEquals(source.second.path, source.third[0].source!!.path)
+        assertEquals(SourceRange(source.second.id, 0, 3), source.third[0].sourceRange)
+        assertEquals("CCOMP001", source.third[0].asDiagnostic().code)
+        assertTrue(source.third[1].origin == null)
+        assertEquals(4, source.third[1].generated.line)
+        assertEquals("CCOMP002", source.third[1].asDiagnostic().code)
+    }
+
     @Test
     fun cSourceDependenciesAreNormalizedAndDeduplicated() {
         val directory = Files.createTempDirectory("cplus-c-source-dependencies")
@@ -138,7 +171,9 @@ class CompilerIntegrationTest {
         val generatedUnit = result.generatedUnits.single()
         val generated = generatedUnit.text
         assertTrue(generated.contains("struct second;"))
-        assertTrue(generatedUnit.sourceMap.any { it.generatedEndOffset > it.generatedStartOffset })
+        val firstMapping = generatedUnit.sourceMap.first { it.generatedEndOffset > it.generatedStartOffset }
+        assertTrue(generatedUnit.mappingAtByteOffset(firstMapping.generatedStartOffset) != null)
+        assertTrue(generatedUnit.mappingsForGeneratedLine(firstMapping.generatedLine).isNotEmpty())
 
         val directory = Files.createTempDirectory("cplus-forward-declarations-e2e")
         val cFile = directory.resolve("program.c").also { it.writeText(generated) }
@@ -208,6 +243,141 @@ class CompilerIntegrationTest {
 
         assertTrue(result.diagnostics.any { it.code == "LOW102" }, result.diagnostics.joinToString())
         assertTrue(!result.isSuccessful)
+    }
+
+    @Test
+    fun loweredMethodNameCollisionsAreDiagnosedBeforeCEmission() {
+        val source = """
+            struct point {
+                int get(self) {
+                    return 1;
+                }
+            };
+
+            int point__get() {
+                return 2;
+            }
+
+            int main() {
+                point value;
+                return value.get();
+            }
+        """.trimIndent()
+
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-c-name-collision", ".cp"), source)
+
+        assertTrue(result.diagnostics.any { it.code == "LOW401" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
+    fun invalidVoidObjectTypesAreRejectedBeforeCEmission() {
+        val source = """
+            void invalid_value;
+
+            int main() {
+                return 0;
+            }
+        """.trimIndent()
+
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-invalid-c-subset", ".cp"), source)
+
+        assertTrue(result.diagnostics.any { it.code == "LOW402" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
+    fun publicDeclarationsGenerateAVisibilityFilteredHeader() {
+        val source = """
+            pub struct PublicBox {
+                int value;
+            };
+
+            struct PrivateBox {
+                int hidden;
+            };
+
+            pub int exported(struct PublicBox box) {
+                return box.value;
+            }
+
+            int private_function() {
+                return 0;
+            }
+
+            pub int public_value;
+            int private_value;
+            typedef int private_alias;
+            pub private_alias aliased_public_value;
+
+            int main() {
+                struct PublicBox box;
+                box.value = 3;
+                return exported(box);
+            }
+        """.trimIndent()
+
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-public-header", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val header = result.generatedHeaders.single().text
+        assertTrue(header.contains("#pragma once"))
+        assertTrue(header.contains("struct PublicBox {"))
+        assertTrue(header.contains("int exported(struct PublicBox box);"))
+        assertTrue(header.contains("extern int public_value;"))
+        assertTrue(header.contains("typedef int private_alias;"))
+        assertTrue(header.contains("extern private_alias aliased_public_value;"))
+        assertTrue(!header.contains("struct PrivateBox"))
+        assertTrue(!header.contains("private_function"))
+        assertTrue(!header.contains("private_value"))
+
+        val directory = Files.createTempDirectory("cplus-public-header-e2e")
+        val headerFile = directory.resolve("public.h").also { it.writeText(header) }
+        val headerCheck = ProcessBuilder("cc", "-std=c17", "-fsyntax-only", headerFile.toString())
+            .redirectErrorStream(true)
+            .start()
+        val headerOutput = headerCheck.inputStream.bufferedReader().readText()
+        assertEquals(0, headerCheck.waitFor(), headerOutput)
+    }
+
+    @Test
+    fun foreignSourceTypesContributeRequiredSystemIncludes() {
+        val directory = Files.createTempDirectory("cplus-foreign-source-types")
+        val source = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    int main() {
+                        return helper_size() == 3 ? 3 : 0;
+                    }
+                """.trimIndent()
+            )
+        }
+        val cSource = directory.resolve("helper.c").also {
+            it.writeText(
+                """
+                    #include <stddef.h>
+                    size_t helper_size(void) {
+                        return 3;
+                    }
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(source), cSources = listOf(cSource)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("#include <stddef.h>"))
+
+        val executable = directory.resolve("program")
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), cSource.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(3, execution.waitFor())
     }
 
     @Test

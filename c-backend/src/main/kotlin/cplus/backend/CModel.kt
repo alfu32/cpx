@@ -12,7 +12,8 @@ data class CTranslationUnit(
     val functions: List<CFunction>,
     val requiresStringTemplateRuntime: Boolean = false,
     val forwardDeclarations: List<CForwardDeclaration> = emptyList(),
-    val aggregateDeclarations: List<CAggregateDeclaration> = emptyList()
+    val aggregateDeclarations: List<CAggregateDeclaration> = emptyList(),
+    val publicIncludes: List<String> = emptyList()
 )
 
 enum class CTagKind {
@@ -30,12 +31,14 @@ sealed interface CAggregateDeclaration {
     val name: String
     val fields: List<CField>
     val origin: Origin
+    val isPublic: Boolean
 }
 
 data class CStructDeclaration(
     override val name: String,
     override val fields: List<CField>,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : CAggregateDeclaration
 
 data class CField(
@@ -48,13 +51,15 @@ data class CField(
 data class CUnionDeclaration(
     override val name: String,
     override val fields: List<CField>,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : CAggregateDeclaration
 
 data class CEnumDeclaration(
     val name: String,
     val values: List<CEnumValue>,
-    val origin: Origin
+    val origin: Origin,
+    val isPublic: Boolean = false
 )
 
 data class CEnumValue(
@@ -67,7 +72,8 @@ data class CAliasDeclaration(
     val name: String,
     val target: CType,
     val arrayDimensions: List<String>,
-    val origin: Origin
+    val origin: Origin,
+    val isPublic: Boolean = false
 )
 
 data class CGlobalDeclaration(
@@ -76,7 +82,8 @@ data class CGlobalDeclaration(
     val initializer: CExpression?,
     val origin: Origin,
     val arrayDimensions: List<String> = emptyList(),
-    val isExtern: Boolean = false
+    val isExtern: Boolean = false,
+    val isPublic: Boolean = false
 )
 
 data class CFunction(
@@ -85,7 +92,8 @@ data class CFunction(
     val parameters: List<CParameter>,
     val body: CStatement?,
     val origin: Origin,
-    val isVariadic: Boolean = false
+    val isVariadic: Boolean = false,
+    val isPublic: Boolean = false
 )
 
 data class CParameter(
@@ -225,4 +233,12 @@ data class SourceMapping(
 data class GeneratedCUnit(
     val text: String,
     val sourceMap: List<SourceMapping>
-)
+) {
+    fun mappingAtByteOffset(offset: Int): SourceMapping? = sourceMap.firstOrNull {
+        offset >= it.generatedStartOffset && offset < it.generatedEndOffset
+    }
+
+    fun mappingsForGeneratedLine(line: Int): List<SourceMapping> = sourceMap.filter {
+        it.generatedLine == line
+    }
+}

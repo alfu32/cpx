@@ -204,6 +204,9 @@ data class SemanticModel(
 
     fun functionSignature(name: String): FunctionType? = functions[name]?.signature
 
+    fun resolveFunction(name: String): FunctionSymbol? = functions[name]
+        ?: moduleFunctions.values.asSequence().mapNotNull { it[name] }.firstOrNull()
+
     fun canonicalTypeId(type: CType): TypeId = canonicalTypeIds[canonicalTypeKey(type)] ?: type.id
 }
 

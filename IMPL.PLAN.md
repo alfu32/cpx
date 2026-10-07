@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 63/109
+Overall: 70/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
-[DOING] [18/30] 4. Lowering and C backend
+[DOING] [24/34] 4. Lowering and C backend
 [DOING] [3/14] 5. Tooling, integration and quality
 
 Current task:
-4.3.2.3 — by-value aggregate declaration dependencies
+4.4.3 — external C diagnostic remapping
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1193,7 +1193,7 @@ all create correct bindings.
 
 ---
 
-# 4. [DOING] [18/30] Lowering and C backend
+# 4. [DOING] [24/34] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1596,7 +1596,7 @@ all create correct bindings.
 
 #### 4.3.2.4 [TODO] Preserve hoisting provenance through generated declarations
 
-### 4.3.3 [TODO] Header and dependency/include generation
+### 4.3.3 [DOING] [2/4] Header and dependency/include generation
 
 **Language**
 - LS §26–27
@@ -1614,7 +1614,36 @@ all create correct bindings.
 - 4.3.2
 - 2.4
 
-### 4.3.4 [TODO] C symbol naming and C-subset validation
+#### 4.3.3.1 [DONE] Collect deterministic system dependencies
+
+**Acceptance**
+- explicit C imports and foreign type usage contribute system includes structurally.
+- dependencies are deduplicated and sorted deterministically.
+- C-source functions using `size_t` receive `<stddef.h>` without a redundant C+ import.
+- an end-to-end fixture compiles and executes the foreign typed call.
+
+**Depends**
+- 2.4
+- 4.3.1
+
+#### 4.3.3.2 [DONE] Generate public header declarations
+
+**Acceptance**
+- public types, aliases, globals, and function prototypes are emitted structurally from the lowered C AST.
+- private declarations are omitted unless their definitions are required by a public by-value dependency.
+- public pointer dependencies receive forward declarations without copying source text.
+- generated header ranges retain declaration origins and the header is syntax-checkable as C.
+- the compiler API and CLI can expose a separate generated header artifact.
+
+**Depends**
+- 4.3.3.1
+- 4.3.2
+
+#### 4.3.3.3 [TODO] Preserve public/private dependency boundaries
+
+#### 4.3.3.4 [TODO] Synthesize local and foreign library dependencies
+
+### 4.3.4 [DOING] [2/3] C symbol naming and C-subset validation
 
 **Language**
 - LS §23
@@ -1634,9 +1663,44 @@ all create correct bindings.
 - 4.3.1
 - 2.1.1
 
+#### 4.3.4.1 [DONE] Centralize emitted C names and diagnose collisions
+
+**Acceptance**
+- lowered declarations and calls use one C-name service.
+- foreign symbols retain their external ABI names.
+- duplicate emitted C function names produce a lowering diagnostic before emission.
+- a method/top-level-function collision is covered by an integration fixture.
+
+**Depends**
+- 4.3.1
+
+#### 4.3.4.2 [DONE] Validate the complete target-C subset
+
+**Acceptance**
+- unknown and invalid object types are rejected before C emission.
+- unsupported C operators and malformed C AST forms produce backend diagnostics.
+- validation traverses declarations, statements, and expressions structurally.
+- invalid `void` object declarations are covered by an integration fixture.
+
+**Depends**
+- 4.3.4.1
+
+#### 4.3.4.3 [DONE] Validate reserved and ABI-sensitive identifiers
+
+**Acceptance**
+- C keywords and implementation-reserved identifiers are diagnosed at the target-C boundary.
+- deliberate `__cplus_` runtime helpers remain permitted as compiler-owned names.
+- foreign prototypes and extern globals preserve their ABI names.
+- enum and aggregate declaration names are included in identifier validation.
+
+**Depends**
+- 4.3.4.2
+
+#### 4.3.4.4 [TODO] Validate generated helper and linkage namespaces
+
 ---
 
-## 4.4 [DOING] [2/5] C emission and source mapping
+## 4.4 [DOING] [4/5] C emission and source mapping
 
 ### 4.4.1 [DONE] Deterministic C emitter
 
@@ -1651,7 +1715,7 @@ all create correct bindings.
 **Depends**
 - 4.3
 
-### 4.4.2 [DOING] [1/2] Generated-range source-map builder
+### 4.4.2 [DONE] [2/2] Generated-range source-map builder
 
 **Language**
 - LS §28.3
@@ -1679,9 +1743,17 @@ all create correct bindings.
 **Depends**
 - 4.4.1
 
-#### 4.4.2.2 [TODO] Expose source-map range queries
+#### 4.4.2.2 [DONE] Expose source-map range queries
 
-### 4.4.3 [TODO] External C diagnostic remapping
+**Acceptance**
+- callers can resolve a generated UTF-8 byte offset to its originating mapping.
+- callers can enumerate mappings for a generated line.
+- range queries preserve the existing origin and deterministic ordering.
+
+**Depends**
+- 4.4.2.1
+
+### 4.4.3 [DONE] External C diagnostic remapping
 
 **Language**
 - LS §28
@@ -1696,6 +1768,12 @@ all create correct bindings.
 
 **Depends**
 - 4.4.2
+
+**Implementation**
+- `CCompilerDiagnosticRemapper` parses GCC/Clang file, line, column, severity, and message records.
+- generated locations are mapped through `GeneratedCUnit` ranges and source repositories.
+- unmapped or foreign C diagnostics retain their generated/foreign path and location.
+- the CLI build path prints mapped C+ locations with generated-C locations as context.
 
 ### 4.4.4 [TODO] End-to-end C execution fixtures
 
