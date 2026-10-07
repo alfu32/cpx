@@ -112,6 +112,31 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun lspDoesNotMergeUnrelatedOpenProgramsIntoTheActiveWorkspace() {
+        val directory = Files.createTempDirectory("cplus-cli-lsp-unrelated")
+        val first = directory.resolve("first.cp")
+        val second = directory.resolve("second.cp")
+        val firstUri = first.toUri().toString()
+        val secondUri = second.toUri().toString()
+        val source = "int main() { return 0; }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$firstUri","version":1,"text":"$source"}}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$secondUri","version":1,"text":"$source"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(!responses.contains("duplicate function 'main'"), responses)
+        assertTrue(responses.contains("\"uri\":\"$firstUri\""))
+        assertTrue(responses.contains("\"uri\":\"$secondUri\""))
+    }
+
+    @Test
     fun lspPublishesSemanticTokensFromTheCompilerFrontEnd() {
         val directory = Files.createTempDirectory("cplus-cli-semantic-tokens")
         val source = directory.resolve("main.cp")

@@ -1,4 +1,4 @@
-import {printf,vnsprintf} from c.stdio;
+import {printf,vsnprintf} from c.stdio;
 
 comptime cpx<decl> optional(type T) {
     return {

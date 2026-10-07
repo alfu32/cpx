@@ -253,12 +253,12 @@ internal class LspServer(
 
     private fun compileWorkspace(document: WorkspaceDocument): cplus.compiler.CompileResult {
         val sources = linkedMapOf<Path, String>()
+        val openDocuments = workspace.snapshot().associateBy { it.path.toAbsolutePath().normalize() }
         fun addSource(path: Path, text: String) {
             sources[path.toAbsolutePath().normalize()] = text
         }
 
-        workspace.snapshot().forEach { open -> addSource(open.path, open.text) }
-        if (sources.isEmpty()) addSource(document.path, document.text)
+        addSource(document.path, document.text)
 
         val pending = ArrayDeque(sources.keys)
         while (pending.isNotEmpty()) {
@@ -270,7 +270,9 @@ internal class LspServer(
                 val imported = resolveImportedSource(sourcePath, reference) ?: return@forEach
                 val normalized = imported.toAbsolutePath().normalize()
                 if (normalized !in sources && Files.isRegularFile(normalized)) {
-                    sources[normalized] = runCatching { Files.readString(normalized) }.getOrNull() ?: return@forEach
+                    sources[normalized] = openDocuments[normalized]?.text
+                        ?: runCatching { Files.readString(normalized) }.getOrNull()
+                        ?: return@forEach
                     pending.addLast(normalized)
                 }
             }
