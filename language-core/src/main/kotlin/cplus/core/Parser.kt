@@ -4,6 +4,7 @@ class Parser(private val lexed: LexedSource) {
     private val tokens = lexed.tokens
     private var index = 0
     private val diagnostics = DiagnosticBag()
+    private val candidateTypeNames = mutableSetOf<String>()
 
     data class ParsedExpression(
         val expression: SyntaxExpression?,
@@ -112,6 +113,7 @@ class Parser(private val lexed: LexedSource) {
     private fun parseAlias(start: Token, isPublic: Boolean): SyntaxAlias? {
         val target = parseType() ?: return recoverDeclaration()?.let { null }
         val name = expectIdentifier("expected alias name") ?: return recoverDeclaration()?.let { null }
+        candidateTypeNames += name.lexeme
         val arrayDimensions = parseArrayDimensions()
         expect(";", "expected ';' after type alias")
         val range = span(start.range, previous().range)
@@ -203,9 +205,11 @@ class Parser(private val lexed: LexedSource) {
                 val name = expectIdentifier("expected imported name")
                 if (name != null) {
                     names += name.lexeme
+                    candidateTypeNames += name.lexeme
                     if (match("as")) {
                         expectIdentifier("expected local alias after 'as'")?.let { alias ->
                             nameAliases[name.lexeme] = alias.lexeme
+                            candidateTypeNames += alias.lexeme
                         }
                     }
                 }
@@ -236,6 +240,7 @@ class Parser(private val lexed: LexedSource) {
     private fun parseStruct(structKeyword: Token, isPublic: Boolean): SyntaxStruct {
         val name = expectIdentifier("expected structure name")
             ?: syntheticToken("anonymous_struct", structKeyword.range)
+        candidateTypeNames += name.lexeme
         expect("{", "expected '{' after structure name")
         val fields = mutableListOf<SyntaxField>()
         val methods = mutableListOf<SyntaxFunction>()
@@ -270,6 +275,7 @@ class Parser(private val lexed: LexedSource) {
 
     private fun parseUnion(unionKeyword: Token, isPublic: Boolean): SyntaxUnion {
         val name = expectIdentifier("expected union name") ?: syntheticToken("anonymous_union", unionKeyword.range)
+        candidateTypeNames += name.lexeme
         expect("{", "expected '{' after union name")
         val fields = mutableListOf<SyntaxField>()
         while (!atEnd() && !peek().isLexeme("}")) {
@@ -298,6 +304,7 @@ class Parser(private val lexed: LexedSource) {
 
     private fun parseEnum(enumKeyword: Token, isPublic: Boolean): SyntaxEnum {
         val name = expectIdentifier("expected enum name") ?: syntheticToken("anonymous_enum", enumKeyword.range)
+        candidateTypeNames += name.lexeme
         expect("{", "expected '{' after enum name")
         val values = mutableListOf<SyntaxEnumValue>()
         while (!atEnd() && !peek().isLexeme("}")) {
@@ -800,7 +807,13 @@ class Parser(private val lexed: LexedSource) {
             if (peek().lexeme in primitiveTypes) {
                 syntheticToken(parsePrimitiveTypeName(), span(start.range, previous().range))
             } else {
-                advance()
+                val first = advance()
+                if (match(".")) {
+                    val member = expectIdentifier("expected type name after module alias")
+                    member?.let { syntheticToken("${first.lexeme}.${it.lexeme}", span(first.range, it.range)) }
+                } else {
+                    first
+                }
             }
         } else {
             diagnostics.error("expected type name", peek().range, "PARSE101")
@@ -856,7 +869,7 @@ class Parser(private val lexed: LexedSource) {
         if (peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum")) return true
         if (peek().lexeme in primitiveTypes || peek().lexeme in typeQualifiers) return true
         if (peek().kind != TokenKind.IDENTIFIER) return false
-        var nameOffset = 1
+        var nameOffset = if (looksLikeQualifiedType(0)) 3 else 1
         while (peek(nameOffset).isLexeme("*")) nameOffset++
         return peek(nameOffset).kind == TokenKind.IDENTIFIER
     }
@@ -866,6 +879,7 @@ class Parser(private val lexed: LexedSource) {
         val typeEnd = when {
             peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum") -> 2
             peek().lexeme in primitiveTypes || peek().lexeme in typeQualifiers -> 1
+            looksLikeQualifiedType(0) -> 4
             peek().kind == TokenKind.IDENTIFIER -> 2
             else -> return false
         }
@@ -874,12 +888,39 @@ class Parser(private val lexed: LexedSource) {
         return peek(nameOffset).kind == TokenKind.IDENTIFIER && peek(nameOffset + 1).isLexeme("(")
     }
 
-    private fun looksLikeCast(): Boolean = peek().isLexeme("(") &&
-        (peek(1).lexeme in primitiveTypes || peek(1).lexeme in typeQualifiers ||
-            peek(1).isLexeme("struct") || peek(1).isLexeme("union") || peek(1).isLexeme("enum"))
+    private fun looksLikeCast(): Boolean {
+        if (!peek().isLexeme("(")) return false
+        if (peek(1).lexeme in primitiveTypes || peek(1).lexeme in typeQualifiers ||
+            peek(1).isLexeme("struct") || peek(1).isLexeme("union") || peek(1).isLexeme("enum")
+        ) return true
+        if (looksLikeQualifiedType(1)) return followsCastType(4)
+        if (peek(1).kind == TokenKind.IDENTIFIER && peek(1).lexeme in candidateTypeNames) {
+            return followsCastType(2)
+        }
+        return false
+    }
 
     private fun looksLikeTypeName(): Boolean = peek().lexeme in primitiveTypes || peek().lexeme in typeQualifiers ||
-        peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum")
+        peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum") || looksLikeQualifiedType(0)
+
+    private fun followsCastType(afterTypeOffset: Int): Boolean {
+        var closeOffset = afterTypeOffset
+        while (peek(closeOffset).isLexeme("*")) closeOffset++
+        if (!peek(closeOffset).isLexeme(")")) return false
+        val operand = peek(closeOffset + 1)
+        return operand.kind in setOf(
+            TokenKind.IDENTIFIER,
+            TokenKind.INTEGER_LITERAL,
+            TokenKind.FLOAT_LITERAL,
+            TokenKind.STRING_LITERAL,
+            TokenKind.CHARACTER_LITERAL
+        ) || operand.lexeme in setOf("&", "*", "!", "~", "-", "++", "--", "(")
+    }
+
+    private fun looksLikeQualifiedType(offset: Int): Boolean =
+        peek(offset).kind == TokenKind.IDENTIFIER &&
+            peek(offset + 1).isLexeme(".") &&
+            peek(offset + 2).kind == TokenKind.IDENTIFIER
 
     private fun binaryPrecedence(operator: String): Int = when (operator) {
         "=", "+=", "-=", "*=", "/=", "%=" -> 1

@@ -2,6 +2,7 @@ package cplus.backend
 
 import cplus.core.*
 import cplus.semantic.*
+import java.util.IdentityHashMap
 
 data class LoweredCResult(
     val unit: CTranslationUnit,
@@ -13,11 +14,22 @@ class CLowerer(
     private val names: CNameMangler = DefaultCNameMangler()
 ) {
     private val diagnostics = DiagnosticBag()
+    private var moduleByDeclaration = IdentityHashMap<AstDeclaration, String>()
+    private var activeModuleName = "<main>"
 
     fun lower(program: AstProgram): LoweredCResult {
+        moduleByDeclaration = IdentityHashMap()
+        if (program.modules.isEmpty()) {
+            program.declarations.forEach { moduleByDeclaration[it] = "<main>" }
+        } else {
+            program.modules.forEach { module ->
+                module.declarations.forEach { declaration -> moduleByDeclaration[declaration] = module.name }
+            }
+        }
         val requiresStringTemplateRuntime = program.declarations.any(::containsStringTemplate)
         val includes = CDependencyCollector().collect(program, semantic, requiresStringTemplateRuntime)
         val structs = program.declarations.filterIsInstance<AstStruct>().map { declaration ->
+            activeModuleName = moduleByDeclaration[declaration] ?: "<main>"
             CStructDeclaration(
                 declaration.name,
                 declaration.fields.map { field ->
@@ -28,6 +40,7 @@ class CLowerer(
             )
         }
         val unions = program.declarations.filterIsInstance<AstUnion>().map { declaration ->
+            activeModuleName = moduleByDeclaration[declaration] ?: "<main>"
             CUnionDeclaration(
                 declaration.name,
                 declaration.fields.map { field -> CField(type(field.type), field.name, field.origin, field.arrayDimensions) },
@@ -36,6 +49,7 @@ class CLowerer(
             )
         }
         val enums = program.declarations.filterIsInstance<AstEnum>().map { declaration ->
+            activeModuleName = moduleByDeclaration[declaration] ?: "<main>"
             CEnumDeclaration(
                 declaration.name,
                 declaration.values.map { value -> CEnumValue(value.name, value.value, value.origin) },
@@ -44,6 +58,7 @@ class CLowerer(
             )
         }
         val aliases = program.declarations.filterIsInstance<AstAlias>().map { declaration ->
+            activeModuleName = moduleByDeclaration[declaration] ?: "<main>"
             CAliasDeclaration(
                 declaration.name,
                 type(declaration.target),
@@ -51,6 +66,33 @@ class CLowerer(
                 declaration.origin,
                 declaration.isPublic
             )
+        }
+        val aliasesByName = aliases.associateBy { it.name }
+        fun aliasReferences(type: CType): Set<String> = when (type) {
+            is CType.Named -> if (type.name in aliasesByName) setOf(type.name) else emptySet()
+            is CType.FunctionPointer -> aliasReferences(type.returnType) + type.parameterTypes.flatMap(::aliasReferences)
+            else -> emptySet()
+        }
+        val pendingAliases = aliases.toMutableList()
+        val emittedAliasNames = mutableSetOf<String>()
+        val orderedAliases = mutableListOf<CAliasDeclaration>()
+        while (pendingAliases.isNotEmpty()) {
+            val next = pendingAliases.firstOrNull { alias ->
+                aliasReferences(alias.target).all { it in emittedAliasNames }
+            }
+            if (next == null) {
+                val cycle = pendingAliases.first()
+                diagnostics.error(
+                    "cyclic C alias dependency involving '${cycle.name}'",
+                    cycle.origin.primaryRange,
+                    "LOW103"
+                )
+                orderedAliases += pendingAliases
+                break
+            }
+            pendingAliases.remove(next)
+            orderedAliases += next
+            emittedAliasNames += next.name
         }
         val aggregatesInSourceOrder = buildList<CAggregateDeclaration> {
             program.declarations.forEach { declaration ->
@@ -65,9 +107,18 @@ class CLowerer(
             is CStructDeclaration -> "struct:${aggregate.name}"
             is CUnionDeclaration -> "union:${aggregate.name}"
         }
-        fun byValueDependency(type: CType): String? = when (type) {
-            is CType.Struct -> if (type.pointerDepth == 0) "struct:${type.name}" else null
-            is CType.Union -> if (type.pointerDepth == 0) "union:${type.name}" else null
+        fun byValueDependency(
+            type: CType,
+            inheritedPointerDepth: Int = 0,
+            visitedAliases: Set<String> = emptySet()
+        ): String? = when (type) {
+            is CType.Struct -> if (type.pointerDepth + inheritedPointerDepth == 0) "struct:${type.name}" else null
+            is CType.Union -> if (type.pointerDepth + inheritedPointerDepth == 0) "union:${type.name}" else null
+            is CType.Named -> {
+                val alias = aliasesByName[type.name]
+                if (alias == null || type.name in visitedAliases) null
+                else byValueDependency(alias.target, inheritedPointerDepth + type.pointerDepth, visitedAliases + type.name)
+            }
             else -> null
         }
         val aggregateByKey = aggregatesInSourceOrder.associateBy(::aggregateKey)
@@ -122,12 +173,29 @@ class CLowerer(
         orderedAggregates.forEachIndexed { index, declaration ->
             declaration.fields.forEach { field -> collectForward(field.type, index) }
         }
+        fun collectAliasForward(type: CType) {
+            when (type) {
+                is CType.Struct -> if ("struct:${type.name}" in aggregateByKey) {
+                    forwardNames += CTagKind.STRUCT to type.name
+                }
+                is CType.Union -> if ("union:${type.name}" in aggregateByKey) {
+                    forwardNames += CTagKind.UNION to type.name
+                }
+                is CType.FunctionPointer -> {
+                    collectAliasForward(type.returnType)
+                    type.parameterTypes.forEach(::collectAliasForward)
+                }
+                else -> Unit
+            }
+        }
+        orderedAliases.forEach { alias -> collectAliasForward(alias.target) }
         val forwardDeclarations = forwardNames
             .sortedWith(compareBy<Pair<CTagKind, String>> { it.first.ordinal }.thenBy { it.second })
             .map { (kind, name) ->
                 CForwardDeclaration(kind, name, aggregateOrigins.getValue("${kind.name.lowercase()}:$name"))
             }
         val programGlobals = program.declarations.filterIsInstance<AstGlobalVariable>().map { declaration ->
+            activeModuleName = moduleByDeclaration[declaration] ?: "<main>"
             CGlobalDeclaration(
                 type(declaration.type),
                 declaration.name,
@@ -156,6 +224,7 @@ class CLowerer(
             }
         val globals = programGlobals + foreignGlobals
         val programFunctions = program.declarations.filterIsInstance<AstFunction>().map { declaration ->
+            activeModuleName = moduleByDeclaration[declaration] ?: "<main>"
             CFunction(
                 type(declaration.returnType),
                 semantic.functions[declaration.name]?.symbol?.let { it.externalName ?: names.nameOf(it) } ?: declaration.name,
@@ -166,6 +235,7 @@ class CLowerer(
                 isPublic = declaration.isPublic
             )
         } + program.declarations.filterIsInstance<AstStruct>().flatMap { structure ->
+            activeModuleName = moduleByDeclaration[structure] ?: "<main>"
             structure.methods.map { method -> lowerMethod(structure.name, method).copy(isPublic = structure.isPublic || method.isPublic) }
         }
         val declaredFunctionNames = programFunctions.mapTo(mutableSetOf()) { it.name }
@@ -202,7 +272,7 @@ class CLowerer(
                 structs,
                 unions,
                 enums,
-                aliases,
+                orderedAliases,
                 globals,
                 functions,
                 requiresStringTemplateRuntime,
@@ -315,6 +385,7 @@ class CLowerer(
 
     private fun type(reference: AstTypeRef): CType {
         val functionParameters = reference.functionParameters
+        val importedSourceType = importedSourceType(reference.name)
         val result = when {
             functionParameters != null -> CType.FunctionPointer(
                 type(
@@ -330,6 +401,33 @@ class CLowerer(
                 reference.functionPointerDepth,
                 reference.functionPointerQualifiers
             )
+            importedSourceType != null -> when (importedSourceType.kind) {
+                SymbolKind.ALIAS -> CType.Named(
+                    importedSourceType.name,
+                    reference.pointerDepth,
+                    reference.qualifiers,
+                    reference.pointerQualifiers
+                )
+                SymbolKind.STRUCT -> CType.Struct(
+                    importedSourceType.name,
+                    reference.pointerDepth,
+                    reference.qualifiers,
+                    reference.pointerQualifiers
+                )
+                SymbolKind.UNION -> CType.Union(
+                    importedSourceType.name,
+                    reference.pointerDepth,
+                    reference.qualifiers,
+                    reference.pointerQualifiers
+                )
+                SymbolKind.ENUM -> CType.Enum(
+                    importedSourceType.name,
+                    reference.pointerDepth,
+                    reference.qualifiers,
+                    reference.pointerQualifiers
+                )
+                else -> CType.Unknown
+            }
             semantic.aliases.containsKey(reference.name) -> CType.Named(
                 reference.name,
                 reference.pointerDepth,
@@ -363,6 +461,15 @@ class CLowerer(
             }
         }
         return result
+    }
+
+    private fun importedSourceType(name: String): Symbol? {
+        val qualifiedParts = name.split('.', limit = 2)
+        if (qualifiedParts.size == 2) {
+            val ownerModule = semantic.moduleTypeAliases[activeModuleName]?.get(qualifiedParts[0]) ?: return null
+            return semantic.sourceTypeCatalogue.exportsByModule[ownerModule]?.get(qualifiedParts[1])
+        }
+        return semantic.moduleTypeBindings[activeModuleName]?.get(name)?.symbol
     }
 
     private data class LoweredStatements(
@@ -757,6 +864,23 @@ class CEmitter {
                 addAll(unit.unions)
             }
         }
+        unit.enums.forEachIndexed { index, enum ->
+            appendLine("enum ${enum.name} {", enum.origin)
+            enum.values.forEach { value ->
+                val assigned = value.value?.let { " = $it" }.orEmpty()
+                appendLine("    ${value.name}$assigned,", value.origin)
+            }
+            appendLine("};", enum.origin)
+            if (index != unit.enums.lastIndex || unit.aliases.isNotEmpty() || aggregateDefinitions.isNotEmpty() ||
+                unit.globals.isNotEmpty() || unit.functions.isNotEmpty()
+            ) appendLine()
+        }
+
+        unit.aliases.forEach { alias ->
+            appendLine("typedef ${alias.target.renderDeclaration(alias.name)}${arraySuffix(alias.arrayDimensions)};", alias.origin)
+        }
+        if (unit.aliases.isNotEmpty() && (aggregateDefinitions.isNotEmpty() || unit.globals.isNotEmpty() || unit.functions.isNotEmpty())) appendLine()
+
         aggregateDefinitions.forEachIndexed { index, aggregate ->
             when (aggregate) {
                 is CStructDeclaration -> {
@@ -774,23 +898,8 @@ class CEmitter {
                     appendLine("};", aggregate.origin)
                 }
             }
-            if (index != aggregateDefinitions.lastIndex || unit.enums.isNotEmpty() || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
+            if (index != aggregateDefinitions.lastIndex || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
         }
-
-        unit.enums.forEachIndexed { index, enum ->
-            appendLine("enum ${enum.name} {", enum.origin)
-            enum.values.forEach { value ->
-                val assigned = value.value?.let { " = $it" }.orEmpty()
-                appendLine("    ${value.name}$assigned,", value.origin)
-            }
-            appendLine("};", enum.origin)
-            if (index != unit.enums.lastIndex || unit.aliases.isNotEmpty() || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
-        }
-
-        unit.aliases.forEach { alias ->
-            appendLine("typedef ${alias.target.renderDeclaration(alias.name)}${arraySuffix(alias.arrayDimensions)};", alias.origin)
-        }
-        if (unit.aliases.isNotEmpty() && (unit.globals.isNotEmpty() || unit.functions.isNotEmpty())) appendLine()
 
         if (unit.requiresStringTemplateRuntime) {
             appendLine("const char* __cplus_format(const char* format, ...);")

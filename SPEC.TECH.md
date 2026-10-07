@@ -1149,6 +1149,13 @@ graph SHALL NOT make its declarations implicitly visible in another module.
 Missing, private, ambiguous, or conflicting exports SHALL produce diagnostics
 without misclassifying a type as a missing function.
 
+The semantic model SHALL retain module-local selective type bindings and the
+target module for each module alias. The C lowerer SHALL translate imported
+type spellings to the owning declaration's C name, not the importing alias.
+Generated translation units SHALL order typedef aliases before aggregates
+that use them, order alias dependencies, and emit required aggregate tag
+forward declarations before aliases that refer to those tags.
+
 ```kotlin
 class ImportResolver
 ```

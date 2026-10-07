@@ -168,6 +168,72 @@ class SemanticTypeTest {
     }
 
     @Test
+    fun resolvesQualifiedTypesThroughModuleAliasAcrossTypePositions() {
+        val clientText = """
+            import types as geo;
+            typedef geo.Point* PointRef;
+            struct Holder { geo.Point* point; geo.Coord coordinate; };
+            int consume(geo.Point* point, geo.Coord coordinate) {
+                return sizeof(geo.Point) > 0 ? point->x : (geo.Coord) coordinate;
+            }
+            int main() {
+                geo.Point point;
+                geo.Coord coordinate = 4;
+                return consume(&point, coordinate);
+            }
+        """.trimIndent()
+        val providerText = """
+            pub struct Point { int x; };
+            pub typedef int Coord;
+        """.trimIndent()
+        val clientSource = SourceFile(SourceFileId(42), Path.of("client.cp"), clientText, 1)
+        val providerSource = SourceFile(SourceFileId(43), Path.of("types.cp"), providerText, 1)
+        val clientParsed = Parser(Lexer().lex(clientSource)).parse()
+        val providerParsed = Parser(Lexer().lex(providerSource)).parse()
+        assertTrue(clientParsed.diagnostics.isEmpty(), clientParsed.diagnostics.joinToString())
+        assertTrue(providerParsed.diagnostics.isEmpty(), providerParsed.diagnostics.joinToString())
+        val clientDeclarations = AstBuilder().build(clientParsed.syntax).declarations
+        val providerDeclarations = AstBuilder().build(providerParsed.syntax).declarations
+        val program = AstProgram(
+            clientDeclarations + providerDeclarations,
+            clientParsed.syntax.origin,
+            listOf(AstModule("client", clientDeclarations), AstModule("types", providerDeclarations))
+        )
+
+        val result = SemanticAnalyzer().analyze(program, knownModules = setOf("types"))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("types", result.model!!.moduleTypeAliases.getValue("client").getValue("geo"))
+    }
+
+    @Test
+    fun diagnosesMissingAndPrivateQualifiedTypes() {
+        val clientText = """
+            import types as geo;
+            int main() { geo.PrivateType value; geo.MissingType missing; return 0; }
+        """.trimIndent()
+        val providerText = "struct PrivateType { int value; };"
+        val clientSource = SourceFile(SourceFileId(44), Path.of("client.cp"), clientText, 1)
+        val providerSource = SourceFile(SourceFileId(45), Path.of("types.cp"), providerText, 1)
+        val clientParsed = Parser(Lexer().lex(clientSource)).parse()
+        val providerParsed = Parser(Lexer().lex(providerSource)).parse()
+        assertTrue(clientParsed.diagnostics.isEmpty(), clientParsed.diagnostics.joinToString())
+        assertTrue(providerParsed.diagnostics.isEmpty(), providerParsed.diagnostics.joinToString())
+        val clientDeclarations = AstBuilder().build(clientParsed.syntax).declarations
+        val providerDeclarations = AstBuilder().build(providerParsed.syntax).declarations
+        val program = AstProgram(
+            clientDeclarations + providerDeclarations,
+            clientParsed.syntax.origin,
+            listOf(AstModule("client", clientDeclarations), AstModule("types", providerDeclarations))
+        )
+
+        val result = SemanticAnalyzer().analyze(program, knownModules = setOf("types"))
+
+        assertEquals(1, result.diagnostics.count { it.code == "SEM404" }, result.diagnostics.joinToString())
+        assertEquals(1, result.diagnostics.count { it.code == "SEM406" }, result.diagnostics.joinToString())
+    }
+
+    @Test
     fun diagnosesPrivateAndMissingSelectiveTypeImports() {
         val clientText = """
             import { PrivateType as Hidden, MissingType } from "./types.cp";
