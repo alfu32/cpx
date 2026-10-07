@@ -667,7 +667,9 @@ class CLowerer(
 
     companion object {
         private val primitiveNames = setOf(
-            "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned"
+            "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
+            "signed char", "unsigned char", "signed short", "unsigned short",
+            "signed int", "unsigned int", "long long", "unsigned long", "unsigned long long"
         )
     }
 }

@@ -62,6 +62,56 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun lspCompilesOpenWorkspaceImportsForDiagnostics() {
+        val directory = Files.createTempDirectory("cplus-cli-lsp-modules")
+        val helper = directory.resolve("module_helpers.cp")
+        val main = directory.resolve("module_main.cp")
+        val helperUri = helper.toUri().toString()
+        val mainUri = main.toUri().toString()
+        val helperText = "pub int add(int left, int right) { return left + right; }"
+        val mainText = "import { add } from ./module_helpers.cp; int main() { return add(7, 5); }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$helperUri","version":1,"text":"$helperText"}}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$mainUri","version":1,"text":"$mainText"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(!responses.contains("module import 'module_helpers' cannot be resolved"), responses)
+        assertTrue(responses.contains("\"uri\":\"$mainUri\""))
+    }
+
+    @Test
+    fun lspLoadsClosedImportedModulesFromDiskForDiagnostics() {
+        val directory = Files.createTempDirectory("cplus-cli-lsp-disk-modules")
+        val helper = directory.resolve("module_helpers.cp").also {
+            it.writeText("pub int add(int left, int right) { return left + right; }")
+        }
+        val main = directory.resolve("module_main.cp")
+        val mainUri = main.toUri().toString()
+        val mainText = "import { add } from module_helpers; int main() { return add(7, 5); }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$mainUri","version":1,"text":"$mainText"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(!responses.contains("module import 'module_helpers' cannot be resolved"), responses)
+        assertTrue(responses.contains("\"uri\":\"$mainUri\""))
+        assertTrue(helper.exists())
+    }
+
+    @Test
     fun lspPublishesSemanticTokensFromTheCompilerFrontEnd() {
         val directory = Files.createTempDirectory("cplus-cli-semantic-tokens")
         val source = directory.resolve("main.cp")

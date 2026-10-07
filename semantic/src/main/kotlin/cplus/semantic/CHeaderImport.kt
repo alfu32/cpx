@@ -34,6 +34,8 @@ class CHeaderImportService(
     fun declarations(module: String): Map<String, CHeaderDeclaration> =
         configuredHeaders[module].orEmpty().let(::parse)
 
+    fun isKnownModule(module: String): Boolean = module in configuredHeaders
+
     fun sourceDeclarations(text: String): Map<String, CHeaderDeclaration> =
         parse(text, allowFunctionDefinitions = true)
 
@@ -134,18 +136,96 @@ class CHeaderImportService(
     companion object {
         private val defaultHeaders = mapOf(
             "c.stdio" to """
+                extern int printf(const char* format, ...);
+                extern int fprintf(FILE* stream, const char* format, ...);
+                extern int sprintf(char* buffer, const char* format, ...);
+                extern int snprintf(char* buffer, size_t size, const char* format, ...);
+                extern int vprintf(const char* format, va_list arguments);
+                extern int vfprintf(FILE* stream, const char* format, va_list arguments);
+                extern int vsprintf(char* buffer, const char* format, va_list arguments);
+                extern int vsnprintf(char* buffer, size_t size, const char* format, va_list arguments);
                 extern int puts(const char* text);
+                extern int putchar(int character);
+                extern int getchar(void);
+                extern FILE* fopen(const char* path, const char* mode);
+                extern int fclose(FILE* stream);
+                extern int fflush(FILE* stream);
+                extern int fgetc(FILE* stream);
+                extern int fputc(int character, FILE* stream);
+                extern size_t fread(void* buffer, size_t size, size_t count, FILE* stream);
+                extern size_t fwrite(const void* buffer, size_t size, size_t count, FILE* stream);
+            """.trimIndent(),
+            "c.stddef" to """
+                typedef unsigned long size_t;
+                typedef long ptrdiff_t;
+                typedef long max_align_t;
             """.trimIndent(),
             "c.math" to """
                 extern double sqrt(double value);
                 extern double sin(double value);
                 extern double cos(double value);
                 extern double pow(double left, double right);
+                extern double fabs(double value);
+                extern double floor(double value);
+                extern double ceil(double value);
+                extern double exp(double value);
+                extern double log(double value);
             """.trimIndent(),
             "c.stdlib" to """
                 extern int abs(int value);
+                extern long labs(long value);
+                extern int atoi(const char* text);
+                extern long strtol(const char* text, char** end, int base);
+                extern unsigned long strtoul(const char* text, char** end, int base);
                 extern void* malloc(size_t size);
+                extern void* calloc(size_t count, size_t size);
+                extern void* realloc(void* pointer, size_t size);
                 extern void free(void* pointer);
+                extern int rand(void);
+                extern void srand(unsigned int seed);
+                extern void exit(int status);
+            """.trimIndent(),
+            "c.string" to """
+                extern size_t strlen(const char* text);
+                extern char* strcpy(char* destination, const char* source);
+                extern char* strncpy(char* destination, const char* source, size_t count);
+                extern int strcmp(const char* left, const char* right);
+                extern int strncmp(const char* left, const char* right, size_t count);
+                extern void* memcpy(void* destination, const void* source, size_t count);
+                extern void* memmove(void* destination, const void* source, size_t count);
+                extern void* memset(void* destination, int value, size_t count);
+                extern char* strchr(const char* text, int character);
+                extern char* strstr(const char* text, const char* pattern);
+            """.trimIndent(),
+            "c.ctype" to """
+                extern int isalnum(int character);
+                extern int isalpha(int character);
+                extern int isdigit(int character);
+                extern int isspace(int character);
+                extern int islower(int character);
+                extern int isupper(int character);
+                extern int tolower(int character);
+                extern int toupper(int character);
+            """.trimIndent(),
+            "c.time" to """
+                typedef long time_t;
+                typedef long clock_t;
+                extern time_t time(time_t* result);
+                extern double difftime(time_t end, time_t start);
+                extern clock_t clock(void);
+            """.trimIndent(),
+            "c.stdint" to """
+                typedef signed char int8_t;
+                typedef unsigned char uint8_t;
+                typedef short int16_t;
+                typedef unsigned short uint16_t;
+                typedef int int32_t;
+                typedef unsigned int uint32_t;
+                typedef long long int64_t;
+                typedef unsigned long long uint64_t;
+            """.trimIndent(),
+            "c.stdarg" to """
+                typedef void* va_list;
             """.trimIndent()
         )
     }

@@ -1082,6 +1082,15 @@ A C import SHALL have two effects:
 1. make imported C declarations available to the C+ semantic model;
 2. ensure required C dependencies are represented in generated output.
 
+The implementation SHALL provide built-in adapters for the standard C header
+modules `c.stdio`, `c.stddef`, `c.stdlib`, `c.math`, `c.string`, `c.ctype`,
+`c.time`, `c.stdint`, and `c.stdarg`. Their imported declarations SHALL retain
+their C spelling and SHALL cause the corresponding system header to be emitted
+(`stdio.h`, `stddef.h`, `stdlib.h`, `math.h`, `string.h`, `ctype.h`, `time.h`,
+`stdint.h`, or `stdarg.h`). Implementations MAY add configured header adapters.
+An imported symbol that is not declared by the selected adapter SHALL produce a
+diagnostic; the compiler SHALL NOT guess a foreign signature.
+
 ## 22.2 Foreign symbols
 
 Imported C declarations SHALL be represented as foreign symbols.

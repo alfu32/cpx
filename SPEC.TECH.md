@@ -1115,6 +1115,13 @@ Responsibilities:
 - register required include directives;
 - preserve external linkage names.
 
+The bootstrap adapter SHALL catalogue the standard C modules `c.stdio`,
+`c.stddef`, `c.stdlib`, `c.math`, `c.string`, `c.ctype`, `c.time`, `c.stdint`,
+and `c.stdarg`, mapping each module to its corresponding system header. It
+SHALL reject an imported symbol absent from the selected catalogue rather than
+creating an untyped or guessed foreign declaration. Additional header
+catalogues MAY be supplied through the `CImportService` configuration.
+
 Foreign declarations SHALL never be renamed at the ABI boundary.
 
 ---

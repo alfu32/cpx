@@ -38,6 +38,11 @@ data class CompileRequest(
     val cIncludeDirectories: List<Path> = emptyList()
 )
 
+data class TextSource(
+    val path: Path,
+    val text: String
+)
+
 data class CSourceDependency(val path: Path)
 
 enum class CLinkDependencyKind {
@@ -202,9 +207,28 @@ class CPlusCompiler(
     }
 
     fun compileText(path: Path, text: String, options: CompilerOptions = CompilerOptions()): CompileResult {
-        val source = context.sourceRepository.put(path, text)
-        return resultOf(listOf(compileFrontend(frontend(source), options)))
+        return compileTextWorkspace(listOf(TextSource(path, text)), options)
     }
+
+    fun compileTextWorkspace(sources: List<TextSource>, options: CompilerOptions = CompilerOptions()): CompileResult {
+        val sourceFiles = sources
+            .distinctBy { it.path.toAbsolutePath().normalize() }
+            .map { source -> context.sourceRepository.put(source.path, source.text) }
+        val frontends = sourceFiles.map(::frontend)
+        if (frontends.size <= 1) {
+            return resultOf(frontends.map { compileFrontend(it, options) })
+        }
+        val request = CompileRequest(sourceFiles.map { it.path }, options = options)
+        return compileWorkspace(
+            request,
+            ForeignInputs(emptyList(), emptyList()),
+            emptyList(),
+            emptyList(),
+            frontends
+        )
+    }
+
+    fun sourcePathFor(file: SourceFileId): Path? = context.sourceRepository.find(file)?.path
 
     private fun compileOne(path: Path, options: CompilerOptions, foreignSources: List<CSourceUnit>): CompilationArtifacts {
         return compileFrontend(frontend(path), options, foreignSources)

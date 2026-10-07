@@ -1,6 +1,7 @@
 package cplus.cli
 
 import cplus.compiler.CPlusCompiler
+import cplus.compiler.TextSource
 import cplus.core.DiagnosticSeverity
 import cplus.core.LineIndex
 import cplus.core.SourceRange
@@ -9,7 +10,9 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.nio.file.Path
+import java.util.ArrayDeque
 
 internal class LspServer(
     private val compiler: CPlusCompiler = CPlusCompiler()
@@ -108,9 +111,13 @@ internal class LspServer(
 
     private fun publishDiagnostics(uri: String, output: OutputStream) {
         val document = workspace.get(uri) ?: return
-        val path = document.path
-        val result = compiler.compileText(path, document.text)
-        val diagnostics = result.diagnostics.map { diagnostic ->
+        val result = compileWorkspace(document)
+        val diagnostics = result.diagnostics
+            .filter { diagnostic ->
+                val sourcePath = diagnostic.range?.let { compiler.sourcePathFor(it.file) }
+                sourcePath == null || sourcePath == document.path.toAbsolutePath().normalize()
+            }
+            .map { diagnostic ->
             val range = diagnostic.range?.let { sourceRange -> lspRange(sourceRange, document.text) }
                 ?: zeroRange()
             linkedMapOf<String, Any?>(
@@ -154,13 +161,13 @@ internal class LspServer(
         val uri = document["uri"] as? String ?: return linkedMapOf("data" to emptyList<Int>())
         val open = workspace.get(uri) ?: return linkedMapOf("data" to emptyList<Int>())
         return linkedMapOf(
-            "data" to SemanticTokenService.encode(compiler.compileText(open.path, open.text))
+            "data" to SemanticTokenService.encode(compileWorkspace(open))
         )
     }
 
     private fun completion(params: Map<*, *>): Map<String, Any?> {
         val request = requestDocument(params) ?: return linkedMapOf("isIncomplete" to false, "items" to emptyList<Any>())
-        val result = compiler.compileText(request.document.path, request.document.text)
+        val result = compileWorkspace(request.document)
         val items = LspLanguageService.completion(result, request.document.text, request.position).map { item ->
             linkedMapOf<String, Any?>(
                 "label" to item.label,
@@ -173,7 +180,7 @@ internal class LspServer(
 
     private fun hover(params: Map<*, *>): Map<String, Any?>? {
         val request = requestDocument(params) ?: return null
-        val result = compiler.compileText(request.document.path, request.document.text)
+        val result = compileWorkspace(request.document)
         val hover = LspLanguageService.hover(result, request.document.text, request.position) ?: return null
         return linkedMapOf(
             "contents" to linkedMapOf(
@@ -187,7 +194,7 @@ internal class LspServer(
     private fun definition(params: Map<*, *>): Map<String, Any?>? {
         val request = requestDocument(params) ?: return null
         val navigation = LspLanguageService.navigation(
-            compiler.compileText(request.document.path, request.document.text),
+            compileWorkspace(request.document),
             request.document.text,
             request.position
         ) ?: return null
@@ -199,7 +206,7 @@ internal class LspServer(
         val request = requestDocument(params) ?: return emptyList()
         val includeDeclaration = ((params["context"] as? Map<*, *>)?.get("includeDeclaration") as? Boolean) ?: true
         val navigation = LspLanguageService.navigation(
-            compiler.compileText(request.document.path, request.document.text),
+            compileWorkspace(request.document),
             request.document.text,
             request.position,
             includeDeclaration
@@ -210,7 +217,7 @@ internal class LspServer(
     private fun signatureHelp(params: Map<*, *>): Map<String, Any?>? {
         val request = requestDocument(params) ?: return null
         val signature = LspLanguageService.signatureHelp(
-            compiler.compileText(request.document.path, request.document.text),
+            compileWorkspace(request.document),
             request.document.text,
             request.position
         ) ?: return null
@@ -242,6 +249,67 @@ internal class LspServer(
         val open = workspace.get(uri) ?: return null
         val position = parsePosition(params["position"] as? Map<*, *>) ?: return null
         return DocumentRequest(open, position)
+    }
+
+    private fun compileWorkspace(document: WorkspaceDocument): cplus.compiler.CompileResult {
+        val sources = linkedMapOf<Path, String>()
+        fun addSource(path: Path, text: String) {
+            sources[path.toAbsolutePath().normalize()] = text
+        }
+
+        workspace.snapshot().forEach { open -> addSource(open.path, open.text) }
+        if (sources.isEmpty()) addSource(document.path, document.text)
+
+        val pending = ArrayDeque(sources.keys)
+        while (pending.isNotEmpty()) {
+            val sourcePath = pending.removeFirst()
+            val sourceText = sources.getValue(sourcePath)
+            IMPORT_MODULE.findAll(sourceText).forEach { match ->
+                val reference = (match.groups[1]?.value ?: match.groups[2]?.value)?.trim() ?: return@forEach
+                if (reference.startsWith("c.")) return@forEach
+                val imported = resolveImportedSource(sourcePath, reference) ?: return@forEach
+                val normalized = imported.toAbsolutePath().normalize()
+                if (normalized !in sources && Files.isRegularFile(normalized)) {
+                    sources[normalized] = runCatching { Files.readString(normalized) }.getOrNull() ?: return@forEach
+                    pending.addLast(normalized)
+                }
+            }
+        }
+        return compiler.compileTextWorkspace(
+            sources.map { (path, text) -> TextSource(path, text) }
+        )
+    }
+
+    private fun resolveImportedSource(source: Path, reference: String): Path? {
+        val isPathImport = reference.startsWith("./") ||
+            reference.startsWith("../") ||
+            reference.startsWith("/") ||
+            reference.endsWith(".cp")
+        if (isPathImport) {
+            val path = runCatching { Path.of(reference) }.getOrNull() ?: return null
+            val candidates = listOfNotNull(
+                source.parent?.resolve(path),
+                Path.of("").toAbsolutePath().normalize().resolve(path)
+            )
+            return candidates.firstOrNull { Files.isRegularFile(it) }
+        }
+        val moduleName = reference
+            .substringAfterLast('/')
+            .substringAfterLast('.')
+            .removeSuffix(".cp")
+        val sibling = source.parent?.resolve("$moduleName.cp")
+        if (sibling != null && Files.isRegularFile(sibling)) return sibling
+        val directory = source.parent ?: return null
+        return runCatching {
+            Files.walk(directory).use { paths ->
+                paths
+                    .filter { candidate ->
+                        Files.isRegularFile(candidate) && candidate.fileName.toString() == "$moduleName.cp"
+                    }
+                    .findFirst()
+                    .orElse(null)
+            }
+        }.getOrNull()
     }
 
     private fun response(id: Any?, result: Any?): Map<String, Any?> = linkedMapOf(
@@ -318,6 +386,8 @@ internal class LspServer(
     )
 
     companion object {
+        private val IMPORT_MODULE = Regex("""\bfrom\s+(?:"([^"]+)"|([^\s;]+))""")
+
         private fun readMessage(input: InputStream): String? {
             var contentLength: Int? = null
             while (true) {

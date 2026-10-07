@@ -88,6 +88,11 @@ class CDependencyCollector {
         "c.stddef" -> "stddef.h"
         "c.stdlib" -> "stdlib.h"
         "c.math" -> "math.h"
+        "c.string" -> "string.h"
+        "c.ctype" -> "ctype.h"
+        "c.time" -> "time.h"
+        "c.stdint" -> "stdint.h"
+        "c.stdarg" -> "stdarg.h"
         else -> null
     }
 }

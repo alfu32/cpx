@@ -757,12 +757,15 @@ all create correct bindings.
 **Depends**
 - 2.4.1
 
-#### 2.4.2.1 [DONE] Bootstrap `c.stdio` foreign import adapter
+#### 2.4.2.1 [DONE] Bootstrap standard C foreign import adapters
 
 **Acceptance**
 - selective `c.stdio` imports register `printf` as a variadic foreign function.
+- standard C modules include `c.stdio`, `c.stddef`, `c.stdlib`, `c.math`,
+  `c.string`, `c.ctype`, `c.time`, `c.stdint`, and `c.stdarg`.
 - the C backend emits the corresponding standard-library include.
-- an imported call compiles and executes through the CLI path.
+- imported calls across the standard-module adapters compile and execute through
+  the CLI path.
 
 **Depends**
 - 1.3.3

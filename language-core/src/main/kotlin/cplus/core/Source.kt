@@ -84,4 +84,6 @@ class SourceRepository {
         ?: error("Unknown source file id: ${id.value}")
 
     fun find(path: Path): SourceFile? = idsByPath[path.toAbsolutePath().normalize()]?.let(::get)
+
+    fun find(id: SourceFileId): SourceFile? = filesById[id]
 }

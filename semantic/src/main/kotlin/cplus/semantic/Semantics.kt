@@ -573,14 +573,25 @@ class SemanticAnalyzer(
             defineBinding(moduleName, name, symbol.id)
         }
 
+        fun foreignTypeModule(name: String): String? = when (name) {
+            "FILE", "fpos_t" -> "c.stdio"
+            "size_t", "ptrdiff_t", "max_align_t" -> "c.stddef"
+            "va_list" -> "c.stdarg"
+            "time_t", "clock_t" -> "c.time"
+            "int8_t", "uint8_t", "int16_t", "uint16_t",
+            "int32_t", "uint32_t", "int64_t", "uint64_t" -> "c.stdint"
+            else -> null
+        }
+
         fun foreignTypeFromName(typeName: String, moduleName: String, origin: Origin): CType {
             val normalized = typeName.trim().removePrefix("const ").trim()
             val pointerDepth = normalized.count { it == '*' }
             val baseName = normalized.replace("*", "").trim()
             var type = when {
                 baseName in knownPrimitiveNames -> primitive(baseName)
-                baseName == "size_t" -> {
-                    registerForeignType(baseName, "c.stddef", origin)
+                foreignTypeModule(baseName) != null -> {
+                    val ownerModule = foreignTypeModule(baseName)!!
+                    registerForeignType(baseName, ownerModule, origin)
                     foreignTypes.getValue(baseName)
                 }
                 foreignTypes[baseName] != null -> foreignTypes.getValue(baseName)
@@ -1054,7 +1065,7 @@ class SemanticAnalyzer(
                     it.symbol.visibility == Visibility.PUBLIC || it.symbol.kind == SymbolKind.FOREIGN
                 }.orEmpty()
                 if (targetFunctions == null) {
-                    if (import.module !in setOf("c.stdio", "c.stddef", "c.stdlib", "c.math") &&
+                    if (!headerImportService.isKnownModule(import.module) &&
                         targetNames.none { it in knownModules }
                     ) {
                         diagnostics.error("module import '${import.module}' cannot be resolved", rangeOf(import.origin), "SEM402")
@@ -1564,7 +1575,9 @@ class SemanticAnalyzer(
 
     companion object {
         private val knownPrimitiveNames = setOf(
-            "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned"
+            "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
+            "signed char", "unsigned char", "signed short", "unsigned short",
+            "signed int", "unsigned int", "long long", "unsigned long", "unsigned long long"
         )
     }
 }

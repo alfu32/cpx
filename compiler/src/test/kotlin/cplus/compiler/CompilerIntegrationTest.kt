@@ -535,6 +535,38 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun standardCHeaderImportsResolveAcrossLibraryModules() {
+        val source = """
+            import { strlen } from c.string;
+            import { isdigit } from c.ctype;
+            import { abs } from c.stdlib;
+            import { sqrt } from c.math;
+
+            int main() {
+                return strlen("123") == 3 && isdigit('1') && abs(-4) == 4 && sqrt(4.0) == 2.0 ? 0 : 1;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-standard-c-imports", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("#include <ctype.h>"))
+        assertTrue(generated.contains("#include <math.h>"))
+        assertTrue(generated.contains("#include <stdlib.h>"))
+        assertTrue(generated.contains("#include <string.h>"))
+
+        val directory = Files.createTempDirectory("cplus-standard-c-imports-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-lm", "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        assertEquals(0, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
+    }
+
+    @Test
     fun runtimeStringTemplatesLowerThroughFormattingHelper() {
         val source = """
             import { puts } from c.stdio;
