@@ -292,6 +292,38 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun floatingPointLiteralsRetainTheirCSpelling() {
+        val source = """
+            double scale(double value) {
+                return value * 1.5e1;
+            }
+
+            int main() {
+                return scale(2.0) == 30.0 ? 0 : 1;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-float", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("1.5e1"))
+        assertTrue(generated.contains("2.0"))
+        assertTrue(generated.contains("30.0"))
+
+        val directory = Files.createTempDirectory("cplus-float-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(0, execution.waitFor())
+    }
+
+    @Test
     fun minimalProgramTranscodesAndExecutes() {
         val source = """
             struct point_t {

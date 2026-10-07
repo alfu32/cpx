@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 52/99
+Overall: 53/100
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
-[DOING] [9/21] 4. Lowering and C backend
+[DOING] [10/22] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-4.2.4.3.2 — remaining expression and lvalue lowering
+4.2.4.3.2.2 — remaining expression and lvalue lowering
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1193,7 +1193,7 @@ all create correct bindings.
 
 ---
 
-# 4. [DOING] [9/21] Lowering and C backend
+# 4. [DOING] [10/22] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1272,7 +1272,7 @@ all create correct bindings.
 
 ---
 
-## 4.2 [DOING] [6/9] C+ feature lowering
+## 4.2 [DOING] [7/10] C+ feature lowering
 
 ### 4.2.1 [DONE] Method lowering
 
@@ -1358,7 +1358,7 @@ all create correct bindings.
 **Depends**
 - 4.2.3.2
 
-### 4.2.4 [DOING] [3/4] String-template and remaining expression lowering
+### 4.2.4 [DOING] [4/5] String-template and remaining expression lowering
 
 **Language**
 - LS §16
@@ -1418,7 +1418,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.2
 
-#### 4.2.4.3.2 [TODO] Complete remaining expression and lvalue lowering
+#### 4.2.4.3.2 [DOING] [1/2] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1426,6 +1426,25 @@ all create correct bindings.
 
 **Depends**
 - 4.2.4.3.1
+
+##### 4.2.4.3.2.1 [DONE] Lower floating-point literals
+
+**Acceptance**
+- decimal and exponent-form floating literals tokenize distinctly from integers.
+- semantic analysis assigns floating literals a floating primitive type.
+- C lowering preserves valid floating literal spelling and origin.
+
+**Depends**
+- 4.2.4.3.1
+
+##### 4.2.4.3.2.2 [TODO] Complete remaining expression and lvalue lowering
+
+**Acceptance**
+- supported C+ expression and lvalue forms have explicit C AST nodes.
+- unsupported forms produce diagnostics before emission.
+
+**Depends**
+- 4.2.4.3.2.1
 
 ---
 

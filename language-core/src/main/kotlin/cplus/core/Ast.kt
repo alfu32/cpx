@@ -186,6 +186,7 @@ data class AstVariableDeclaration(
 sealed interface AstExpression : AstNode
 
 data class AstIntegerLiteral(val text: String, override val origin: Origin) : AstExpression
+data class AstFloatLiteral(val text: String, override val origin: Origin) : AstExpression
 data class AstStringLiteral(val text: String, override val origin: Origin) : AstExpression
 
 sealed interface AstStringTemplatePart

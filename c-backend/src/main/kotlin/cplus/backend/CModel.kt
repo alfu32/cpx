@@ -160,6 +160,7 @@ sealed interface CExpression {
 }
 
 data class CIntegerLiteral(val text: String, override val origin: Origin) : CExpression
+data class CFloatLiteral(val text: String, override val origin: Origin) : CExpression
 data class CStringLiteral(val text: String, override val origin: Origin) : CExpression
 data class CCharacterLiteral(val text: String, override val origin: Origin) : CExpression
 data class CIdentifier(val name: String, override val origin: Origin) : CExpression

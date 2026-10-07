@@ -395,6 +395,7 @@ class CpxExpander(
 
     private fun reorigin(expression: SyntaxExpression, origin: Origin): SyntaxExpression = when (expression) {
         is SyntaxIntegerLiteral -> expression.copy(origin = origin)
+        is SyntaxFloatLiteral -> expression.copy(origin = origin)
         is SyntaxStringLiteral -> expression.copy(origin = origin)
         is SyntaxStringTemplate -> expression.copy(
             parts = expression.parts.map { part ->

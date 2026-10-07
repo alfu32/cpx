@@ -373,6 +373,7 @@ class CLowerer(private val semantic: SemanticModel) {
 
     private fun expression(node: AstExpression, ownerName: String? = null, instanceMethod: Boolean = false): CExpression = when (node) {
         is AstIntegerLiteral -> CIntegerLiteral(node.text, node.origin)
+        is AstFloatLiteral -> CFloatLiteral(node.text, node.origin)
         is AstStringLiteral -> CStringLiteral(node.text, node.origin)
         is AstStringTemplate -> lowerStringTemplate(node, ownerName, instanceMethod)
         is AstCharacterLiteral -> CCharacterLiteral(node.text, node.origin)
@@ -709,6 +710,7 @@ class CEmitter {
 
     private fun expression(expression: CExpression): String = when (expression) {
         is CIntegerLiteral -> expression.text
+        is CFloatLiteral -> expression.text
         is CStringLiteral -> expression.text
         is CCharacterLiteral -> expression.text
         is CIdentifier -> expression.name

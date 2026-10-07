@@ -503,6 +503,7 @@ class Parser(private val lexed: LexedSource) {
                 SyntaxUnary(operator.lexeme, operand, span(operator.range, operand.range), direct(span(operator.range, operand.range)))
             }
             matchKind(TokenKind.INTEGER_LITERAL) -> SyntaxIntegerLiteral(token.lexeme, token.range, direct(token.range))
+            matchKind(TokenKind.FLOAT_LITERAL) -> SyntaxFloatLiteral(token.lexeme, token.range, direct(token.range))
             matchKind(TokenKind.STRING_LITERAL) -> parseStringLiteral(token)
             matchKind(TokenKind.CHARACTER_LITERAL) -> SyntaxCharacterLiteral(token.lexeme, token.range, direct(token.range))
             matchKind(TokenKind.IDENTIFIER) || matchKind(TokenKind.KEYWORD) -> SyntaxIdentifier(token.lexeme, token.range, direct(token.range))

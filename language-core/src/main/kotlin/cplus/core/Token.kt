@@ -3,6 +3,7 @@ package cplus.core
 enum class TokenKind {
     IDENTIFIER,
     INTEGER_LITERAL,
+    FLOAT_LITERAL,
     STRING_LITERAL,
     CHARACTER_LITERAL,
     KEYWORD,
@@ -84,7 +85,29 @@ class Lexer {
                 character.isDigit() -> {
                     val start = offset++
                     while (offset < source.text.length && source.text[offset].isDigit()) offset++
-                    add(TokenKind.INTEGER_LITERAL, start, offset)
+                    var isFloating = false
+                    if (source.text.getOrNull(offset) == '.' && source.text.getOrNull(offset + 1)?.isDigit() == true) {
+                        isFloating = true
+                        offset++
+                        while (offset < source.text.length && source.text[offset].isDigit()) offset++
+                    }
+                    if (source.text.getOrNull(offset) == 'e' || source.text.getOrNull(offset) == 'E') {
+                        isFloating = true
+                        offset++
+                        if (source.text.getOrNull(offset) == '+' || source.text.getOrNull(offset) == '-') offset++
+                        while (offset < source.text.length && source.text[offset].isDigit()) offset++
+                    }
+                    add(if (isFloating) TokenKind.FLOAT_LITERAL else TokenKind.INTEGER_LITERAL, start, offset)
+                }
+                character == '.' && source.text.getOrNull(offset + 1)?.isDigit() == true -> {
+                    val start = offset++
+                    while (offset < source.text.length && source.text[offset].isDigit()) offset++
+                    if (source.text.getOrNull(offset) == 'e' || source.text.getOrNull(offset) == 'E') {
+                        offset++
+                        if (source.text.getOrNull(offset) == '+' || source.text.getOrNull(offset) == '-') offset++
+                        while (offset < source.text.length && source.text[offset].isDigit()) offset++
+                    }
+                    add(TokenKind.FLOAT_LITERAL, start, offset)
                 }
                 character == '"' -> {
                     val start = offset++
