@@ -11,14 +11,14 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 (complete; retained for traceability)
-Roadmap leaf tasks:    24/45 evidenced on Linux
+Roadmap leaf tasks:    25/45 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R1.2.1 — preserve primitive signedness, rank, and target widths
+Current task:          R1.2.3 — unify primitive identity across semantic, ABI, and C output
 Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 6/11 primitive, ABI, type-import, and user-alias conformance open
+R1 [DOING] 7/11 primitive, ABI, type-import, and user-alias conformance open
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
@@ -27,7 +27,7 @@ R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       24/45 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       25/45 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,8 +35,8 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R1.2.1/R1.2.3 — preserve primitive signedness, target widths, and one
-   canonical type identity through semantic analysis, ABI layout, and C output.
+1. R1.2.3 — unify primitive identity across semantic analysis, ABI layout,
+   reflection, and C output.
 2. R1.4 — implement kind-aware selective imports for source types and enforce
    module visibility boundaries.
 3. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
@@ -3424,8 +3424,15 @@ of R1–R8 or deliberately recorded as a post-release extension.
       Linux.
 - R1.2 [DOING] — reconcile primitive signedness, semantic identity, target
   widths, C emission, and fixed-width aliases across target ABI descriptors.
-  - R1.2.1 [DOING] — preserve `signed char` and integer rank/signedness through
+  - R1.2.1 [DONE] — preserve `signed char` and integer rank/signedness through
     semantic compatibility and verify LP64/LLP64 widths for all parsed forms.
+    - Semantic canonical identities distinguish plain/signed/unsigned char,
+      signedness, and each integer rank; equivalent `long` spellings share
+      identity while pointer compatibility rejects distinct pointee types.
+    - Parsed source declarations now feed ABI layout checks for every
+      canonical integer spelling on Linux/Windows x86_64 and AArch64 target
+      descriptors. Semantic and compiler test suites pass on Linux; no Windows
+      execution was performed.
   - R1.2.2 [DONE] — complete leading/pointer qualifiers, preserve structured
     declarators through C emission, and resolve foreign fixed-width/`stddef`
     aliases against their underlying target-aware types.

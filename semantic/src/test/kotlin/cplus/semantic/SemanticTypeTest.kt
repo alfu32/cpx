@@ -181,6 +181,76 @@ class SemanticTypeTest {
     }
 
     @Test
+    fun primitiveCanonicalIdentityPreservesSignednessAndIntegerRank() {
+        val text = """
+            char plain_char;
+            signed char signed_char;
+            unsigned char unsigned_char;
+            short signed_short;
+            unsigned short unsigned_short;
+            int signed_int;
+            unsigned int unsigned_int;
+            long signed_long;
+            unsigned long unsigned_long;
+            long long signed_long_long;
+            unsigned long long unsigned_long_long;
+            long first(long int value) { return value; }
+            long second(int long value) { return value; }
+            long third(long long value) { return value; }
+            int main() { return 0; }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(23), Path.of("primitive-identities.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+
+        val result = SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = result.model!!
+        fun canonicalId(name: String) = model.canonicalTypeId(model.symbols.first { it.name == name }.type)
+
+        assertNotEquals(canonicalId("plain_char"), canonicalId("signed_char"))
+        assertNotEquals(canonicalId("signed_char"), canonicalId("unsigned_char"))
+        assertNotEquals(canonicalId("signed_short"), canonicalId("unsigned_short"))
+        assertNotEquals(canonicalId("signed_short"), canonicalId("signed_int"))
+        assertNotEquals(canonicalId("signed_int"), canonicalId("unsigned_int"))
+        assertNotEquals(canonicalId("signed_int"), canonicalId("signed_long"))
+        assertNotEquals(canonicalId("signed_long"), canonicalId("unsigned_long"))
+        assertNotEquals(canonicalId("signed_long"), canonicalId("signed_long_long"))
+        assertNotEquals(canonicalId("unsigned_long"), canonicalId("unsigned_long_long"))
+        assertEquals(
+            model.canonicalTypeId(model.functions.getValue("first").signature),
+            model.canonicalTypeId(model.functions.getValue("second").signature)
+        )
+        assertNotEquals(
+            model.canonicalTypeId(model.functions.getValue("first").signature),
+            model.canonicalTypeId(model.functions.getValue("third").signature)
+        )
+    }
+
+    @Test
+    fun pointerCompatibilityDoesNotCollapseDistinctIntegerTypes() {
+        val text = """
+            int takes_signed_char(signed char* value) { return 0; }
+            int takes_long(long* value) { return 0; }
+            int main() {
+                char plain;
+                long long wide;
+                takes_signed_char(&plain);
+                takes_long(&wide);
+                return 0;
+            }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(24), Path.of("primitive-pointer-compatibility.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+
+        val result = SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+
+        assertEquals(2, result.diagnostics.count { it.code == "SEM306" }, result.diagnostics.joinToString())
+    }
+
+    @Test
     fun comptimeTypeIdentityRetainsAliasAndCanonicalIds() {
         val text = """
             typedef int count_t;

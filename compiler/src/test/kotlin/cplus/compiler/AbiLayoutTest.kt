@@ -84,6 +84,24 @@ class AbiLayoutTest {
             val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$name.toml")).descriptor)
             val layouts = AbiLayoutEngine(descriptor)
             val longSize = if (descriptor.cIntegerModel == "llp64") 4 else 8
+            val integerSizes = linkedMapOf(
+                "char" to 1,
+                "signed char" to 1,
+                "unsigned char" to 1,
+                "short" to 2,
+                "unsigned short" to 2,
+                "int" to 4,
+                "unsigned int" to 4,
+                "long" to longSize,
+                "unsigned long" to longSize,
+                "long long" to 8,
+                "unsigned long long" to 8
+            )
+            integerSizes.entries.forEachIndexed { index, (typeName, expectedSize) ->
+                val layout = layouts.layout(PrimitiveType(TypeId(100 + index), typeName))
+                assertEquals(expectedSize, layout.size, "$name $typeName size")
+                assertEquals(expectedSize, layout.alignment, "$name $typeName alignment")
+            }
             assertEquals(descriptor.pointerBits / 8, layouts.layout(PointerType(TypeId(50), PrimitiveType(TypeId(51), "int"))).size, name)
             assertEquals(longSize, layouts.layout(PrimitiveType(TypeId(52), "long")).size, name)
             assertEquals(8, layouts.layout(PrimitiveType(TypeId(53), "long long")).size, name)
@@ -100,6 +118,56 @@ class AbiLayoutTest {
             assertEquals(longSize, layout.fields[1].size, name)
             assertEquals(descriptor.pointerBits / 8, layout.fields[2].size, name)
             assertTrue(layout.alignment >= descriptor.pointerBits / 8, name)
+        }
+    }
+
+    @Test
+    fun laysOutParsedCanonicalIntegerTypesAcrossLp64AndLlp64Targets() {
+        val source = """
+            char plain_char;
+            char signed signed_char;
+            char unsigned unsigned_char;
+            short signed int signed_short;
+            int unsigned short unsigned_short;
+            int signed signed_int;
+            unsigned int unsigned_int;
+            int long signed_long;
+            long unsigned int unsigned_long;
+            long int long signed_long_long;
+            unsigned long long int unsigned_long_long;
+            int main() { return 0; }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(
+            java.nio.file.Files.createTempFile("parsed-primitive-layout", ".cp"),
+            source
+        )
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = requireNotNull(result.semanticModel)
+        val fixedSizes = linkedMapOf(
+            "plain_char" to 1,
+            "signed_char" to 1,
+            "unsigned_char" to 1,
+            "signed_short" to 2,
+            "unsigned_short" to 2,
+            "signed_int" to 4,
+            "unsigned_int" to 4,
+            "signed_long_long" to 8,
+            "unsigned_long_long" to 8
+        )
+        val longTypes = setOf("signed_long", "unsigned_long")
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+
+        listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { name ->
+            val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$name.toml")).descriptor)
+            val layouts = AbiLayoutEngine(descriptor)
+            val longSize = if (descriptor.cIntegerModel == "llp64") 4 else 8
+            (fixedSizes.keys + longTypes).forEach { symbolName ->
+                val symbol = model.symbols.first { it.name == symbolName }
+                val layout = layouts.layout(symbol.type)
+                val expectedSize = if (symbolName in longTypes) longSize else fixedSizes.getValue(symbolName)
+                assertEquals(expectedSize, layout.size, "$name $symbolName size")
+                assertEquals(expectedSize, layout.alignment, "$name $symbolName alignment")
+            }
         }
     }
 
