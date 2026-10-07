@@ -80,6 +80,12 @@ class IncrementalCompiler(
             return IncrementalCompileResult(previous.result, report)
         }
 
+        if (previous != null) {
+            compiler.invalidateSpecializations(
+                seedSources.flatMap { previous.specializations[it].orEmpty() }.toSet()
+            )
+        }
+
         val firstPass = compiler.compileIncremental(
             canonicalRequest,
             previous?.frontends.orEmpty(),
@@ -92,6 +98,11 @@ class IncrementalCompiler(
             firstPass.result.moduleGraph
         )
         val recompute = dependencyClosure.intersect(sourceFingerprints.keys)
+        if (previous != null) {
+            compiler.invalidateSpecializations(
+                dependencyClosure.flatMap { previous.specializations[it].orEmpty() }.toSet()
+            )
+        }
         val pipeline = if (recompute == seedSources.intersect(sourceFingerprints.keys)) {
             firstPass
         } else {

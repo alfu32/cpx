@@ -3,6 +3,7 @@ package cplus.compiler
 import cplus.backend.*
 import cplus.comptime.CpxExpansionResult
 import cplus.comptime.CpxExpander
+import cplus.comptime.SpecializationKey
 import cplus.core.*
 import cplus.semantic.*
 import java.nio.file.Files
@@ -102,6 +103,10 @@ internal data class IncrementalPipeline(
 class CPlusCompiler(
     private val context: CompilerContext = CompilerContext()
 ) {
+    internal fun invalidateSpecializations(keys: Set<SpecializationKey>) {
+        if (keys.isNotEmpty()) context.cpxExpander.invalidateSpecializations(keys)
+    }
+
     fun remapCCompilerDiagnostics(
         result: CompileResult,
         generatedPath: Path,

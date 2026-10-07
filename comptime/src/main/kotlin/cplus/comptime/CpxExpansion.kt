@@ -121,6 +121,66 @@ data class SpecializationKey(
         get() = "$declaration(${arguments.joinToString(",") { it.canonical }})"
 }
 
+data class SpecializationCacheStatistics(
+    val entries: Int,
+    val hits: Long,
+    val misses: Long
+)
+
+private data class SpecializationCacheEntry(
+    val definitionFingerprint: String,
+    val instantiatedText: String
+)
+
+/**
+ * Definition-sensitive cache for rendered structural CPX templates.
+ *
+ * The cache stores only canonical rendered text. Each invocation is still
+ * reparsed and re-originated at its own call site, so cached output cannot
+ * leak source locations between modules or suppress parser diagnostics.
+ */
+class SpecializationCache {
+    private val entries = linkedMapOf<SpecializationKey, SpecializationCacheEntry>()
+    private var hitCount = 0L
+    private var missCount = 0L
+
+    @Synchronized
+    fun get(key: SpecializationKey, definitionFingerprint: String): String? {
+        val entry = entries[key]
+        if (entry == null || entry.definitionFingerprint != definitionFingerprint) {
+            missCount++
+            if (entry != null) entries.remove(key)
+            return null
+        }
+        hitCount++
+        return entry.instantiatedText
+    }
+
+    @Synchronized
+    fun put(key: SpecializationKey, definitionFingerprint: String, instantiatedText: String) {
+        entries[key] = SpecializationCacheEntry(definitionFingerprint, instantiatedText)
+    }
+
+    @Synchronized
+    fun invalidate(keys: Set<SpecializationKey>) {
+        keys.forEach(entries::remove)
+    }
+
+    @Synchronized
+    fun clear() {
+        entries.clear()
+        hitCount = 0L
+        missCount = 0L
+    }
+
+    @Synchronized
+    fun statistics(): SpecializationCacheStatistics = SpecializationCacheStatistics(
+        entries.size,
+        hitCount,
+        missCount
+    )
+}
+
 sealed interface ComptimeDependency {
     data class Symbol(val name: String) : ComptimeDependency
     data class Type(val name: String) : ComptimeDependency
@@ -278,10 +338,28 @@ data class CpxExpansionResult(
     val specializationKeys: Set<SpecializationKey> = expandedKeys.map { it.specializationKey }.toSet()
 )
 
+data class CpxExpansionLimits(
+    val maxExpansionDepth: Int = 64,
+    val maxExpansionTasks: Int = 10_000,
+    val maxGeneratedDeclarations: Int = 10_000
+) {
+    init {
+        require(maxExpansionDepth > 0) { "maxExpansionDepth must be positive" }
+        require(maxExpansionTasks > 0) { "maxExpansionTasks must be positive" }
+        require(maxGeneratedDeclarations > 0) { "maxGeneratedDeclarations must be positive" }
+    }
+}
+
 class CpxExpander(
     private val lexer: Lexer = Lexer(),
-    private val templateParser: CpxTemplateParser = CpxTemplateParser()
+    private val templateParser: CpxTemplateParser = CpxTemplateParser(),
+    val specializationCache: SpecializationCache = SpecializationCache(),
+    private val limits: CpxExpansionLimits = CpxExpansionLimits()
 ) {
+    fun invalidateSpecializations(keys: Set<SpecializationKey>) {
+        specializationCache.invalidate(keys)
+    }
+
     fun expand(source: SourceFile, program: SyntaxProgram): CpxExpansionResult {
         val diagnostics = DiagnosticBag()
         val definitions = program.declarations
@@ -299,6 +377,7 @@ class CpxExpander(
 
         val generated = mutableListOf<SyntaxDeclaration>()
         var generatedFileIndex = 0
+        var expandedTaskCount = 0
         while (scheduler.hasPending) {
             val task = scheduler.next()
             if (task == null) {
@@ -316,8 +395,28 @@ class CpxExpander(
                 )
                 break
             }
+            if (expandedTaskCount >= limits.maxExpansionTasks) {
+                scheduler.markBlocked(task.key)
+                scheduler.pendingKeys().forEach(scheduler::markBlocked)
+                diagnostics.error(
+                    "compile-time expansion task limit exceeded (${limits.maxExpansionTasks})",
+                    task.invocation.origin.primaryRange,
+                    "CPX007"
+                )
+                break
+            }
+            expandedTaskCount++
             if (task.key in task.ancestors) {
                 diagnostics.error("compile-time expansion cycle detected at ${task.key.canonical}", task.invocation.origin.primaryRange, "CPX002")
+                continue
+            }
+            if (task.ancestors.size >= limits.maxExpansionDepth) {
+                scheduler.markFailed(task.key)
+                diagnostics.error(
+                    "compile-time expansion depth limit exceeded (${limits.maxExpansionDepth}) at ${task.key.canonical}",
+                    task.invocation.origin.primaryRange,
+                    "CPX007"
+                )
                 continue
             }
             if (scheduler.wasExpanded(task.key)) continue
@@ -344,16 +443,33 @@ class CpxExpander(
             }
 
             val category = parseCategory(task.definition.category)
-            val template = templateParser.parse(
-                task.definition.template,
-                category,
-                task.definition.origin,
-                task.definition.parameters.map { it.name }.toSet()
-            )
-            val bindings = task.definition.parameters.zip(task.invocation.arguments).associate { (parameter, argument) ->
-                parameter.name to ComptimeValue.CtType(argument.trim())
+            val definitionFingerprint = buildString {
+                append(source.path.toAbsolutePath().normalize())
+                append('|')
+                append(task.definition.name)
+                append('|')
+                append(task.definition.category)
+                append('|')
+                append(task.definition.parameters.joinToString(",") { "${it.kind}:${it.name}" })
+                append('|')
+                append(task.definition.template)
             }
-            val instantiated = template.render(bindings)
+            val specializationKey = task.key.specializationKey
+            val instantiated = specializationCache.get(specializationKey, definitionFingerprint)
+                ?: run {
+                    val template = templateParser.parse(
+                        task.definition.template,
+                        category,
+                        task.definition.origin,
+                        task.definition.parameters.map { it.name }.toSet()
+                    )
+                    val bindings = task.definition.parameters.zip(task.invocation.arguments).associate { (parameter, argument) ->
+                        parameter.name to ComptimeValue.CtType(argument.trim())
+                    }
+                    template.render(bindings).also {
+                        specializationCache.put(specializationKey, definitionFingerprint, it)
+                    }
+                }
             val generatedFile = SourceFile(
                 SourceFileId(-(++generatedFileIndex)),
                 source.path.resolveSibling("<${task.key.canonical}>"),
@@ -369,6 +485,15 @@ class CpxExpander(
                 task.key.canonical
             )
             val declarations = parsed.syntax.declarations.map { reorigin(it, expansionOrigin) }
+            if (generated.size + declarations.count { it !is SyntaxComptimeFunction && it !is SyntaxCpxInvocation } > limits.maxGeneratedDeclarations) {
+                scheduler.markFailed(task.key)
+                diagnostics.error(
+                    "compile-time generated declaration limit exceeded (${limits.maxGeneratedDeclarations})",
+                    task.invocation.origin.primaryRange,
+                    "CPX007"
+                )
+                break
+            }
             generated += declarations.filterNot { it is SyntaxComptimeFunction || it is SyntaxCpxInvocation }
             declarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
                 val definition = definitions[invocation.name]

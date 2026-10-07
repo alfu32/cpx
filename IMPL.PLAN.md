@@ -3,11 +3,11 @@
 ## Dashboard
 
 ```text
-Overall: 77/113
+Overall: 78/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
-[DOING] [7/20] 3. Compile-time and CPX system
+[DOING] [8/20] 3. Compile-time and CPX system
 [DOING] [28/34] 4. Lowering and C backend
 [DOING] [5/14] 5. Tooling, integration and quality
 
@@ -831,7 +831,7 @@ all create correct bindings.
 
 ---
 
-# 3. [DOING] [7/20] Compile-time and CPX system
+# 3. [DOING] [8/20] Compile-time and CPX system
 
 **Purpose:** Implement the compile-time language, readable CPX templates, generics, fixed-point expansion, hygiene and reflection.
 
@@ -1058,9 +1058,14 @@ all create correct bindings.
 **Depends**
 - 3.3.3
 
+**Implementation**
+- `CpxExpansionLimits` bounds nested depth, scheduled expansion tasks, and generated declarations.
+- Limit failures use stable `CPX007` diagnostics while ordinary recursive cycles retain their expansion-key chain.
+- Tests verify bounded nested expansion without misclassifying it as a semantic cycle.
+
 ---
 
-## 3.4 [DOING] [2/4] Generics and recursive specialization
+## 3.4 [DOING] [3/4] Generics and recursive specialization
 
 ### 3.4.1 [DONE] Generic declaration generation through CPX
 
@@ -1104,7 +1109,7 @@ all create correct bindings.
 - Incremental invalidation reports preserve specialization keys separately from expansion invocation keys.
 - Tests cover duplicate reuse and equivalent `struct item`/`item` spellings.
 
-### 3.4.3 [TODO] Specialization cache
+### 3.4.3 [DONE] Specialization cache
 
 **Technical**
 - TS §49
@@ -1116,6 +1121,12 @@ all create correct bindings.
 
 **Depends**
 - 3.4.2
+
+**Implementation**
+- `SpecializationCache` stores definition- and source-module-sensitive rendered template text.
+- Cached text is reparsed and re-originated for every invocation, preserving diagnostics and source provenance.
+- Incremental dependency invalidation explicitly evicts affected specialization keys before recompilation.
+- Cache statistics and tests cover reuse, invalidation boundaries, and diagnostics on cached malformed expansions.
 
 ### 3.4.4 [TODO] Recursive/nested CPX expansion
 

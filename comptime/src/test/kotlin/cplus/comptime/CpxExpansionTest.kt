@@ -92,6 +92,67 @@ class CpxExpansionTest {
     }
 
     @Test
+    fun specializationCacheReusesRenderedTextButReparsesEachInvocation() {
+        val sourceText = """
+            comptime cpx<decl> optional(type T) {
+                return { struct optional_{T}_t { T value; }; };
+            }
+            optional(int);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(16), Path.of("cached.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val cache = SpecializationCache()
+        val expander = CpxExpander(specializationCache = cache)
+
+        val first = expander.expand(source, parsed.syntax)
+        val second = expander.expand(source, parsed.syntax)
+
+        assertTrue(first.diagnostics.isEmpty(), first.diagnostics.joinToString())
+        assertTrue(second.diagnostics.isEmpty(), second.diagnostics.joinToString())
+        assertEquals(first.program, second.program)
+        assertEquals(SpecializationCacheStatistics(1, hits = 1, misses = 1), cache.statistics())
+    }
+
+    @Test
+    fun specializationCacheDoesNotSuppressCachedExpansionDiagnostics() {
+        val sourceText = """
+            comptime cpx<decl> broken(type T) {
+                return { missing(T); };
+            }
+            broken(int);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(17), Path.of("broken-cache.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val cache = SpecializationCache()
+        val expander = CpxExpander(specializationCache = cache)
+
+        val first = expander.expand(source, parsed.syntax)
+        val second = expander.expand(source, parsed.syntax)
+
+        assertTrue(first.diagnostics.isNotEmpty())
+        assertTrue(second.diagnostics.isNotEmpty())
+        assertEquals(1L, cache.statistics().hits)
+        assertEquals(1L, cache.statistics().misses)
+    }
+
+    @Test
+    fun nestedExpansionLimitsStopUnboundedGeneratedWork() {
+        val sourceText = """
+            comptime cpx<decl> outer(type T) { return { inner(T); }; }
+            comptime cpx<decl> inner(type T) { return { struct inner_{T}_t { T value; }; }; }
+            outer(int);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(18), Path.of("limits.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander(
+            limits = CpxExpansionLimits(maxExpansionDepth = 1)
+        ).expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.any { it.code == "CPX007" }, result.diagnostics.joinToString())
+        assertTrue(result.diagnostics.none { it.code == "CPX002" }, result.diagnostics.joinToString())
+    }
+
+    @Test
     fun schedulerBlocksTasksWhoseExpansionDependenciesFormACycle() {
         val sourceText = """
             comptime cpx<decl> a(type T) { return { struct a_{T}_t { T value; }; }; }
