@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 36/93
+Overall: 37/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [12/27] 2. Semantic model and modules
+[DOING] [13/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.2.2 — type reference and alias resolution
+2.2.4 — member access and call resolution
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -434,7 +434,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.2 [DOING] [7/9] Type and method system
+## 2.2 [DOING] [8/9] Type and method system
 
 ### 2.2.1 [DONE] [6/6] Canonical type universe representation
 
@@ -518,7 +518,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.2.1.2
 
-### 2.2.2 [TODO] Type reference and alias resolution
+### 2.2.2 [DONE] Type reference and alias resolution
 
 **Language**
 - LS §34

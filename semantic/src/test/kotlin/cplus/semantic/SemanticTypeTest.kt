@@ -13,6 +13,36 @@ import kotlin.test.assertTrue
 
 class SemanticTypeTest {
     @Test
+    fun aliasesResolveAcrossSourceOrder() {
+        val text = """
+            count_t value;
+            typedef int count_t;
+
+            int main() {
+                return value;
+            }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(3), Path.of("forward-alias.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+
+        val result = SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("count_t", result.model!!.symbols.first { it.name == "value" }.type.name)
+    }
+
+    @Test
+    fun cyclicAliasesProduceAStableDiagnostic() {
+        val text = "typedef b_t a_t; typedef a_t b_t; int main() { return 0; }"
+        val source = SourceFile(SourceFileId(4), Path.of("cyclic-alias.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        val result = SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+        assertTrue(result.diagnostics.any { it.code == "SEM110" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun equivalentAliasAndPointerSpellingSharesCanonicalTypeIdentity() {
         val text = """
             typedef int count_t;

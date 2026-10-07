@@ -46,7 +46,6 @@ class CompilerIntegrationTest {
     @Test
     fun typeAliasesResolveAndEmitAsTypedefs() {
         val source = """
-            typedef int count_t;
             count_t total;
 
             count_t identity(count_t value) {
@@ -57,6 +56,8 @@ class CompilerIntegrationTest {
                 count_t local = 7;
                 return identity(local);
             }
+
+            typedef int count_t;
         """.trimIndent()
         val result = CPlusCompiler().compileText(Files.createTempFile("cplus-alias", ".cp"), source)
 

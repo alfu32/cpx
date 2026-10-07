@@ -201,6 +201,10 @@ class SemanticAnalyzer {
         val enums = linkedMapOf<String, EnumType>()
         val aliases = linkedMapOf<String, AliasType>()
         val foreignTypes = linkedMapOf<String, ForeignType>()
+        val aliasDeclarations = program.declarations
+            .filterIsInstance<AstAlias>()
+            .groupBy { it.name }
+        val resolvingAliases = mutableSetOf<String>()
         val functions = linkedMapOf<String, FunctionSymbol>()
         val methods = linkedMapOf<String, Map<String, MethodSymbol>>()
         val globals = linkedMapOf<String, Symbol>()
@@ -223,10 +227,16 @@ class SemanticAnalyzer {
             PrimitiveType(TypeId(nextTypeId.next()), name).also(types::add)
         }
 
-        fun resolve(reference: AstTypeRef, dimensions: List<String> = emptyList()): CType =
-            resolveType(reference, structs, unions, enums, aliases, foreignTypes, ::primitive, diagnostics, dimensions).also { resolved ->
+        lateinit var resolveAlias: (String) -> AliasType?
+
+        fun resolve(reference: AstTypeRef, dimensions: List<String> = emptyList()): CType {
+            if (reference.name in aliasDeclarations && reference.name !in aliases) {
+                resolveAlias(reference.name)
+            }
+            return resolveType(reference, structs, unions, enums, aliases, foreignTypes, ::primitive, diagnostics, dimensions).also { resolved ->
                 if (resolved !is UnknownType && types.none { it.id == resolved.id }) types += resolved
             }
+        }
 
         fun newSymbol(name: String, kind: SymbolKind, type: CType, origin: Origin, moduleName: String? = null): Symbol = Symbol(
             SymbolId(nextSymbolId.next()), name, kind, type, origin, moduleName = moduleName
@@ -241,20 +251,33 @@ class SemanticAnalyzer {
             scopes.define(rootScope, name, symbol.id)
         }
 
+        resolveAlias = { name ->
+            aliases[name] ?: run {
+                val declaration = aliasDeclarations[name]?.singleOrNull() ?: return@run null
+                if (!resolvingAliases.add(name)) {
+                    diagnostics.error("cyclic type alias '$name'", rangeOf(declaration.origin), "SEM110")
+                    return@run null
+                }
+                val target = resolve(declaration.target, declaration.arrayDimensions)
+                resolvingAliases.remove(name)
+                AliasType(TypeId(nextTypeId.next()), name, target).also { type ->
+                    aliases[name] = type
+                    types += type
+                    val symbol = newSymbol(name, SymbolKind.ALIAS, type, declaration.origin, declarationModules[declaration] ?: defaultModule)
+                    scopes.define(rootScope, symbol.name, symbol.id)
+                }
+            }
+        }
+
         program.declarations.forEach { declaration ->
             val moduleName = declarationModules[declaration] ?: defaultModule
             when (declaration) {
                 is AstPackage -> Unit
                 is AstAlias -> {
-                    if (aliases.containsKey(declaration.name)) {
+                    if (aliasDeclarations[declaration.name]?.singleOrNull() !== declaration) {
                         diagnostics.error("duplicate type alias '${declaration.name}'", rangeOf(declaration.origin), "SEM008")
                     } else {
-                        val target = resolve(declaration.target, declaration.arrayDimensions)
-                        val type = AliasType(TypeId(nextTypeId.next()), declaration.name, target)
-                        aliases[declaration.name] = type
-                        types += type
-                        val symbol = newSymbol(declaration.name, SymbolKind.ALIAS, type, declaration.origin, moduleName)
-                        scopes.define(rootScope, symbol.name, symbol.id)
+                        resolveAlias(declaration.name)
                     }
                 }
                 is AstUnion -> {
