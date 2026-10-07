@@ -3,19 +3,20 @@
 ## Dashboard
 
 ```text
-Overall: 113/113
+Overall: 113/145
 
 [DONE] [16/16] 1. Language front-end
 [DONE] [30/30] 2. Semantic model and modules
 [DONE] [20/20] 3. Compile-time and CPX system
-[DOING] [34/34] 4. Lowering and C backend
+[DONE] [34/34] 4. Lowering and C backend
 [DONE] [14/14] 5. Tooling, integration and quality
+[TODO] [0/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-5.3.4 — Final architecture/invariant audit
+6.1.1.1 — Define SDK manifest and ABI/runtime version contract
 
 Current milestone:
-M6 — Development environment
+M7 — Self-hosted C+ SDK/runtime foundation
 ```
 
 All tasks initially have status `TODO`.
@@ -2390,9 +2391,727 @@ all create correct bindings.
 
 ---
 
+# 6. [TODO] [0/32] C+ Standard Library, Runtime, SDK and Platform ABI
+
+**Purpose:** Make the C+ SDK self-hosting at the runtime/library level: source-delivered standard library and libc compatibility, explicit target/ABI metadata, platform abstraction layers, compiler/runtime intrinsics, target startup/link orchestration, and conformance tooling.
+
+**SDK / Runtime Specification**
+- SDK §1–6 Scope, terminology, architecture, distribution, profiles, native packages
+- SDK §17–30 libc profiles, ABI classes, foreign declarations, low-level constructs, intrinsics, target/ABI comptime metadata
+- SDK §31–57 target profiles, startup/runtime, compiler facilities, libc/platform services
+- SDK §58–102 tooling, packaging, conformance, invariants and resulting toolchain model
+
+**Language**
+- LS §7–13 Compile-time functions and CPX
+- LS §18–20 Type-universe stabilization and reflection
+- LS §22 C imports
+- LS §23 Symbol identity
+- LS §43 C interoperability
+- LS §50 Transcoding
+
+**Technical**
+- TS §12 Type System Model
+- TS §17–25 Comptime, expansion, target context and reflection
+- TS §28 C Import Architecture
+- TS §37–44 C AST, emission and source mapping
+- TS §45 Compiler Context
+- TS §57–62 CLI, compiler API, concurrency and caches
+- TS §67–78 implementation and architecture constraints
+
+---
+
+## 6.1 [TODO] [0/8] SDK packaging and runtime foundation
+
+**SDK**
+- SDK §2–6
+- SDK §39–46
+- SDK §58
+- SDK §70–73
+- SDK §78–81
+- SDK §93–101
+
+### 6.1.1 [TODO] [0/4] SDK distribution, profiles and resolver
+
+#### 6.1.1.1 [TODO] Define SDK manifest and ABI/runtime version contract
+
+**SDK**
+- SDK §4 Distribution Model
+- SDK §78 ABI Versioning
+- SDK §79 Runtime ABI Stability
+
+**Technical**
+- TS §57 CLI Architecture
+- TS §58 Compiler Pipeline API
+
+**Deliverable**
+- versioned `sdk.toml` or equivalent manifest model
+- `sdk_version`, `language_abi_version`, `runtime_abi_version`, `cplus_abi_version`, `libc_profile_version`
+
+**Acceptance**
+- compiler loads and validates one SDK manifest before compilation.
+- incompatible runtime ABI versions are rejected deterministically.
+- SDK identity participates in compiler/incremental cache keys.
+- tests cover compatible, missing and incompatible manifests.
+
+**Depends**
+- 5.2.1
+- 5.2.4
+
+#### 6.1.1.2 [TODO] Implement runtime and libc profile selection
+
+**SDK**
+- SDK §5 Build Profiles
+- SDK §17 libc Conformance Profiles
+- SDK §72 Compilation Modes
+
+**Language**
+- LS §39 Determinism
+
+**Deliverable**
+- `--runtime=freestanding|cplus|system`
+- `--libc=none|c17|c23`
+
+**Acceptance**
+- invalid runtime/libc combinations are diagnosed before lowering.
+- default hosted mode resolves to `runtime=cplus`, `libc=c17` until C23 is complete.
+- selected profiles are visible to compile-time `target` metadata.
+- profile choices participate in build/cache identity.
+
+**Depends**
+- 6.1.1.1
+- 5.2.2
+
+#### 6.1.1.3 [TODO] Implement SDK resolver and SDK-as-sysroot model
+
+**SDK**
+- SDK §58 SDK Semantic Metadata
+- SDK §62 Runtime Resolver
+- SDK §93 C+ SDK as the Sysroot
+- SDK §94 External Sysroots Remain Supported
+
+**Technical**
+- TS §26–28 Modules, imports and C imports
+- TS §45 Compiler Context
+
+**Acceptance**
+- pure C+ builds resolve standard headers, runtime source, PAL metadata and startup from the C+ SDK.
+- external sysroots remain separately configurable for foreign C/vendor ecosystems.
+- target SDK resolution never falls back silently to host headers/libraries.
+- resolver diagnostics identify missing SDK components precisely.
+
+**Depends**
+- 6.1.1.1
+- 2.4
+
+#### 6.1.1.4 [TODO] Add SDK semantic metadata and reproducible cache format
+
+**SDK**
+- SDK §58 SDK Semantic Metadata
+- SDK §101 SDK/Runtime Invariant
+
+**Technical**
+- TS §47 Incremental Compilation
+- TS §62 Caching
+
+**Acceptance**
+- SDK semantic metadata can cache symbols, types, exports, documentation and comptime signatures.
+- metadata is reproducible from C+ source and never authoritative over source.
+- stale/incompatible metadata is rejected and rebuilt.
+- language tooling can use metadata without losing source navigation when sources are installed.
+
+**Depends**
+- 6.1.1.3
+- 2.1
+
+---
+
+### 6.1.2 [TODO] [0/4] Runtime lifecycle and compiler-support runtime
+
+#### 6.1.2.1 [TODO] Implement target startup selection and `__cplus_start`
+
+**SDK**
+- SDK §39 Program Startup ABI
+- SDK §40 Startup Symbols
+- SDK §63 Startup Generator
+
+**Technical**
+- TS §41 C Symbol Naming
+- TS §42 C Emitter
+
+**Acceptance**
+- `runtime=cplus` owns startup rather than using host libc startup objects.
+- target startup reaches stable internal entry `__cplus_start`.
+- startup acquisition of arguments/environment is delegated to the selected target adapter.
+- startup symbols retain generated provenance for diagnostics/debugging.
+
+**Depends**
+- 6.1.1.2
+- 6.2.1.1
+
+#### 6.1.2.2 [TODO] Implement runtime initialization and application entry dispatch
+
+**SDK**
+- SDK §41 Application Entry Point
+- SDK §42 Runtime Initialization
+
+**Language**
+- LS §23 Symbol Identity
+
+**Acceptance**
+- `main()` and `main(int,char**)` entry forms are supported.
+- runtime initializes TLS, allocator/runtime state, arguments/environment and global runtime state in deterministic order.
+- application entry remains semantically separate from platform loader entry.
+- integration fixture reaches `main` without an external libc startup.
+
+**Depends**
+- 6.1.2.1
+- 6.3.1.1
+
+#### 6.1.2.3 [TODO] Implement termination, exit handlers and stream finalization
+
+**SDK**
+- SDK §43 Program Termination
+
+**Acceptance**
+- normal exit, quick exit, immediate `_Exit`, abort, `atexit` and `at_quick_exit` have distinct semantics.
+- registered handlers execute in specified order.
+- normal exit flushes applicable standard streams; immediate exit does not perform hosted cleanup.
+- exit ultimately delegates to the PAL process-termination primitive.
+
+**Depends**
+- 6.1.2.2
+- 6.3.2.3
+
+#### 6.1.2.4 [TODO] Implement compiler-support runtime and implicit dependency catalogue
+
+**SDK**
+- SDK §45 Compiler-generated Memory Operations
+- SDK §46 Compiler Support Runtime
+- SDK §89 No Hidden Compiler-runtime Invariant
+
+**Technical**
+- TS §40 Dependency Collector
+
+**Acceptance**
+- `runtime.compiler` owns required `__cplus_*` helpers.
+- implicit downstream-compiler references such as memory helpers are explicitly catalogued.
+- self-hosted builds either provide or suppress every known implicit runtime dependency.
+- tests deliberately trigger representative compiler-emitted helper calls.
+
+**Depends**
+- 6.3.2.2
+- 6.4.2.3
+
+---
+
+## 6.2 [TODO] [0/8] ABI, low-level language support and compile-time target model
+
+**SDK**
+- SDK §20–30
+- SDK §38
+- SDK §47–50
+- SDK §77–79
+- SDK §99–100
+
+### 6.2.1 [TODO] [0/4] ABI declarations, target descriptors and low-level constructs
+
+#### 6.2.1.1 [TODO] Implement Target ABI Descriptor and `target` compile-time namespace
+
+**SDK**
+- SDK §27 Target Compile-time Namespace
+- SDK §30 Target ABI Descriptor
+- SDK §31 Initial Supported ABI Targets
+
+**Language**
+- LS §7–13
+
+**Technical**
+- TS §17 Comptime Evaluator
+- TS §45 Compiler Context
+
+**Acceptance**
+- target descriptors provide OS, arch, vendor, ABI, object format, endian, pointer/word widths, integer model and runtime profile.
+- `target.has_intrinsic`, `target.has_feature`, `target.has_libc_profile`, `target.supports_abi` are compile-time queries.
+- descriptors are data loaded through `TargetRegistry`, not hard-coded throughout library source.
+- initial descriptor tests cover Linux/Windows/Darwin on x86_64 and AArch64.
+
+**Depends**
+- 3.3.1
+- 5.2.1
+
+#### 6.2.1.2 [TODO] Implement ABI semantic kinds and `abi` compile-time namespace
+
+**SDK**
+- SDK §20 ABI Classes
+- SDK §28 ABI Compile-time Namespace
+- SDK §99 ABI Invariant
+
+**Technical**
+- TS §12 Type System Model
+- TS §41 C Symbol Naming
+
+**Acceptance**
+- compiler distinguishes `abi.c`, `abi.system`, `abi.cplus`, `abi.intrinsic`, `abi.runtime` even when machine conventions coincide.
+- ABI identity is attached to function symbols/types and foreign/export declarations.
+- `sizeof`, `alignof`, `offsetof`, `layoutof` expose structured layout information at the specified compile-time phase.
+- unsupported ABI requests fail before code emission.
+
+**Depends**
+- 6.2.1.1
+- 2.2.1
+
+#### 6.2.1.3 [TODO] Implement foreign/export ABI attributes and linker-name semantics
+
+**SDK**
+- SDK §21 Foreign Declaration Syntax
+- SDK §22 Export Declarations
+- SDK §76 Binary Exports
+- SDK §77 C+ Public Symbols
+
+**Language**
+- LS §22
+- LS §43
+
+**Acceptance**
+- `@abi`, `@library`, `@link_name`, `@export_name` are represented semantically rather than by textual rewriting.
+- local source names remain distinct from external linker names.
+- C imports/exports preserve external C ABI spelling where requested.
+- conflicting or unsupported attribute combinations produce diagnostics.
+
+**Depends**
+- 6.2.1.2
+- 2.4.1
+
+#### 6.2.1.4 [TODO] Implement runtime-required storage, layout and linkage constructs
+
+**SDK**
+- SDK §23 Required Low-level Language Constructs
+- SDK §50 Thread-local Storage
+
+**Language**
+- LS §30 Lowering Model
+
+**Acceptance**
+- `thread_local`, `volatile`, explicit alignment, packed layout and `noreturn` are supported end-to-end.
+- `@section`, `@used`, and target-supported `@weak` are represented without leaking into ordinary portable library code.
+- unsupported target linkage/layout requests are rejected explicitly.
+- C AST/emission preserves required target-C representation and origins.
+
+**Depends**
+- 6.2.1.2
+- 4.3.1
+
+---
+
+### 6.2.2 [TODO] [0/4] Compiler intrinsics and compile-time directives
+
+#### 6.2.2.1 [TODO] Implement intrinsic registry and architecture-neutral syscall intrinsic family
+
+**SDK**
+- SDK §24 Compiler Intrinsics
+- SDK §25 Mandatory Intrinsic Classes
+- SDK §26 System-call Intrinsics
+- SDK §61 Intrinsic Registry
+
+**Technical**
+- TS §31 Compiler Pass Framework
+- TS §37 C AST
+
+**Acceptance**
+- semantic intrinsic declarations are distinct from ordinary functions.
+- syscall0..syscall6 expose arguments independently of machine registers.
+- intrinsic availability is target-queryable.
+- unsupported intrinsic/target combinations produce compile-time diagnostics rather than unresolved symbols.
+
+**Depends**
+- 6.2.1.1
+- 6.2.1.2
+
+#### 6.2.2.2 [TODO] Implement atomic, fence and CPU primitive intrinsics
+
+**SDK**
+- SDK §25
+- SDK §49 Atomics
+
+**Acceptance**
+- load/store/exchange/CAS/fetch operations and fences support relaxed/acquire/release/acq_rel/seq_cst semantics.
+- `volatile` is not used as a substitute for atomics.
+- lock-free capability is target-queryable.
+- non-lock-free fallback requirements are explicitly routed to runtime support.
+
+**Depends**
+- 6.2.2.1
+- 6.3.1.1
+
+#### 6.2.2.3 [TODO] Implement varargs and context save/restore intrinsic contracts
+
+**SDK**
+- SDK §47 Varargs ABI
+- SDK §48 setjmp / longjmp
+
+**Acceptance**
+- `va_start`, `va_arg`, `va_copy`, `va_end` map to target ABI primitives.
+- `context_save` / `context_restore` support the libc `setjmp`/`longjmp` façade.
+- architecture-sensitive state is not modelled as portable ordinary C+ code.
+- ABI verifier includes varargs and context round-trip tests.
+
+**Depends**
+- 6.2.1.2
+- 6.4.2.4
+
+#### 6.2.2.4 [TODO] Standardize target-selection comptime directives and capability diagnostics
+
+**SDK**
+- SDK §27
+- SDK §29 Additional Compile-time Directives
+- SDK §73 Library Compilation Model
+- SDK §74 Platform-specific Source Isolation
+- SDK §100 Comptime Invariant
+
+**Language**
+- LS §7–13
+- LS §18–20
+
+**Acceptance**
+- `comptime assert` and `comptime error` are supported with stable diagnostics.
+- target/platform selection uses ordinary compile-time control flow and structured metadata.
+- full layout introspection observes the existing type-universe stabilization barrier.
+- standard-library source can eliminate non-target implementations without C preprocessor conditionals.
+
+**Depends**
+- 6.2.1.1
+- 3.5.2
+
+---
+
+## 6.3 [TODO] [0/8] Native `std` and C libc compatibility implementation
+
+**SDK**
+- SDK §6–19
+- SDK §44–57
+- SDK §75–76
+- SDK §90–92
+
+### 6.3.1 [TODO] [0/4] Native C+ standard-library core
+
+#### 6.3.1.1 [TODO] Implement `std.core`, `std.mem` and portable memory primitives
+
+**SDK**
+- SDK §7 `std.core`
+- SDK §8 `std.mem`
+- SDK §45 Compiler-generated Memory Operations
+
+**Acceptance**
+- fixed-width primitives, `usize/isize`, low-level numeric limits and pointer/memory utilities are available without hosted OS dependencies.
+- portable copy/move/set/compare/zero operations exist.
+- C symbols `memcpy`, `memmove`, `memset`, `memcmp` can be provided by the self-hosted runtime.
+- compiler/runtime tests verify overlap and alignment edge cases.
+
+**Depends**
+- 6.2.1.4
+
+#### 6.3.1.2 [TODO] Implement page abstraction and `std.alloc` portable allocator
+
+**SDK**
+- SDK §9 `std.alloc`
+
+**Acceptance**
+- allocator logic is platform-independent above a PAL page allocation interface.
+- allocate/zeroed/resize/free/aligned allocation are provided.
+- allocator can bootstrap without calling foreign libc allocation.
+- libc `malloc/calloc/realloc/free/aligned_alloc` can delegate to this implementation.
+
+**Depends**
+- 6.3.1.1
+- 6.4.1
+
+#### 6.3.1.3 [TODO] Implement `std.string`, `std.text` and core collections
+
+**SDK**
+- SDK §10 `std.string` and `std.text`
+- SDK §54 Wide and Unicode Compatibility
+
+**Acceptance**
+- native byte-string and Unicode/text semantics are explicit and separate from C `char*` conventions.
+- fundamental string/text operations avoid dependence on system libc.
+- core reusable collection primitives needed by the SDK are implemented in portable C+.
+- Unicode scalar/code-unit types do not depend on platform `wchar_t` width.
+
+**Depends**
+- 6.3.1.1
+- 6.3.1.2
+
+#### 6.3.1.4 [TODO] Implement hosted native services: I/O, filesystem, process, time, threads, sync, networking and math
+
+**SDK**
+- SDK §11–16 Native Standard-library Packages
+- SDK §52 Math Library
+- SDK §91 Platform-layer Size Rule
+- SDK §92 Low-level OS Packages
+
+**Acceptance**
+- native modules expose portable APIs over narrow PAL services.
+- `std.io/std.fs/std.process/std.time/std.thread/std.sync/std.net/std.math` do not expose host libc types as their core model.
+- unavailable target capabilities are reported through structured results/capability checks.
+- representative cross-platform API tests run against each implemented PAL.
+
+**Depends**
+- 6.3.1.2
+- 6.4.1
+
+---
+
+### 6.3.2 [TODO] [0/4] C libc compatibility surface
+
+#### 6.3.2.1 [TODO] Generate and deliver the C17 standard-header surface
+
+**SDK**
+- SDK §17.1 `libc-c17`
+- SDK §18 Standard C Headers Delivered by the SDK
+- SDK §19 Compiler-owned C Facilities
+- SDK §57 C Headers as Generated SDK Views
+- SDK §69 C Header Generator
+
+**Technical**
+- TS §38 Header Synthesis
+
+**Acceptance**
+- the self-hosted SDK exposes the specified C17 standard-header families.
+- headers are generated from shared semantic definitions wherever practical.
+- compiler-owned constructs such as varargs/atomics/alignment map to compiler/runtime primitives.
+- generated headers can be consumed by an independent supported C compiler.
+
+**Depends**
+- 6.2
+- 6.3.1.1
+
+#### 6.3.2.2 [TODO] Implement libc memory, string, allocation, conversion and `errno` APIs
+
+**SDK**
+- SDK §9–10
+- SDK §44 `errno`
+- SDK §45
+- SDK §75 Native C+ API versus libc ABI
+
+**Acceptance**
+- libc memory/string/stdlib compatibility operations delegate to portable C+ implementations where appropriate.
+- `errno` is thread-local and only the libc façade converts structured native errors into C sentinel+errno semantics.
+- allocation and conversion functions require no external libc.
+- C caller → C+ libc fixtures verify exported C ABI symbols.
+
+**Depends**
+- 6.3.1.1–6.3.1.3
+- 6.2.1.4
+
+#### 6.3.2.3 [TODO] Implement libc stdio, time, math, locale, Unicode and signal compatibility
+
+**SDK**
+- SDK §11–15
+- SDK §51 Floating-point Environment
+- SDK §52 Math Library
+- SDK §53 Character and Locale Layer
+- SDK §54 Wide and Unicode Compatibility
+- SDK §55 Signals
+
+**Acceptance**
+- `FILE` buffering/stdio is implemented above native I/O/PAL primitives.
+- C time/math APIs are backed by native C+ services and do not require system `libm` in complete self-hosted profiles.
+- initial locale/conversion/signals behavior has explicit conformance status and no silent host-libc fallback.
+- external C conformance fixtures exercise representative interfaces.
+
+**Depends**
+- 6.3.1.4
+- 6.3.2.2
+
+#### 6.3.2.4 [TODO] Implement C23 profile tracking and optional POSIX compatibility package
+
+**SDK**
+- SDK §17.2 `libc-c23`
+- SDK §56 POSIX Compatibility
+
+**Acceptance**
+- C23 additions are tracked as an additive, queryable profile rather than silently mixed with C17.
+- profile completeness is exposed to `target.has_libc_profile` or equivalent metadata.
+- optional `cplus.posix` is isolated from the native portable std API.
+- non-POSIX targets may reject unavailable POSIX facilities without compromising core C+ runtime support.
+
+**Depends**
+- 6.3.2.1–6.3.2.3
+
+---
+
+## 6.4 [TODO] [0/8] Platform adapters, link/toolchain integration and conformance
+
+**SDK**
+- SDK §31–38
+- SDK §59–70
+- SDK §82–89
+- SDK §95–97
+
+### 6.4.1 [TODO] [0/4] Platform ABI adapters
+
+#### 6.4.1.1 [TODO] Implement Linux PAL and generated syscall catalogues
+
+**SDK**
+- SDK §32 Linux ABI Profile
+- SDK §33 Linux Syscall Catalogue
+- SDK §34 Linux Syscall Result Normalization
+- SDK §68 Syscall Catalogue Generator
+
+**Acceptance**
+- Linux PAL reaches the kernel through architecture-specific syscall intrinsic lowering without glibc/musl.
+- syscall numbers are generated/packaged per target architecture rather than duplicated in ordinary library code.
+- raw Linux error conventions normalize to portable PAL results before reaching `std`/libc.
+- x86_64 and AArch64 smoke tests cover file I/O, memory pages and process exit.
+
+**Depends**
+- 6.2.2.1
+- 6.2.1.1
+
+#### 6.4.1.2 [TODO] Implement Windows PAL over supported system DLL APIs
+
+**SDK**
+- SDK §35 Windows ABI Profile
+- SDK §36 Windows Import Metadata
+
+**Acceptance**
+- Windows PAL uses declared supported system DLL APIs rather than hard-coded NT syscall numbers.
+- no UCRT/MSVCRT dependency is required for `runtime=cplus`.
+- DLL imports are selected only when used and retain ABI/link-name metadata.
+- x86_64 and AArch64 target descriptors cover memory, file/process and synchronization primitives.
+
+**Depends**
+- 6.2.1.3
+- 6.2.1.1
+
+#### 6.4.1.3 [TODO] Implement Darwin PAL over supported Apple userspace ABI
+
+**SDK**
+- SDK §37 Darwin ABI Profile
+
+**Acceptance**
+- Darwin PAL uses supported Apple userspace/system ABI facilities rather than undocumented syscall numbering as the portable contract.
+- native C+ std/libc semantics remain C+ owned even when the PAL enters through `libSystem`.
+- x86_64 and AArch64 target descriptors cover startup, memory, files/process and time primitives.
+- system-library dependencies are explicit and audited.
+
+**Depends**
+- 6.2.1.3
+- 6.2.1.1
+
+#### 6.4.1.4 [TODO] Implement object-format, startup and system-link metadata for ELF, PE/COFF and Mach-O
+
+**SDK**
+- SDK §38 Object Formats
+- SDK §39–40 Program Startup ABI and Startup Symbols
+- SDK §87 SDK Independence Invariant
+
+**Acceptance**
+- target descriptors identify ELF, PE/COFF and Mach-O requirements.
+- startup/link metadata is isolated from portable standard-library code.
+- target startup entry, system dependencies and symbol-prefix rules are queryable by the link driver.
+- cross-target tests prove host object-format assumptions do not leak into target compilation.
+
+**Depends**
+- 6.4.1.1–6.4.1.3
+- 6.1.2.1
+
+---
+
+### 6.4.2 [TODO] [0/4] Toolchain integration, auditing and conformance
+
+#### 6.4.2.1 [TODO] Implement LinkDriver and downstream C compiler target adapters
+
+**SDK**
+- SDK §64 Link Driver
+- SDK §65 C Compiler Invocation
+- SDK §95 Canonical Pure C+ Build
+- SDK §96 Canonical Interoperability Build
+
+**Technical**
+- TS §57 CLI
+- TS §58 Compiler API
+
+**Acceptance**
+- link orchestration consumes generated application objects, selected runtime objects/startup and allowed OS dependencies.
+- downstream compiler flags prevent accidental host libc startup/default-library usage in self-hosted mode.
+- TCC/Clang/GCC adapters expose capability differences explicitly.
+- pure C+ and C-interoperability fixture builds are both supported.
+
+**Depends**
+- 6.1.2
+- 6.4.1
+- 4.4
+
+#### 6.4.2.2 [TODO] Implement SDK build/package/header/syscall tooling and CLI commands
+
+**SDK**
+- SDK §59 Additional Compiler Tooling
+- SDK §60 TargetRegistry
+- SDK §68 Syscall Catalogue Generator
+- SDK §69 C Header Generator
+- SDK §70 SDK Packager
+- SDK §71 Proposed CLI Additions
+
+**Acceptance**
+- commands equivalent to `sdk build/verify/doctor`, `target list/show`, `abi verify`, `runtime inspect`, `libc test` exist.
+- SDK package output contains source, headers, target descriptors, syscall catalogues, startup, intrinsic metadata and optional caches/objects.
+- generated artifacts are deterministic and version-stamped.
+- SDK tooling can run without a target machine matching the build host.
+
+**Depends**
+- 6.1.1
+- 6.3.2.1
+- 6.4.1
+
+#### 6.4.2.3 [TODO] Implement runtime dependency audit and no-host-contamination enforcement
+
+**SDK**
+- SDK §66 Runtime Dependency Auditor
+- SDK §85 Freestanding Conformance
+- SDK §86 Target-specific Dependency Policy
+- SDK §88 No-host-contamination Invariant
+- SDK §89 No Hidden Compiler-runtime Invariant
+
+**Acceptance**
+- produced binaries can be inspected for unexpected libc/system/compiler-runtime dependencies.
+- self-hosted Linux rejects glibc/musl dependency; Windows rejects UCRT/MSVCRT dependency.
+- cross compilation rejects host headers/libraries entering target resolution silently.
+- audit output lists allowed and unexpected dependencies with origin/reason where known.
+
+**Depends**
+- 6.4.2.1
+- 6.1.2.4
+
+#### 6.4.2.4 [TODO] Implement libc, ABI and platform conformance matrix
+
+**SDK**
+- SDK §67 ABI Verifier
+- SDK §82 Testing Profiles
+- SDK §83 libc Conformance Testing
+- SDK §84 ABI Round-trip Testing
+- SDK §85 Freestanding Conformance
+- SDK §97 Implementation Priorities
+
+**Technical**
+- TS §63–64 Testing and Golden Fixtures
+
+**Acceptance**
+- test classes cover native std, libc conformance, ABI interop and target/runtime integration.
+- independent C caller → C+ implementation and C+ caller → C implementation round trips cover integers, floats, pointers, structs/unions, callbacks, variadics and TLS.
+- target tests verify size/alignment/layout/calling conventions and startup behavior.
+- section 6 cannot become DONE while a claimed runtime/libc target profile fails its conformance matrix.
+
+**Depends**
+- 6.2.2.3
+- 6.3
+- 6.4.2.1–6.4.2.3
+
+---
+
 # Vertical milestones
 
-Milestones are not additional terminal tasks and therefore do not affect the `0/80` count.
+Milestones are not additional terminal tasks and therefore do not affect terminal-task counters.
 
 ## M1 — Minimal C+ → C vertical compiler
 
@@ -2615,6 +3334,76 @@ Acceptance:
 
 ---
 
+## M7 — Self-hosted C+ SDK/runtime foundation
+
+Target:
+
+```text
+C+ application
+   ↓
+C+ SDK source + target metadata
+   ↓
+C+ compiler / C backend
+   ↓
+C+ runtime + PAL
+   ↓
+OS ABI
+   ↓
+executable with no foreign libc dependency where target profile promises it
+```
+
+Primary tasks:
+
+```text
+6.1
+6.2
+6.3.1
+6.4.1
+6.4.2.1
+6.4.2.3
+```
+
+Acceptance:
+
+- Linux self-hosted smoke executable starts, allocates memory, performs basic I/O and exits without glibc/musl.
+- Windows self-hosted smoke executable uses supported system DLL APIs without UCRT/MSVCRT.
+- Darwin smoke build uses the declared supported Apple system ABI and C+ std/libc semantics.
+- target/comptime metadata selects the correct platform implementation without C preprocessor conditionals.
+- runtime dependency audit reports only target-profile-approved dependencies.
+
+---
+
+## M8 — C+ libc/SDK conformance
+
+Target:
+
+```text
+source-delivered C+ std + libc + runtime
+        +
+generated C17 SDK headers
+        +
+ABI verification / C round-trip tests
+        ↓
+versioned portable C+ SDK distribution
+```
+
+Primary tasks:
+
+```text
+6.3
+6.4.2.2
+6.4.2.4
+```
+
+Acceptance:
+
+- C17 compatibility profile passes the declared conformance suite.
+- independent C callers can consume the generated headers and link to the C+ libc implementation.
+- ABI round trips cover scalar, aggregate, callback, variadic and TLS cases.
+- packaged SDK is reproducible from source and carries complete version/target metadata.
+
+---
+
 # Dependency spine
 
 The principal dependency flow is:
@@ -2629,6 +3418,8 @@ The principal dependency flow is:
 4. Lowering/backend
         ↓
 5. Tooling/integration
+        ↓
+6. SDK/runtime/platform ABI
 ```
 
 But implementation should follow the vertical milestones rather than waiting for an entire horizontal layer to become complete.
@@ -2757,6 +3548,30 @@ TS §76        → milestones M1–M6
 TS §77–78     → final audit 5.3.4
 ```
 
+## C+ Standard Library, Runtime, SDK and Platform ABI Specification
+
+```text
+SDK §1–6       → 6.1, 6.3
+SDK §7–16      → 6.3.1
+SDK §17–19     → 6.3.2
+SDK §20–23     → 6.2.1
+SDK §24–29     → 6.2.2
+SDK §30–31     → 6.2.1.1, 6.4.1
+SDK §32–34     → 6.4.1.1
+SDK §35–36     → 6.4.1.2
+SDK §37        → 6.4.1.3
+SDK §38–43     → 6.1.2, 6.4.1.4
+SDK §44–57     → 6.2.1.4, 6.2.2, 6.3.2
+SDK §58–63     → 6.1.1, 6.4.2.2
+SDK §64–70     → 6.4.2
+SDK §71–74     → 6.1.1.2, 6.2.2.4, 6.4.2.2
+SDK §75–81     → 6.2.1.3, 6.3.2, 6.1
+SDK §82–89     → 6.4.2.3–6.4.2.4
+SDK §90–94     → 6.3.1, 6.1.1.3
+SDK §95–97     → 6.4.2.1, 6.4.2.4
+SDK §98–102    → 6.*, final SDK/runtime architecture audit
+```
+
 ```text
 Uncovered normative requirements: 0
 ```
@@ -2848,7 +3663,7 @@ M2 — C+ methods
 The plan is complete only when:
 
 ```text
-Overall: 80/80
+Overall: 145/145
 ```
 
 and the specification audit reports:
