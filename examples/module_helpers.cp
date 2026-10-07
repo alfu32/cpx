@@ -1,3 +1,3 @@
-int add(int left, int right) {
+pub int add(int left, int right) {
     return left + right;
 }

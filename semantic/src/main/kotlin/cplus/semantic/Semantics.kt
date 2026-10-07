@@ -277,7 +277,7 @@ class SemanticAnalyzer {
             val type = ForeignType(TypeId(nextTypeId.next()), name)
             foreignTypes[name] = type
             types += type
-            val symbol = newSymbol(name, SymbolKind.FOREIGN_TYPE, type, origin, moduleName)
+            val symbol = newSymbol(name, SymbolKind.FOREIGN_TYPE, type, origin, moduleName, Visibility.PUBLIC)
             scopes.define(rootScope, name, symbol.id)
         }
 
@@ -396,7 +396,7 @@ class SemanticAnalyzer {
                                 "printf" -> {
                                     val returnType = primitive("int")
                                     val signature = FunctionType(TypeId(nextTypeId.next()), returnType, emptyList(), isVariadic = true).also(types::add)
-                                    val symbol = newSymbol(name, SymbolKind.FOREIGN, signature, declaration.origin, declaration.module)
+                                    val symbol = newSymbol(name, SymbolKind.FOREIGN, signature, declaration.origin, declaration.module, Visibility.PUBLIC)
                                     val function = FunctionSymbol(symbol, returnType, emptyList(), isVariadic = true, signature = signature)
                                     functions[name] = function
                                     moduleFunctions.getOrPut(declaration.module) { linkedMapOf() }[name] = function
@@ -542,6 +542,9 @@ class SemanticAnalyzer {
             declarations.filterIsInstance<AstImport>().forEach { import ->
                 val targetName = import.module.substringAfterLast('.')
                 val targetFunctions = moduleFunctions[import.module] ?: moduleFunctions[targetName]
+                val exportedFunctions = targetFunctions?.filterValues {
+                    it.symbol.visibility == Visibility.PUBLIC || it.symbol.kind == SymbolKind.FOREIGN
+                }.orEmpty()
                 if (targetFunctions == null) {
                     if (import.module !in setOf("c.stdio", "c.stddef", "c.math") && targetName !in knownModules) {
                         diagnostics.error("module import '${import.module}' cannot be resolved", rangeOf(import.origin), "SEM402")
@@ -556,7 +559,7 @@ class SemanticAnalyzer {
                 }
                 if (import.names.isEmpty()) {
                     import.alias?.let { alias ->
-                        targetFunctions.forEach { (name, function) -> visible["$alias.$name"] = function }
+                        exportedFunctions.forEach { (name, function) -> visible["$alias.$name"] = function }
                     }
                     return@forEach
                 }
@@ -565,6 +568,8 @@ class SemanticAnalyzer {
                     val function = targetFunctions[name]
                     if (function == null) {
                         diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
+                    } else if (function.symbol.visibility != Visibility.PUBLIC && function.symbol.kind != SymbolKind.FOREIGN) {
+                        diagnostics.error("imported function '$name' is not public in module '${import.module}'", rangeOf(import.origin), "SEM406")
                     } else if (import.alias != null) {
                         visible["${import.alias}.$name"] = function
                     } else if (visible.putIfAbsent(name, function) != null) {

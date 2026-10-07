@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 40/93
+Overall: 41/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [16/27] 2. Semantic model and modules
+[DOING] [17/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.3.3.2 — resolve imported bindings by module
+2.3.3.3 — diagnose import collisions and unresolved names
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -567,7 +567,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.3 [DOING] [3/8] Packages and C+ imports
+## 2.3 [DOING] [5/8] Packages and C+ imports
 
 ### 2.3.1 [DONE] [3/3] Package and module representation
 
@@ -627,7 +627,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.3.1
 
-### 2.3.3 [DOING] [1/3] Import, alias and selective-import resolution
+### 2.3.3 [DOING] [2/3] Import, alias and selective-import resolution
 
 **Language**
 - LS §21.1–21.4
@@ -652,7 +652,7 @@ all create correct bindings.
 **Depends**
 - 2.3.2
 
-#### 2.3.3.2 [TODO] Resolve imported bindings by module
+#### 2.3.3.2 [DONE] Resolve imported bindings by module
 
 **Acceptance**
 - imported names resolve against the declaring module rather than an accidental global catalogue.

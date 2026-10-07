@@ -364,7 +364,7 @@ class CompilerIntegrationTest {
             """
                 package demo.core;
 
-                int add(int left, int right) {
+                pub int add(int left, int right) {
                     return left + right;
                 }
             """.trimIndent()
@@ -412,7 +412,7 @@ class CompilerIntegrationTest {
             """
                 import { secondValue } from second;
 
-                int firstValue() {
+                pub int firstValue() {
                     return secondValue();
                 }
 
@@ -425,7 +425,7 @@ class CompilerIntegrationTest {
             """
                 import { firstValue } from first;
 
-                int secondValue() {
+                pub int secondValue() {
                     return 9;
                 }
             """.trimIndent()
@@ -513,7 +513,7 @@ class CompilerIntegrationTest {
         val directory = Files.createTempDirectory("cplus-import-visibility")
         val helper = directory.resolve("helpers.cp")
         val main = directory.resolve("main.cp")
-        helper.writeText("int add(int left, int right) { return left + right; }")
+        helper.writeText("pub int add(int left, int right) { return left + right; }")
         main.writeText(
             """
                 int main() {
@@ -529,11 +529,30 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun importedPrivateFunctionIsRejected() {
+        val directory = Files.createTempDirectory("cplus-private-import")
+        val helper = directory.resolve("helpers.cp")
+        val main = directory.resolve("main.cp")
+        helper.writeText("int add(int left, int right) { return left + right; }")
+        main.writeText(
+            """
+                import { add } from helpers;
+                int main() { return add(1, 2); }
+            """.trimIndent()
+        )
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, helper)))
+
+        assertTrue(result.diagnostics.any { it.code == "SEM406" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun unresolvedSelectiveImportIsDiagnosed() {
         val directory = Files.createTempDirectory("cplus-import-error")
         val helper = directory.resolve("helpers.cp")
         val main = directory.resolve("main.cp")
-        helper.writeText("int add(int left, int right) { return left + right; }")
+        helper.writeText("pub int add(int left, int right) { return left + right; }")
         main.writeText(
             """
                 import { missing } from helpers;
@@ -552,7 +571,7 @@ class CompilerIntegrationTest {
         val directory = Files.createTempDirectory("cplus-import-alias")
         val helper = directory.resolve("helpers.cp")
         val main = directory.resolve("main.cp")
-        helper.writeText("int add(int left, int right) { return left + right; }")
+        helper.writeText("pub int add(int left, int right) { return left + right; }")
         main.writeText(
             """
                 import helpers as h;
