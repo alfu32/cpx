@@ -4,6 +4,7 @@ import cplus.core.*
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CpxExpansionTest {
@@ -58,5 +59,42 @@ class CpxExpansionTest {
         val result = CpxExpander().expand(source, parsed.syntax)
 
         assertTrue(result.diagnostics.any { it.code == "CPX002" }, result.diagnostics.joinToString())
+    }
+
+    @Test
+    fun schedulerBlocksTasksWhoseExpansionDependenciesFormACycle() {
+        val sourceText = """
+            comptime cpx<decl> a(type T) { return { struct a_{T}_t { T value; }; }; }
+            comptime cpx<decl> b(type T) { return { struct b_{T}_t { T value; }; }; }
+            a(int);
+            b(int);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(13), Path.of("scheduler.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val definitions = parsed.syntax.declarations.filterIsInstance<SyntaxComptimeFunction>().associateBy { it.name }
+        val invocations = parsed.syntax.declarations.filterIsInstance<SyntaxCpxInvocation>().associateBy { it.name }
+        val keyA = ExpansionKey("a", listOf("int"))
+        val keyB = ExpansionKey("b", listOf("int"))
+        val scheduler = ComptimeScheduler()
+        scheduler.enqueue(
+            ExpansionTask(
+                invocations.getValue("a"),
+                definitions.getValue("a"),
+                keyA,
+                dependencies = setOf(ComptimeDependency.Expansion(keyB))
+            )
+        )
+        scheduler.enqueue(
+            ExpansionTask(
+                invocations.getValue("b"),
+                definitions.getValue("b"),
+                keyB,
+                dependencies = setOf(ComptimeDependency.Expansion(keyA))
+            )
+        )
+
+        assertNull(scheduler.next())
+        assertEquals(ComptimeTaskState.PENDING, scheduler.state(keyA))
+        assertEquals(ComptimeTaskState.PENDING, scheduler.state(keyB))
     }
 }

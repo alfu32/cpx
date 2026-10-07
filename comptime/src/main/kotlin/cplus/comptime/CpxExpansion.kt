@@ -99,12 +99,27 @@ data class ExpansionKey(
         get() = "$functionName(${arguments.joinToString(",")})"
 }
 
+sealed interface ComptimeDependency {
+    data class Expansion(val key: ExpansionKey) : ComptimeDependency
+    data object StableTypeUniverse : ComptimeDependency
+}
+
+enum class ComptimeTaskState {
+    PENDING,
+    READY,
+    RUNNING,
+    EXPANDED,
+    BLOCKED,
+    FAILED
+}
+
 data class ExpansionTask(
     val invocation: SyntaxCpxInvocation,
     val definition: SyntaxComptimeFunction,
     val key: ExpansionKey,
     val ancestors: List<ExpansionKey> = emptyList(),
-    val phase: CpxPhase = CpxPhase.STRUCTURAL
+    val phase: CpxPhase = CpxPhase.STRUCTURAL,
+    val dependencies: Set<ComptimeDependency> = emptySet()
 )
 
 /**
@@ -118,17 +133,52 @@ data class ExpansionTask(
 class ComptimeScheduler {
     private val pending = ArrayDeque<ExpansionTask>()
     private val expanded = linkedSetOf<ExpansionKey>()
+    private val states = linkedMapOf<ExpansionKey, ComptimeTaskState>()
 
     fun enqueue(task: ExpansionTask) {
         pending.addLast(task)
+        states.putIfAbsent(task.key, ComptimeTaskState.PENDING)
     }
 
-    fun next(): ExpansionTask? = if (pending.isEmpty()) null else pending.removeFirst()
+    fun next(): ExpansionTask? {
+        if (pending.isEmpty()) return null
+        val count = pending.size
+        repeat(count) {
+            val task = pending.removeFirst()
+            if (dependenciesReady(task)) {
+                states[task.key] = ComptimeTaskState.READY
+                states[task.key] = ComptimeTaskState.RUNNING
+                return task
+            }
+            pending.addLast(task)
+        }
+        return null
+    }
 
     fun wasExpanded(key: ExpansionKey): Boolean = key in expanded
 
     fun markExpanded(key: ExpansionKey) {
         expanded += key
+        states[key] = ComptimeTaskState.EXPANDED
+    }
+
+    fun markFailed(key: ExpansionKey) {
+        states[key] = ComptimeTaskState.FAILED
+    }
+
+    fun markBlocked(key: ExpansionKey) {
+        states[key] = ComptimeTaskState.BLOCKED
+    }
+
+    fun state(key: ExpansionKey): ComptimeTaskState? = states[key]
+
+    fun pendingKeys(): Set<ExpansionKey> = pending.map { it.key }.toSet()
+
+    private fun dependenciesReady(task: ExpansionTask): Boolean = task.dependencies.all { dependency ->
+        when (dependency) {
+            is ComptimeDependency.Expansion -> dependency.key in expanded
+            ComptimeDependency.StableTypeUniverse -> false
+        }
     }
 
     val hasPending: Boolean
@@ -166,7 +216,16 @@ class CpxExpander(
         val generated = mutableListOf<SyntaxDeclaration>()
         var generatedFileIndex = 0
         while (scheduler.hasPending) {
-            val task = scheduler.next() ?: break
+            val task = scheduler.next()
+            if (task == null) {
+                scheduler.pendingKeys().forEach(scheduler::markBlocked)
+                diagnostics.error(
+                    "compile-time dependency cycle or unsatisfied phase barrier: ${scheduler.pendingKeys().joinToString { it.canonical }}",
+                    program.origin.primaryRange,
+                    "CPX006"
+                )
+                break
+            }
             if (task.key in task.ancestors) {
                 diagnostics.error("compile-time expansion cycle detected at ${task.key.canonical}", task.invocation.origin.primaryRange, "CPX002")
                 continue
@@ -249,7 +308,11 @@ class CpxExpander(
         definition,
         ExpansionKey(definition.name, invocation.arguments.map(::canonicalArgument)),
         ancestors
-    )
+    ).let { task ->
+        task.copy(
+            dependencies = ancestors.lastOrNull()?.let { setOf(ComptimeDependency.Expansion(it)) }.orEmpty()
+        )
+    }
 
     private fun parseCategory(value: String): CpxCategory = when (value.lowercase()) {
         "unit" -> CpxCategory.UNIT
@@ -265,6 +328,15 @@ class CpxExpander(
         .replace(Regex("\\s+"), " ")
 
     private fun reorigin(declaration: SyntaxDeclaration, origin: Origin): SyntaxDeclaration = when (declaration) {
+        is SyntaxPackage -> declaration.copy(origin = origin)
+        is SyntaxUnion -> declaration.copy(
+            fields = declaration.fields.map { it.copy(type = reorigin(it.type, origin), origin = origin) },
+            origin = origin
+        )
+        is SyntaxEnum -> declaration.copy(
+            values = declaration.values.map { it.copy(origin = origin) },
+            origin = origin
+        )
         is SyntaxStruct -> declaration.copy(
             fields = declaration.fields.map { it.copy(type = reorigin(it.type, origin), origin = origin) },
             methods = declaration.methods.map { reorigin(it, origin) as SyntaxFunction },
@@ -283,6 +355,7 @@ class CpxExpander(
         )
         is SyntaxComptimeFunction -> declaration.copy(origin = origin)
         is SyntaxCpxInvocation -> declaration.copy(origin = origin)
+        is SyntaxImport -> declaration.copy(origin = origin)
     }
 
     private fun reorigin(type: TypeSyntax, origin: Origin): TypeSyntax = type.copy(origin = origin)
@@ -291,6 +364,27 @@ class CpxExpander(
         is SyntaxBlock -> statement.copy(statements = statement.statements.map { reorigin(it, origin) }, origin = origin)
         is SyntaxReturn -> statement.copy(expression = statement.expression?.let { reorigin(it, origin) }, origin = origin)
         is SyntaxExpressionStatement -> statement.copy(expression = reorigin(statement.expression, origin), origin = origin)
+        is SyntaxDefer -> statement.copy(expression = reorigin(statement.expression, origin), origin = origin)
+        is SyntaxIf -> statement.copy(
+            condition = reorigin(statement.condition, origin),
+            thenBranch = reorigin(statement.thenBranch, origin),
+            elseBranch = statement.elseBranch?.let { reorigin(it, origin) },
+            origin = origin
+        )
+        is SyntaxWhile -> statement.copy(
+            condition = reorigin(statement.condition, origin),
+            body = reorigin(statement.body, origin),
+            origin = origin
+        )
+        is SyntaxFor -> statement.copy(
+            initializer = statement.initializer?.let { reorigin(it, origin) },
+            condition = statement.condition?.let { reorigin(it, origin) },
+            increment = statement.increment?.let { reorigin(it, origin) },
+            body = reorigin(statement.body, origin),
+            origin = origin
+        )
+        is SyntaxBreak -> statement.copy(origin = origin)
+        is SyntaxContinue -> statement.copy(origin = origin)
         is SyntaxVariableDeclaration -> statement.copy(
             type = reorigin(statement.type, origin),
             initializer = statement.initializer?.let { reorigin(it, origin) },

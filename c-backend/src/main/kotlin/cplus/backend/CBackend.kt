@@ -12,30 +12,61 @@ class CLowerer(private val semantic: SemanticModel) {
     private val diagnostics = DiagnosticBag()
 
     fun lower(program: AstProgram): LoweredCResult {
+        val includes = program.declarations
+            .filterIsInstance<AstImport>()
+            .flatMap { import ->
+                when (import.module) {
+                    "c.stdio" -> listOf("stdio.h")
+                    "c.math" -> listOf("math.h")
+                    else -> emptyList()
+                }
+            }
+            .distinct()
+            .sorted()
         val structs = program.declarations.filterIsInstance<AstStruct>().map { declaration ->
             CStructDeclaration(
                 declaration.name,
                 declaration.fields.map { field ->
-                    CField(type(field.type), field.name, field.origin)
+                    CField(type(field.type), field.name, field.origin, field.arrayDimensions)
                 },
                 declaration.origin
             )
         }
+        val unions = program.declarations.filterIsInstance<AstUnion>().map { declaration ->
+            CUnionDeclaration(
+                declaration.name,
+                declaration.fields.map { field -> CField(type(field.type), field.name, field.origin, field.arrayDimensions) },
+                declaration.origin
+            )
+        }
+        val enums = program.declarations.filterIsInstance<AstEnum>().map { declaration ->
+            CEnumDeclaration(
+                declaration.name,
+                declaration.values.map { value -> CEnumValue(value.name, value.value, value.origin) },
+                declaration.origin
+            )
+        }
         val globals = program.declarations.filterIsInstance<AstGlobalVariable>().map { declaration ->
-            CGlobalDeclaration(type(declaration.type), declaration.name, declaration.initializer?.let(::expression), declaration.origin)
+            CGlobalDeclaration(
+                type(declaration.type),
+                declaration.name,
+                declaration.initializer?.let(::expression),
+                declaration.origin,
+                declaration.arrayDimensions
+            )
         }
         val functions = program.declarations.filterIsInstance<AstFunction>().map { declaration ->
             CFunction(
                 type(declaration.returnType),
                 declaration.name,
-                declaration.parameters.map { CParameter(type(it.type), it.name, it.origin) },
-                declaration.body?.let { statement(it, declaration.ownerName, declaration.isMethod) },
+                declaration.parameters.map { CParameter(type(it.type), it.name, it.origin, it.arrayDimensions) },
+                declaration.body?.let { lowerBody(it, declaration.ownerName, declaration.isMethod) },
                 declaration.origin
             )
         } + program.declarations.filterIsInstance<AstStruct>().flatMap { structure ->
             structure.methods.map { method -> lowerMethod(structure.name, method) }
         }
-        return LoweredCResult(CTranslationUnit(structs, globals, functions), diagnostics.diagnostics)
+        return LoweredCResult(CTranslationUnit(includes, structs, unions, enums, globals, functions), diagnostics.diagnostics)
     }
 
     private fun lowerMethod(ownerName: String, method: AstFunction): CFunction {
@@ -43,40 +74,196 @@ class CLowerer(private val semantic: SemanticModel) {
         val parameters = buildList {
             if (instance) add(CParameter(CType.Struct(ownerName, pointerDepth = 1), "self", method.origin))
             method.parameters.filterNot { it.isReceiver }.forEach {
-                add(CParameter(type(it.type), it.name, it.origin))
+                add(CParameter(type(it.type), it.name, it.origin, it.arrayDimensions))
             }
         }
         return CFunction(
             type(method.returnType),
             "${ownerName}__${method.name}",
             parameters,
-            method.body?.let { statement(it, ownerName, instance) },
+            method.body?.let { lowerBody(it, ownerName, instance) },
             method.origin
         )
     }
 
     private fun type(reference: AstTypeRef): CType {
-        val result = if (reference.isStruct || semantic.structs.containsKey(reference.name)) {
-            CType.Struct(reference.name, reference.pointerDepth)
-        } else if (reference.name in primitiveNames) {
-            CType.Primitive(reference.name, reference.pointerDepth)
-        } else {
-            diagnostics.error("cannot lower unknown type '${reference.name}'", reference.origin.primaryRange, "LOW101")
-            CType.Unknown
+        val result = when {
+            reference.declarationKind == "union" || semantic.unions.containsKey(reference.name) -> {
+                CType.Union(reference.name, reference.pointerDepth)
+            }
+            reference.declarationKind == "enum" || semantic.enums.containsKey(reference.name) -> {
+                CType.Enum(reference.name, reference.pointerDepth)
+            }
+            reference.isStruct || semantic.structs.containsKey(reference.name) -> {
+                CType.Struct(reference.name, reference.pointerDepth)
+            }
+            reference.name in primitiveNames -> CType.Primitive(reference.name, reference.pointerDepth)
+            else -> {
+                diagnostics.error("cannot lower unknown type '${reference.name}'", reference.origin.primaryRange, "LOW101")
+                CType.Unknown
+            }
         }
         return result
     }
 
-    private fun statement(node: AstStatement, ownerName: String? = null, instanceMethod: Boolean = false): CStatement = when (node) {
-        is AstBlock -> CBlock(node.statements.map { statement(it, ownerName, instanceMethod) }, node.origin)
-        is AstReturn -> CReturn(node.expression?.let { expression(it, ownerName, instanceMethod) }, node.origin)
-        is AstExpressionStatement -> CExpressionStatement(expression(node.expression, ownerName, instanceMethod), node.origin)
-        is AstVariableDeclaration -> CVariableDeclaration(
-            type(node.type),
-            node.name,
-            node.initializer?.let { expression(it, ownerName, instanceMethod) },
-            node.origin
+    private data class LoweredStatements(
+        val statements: List<CStatement>,
+        val fallsThrough: Boolean
+    )
+
+    private class LoweringContext {
+        val cleanupScopes = mutableListOf<MutableList<CExpression>>()
+        val loopBoundaries = mutableListOf<Int>()
+    }
+
+    private fun lowerBody(node: AstStatement, ownerName: String?, instanceMethod: Boolean): CStatement {
+        val context = LoweringContext()
+        return asStatement(lowerStatement(node, ownerName, instanceMethod, context).statements, node.origin)
+    }
+
+    private fun lowerStatement(
+        node: AstStatement,
+        ownerName: String?,
+        instanceMethod: Boolean,
+        context: LoweringContext
+    ): LoweredStatements = when (node) {
+        is AstBlock -> lowerBlock(node, ownerName, instanceMethod, context)
+        is AstReturn -> {
+            val cleanup = cleanupForReturn(context, node.origin)
+            LoweredStatements(
+                cleanup + CReturn(node.expression?.let { expression(it, ownerName, instanceMethod) }, node.origin),
+                fallsThrough = false
+            )
+        }
+        is AstExpressionStatement -> LoweredStatements(
+            listOf(CExpressionStatement(expression(node.expression, ownerName, instanceMethod), node.origin)),
+            fallsThrough = true
         )
+        is AstDefer -> {
+            val scope = context.cleanupScopes.lastOrNull()
+            if (scope == null) {
+                diagnostics.error("defer must be lowered inside a lexical block", node.origin.primaryRange, "LOW301")
+            } else {
+                scope += expression(node.expression, ownerName, instanceMethod)
+            }
+            LoweredStatements(emptyList(), fallsThrough = true)
+        }
+        is AstIf -> {
+            val thenBranch = lowerStatement(node.thenBranch, ownerName, instanceMethod, context)
+            val elseBranch = node.elseBranch?.let { lowerStatement(it, ownerName, instanceMethod, context) }
+            val cIf = CIf(
+                expression(node.condition, ownerName, instanceMethod),
+                asStatement(thenBranch.statements, node.thenBranch.origin),
+                elseBranch?.let { asStatement(it.statements, node.elseBranch!!.origin) },
+                node.origin
+            )
+            LoweredStatements(
+                listOf(cIf),
+                fallsThrough = thenBranch.fallsThrough || elseBranch?.fallsThrough ?: true
+            )
+        }
+        is AstWhile -> {
+            val boundary = context.cleanupScopes.size
+            context.loopBoundaries += boundary
+            val body = lowerStatement(node.body, ownerName, instanceMethod, context)
+            context.loopBoundaries.removeAt(context.loopBoundaries.lastIndex)
+            LoweredStatements(
+                listOf(CWhile(expression(node.condition, ownerName, instanceMethod), asStatement(body.statements, node.body.origin), node.origin)),
+                fallsThrough = true
+            )
+        }
+        is AstFor -> {
+            val initializer = node.initializer?.let {
+                val loweredInitializer = lowerStatement(it, ownerName, instanceMethod, context).statements
+                asStatement(loweredInitializer, it.origin)
+            }
+            val boundary = context.cleanupScopes.size
+            context.loopBoundaries += boundary
+            val body = lowerStatement(node.body, ownerName, instanceMethod, context)
+            context.loopBoundaries.removeAt(context.loopBoundaries.lastIndex)
+            LoweredStatements(
+                listOf(
+                    CFor(
+                        initializer,
+                        node.condition?.let { expression(it, ownerName, instanceMethod) },
+                        node.increment?.let { expression(it, ownerName, instanceMethod) },
+                        asStatement(body.statements, node.body.origin),
+                        node.origin
+                    )
+                ),
+                fallsThrough = true
+            )
+        }
+        is AstBreak -> {
+            val boundary = context.loopBoundaries.lastOrNull()
+            if (boundary == null) {
+                diagnostics.error("break is outside a lowered loop", node.origin.primaryRange, "LOW302")
+                LoweredStatements(emptyList(), fallsThrough = false)
+            } else {
+                LoweredStatements(cleanupForExit(context, boundary, node.origin) + CBreak(node.origin), fallsThrough = false)
+            }
+        }
+        is AstContinue -> {
+            val boundary = context.loopBoundaries.lastOrNull()
+            if (boundary == null) {
+                diagnostics.error("continue is outside a lowered loop", node.origin.primaryRange, "LOW303")
+                LoweredStatements(emptyList(), fallsThrough = false)
+            } else {
+                LoweredStatements(cleanupForExit(context, boundary, node.origin) + CContinue(node.origin), fallsThrough = false)
+            }
+        }
+        is AstVariableDeclaration -> LoweredStatements(
+            listOf(
+                CVariableDeclaration(
+                    type(node.type),
+                    node.name,
+                    node.initializer?.let { expression(it, ownerName, instanceMethod) },
+                    node.origin,
+                    node.arrayDimensions
+                )
+            ),
+            fallsThrough = true
+        )
+    }
+
+    private fun lowerBlock(
+        block: AstBlock,
+        ownerName: String?,
+        instanceMethod: Boolean,
+        context: LoweringContext
+    ): LoweredStatements {
+        context.cleanupScopes.add(mutableListOf())
+        val lowered = mutableListOf<CStatement>()
+        var fallsThrough = true
+        for (statement in block.statements) {
+            if (!fallsThrough) break
+            val result = lowerStatement(statement, ownerName, instanceMethod, context)
+            lowered += result.statements
+            fallsThrough = result.fallsThrough
+        }
+        if (fallsThrough) {
+            lowered += cleanupForExit(context, context.cleanupScopes.lastIndex, block.origin)
+        }
+        context.cleanupScopes.removeAt(context.cleanupScopes.lastIndex)
+        return LoweredStatements(listOf(CBlock(lowered, block.origin)), fallsThrough)
+    }
+
+    private fun cleanupForReturn(context: LoweringContext, origin: Origin): List<CStatement> =
+        cleanupForExit(context, 0, origin)
+
+    private fun cleanupForExit(context: LoweringContext, boundary: Int, origin: Origin): List<CStatement> {
+        if (context.cleanupScopes.isEmpty()) return emptyList()
+        return context.cleanupScopes
+            .asReversed()
+            .take(context.cleanupScopes.size - boundary)
+            .flatMap { scope -> scope.asReversed() }
+            .map { cleanup -> CExpressionStatement(cleanup, origin) }
+    }
+
+    private fun asStatement(statements: List<CStatement>, origin: Origin): CStatement = when (statements.size) {
+        0 -> CBlock(emptyList(), origin)
+        1 -> statements.single()
+        else -> CBlock(statements, origin)
     }
 
     private fun expression(node: AstExpression, ownerName: String? = null, instanceMethod: Boolean = false): CExpression = when (node) {
@@ -110,6 +297,17 @@ class CLowerer(private val semantic: SemanticModel) {
         if (member == null) {
             return CCall(
                 expression(node.callee, ownerName, instanceMethod),
+                node.arguments.map { expression(it, ownerName, instanceMethod) },
+                node.origin
+            )
+        }
+
+        val qualifiedName = (member.receiver as? AstIdentifier)?.let { receiver ->
+            "${receiver.name}.${member.member}"
+        }
+        if (qualifiedName != null && qualifiedName in semantic.qualifiedFunctionNames) {
+            return CCall(
+                CIdentifier(member.member, node.origin),
                 node.arguments.map { expression(it, ownerName, instanceMethod) },
                 node.origin
             )
@@ -170,21 +368,41 @@ class CEmitter {
 
         if (usesBool(unit)) {
             appendLine("#include <stdbool.h>")
-            appendLine()
         }
+        unit.includes.sorted().forEach { include -> appendLine("#include <$include>") }
+        if (usesBool(unit) || unit.includes.isNotEmpty()) appendLine()
 
         unit.structs.forEachIndexed { index, structure ->
             appendLine("struct ${structure.name} {", structure.origin)
             structure.fields.forEach { field ->
-                appendLine("    ${field.type.render()} ${field.name};", field.origin)
+                appendLine("    ${field.type.render()} ${field.name}${arraySuffix(field.arrayDimensions)};", field.origin)
             }
             appendLine("};", structure.origin)
-            if (index != unit.structs.lastIndex || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
+            if (index != unit.structs.lastIndex || unit.unions.isNotEmpty() || unit.enums.isNotEmpty() || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
+        }
+
+        unit.unions.forEachIndexed { index, union ->
+            appendLine("union ${union.name} {", union.origin)
+            union.fields.forEach { field ->
+                appendLine("    ${field.type.render()} ${field.name}${arraySuffix(field.arrayDimensions)};", field.origin)
+            }
+            appendLine("};", union.origin)
+            if (index != unit.unions.lastIndex || unit.enums.isNotEmpty() || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
+        }
+
+        unit.enums.forEachIndexed { index, enum ->
+            appendLine("enum ${enum.name} {", enum.origin)
+            enum.values.forEach { value ->
+                val assigned = value.value?.let { " = $it" }.orEmpty()
+                appendLine("    ${value.name}$assigned,", value.origin)
+            }
+            appendLine("};", enum.origin)
+            if (index != unit.enums.lastIndex || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
         }
 
         unit.globals.forEach { global ->
             val initializer = global.initializer?.let { " = ${expression(it)}" } ?: ""
-            appendLine("${global.type.render()} ${global.name}$initializer;", global.origin)
+            appendLine("${global.type.render()} ${global.name}${arraySuffix(global.arrayDimensions)}$initializer;", global.origin)
         }
         if (unit.globals.isNotEmpty() && unit.functions.isNotEmpty()) appendLine()
 
@@ -207,8 +425,13 @@ class CEmitter {
             is CReturn -> false
             is CExpressionStatement -> false
             is CVariableDeclaration -> typeUsesBool(statement.type)
+            is CIf -> statementUsesBool(statement.thenBranch) || statement.elseBranch?.let(::statementUsesBool) == true
+            is CWhile -> statementUsesBool(statement.body)
+            is CFor -> (statement.initializer?.let(::statementUsesBool) == true) || statementUsesBool(statement.body)
+            is CBreak, is CContinue -> false
         }
         return unit.structs.any { structure -> structure.fields.any { typeUsesBool(it.type) } } ||
+            unit.unions.any { union -> union.fields.any { typeUsesBool(it.type) } } ||
             unit.globals.any { typeUsesBool(it.type) } ||
             unit.functions.any { function ->
                 typeUsesBool(function.returnType) ||
@@ -243,14 +466,47 @@ class CEmitter {
             is CExpressionStatement -> appendLine("$prefix${expression(statement.expression)};", statement.origin)
             is CVariableDeclaration -> {
                 val initializer = statement.initializer?.let { " = ${expression(it)}" } ?: ""
-                appendLine("$prefix${statement.type.render()} ${statement.name}$initializer;", statement.origin)
+                appendLine("$prefix${statement.type.render()} ${statement.name}${arraySuffix(statement.arrayDimensions)}$initializer;", statement.origin)
             }
+            is CIf -> {
+                appendLine("${prefix}if (${expression(statement.condition)})", statement.origin)
+                emitStatement(statement.thenBranch, indentation, appendLine)
+                statement.elseBranch?.let {
+                    appendLine("${prefix}else", it.origin)
+                    emitStatement(it, indentation, appendLine)
+                }
+            }
+            is CWhile -> {
+                appendLine("${prefix}while (${expression(statement.condition)})", statement.origin)
+                emitStatement(statement.body, indentation, appendLine)
+            }
+            is CFor -> {
+                val initializer = statement.initializer?.let(::forInitializer).orEmpty()
+                val condition = statement.condition?.let(::expression).orEmpty()
+                val increment = statement.increment?.let(::expression).orEmpty()
+                appendLine("${prefix}for ($initializer; $condition; $increment)", statement.origin)
+                emitStatement(statement.body, indentation, appendLine)
+            }
+            is CBreak -> appendLine("${prefix}break;", statement.origin)
+            is CContinue -> appendLine("${prefix}continue;", statement.origin)
         }
     }
 
-    private fun parameters(parameters: List<CParameter>): String = parameters.joinToString(", ") {
-        "${it.type.render()} ${it.name}"
+    private fun forInitializer(statement: CStatement): String = when (statement) {
+        is CVariableDeclaration -> {
+            val initializer = statement.initializer?.let { " = ${expression(it)}" }.orEmpty()
+            "${statement.type.render()} ${statement.name}${arraySuffix(statement.arrayDimensions)}$initializer"
+        }
+        is CExpressionStatement -> expression(statement.expression)
+        is CBlock -> statement.statements.joinToString(" ") { forInitializer(it) }
+        else -> ""
     }
+
+    private fun parameters(parameters: List<CParameter>): String = parameters.joinToString(", ") {
+        "${it.type.render()} ${it.name}${arraySuffix(it.arrayDimensions)}"
+    }
+
+    private fun arraySuffix(dimensions: List<String>): String = dimensions.joinToString(separator = "") { "[$it]" }
 
     private fun expression(expression: CExpression): String = when (expression) {
         is CIntegerLiteral -> expression.text

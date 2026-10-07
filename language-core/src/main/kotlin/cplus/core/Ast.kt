@@ -6,16 +6,46 @@ sealed interface AstNode {
 
 data class AstProgram(
     val declarations: List<AstDeclaration>,
-    override val origin: Origin
+    override val origin: Origin,
+    val modules: List<AstModule> = emptyList()
 ) : AstNode
 
+data class AstModule(
+    val name: String,
+    val declarations: List<AstDeclaration>
+)
+
 sealed interface AstDeclaration : AstNode
+
+data class AstPackage(
+    val name: String,
+    override val origin: Origin
+) : AstDeclaration
+
+data class AstUnion(
+    val name: String,
+    val fields: List<AstField>,
+    override val origin: Origin
+) : AstDeclaration
+
+data class AstEnum(
+    val name: String,
+    val values: List<AstEnumValue>,
+    override val origin: Origin
+) : AstDeclaration
+
+data class AstEnumValue(
+    val name: String,
+    val value: String?,
+    override val origin: Origin
+) : AstNode
 
 data class AstTypeRef(
     val name: String,
     val isStruct: Boolean,
     val pointerDepth: Int,
-    override val origin: Origin
+    override val origin: Origin,
+    val declarationKind: String = "named"
 ) : AstNode
 
 data class AstStruct(
@@ -28,14 +58,16 @@ data class AstStruct(
 data class AstField(
     val type: AstTypeRef,
     val name: String,
-    override val origin: Origin
+    override val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 ) : AstNode
 
 data class AstGlobalVariable(
     val type: AstTypeRef,
     val name: String,
     val initializer: AstExpression?,
-    override val origin: Origin
+    override val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 ) : AstDeclaration
 
 data class AstComptimeFunction(
@@ -49,6 +81,13 @@ data class AstComptimeFunction(
 data class AstCpxInvocation(
     val name: String,
     val arguments: List<String>,
+    override val origin: Origin
+) : AstDeclaration
+
+data class AstImport(
+    val names: List<String>,
+    val module: String,
+    val alias: String? = null,
     override val origin: Origin
 ) : AstDeclaration
 
@@ -66,7 +105,8 @@ data class AstParameter(
     val type: AstTypeRef,
     val name: String,
     val isReceiver: Boolean = false,
-    override val origin: Origin
+    override val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 ) : AstNode
 
 sealed interface AstStatement : AstNode
@@ -86,11 +126,42 @@ data class AstExpressionStatement(
     override val origin: Origin
 ) : AstStatement
 
+data class AstDefer(
+    val expression: AstExpression,
+    override val origin: Origin
+) : AstStatement
+
+data class AstIf(
+    val condition: AstExpression,
+    val thenBranch: AstStatement,
+    val elseBranch: AstStatement?,
+    override val origin: Origin
+) : AstStatement
+
+data class AstWhile(
+    val condition: AstExpression,
+    val body: AstStatement,
+    override val origin: Origin
+) : AstStatement
+
+data class AstFor(
+    val initializer: AstStatement?,
+    val condition: AstExpression?,
+    val increment: AstExpression?,
+    val body: AstStatement,
+    override val origin: Origin
+) : AstStatement
+
+data class AstBreak(override val origin: Origin) : AstStatement
+
+data class AstContinue(override val origin: Origin) : AstStatement
+
 data class AstVariableDeclaration(
     val type: AstTypeRef,
     val name: String,
     val initializer: AstExpression?,
-    override val origin: Origin
+    override val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 ) : AstStatement
 
 sealed interface AstExpression : AstNode

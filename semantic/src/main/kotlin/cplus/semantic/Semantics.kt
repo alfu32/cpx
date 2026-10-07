@@ -1,6 +1,7 @@
 package cplus.semantic
 
 import cplus.core.*
+import java.util.IdentityHashMap
 
 @JvmInline
 value class SymbolId(val value: Int)
@@ -10,9 +11,13 @@ value class TypeId(val value: Int)
 
 enum class SymbolKind {
     STRUCT,
+    UNION,
+    ENUM,
+    ENUM_VALUE,
     FIELD,
     FUNCTION,
     METHOD,
+    FOREIGN,
     VARIABLE,
     PARAMETER
 }
@@ -39,11 +44,31 @@ data class StructType(
     val methods: List<MethodSymbol> = emptyList()
 ) : CType
 
+data class UnionType(
+    override val id: TypeId,
+    override val name: String,
+    val fields: List<FieldSymbol>
+) : CType
+
+data class EnumType(
+    override val id: TypeId,
+    override val name: String,
+    val values: List<String>
+) : CType
+
 data class PointerType(
     override val id: TypeId,
     val pointee: CType
 ) : CType {
     override val name: String = "${pointee.name}*"
+}
+
+data class ArrayType(
+    override val id: TypeId,
+    val element: CType,
+    val dimensions: List<String>
+) : CType {
+    override val name: String = element.name + dimensions.joinToString(separator = "") { "[$it]" }
 }
 
 data class UnknownType(
@@ -57,18 +82,20 @@ data class Symbol(
     val kind: SymbolKind,
     val type: CType,
     val origin: Origin,
-    val visibility: Visibility = Visibility.PRIVATE
+    val visibility: Visibility = Visibility.PRIVATE,
+    val moduleName: String? = null
 )
 
 data class FieldSymbol(
     val symbol: Symbol,
-    val owner: StructType
+    val owner: CType
 )
 
 data class FunctionSymbol(
     val symbol: Symbol,
     val returnType: CType,
-    val parameters: List<Symbol>
+    val parameters: List<Symbol>,
+    val isVariadic: Boolean = false
 )
 
 enum class ReceiverKind {
@@ -92,7 +119,11 @@ data class SemanticModel(
     val structs: Map<String, StructType>,
     val methods: Map<String, Map<String, MethodSymbol>>,
     val scopes: ScopeTable,
-    val expressionTypes: Map<AstExpression, CType>
+    val expressionTypes: Map<AstExpression, CType>,
+    val moduleFunctions: Map<String, Map<String, FunctionSymbol>> = emptyMap(),
+    val qualifiedFunctionNames: Set<String> = emptySet(),
+    val unions: Map<String, UnionType> = emptyMap(),
+    val enums: Map<String, EnumType> = emptyMap()
 ) {
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
 }
@@ -109,14 +140,26 @@ class SemanticAnalyzer {
     private val nextSymbolId = generateSequence(1) { it + 1 }.iterator()
     private val nextTypeId = generateSequence(1) { it + 1 }.iterator()
 
-    fun analyze(program: AstProgram): SemanticResult {
+    fun analyze(program: AstProgram, knownModules: Set<String> = emptySet()): SemanticResult {
         val diagnostics = DiagnosticBag()
         val symbols = mutableListOf<Symbol>()
         val types = mutableListOf<CType>()
         val structs = linkedMapOf<String, StructType>()
+        val unions = linkedMapOf<String, UnionType>()
+        val enums = linkedMapOf<String, EnumType>()
         val functions = linkedMapOf<String, FunctionSymbol>()
         val methods = linkedMapOf<String, Map<String, MethodSymbol>>()
         val globals = linkedMapOf<String, Symbol>()
+        val moduleFunctions = linkedMapOf<String, LinkedHashMap<String, FunctionSymbol>>()
+        val declarationModules = IdentityHashMap<AstDeclaration, String>()
+        val defaultModule = "<main>"
+        if (program.modules.isEmpty()) {
+            program.declarations.forEach { declarationModules[it] = defaultModule }
+        } else {
+            program.modules.forEach { module ->
+                module.declarations.forEach { declarationModules[it] = module.name }
+            }
+        }
         val scopes = ScopeTable()
         val rootScope = scopes.create(ScopeKind.PACKAGE)
         val primitiveTypes = linkedMapOf<String, PrimitiveType>()
@@ -126,12 +169,41 @@ class SemanticAnalyzer {
             PrimitiveType(TypeId(nextTypeId.next()), name).also(types::add)
         }
 
-        fun newSymbol(name: String, kind: SymbolKind, type: CType, origin: Origin): Symbol = Symbol(
-            SymbolId(nextSymbolId.next()), name, kind, type, origin
+        fun resolve(reference: AstTypeRef, dimensions: List<String> = emptyList()): CType =
+            resolveType(reference, structs, unions, enums, ::primitive, diagnostics, dimensions)
+
+        fun newSymbol(name: String, kind: SymbolKind, type: CType, origin: Origin, moduleName: String? = null): Symbol = Symbol(
+            SymbolId(nextSymbolId.next()), name, kind, type, origin, moduleName = moduleName
         ).also(symbols::add)
 
         program.declarations.forEach { declaration ->
+            val moduleName = declarationModules[declaration] ?: defaultModule
             when (declaration) {
+                is AstPackage -> Unit
+                is AstUnion -> {
+                    if (unions.containsKey(declaration.name)) {
+                        diagnostics.error("duplicate union '${declaration.name}'", rangeOf(declaration.origin), "SEM005")
+                    } else {
+                        val type = UnionType(TypeId(nextTypeId.next()), declaration.name, emptyList())
+                        unions[declaration.name] = type
+                        types += type
+                        val symbol = newSymbol(declaration.name, SymbolKind.UNION, type, declaration.origin, moduleName)
+                        scopes.define(rootScope, symbol.name, symbol.id)
+                        scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
+                    }
+                }
+                is AstEnum -> {
+                    if (enums.containsKey(declaration.name)) {
+                        diagnostics.error("duplicate enum '${declaration.name}'", rangeOf(declaration.origin), "SEM006")
+                    } else {
+                        val type = EnumType(TypeId(nextTypeId.next()), declaration.name, declaration.values.map { it.name })
+                        enums[declaration.name] = type
+                        types += type
+                        val symbol = newSymbol(declaration.name, SymbolKind.ENUM, type, declaration.origin, moduleName)
+                        scopes.define(rootScope, symbol.name, symbol.id)
+                        scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
+                    }
+                }
                 is AstStruct -> {
                     if (structs.containsKey(declaration.name)) {
                         diagnostics.error("duplicate structure '${declaration.name}'", rangeOf(declaration.origin), "SEM001")
@@ -139,7 +211,7 @@ class SemanticAnalyzer {
                         val type = StructType(TypeId(nextTypeId.next()), declaration.name, emptyList())
                         structs[declaration.name] = type
                         types += type
-                        val symbol = newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin)
+                        val symbol = newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin, moduleName)
                         scopes.define(rootScope, symbol.name, symbol.id)
                         scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
                     }
@@ -148,13 +220,15 @@ class SemanticAnalyzer {
                     if (functions.containsKey(declaration.name)) {
                         diagnostics.error("duplicate function '${declaration.name}'", rangeOf(declaration.origin), "SEM002")
                     } else {
-                        val returnType = resolveType(declaration.returnType, structs, ::primitive, diagnostics)
+                        val returnType = resolve(declaration.returnType)
                         val parameterSymbols = declaration.parameters.map { parameter ->
-                            val type = resolveType(parameter.type, structs, ::primitive, diagnostics)
-                            newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
+                            val type = resolve(parameter.type, parameter.arrayDimensions)
+                            newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin, moduleName)
                         }
-                        val functionSymbol = newSymbol(declaration.name, SymbolKind.FUNCTION, returnType, declaration.origin)
-                        functions[declaration.name] = FunctionSymbol(functionSymbol, returnType, parameterSymbols)
+                        val functionSymbol = newSymbol(declaration.name, SymbolKind.FUNCTION, returnType, declaration.origin, moduleName)
+                        val function = FunctionSymbol(functionSymbol, returnType, parameterSymbols)
+                        functions[declaration.name] = function
+                        moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
                         val functionScope = scopes.create(ScopeKind.FUNCTION, rootScope, functionSymbol.id)
                         scopes.define(rootScope, functionSymbol.name, functionSymbol.id)
                         parameterSymbols.forEach { scopes.define(functionScope, it.name, it.id) }
@@ -164,10 +238,26 @@ class SemanticAnalyzer {
                     if (globals.containsKey(declaration.name)) {
                         diagnostics.error("duplicate global '${declaration.name}'", rangeOf(declaration.origin), "SEM003")
                     } else {
-                        val type = resolveType(declaration.type, structs, ::primitive, diagnostics)
-                        val symbol = newSymbol(declaration.name, SymbolKind.VARIABLE, type, declaration.origin)
+                        val type = resolve(declaration.type, declaration.arrayDimensions)
+                        val symbol = newSymbol(declaration.name, SymbolKind.VARIABLE, type, declaration.origin, moduleName)
                         globals[declaration.name] = symbol
                         scopes.define(rootScope, symbol.name, symbol.id)
+                    }
+                }
+                is AstImport -> {
+                    if (declaration.module == "c.stdio") {
+                        declaration.names.forEach { name ->
+                            if (name == "printf") {
+                                val returnType = primitive("int")
+                                val symbol = newSymbol(name, SymbolKind.FOREIGN, returnType, declaration.origin, declaration.module)
+                                val function = FunctionSymbol(symbol, returnType, emptyList(), isVariadic = true)
+                                functions[name] = function
+                                moduleFunctions.getOrPut(declaration.module) { linkedMapOf() }[name] = function
+                                scopes.define(rootScope, name, symbol.id)
+                            } else {
+                                diagnostics.error("unsupported imported C symbol '$name' from c.stdio", rangeOf(declaration.origin), "SEM401")
+                            }
+                        }
                     }
                 }
                 is AstComptimeFunction, is AstCpxInvocation -> Unit
@@ -177,18 +267,18 @@ class SemanticAnalyzer {
         program.declarations.filterIsInstance<AstStruct>().forEach { declaration ->
             val struct = structs[declaration.name] ?: return@forEach
             val fields = declaration.fields.map { field ->
-                val type = resolveType(field.type, structs, ::primitive, diagnostics)
-                val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin)
+                val type = resolve(field.type, field.arrayDimensions)
+                val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin, declarationModules[declaration] ?: defaultModule)
                 FieldSymbol(symbol, struct)
             }
             val methodSymbols = declaration.methods.associate { method ->
-                val returnType = resolveType(method.returnType, structs, ::primitive, diagnostics)
+                val returnType = resolve(method.returnType)
                 val parameterSymbols = method.parameters.filterNot { it.isReceiver }.map { parameter ->
-                    val parameterType = resolveType(parameter.type, structs, ::primitive, diagnostics)
-                    newSymbol(parameter.name, SymbolKind.PARAMETER, parameterType, parameter.origin)
+                    val parameterType = resolve(parameter.type, parameter.arrayDimensions)
+                    newSymbol(parameter.name, SymbolKind.PARAMETER, parameterType, parameter.origin, declarationModules[declaration] ?: defaultModule)
                 }
                 val receiverKind = if (method.parameters.any { it.isReceiver }) ReceiverKind.INSTANCE else ReceiverKind.STATIC
-                val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, returnType, method.origin)
+                val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, returnType, method.origin, declarationModules[declaration] ?: defaultModule)
                 method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols)
             }
             val updatedStruct = struct.copy(fields = fields, methods = methodSymbols.values.toList())
@@ -196,58 +286,162 @@ class SemanticAnalyzer {
             methods[declaration.name] = methodSymbols
         }
 
+        program.declarations.filterIsInstance<AstUnion>().forEach { declaration ->
+            val union = unions[declaration.name] ?: return@forEach
+            val fields = declaration.fields.map { field ->
+                val type = resolve(field.type, field.arrayDimensions)
+                val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin, declarationModules[declaration] ?: defaultModule)
+                FieldSymbol(symbol, union)
+            }
+            unions[declaration.name] = union.copy(fields = fields)
+        }
+
+        program.declarations.filterIsInstance<AstEnum>().forEach { declaration ->
+            val enum = enums[declaration.name] ?: return@forEach
+            declaration.values.forEach { value ->
+                if (globals.containsKey(value.name)) {
+                    diagnostics.error("duplicate enum value '${value.name}'", rangeOf(value.origin), "SEM007")
+                } else {
+                    val symbol = newSymbol(value.name, SymbolKind.ENUM_VALUE, enum, value.origin, declarationModules[declaration] ?: defaultModule)
+                    globals[value.name] = symbol
+                    scopes.define(rootScope, value.name, symbol.id)
+                }
+            }
+        }
+
+        val visibleFunctions = resolveImportedFunctions(program, moduleFunctions, diagnostics, knownModules)
+
         program.declarations.filterIsInstance<AstFunction>().forEach { declaration ->
             val function = functions[declaration.name] ?: return@forEach
+            val moduleName = declarationModules[declaration] ?: defaultModule
+            val availableFunctions = visibleFunctions[moduleName] ?: functions
             val locals = linkedMapOf<String, Symbol>()
             function.parameters.forEach { locals[it.name] = it }
             declaration.body?.let { statement ->
-                validateStatement(statement, function.returnType, locals, functions, globals, structs, methods, expressionTypes, diagnostics, ::primitive)
+                validateStatement(statement, function.returnType, locals, availableFunctions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, ::primitive)
             }
         }
 
         program.declarations.filterIsInstance<AstStruct>().forEach { declaration ->
             val owner = structs[declaration.name] ?: return@forEach
+            val availableFunctions = visibleFunctions[declarationModules[declaration] ?: defaultModule] ?: functions
             declaration.methods.forEach { method ->
                 val methodSymbol = methods[owner.name]?.get(method.name) ?: return@forEach
                 val locals = linkedMapOf<String, Symbol>()
                 method.parameters.forEach { parameter ->
-                    val type = if (parameter.isReceiver) owner else resolveType(parameter.type, structs, ::primitive, diagnostics)
+                    val type = if (parameter.isReceiver) owner else resolve(parameter.type, parameter.arrayDimensions)
                     locals[parameter.name] = newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
                 }
                 method.body?.let { statement ->
-                    validateStatement(statement, methodSymbol.returnType, locals, functions, globals, structs, methods, expressionTypes, diagnostics, ::primitive)
+                    validateStatement(statement, methodSymbol.returnType, locals, availableFunctions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, ::primitive)
                 }
             }
         }
 
-        val model = SemanticModel(program, symbols, types, functions, structs, methods, scopes, expressionTypes)
+        val model = SemanticModel(
+            program,
+            symbols,
+            types,
+            functions,
+            structs,
+            methods,
+            scopes,
+            expressionTypes,
+            visibleFunctions,
+            visibleFunctions.values.flatMap { it.keys }.filter { '.' in it }.toSet(),
+            unions,
+            enums
+        )
         return SemanticResult(model, diagnostics.diagnostics)
+    }
+
+    private fun resolveImportedFunctions(
+        program: AstProgram,
+        moduleFunctions: Map<String, Map<String, FunctionSymbol>>,
+        diagnostics: DiagnosticBag,
+        knownModules: Set<String>
+    ): Map<String, Map<String, FunctionSymbol>> {
+        val moduleDeclarations = if (program.modules.isEmpty()) {
+            mapOf("<main>" to program.declarations)
+        } else {
+            program.modules.associate { it.name to it.declarations }
+        }
+        return moduleDeclarations.mapValues { (moduleName, declarations) ->
+            val visible = linkedMapOf<String, FunctionSymbol>()
+            moduleFunctions[moduleName].orEmpty().forEach { (name, function) -> visible[name] = function }
+            declarations.filterIsInstance<AstImport>().forEach { import ->
+                val targetName = import.module.substringAfterLast('.')
+                val targetFunctions = moduleFunctions[import.module] ?: moduleFunctions[targetName]
+                if (targetFunctions == null) {
+                    if (import.module !in setOf("c.stdio", "c.math") && targetName !in knownModules) {
+                        diagnostics.error("module import '${import.module}' cannot be resolved", rangeOf(import.origin), "SEM402")
+                    } else if (import.names.isNotEmpty()) {
+                        import.names.forEach { name ->
+                            diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
+                        }
+                    }
+                    return@forEach
+                }
+                if (import.names.isEmpty()) {
+                    import.alias?.let { alias ->
+                        targetFunctions.forEach { (name, function) -> visible["$alias.$name"] = function }
+                    }
+                    return@forEach
+                }
+                import.names.forEach { name ->
+                    val function = targetFunctions[name]
+                    if (function == null) {
+                        diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
+                    } else if (import.alias != null) {
+                        visible["${import.alias}.$name"] = function
+                    } else if (visible.putIfAbsent(name, function) != null) {
+                        diagnostics.error("imported name '$name' conflicts in module '$moduleName'", rangeOf(import.origin), "SEM405")
+                    }
+                }
+            }
+            visible
+        }
     }
 
     private fun resolveType(
         reference: AstTypeRef,
         structs: Map<String, StructType>,
+        unions: Map<String, UnionType>,
+        enums: Map<String, EnumType>,
         primitive: (String) -> PrimitiveType,
-        diagnostics: DiagnosticBag
+        diagnostics: DiagnosticBag,
+        arrayDimensions: List<String> = emptyList()
     ): CType {
-        val base = if (reference.isStruct || reference.name in knownPrimitiveNames) {
-            if (reference.isStruct) {
-                structs[reference.name] ?: run {
-                    diagnostics.error("unknown structure type '${reference.name}'", rangeOf(reference.origin), "SEM101")
+        val base = when (reference.declarationKind) {
+            "struct" -> structs[reference.name] ?: run {
+                diagnostics.error("unknown structure type '${reference.name}'", rangeOf(reference.origin), "SEM101")
+                UnknownType(TypeId(-1))
+            }
+            "union" -> unions[reference.name] ?: run {
+                diagnostics.error("unknown union type '${reference.name}'", rangeOf(reference.origin), "SEM105")
+                UnknownType(TypeId(-1))
+            }
+            "enum" -> enums[reference.name] ?: run {
+                diagnostics.error("unknown enum type '${reference.name}'", rangeOf(reference.origin), "SEM106")
+                UnknownType(TypeId(-1))
+            }
+            else -> when {
+                reference.name in knownPrimitiveNames -> primitive(reference.name)
+                structs[reference.name] != null -> structs.getValue(reference.name)
+                unions[reference.name] != null -> unions.getValue(reference.name)
+                enums[reference.name] != null -> enums.getValue(reference.name)
+                else -> {
+                    diagnostics.error("unknown type '${reference.name}'", rangeOf(reference.origin), "SEM102")
                     UnknownType(TypeId(-1))
                 }
-            } else {
-                primitive(reference.name)
-            }
-        } else {
-            structs[reference.name] ?: run {
-                diagnostics.error("unknown type '${reference.name}'", rangeOf(reference.origin), "SEM102")
-                UnknownType(TypeId(-1))
             }
         }
         var resolved = base
         repeat(reference.pointerDepth) {
             resolved = PointerType(TypeId(-1 - it), resolved)
+        }
+        if (arrayDimensions.isNotEmpty()) {
+            resolved = ArrayType(TypeId(nextTypeId.next()), resolved, arrayDimensions)
         }
         return resolved
     }
@@ -259,14 +453,17 @@ class SemanticAnalyzer {
         functions: Map<String, FunctionSymbol>,
         globals: Map<String, Symbol>,
         structs: Map<String, StructType>,
+        unions: Map<String, UnionType>,
+        enums: Map<String, EnumType>,
         methods: Map<String, Map<String, MethodSymbol>>,
         expressionTypes: MutableMap<AstExpression, CType>,
         diagnostics: DiagnosticBag,
-        primitive: (String) -> PrimitiveType
+        primitive: (String) -> PrimitiveType,
+        loopDepth: Int = 0
     ) {
         when (statement) {
             is AstBlock -> statement.statements.forEach {
-                validateStatement(it, expectedReturn, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                validateStatement(it, expectedReturn, locals, functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth)
             }
             is AstReturn -> {
                 val returnExpression = statement.expression
@@ -288,8 +485,39 @@ class SemanticAnalyzer {
                 }
             }
             is AstExpressionStatement -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+            is AstDefer -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+            is AstIf -> {
+                validateExpression(statement.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                validateStatement(statement.thenBranch, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                statement.elseBranch?.let {
+                    validateStatement(it, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                }
+            }
+            is AstWhile -> {
+                validateExpression(statement.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                validateStatement(statement.body, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth + 1)
+            }
+            is AstFor -> {
+                val loopLocals = LinkedHashMap(locals)
+                statement.initializer?.let {
+                    validateStatement(it, expectedReturn, loopLocals, functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                }
+                statement.condition?.let {
+                    validateExpression(it, loopLocals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                }
+                validateStatement(statement.body, expectedReturn, loopLocals, functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth + 1)
+                statement.increment?.let {
+                    validateExpression(it, loopLocals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                }
+            }
+            is AstBreak -> if (loopDepth == 0) {
+                diagnostics.error("break is only valid inside a loop", rangeOf(statement.origin), "SEM205")
+            }
+            is AstContinue -> if (loopDepth == 0) {
+                diagnostics.error("continue is only valid inside a loop", rangeOf(statement.origin), "SEM206")
+            }
             is AstVariableDeclaration -> {
-                val type = resolveType(statement.type, structs, primitive, diagnostics)
+                val type = resolveType(statement.type, structs, unions, enums, primitive, diagnostics, statement.arrayDimensions)
                 val symbol = Symbol(SymbolId(-locals.size - 1), statement.name, SymbolKind.VARIABLE, type, statement.origin)
                 if (locals.containsKey(statement.name)) {
                     diagnostics.error("duplicate local '${statement.name}'", rangeOf(statement.origin), "SEM204")
@@ -337,7 +565,10 @@ class SemanticAnalyzer {
             is AstCall -> {
                 val function = (expression.callee as? AstIdentifier)?.let { functions[it.name] }
                 val methodCall = expression.callee as? AstMemberAccess
-                val resolvedMethod = if (methodCall != null) {
+                val qualifiedFunction = methodCall?.let { member ->
+                    (member.receiver as? AstIdentifier)?.let { receiver -> functions["${receiver.name}.${member.member}"] }
+                }
+                val resolvedMethod = if (methodCall != null && qualifiedFunction == null) {
                     val receiverType = validateExpression(
                         methodCall.receiver,
                         locals,
@@ -357,11 +588,15 @@ class SemanticAnalyzer {
                 } else null
                 when {
                     function != null -> {
-                        validateCallArguments(function.symbol.name, function.parameters, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                        validateCallArguments(function.symbol.name, function.parameters, function.isVariadic, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                         function.returnType
                     }
+                    qualifiedFunction != null -> {
+                        validateCallArguments(qualifiedFunction.symbol.name, qualifiedFunction.parameters, qualifiedFunction.isVariadic, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                        qualifiedFunction.returnType
+                    }
                     resolvedMethod != null -> {
-                        validateCallArguments(resolvedMethod.symbol.name, resolvedMethod.parameters, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                        validateCallArguments(resolvedMethod.symbol.name, resolvedMethod.parameters, false, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                         resolvedMethod.returnType
                     }
                     else -> {
@@ -372,14 +607,25 @@ class SemanticAnalyzer {
                 }
             }
             is AstMemberAccess -> {
-                val receiver = validateExpression(expression.receiver, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                val struct = receiver as? StructType
-                val field = struct?.fields?.firstOrNull { it.symbol.name == expression.member }
-                if (field != null) field.symbol.type else {
-                    if (struct == null || struct.methods.none { it.symbol.name == expression.member }) {
-                        diagnostics.error("unknown member '${expression.member}'", rangeOf(expression.origin), "SEM304")
+                val qualifiedFunction = (expression.receiver as? AstIdentifier)?.let { receiver ->
+                    functions["${receiver.name}.${expression.member}"]
+                }
+                if (qualifiedFunction != null) {
+                    qualifiedFunction.returnType
+                } else {
+                    val receiver = validateExpression(expression.receiver, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                    val fields = when (receiver) {
+                        is StructType -> receiver.fields
+                        is UnionType -> receiver.fields
+                        else -> emptyList()
                     }
-                    UnknownType(TypeId(-1))
+                    val field = fields.firstOrNull { it.symbol.name == expression.member }
+                    if (field != null) field.symbol.type else {
+                        if (receiver !is StructType || receiver.methods.none { it.symbol.name == expression.member }) {
+                            diagnostics.error("unknown member '${expression.member}'", rangeOf(expression.origin), "SEM304")
+                        }
+                        UnknownType(TypeId(-1))
+                    }
                 }
             }
             is AstParenthesized -> validateExpression(expression.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
@@ -392,6 +638,7 @@ class SemanticAnalyzer {
     private fun validateCallArguments(
         name: String,
         parameters: List<Symbol>,
+        isVariadic: Boolean,
         call: AstCall,
         locals: Map<String, Symbol>,
         functions: Map<String, FunctionSymbol>,
@@ -402,7 +649,7 @@ class SemanticAnalyzer {
         diagnostics: DiagnosticBag,
         primitive: (String) -> PrimitiveType
     ) {
-        if (parameters.size != call.arguments.size) {
+        if ((!isVariadic && parameters.size != call.arguments.size) || call.arguments.size < parameters.size) {
             diagnostics.error(
                 "function '$name' expects ${parameters.size} arguments but received ${call.arguments.size}",
                 rangeOf(call.origin),

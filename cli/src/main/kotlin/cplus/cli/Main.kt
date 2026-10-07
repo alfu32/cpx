@@ -39,8 +39,8 @@ private class Cli {
 
     private fun transcode(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val result = CPlusCompiler().compile(CompileRequest(listOf(parsed.source)))
-        printDiagnostics(result.diagnostics, parsed.source)
+        val result = CPlusCompiler().compile(CompileRequest(parsed.sources))
+        printDiagnostics(result.diagnostics, parsed.sources.first())
         if (!result.isSuccessful) return 1
         val generated = result.generatedUnits.singleOrNull()?.text
             ?: run {
@@ -57,16 +57,16 @@ private class Cli {
 
     private fun check(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val result = CPlusCompiler().compile(CompileRequest(listOf(parsed.source)))
-        printDiagnostics(result.diagnostics, parsed.source)
-        if (result.isSuccessful) println("OK: ${parsed.source}")
+        val result = CPlusCompiler().compile(CompileRequest(parsed.sources))
+        printDiagnostics(result.diagnostics, parsed.sources.first())
+        if (result.isSuccessful) println("OK: ${parsed.sources.joinToString(", ")}")
         return if (result.isSuccessful) 0 else 1
     }
 
     private fun ast(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val result = CPlusCompiler().compile(CompileRequest(listOf(parsed.source)))
-        printDiagnostics(result.diagnostics, parsed.source)
+        val result = CPlusCompiler().compile(CompileRequest(parsed.sources))
+        printDiagnostics(result.diagnostics, parsed.sources.first())
         val artifact = result.artifacts.singleOrNull() ?: return 1
         println(AstPrinter().print(artifact.ast))
         return if (result.isSuccessful) 0 else 1
@@ -74,23 +74,23 @@ private class Cli {
 
     private fun build(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val executable = parsed.output ?: parsed.source.resolveSibling(parsed.source.nameWithoutExtension)
-        return buildExecutable(parsed.source, executable)
+        val executable = parsed.output ?: parsed.sources.first().resolveSibling(parsed.sources.first().nameWithoutExtension)
+        return buildExecutable(parsed.sources, executable)
     }
 
     private fun runProgram(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val temporaryDirectory = Files.createTempDirectory("cplus-run")
-        val executable = temporaryDirectory.resolve(parsed.source.nameWithoutExtension)
-        val buildExitCode = buildExecutable(parsed.source, executable)
+        val executable = temporaryDirectory.resolve(parsed.sources.first().nameWithoutExtension)
+        val buildExitCode = buildExecutable(parsed.sources, executable)
         if (buildExitCode != 0) return buildExitCode
         val process = ProcessBuilder(executable.toString()).inheritIO().start()
         return process.waitFor()
     }
 
-    private fun buildExecutable(source: Path, executable: Path): Int {
-        val result = CPlusCompiler().compile(CompileRequest(listOf(source)))
-        printDiagnostics(result.diagnostics, source)
+    private fun buildExecutable(sources: List<Path>, executable: Path): Int {
+        val result = CPlusCompiler().compile(CompileRequest(sources))
+        printDiagnostics(result.diagnostics, sources.first())
         if (!result.isSuccessful) return 1
         val generated = result.generatedUnits.singleOrNull()?.text
             ?: run {
@@ -118,6 +118,7 @@ private class Cli {
 
     private fun parseFileArguments(arguments: List<String>): FileArguments? {
         var source: Path? = null
+        val sources = mutableListOf<Path>()
         var output: Path? = null
         var index = 0
         while (index < arguments.size) {
@@ -132,11 +133,8 @@ private class Cli {
                     index += 2
                 }
                 else -> {
-                    if (source != null) {
-                        System.err.println("only one source file is supported in the initial vertical slice")
-                        return null
-                    }
-                    source = Path.of(argument)
+                    if (source == null) source = Path.of(argument)
+                    else sources.add(Path.of(argument))
                     index++
                 }
             }
@@ -145,7 +143,7 @@ private class Cli {
             System.err.println("a source file is required")
             return null
         }
-        return FileArguments(source, output)
+        return FileArguments(listOf(source) + sources, output)
     }
 
     private fun printDiagnostics(diagnostics: List<Diagnostic>, source: Path) {
@@ -162,7 +160,7 @@ private class Cli {
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
         stream.println("C+ CLI transcoder")
-        stream.println("usage: cplus <command> <source.cp> [--output <file>]")
+        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--output <file>]")
         stream.println()
         stream.println("commands:")
         stream.println("  transcode   translate one C+ source file to C")
@@ -173,7 +171,7 @@ private class Cli {
         stream.println("  run         build and execute one source file")
     }
 
-    private data class FileArguments(val source: Path, val output: Path?)
+    private data class FileArguments(val sources: List<Path>, val output: Path?)
 }
 
 private class AstPrinter {
@@ -185,6 +183,21 @@ private class AstPrinter {
     private fun StringBuilder.appendDeclaration(declaration: AstDeclaration, depth: Int) {
         indent(depth)
         when (declaration) {
+            is AstPackage -> appendLine("Package ${declaration.name}")
+            is AstUnion -> {
+                appendLine("Union ${declaration.name}")
+                declaration.fields.forEach {
+                    indent(depth + 1)
+                    appendLine("Field ${it.type.name} ${it.name}")
+                }
+            }
+            is AstEnum -> {
+                appendLine("Enum ${declaration.name}")
+                declaration.values.forEach {
+                    indent(depth + 1)
+                    appendLine("Value ${it.name}${it.value?.let { value -> " = $value" } ?: ""}")
+                }
+            }
             is AstStruct -> {
                 appendLine("Struct ${declaration.name}")
                 declaration.fields.forEach {
@@ -209,6 +222,9 @@ private class AstPrinter {
             }
             is AstComptimeFunction -> appendLine("Comptime ${declaration.category} ${declaration.name}")
             is AstCpxInvocation -> appendLine("CpxInvocation ${declaration.name}(${declaration.arguments.joinToString(", ")})")
+            is AstImport -> appendLine(
+                "Import ${declaration.module} ${declaration.alias?.let { "as $it " } ?: ""}{${declaration.names.joinToString(", ")}}"
+            )
         }
     }
 
@@ -221,6 +237,35 @@ private class AstPrinter {
             }
             is AstReturn -> appendLine("Return ${statement.expression?.let(::expression) ?: ""}")
             is AstExpressionStatement -> appendLine("Expression ${expression(statement.expression)}")
+            is AstDefer -> appendLine("Defer ${expression(statement.expression)}")
+            is AstIf -> {
+                appendLine("If ${expression(statement.condition)}")
+                appendStatement(statement.thenBranch, depth + 1)
+                statement.elseBranch?.let {
+                    indent(depth)
+                    appendLine("Else")
+                    appendStatement(it, depth + 1)
+                }
+            }
+            is AstWhile -> {
+                appendLine("While ${expression(statement.condition)}")
+                appendStatement(statement.body, depth + 1)
+            }
+            is AstFor -> {
+                appendLine("For ${statement.condition?.let(::expression) ?: ""}")
+                statement.initializer?.let {
+                    indent(depth + 1)
+                    appendLine("Initializer")
+                    appendStatement(it, depth + 2)
+                }
+                statement.increment?.let {
+                    indent(depth + 1)
+                    appendLine("Increment ${expression(it)}")
+                }
+                appendStatement(statement.body, depth + 1)
+            }
+            is AstBreak -> appendLine("Break")
+            is AstContinue -> appendLine("Continue")
             is AstVariableDeclaration -> appendLine("Variable ${statement.type.name} ${statement.name}")
         }
     }

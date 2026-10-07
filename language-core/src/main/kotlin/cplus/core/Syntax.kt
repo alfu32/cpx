@@ -13,12 +13,40 @@ data class SyntaxProgram(
 
 sealed interface SyntaxDeclaration : SyntaxNode
 
+data class SyntaxPackage(
+    val name: String,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxDeclaration
+
+data class SyntaxUnion(
+    val name: String,
+    val fields: List<SyntaxField>,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxDeclaration
+
+data class SyntaxEnum(
+    val name: String,
+    val values: List<SyntaxEnumValue>,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxDeclaration
+
+data class SyntaxEnumValue(
+    val name: String,
+    val value: String?,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxNode
+
 data class TypeSyntax(
     val name: String,
     val isStruct: Boolean,
     val pointerDepth: Int,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    val declarationKind: String = "named"
 ) : SyntaxNode
 
 data class SyntaxStruct(
@@ -33,7 +61,8 @@ data class SyntaxField(
     val type: TypeSyntax,
     val name: String,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 ) : SyntaxNode
 
 data class SyntaxGlobalVariable(
@@ -41,7 +70,8 @@ data class SyntaxGlobalVariable(
     val name: String,
     val initializer: SyntaxExpression?,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 ) : SyntaxDeclaration
 
 data class SyntaxComptimeParameter(
@@ -67,6 +97,14 @@ data class SyntaxCpxInvocation(
     override val origin: Origin
 ) : SyntaxDeclaration
 
+data class SyntaxImport(
+    val names: List<String>,
+    val module: String,
+    val alias: String? = null,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxDeclaration
+
 data class SyntaxFunction(
     val returnType: TypeSyntax,
     val name: String,
@@ -83,7 +121,8 @@ data class SyntaxParameter(
     val name: String,
     val isReceiver: Boolean = false,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 ) : SyntaxNode
 
 sealed interface SyntaxStatement : SyntaxNode
@@ -106,12 +145,53 @@ data class SyntaxExpressionStatement(
     override val origin: Origin
 ) : SyntaxStatement
 
+data class SyntaxDefer(
+    val expression: SyntaxExpression,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxStatement
+
+data class SyntaxIf(
+    val condition: SyntaxExpression,
+    val thenBranch: SyntaxStatement,
+    val elseBranch: SyntaxStatement?,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxStatement
+
+data class SyntaxWhile(
+    val condition: SyntaxExpression,
+    val body: SyntaxStatement,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxStatement
+
+data class SyntaxFor(
+    val initializer: SyntaxStatement?,
+    val condition: SyntaxExpression?,
+    val increment: SyntaxExpression?,
+    val body: SyntaxStatement,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxStatement
+
+data class SyntaxBreak(
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxStatement
+
+data class SyntaxContinue(
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxStatement
+
 data class SyntaxVariableDeclaration(
     val type: TypeSyntax,
     val name: String,
     val initializer: SyntaxExpression?,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 ) : SyntaxStatement
 
 sealed interface SyntaxExpression : SyntaxNode

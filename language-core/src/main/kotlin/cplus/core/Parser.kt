@@ -24,6 +24,8 @@ class Parser(private val lexed: LexedSource) {
 
     private fun parseDeclaration(): SyntaxDeclaration? {
         while (peek().lexeme in setOf("pub", "static", "extern", "inline")) advance()
+        if (peek().isLexeme("package")) return parsePackage()
+        if (peek().isLexeme("import")) return parseImport()
         if (peek().isLexeme("comptime")) return parseComptimeFunction()
         if (peek().kind == TokenKind.IDENTIFIER && peek(1).isLexeme("(")) return parseCpxInvocation()
         if (match("struct") && peek(1).isLexeme("{")) {
@@ -33,16 +35,41 @@ class Parser(private val lexed: LexedSource) {
             val structKeyword = advance()
             return parseStruct(structKeyword)
         }
+        if (peek().isLexeme("union") && peek(2).isLexeme("{")) {
+            val unionKeyword = advance()
+            return parseUnion(unionKeyword)
+        }
+        if (peek().isLexeme("enum") && peek(2).isLexeme("{")) {
+            val enumKeyword = advance()
+            return parseEnum(enumKeyword)
+        }
 
         val type = parseType() ?: return recoverDeclaration()
         val name = expectIdentifier("expected declaration name") ?: return recoverDeclaration()
         return if (match("(")) {
             parseFunction(type, name)
         } else {
+            val arrayDimensions = parseArrayDimensions()
             val initializer = if (match("=")) parseExpression() else null
             expect(";", "expected ';' after global declaration")
-            SyntaxGlobalVariable(type, name.lexeme, initializer, span(type.range, previous().range), direct(span(type.range, previous().range)))
+            SyntaxGlobalVariable(
+                type,
+                name.lexeme,
+                initializer,
+                span(type.range, previous().range),
+                direct(span(type.range, previous().range)),
+                arrayDimensions
+            )
         }
+    }
+
+    private fun parsePackage(): SyntaxPackage {
+        val start = expect("package", "expected 'package'") ?: previous()
+        val parts = mutableListOf<String>()
+        while (!atEnd() && !peek().isLexeme(";")) parts += advance().lexeme
+        expect(";", "expected ';' after package declaration")
+        val range = span(start.range, previous().range)
+        return SyntaxPackage(parts.joinToString(""), range, direct(range))
     }
 
     private fun parseComptimeFunction(): SyntaxComptimeFunction {
@@ -112,6 +139,32 @@ class Parser(private val lexed: LexedSource) {
         return SyntaxCpxInvocation(name.lexeme, arguments, range, direct(range))
     }
 
+    private fun parseImport(): SyntaxImport {
+        val start = expect("import", "expected 'import'") ?: previous()
+        val names = mutableListOf<String>()
+        if (match("{")) {
+            while (!atEnd() && !peek().isLexeme("}")) {
+                val name = expectIdentifier("expected imported name")
+                if (name != null) names += name.lexeme
+                if (!match(",")) break
+            }
+            expect("}", "expected '}' after imported names")
+            expect("from", "expected 'from' after imported names")
+        }
+        val moduleParts = mutableListOf<String>()
+        var alias: String? = null
+        while (!atEnd() && !peek().isLexeme(";")) {
+            if (match("as")) {
+                alias = expectIdentifier("expected alias after 'as'")?.lexeme
+            } else {
+                moduleParts += advance().lexeme
+            }
+        }
+        expect(";", "expected ';' after import")
+        val range = span(start.range, previous().range)
+        return SyntaxImport(names, moduleParts.joinToString(""), alias, range, direct(range))
+    }
+
     private fun parseStruct(structKeyword: Token): SyntaxStruct {
         val name = expectIdentifier("expected structure name")
             ?: syntheticToken("anonymous_struct", structKeyword.range)
@@ -136,19 +189,74 @@ class Parser(private val lexed: LexedSource) {
                 methods += parseFunction(type, fieldName, isMethod = true, ownerName = name.lexeme)
                 continue
             }
-            if (match("[")) {
-                diagnostics.error("array fields are not supported in the initial vertical slice", previous().range, "PARSE201")
-                recoverTo("]", ";")
-                match("]")
-            }
+            val arrayDimensions = parseArrayDimensions()
             expect(";", "expected ';' after field declaration")
             val fieldRange = span(start.range, previous().range)
-            fields += SyntaxField(type, fieldName.lexeme, fieldRange, direct(fieldRange))
+            fields += SyntaxField(type, fieldName.lexeme, fieldRange, direct(fieldRange), arrayDimensions)
         }
         val close = expect("}", "expected '}' after structure body") ?: previous()
         expect(";", "expected ';' after structure declaration")
         val structureRange = span(structKeyword.range, previous().range)
         return SyntaxStruct(name.lexeme, fields, methods, structureRange, direct(structureRange))
+    }
+
+    private fun parseUnion(unionKeyword: Token): SyntaxUnion {
+        val name = expectIdentifier("expected union name") ?: syntheticToken("anonymous_union", unionKeyword.range)
+        expect("{", "expected '{' after union name")
+        val fields = mutableListOf<SyntaxField>()
+        while (!atEnd() && !peek().isLexeme("}")) {
+            val start = peek()
+            val type = parseType()
+            if (type == null) {
+                recoverTo(";", "}")
+                match(";")
+                continue
+            }
+            val fieldName = expectIdentifier("expected union field name")
+            if (fieldName == null) {
+                recoverTo(";", "}")
+                match(";")
+                continue
+            }
+            val arrayDimensions = parseArrayDimensions()
+            expect(";", "expected ';' after union field declaration")
+            val fieldRange = span(start.range, previous().range)
+            fields += SyntaxField(type, fieldName.lexeme, fieldRange, direct(fieldRange), arrayDimensions)
+        }
+        val close = expect("}", "expected '}' after union body") ?: previous()
+        expect(";", "expected ';' after union declaration")
+        val range = span(unionKeyword.range, previous().range)
+        return SyntaxUnion(name.lexeme, fields, range, direct(range))
+    }
+
+    private fun parseEnum(enumKeyword: Token): SyntaxEnum {
+        val name = expectIdentifier("expected enum name") ?: syntheticToken("anonymous_enum", enumKeyword.range)
+        expect("{", "expected '{' after enum name")
+        val values = mutableListOf<SyntaxEnumValue>()
+        while (!atEnd() && !peek().isLexeme("}")) {
+            val valueToken = expectIdentifier("expected enum value") ?: break
+            val assigned = if (match("=")) {
+                val expression = parseExpression()
+                expression?.let { enumValueText(it) }
+            } else null
+            val range = span(valueToken.range, previous().range)
+            values += SyntaxEnumValue(valueToken.lexeme, assigned, range, direct(range))
+            if (!match(",") && !peek().isLexeme("}")) {
+                diagnostics.error("expected ',' between enum values", peek().range, "PARSE204")
+                recoverTo(",", "}")
+                match(",")
+            }
+        }
+        expect("}", "expected '}' after enum body")
+        expect(";", "expected ';' after enum declaration")
+        val range = span(enumKeyword.range, previous().range)
+        return SyntaxEnum(name.lexeme, values, range, direct(range))
+    }
+
+    private fun enumValueText(expression: SyntaxExpression): String? = when (expression) {
+        is SyntaxIntegerLiteral -> expression.text
+        is SyntaxUnary -> enumValueText(expression.operand)?.let { expression.operator + it }
+        else -> null
     }
 
     private fun parseFunction(
@@ -182,8 +290,9 @@ class Parser(private val lexed: LexedSource) {
                     }
                     val parameterName = expectIdentifier("expected parameter name")
                         ?: syntheticToken("parameter", type.range)
+                    val arrayDimensions = parseArrayDimensions()
                     val parameterRange = span(type.range, parameterName.range)
-                    parameters += SyntaxParameter(type, parameterName.lexeme, false, parameterRange, direct(parameterRange))
+                    parameters += SyntaxParameter(type, parameterName.lexeme, false, parameterRange, direct(parameterRange), arrayDimensions)
                 } while (match(","))
             }
         }
@@ -225,24 +334,97 @@ class Parser(private val lexed: LexedSource) {
             val range = span(start.range, previous().range)
             return SyntaxReturn(expression, range, direct(range))
         }
-        if (looksLikeVariableDeclaration()) {
-            val type = parseType() ?: return null
-            val name = expectIdentifier("expected local variable name") ?: return null
-            val initializer = if (match("=")) parseExpression() else null
-            expect(";", "expected ';' after local declaration")
-            val range = span(type.range, previous().range)
-            return SyntaxVariableDeclaration(type, name.lexeme, initializer, range, direct(range))
+        if (match("defer")) {
+            val start = previous()
+            val expression = parseExpression()
+            if (expression == null) return null
+            expect(";", "expected ';' after defer statement")
+            val range = span(start.range, previous().range)
+            return SyntaxDefer(expression, range, direct(range))
         }
-        if (peek().isLexeme("if") || peek().isLexeme("while") || peek().isLexeme("for")) {
-            diagnostics.error("control-flow statements are not implemented in the initial vertical slice", peek().range, "PARSE301")
-            recoverTo(";", "}")
-            match(";")
-            return null
+        if (match("if")) {
+            val start = previous()
+            expect("(", "expected '(' after if")
+            val condition = parseExpression() ?: SyntaxErrorExpression(start.range, direct(start.range))
+            expect(")", "expected ')' after if condition")
+            val thenBranch = parseStatement() ?: SyntaxBlock(emptyList(), start.range, direct(start.range))
+            val elseBranch = if (match("else")) parseStatement() else null
+            val end = elseBranch?.range ?: thenBranch.range
+            val range = span(start.range, end)
+            return SyntaxIf(condition, thenBranch, elseBranch, range, direct(range))
+        }
+        if (match("while")) {
+            val start = previous()
+            expect("(", "expected '(' after while")
+            val condition = parseExpression() ?: SyntaxErrorExpression(start.range, direct(start.range))
+            expect(")", "expected ')' after while condition")
+            val body = parseStatement() ?: SyntaxBlock(emptyList(), start.range, direct(start.range))
+            val range = span(start.range, body.range)
+            return SyntaxWhile(condition, body, range, direct(range))
+        }
+        if (match("for")) {
+            val start = previous()
+            expect("(", "expected '(' after for")
+            val initializer = if (match(";")) {
+                null
+            } else if (looksLikeVariableDeclaration()) {
+                parseVariableDeclaration()
+            } else {
+                val expression = parseExpression()
+                expect(";", "expected ';' after for initializer")
+                expression?.let {
+                    val range = span(it.range, previous().range)
+                    SyntaxExpressionStatement(it, range, direct(range))
+                }
+            }
+            val condition = if (peek().isLexeme(";")) null else parseExpression()
+            expect(";", "expected ';' after for condition")
+            val increment = if (peek().isLexeme(")")) null else parseExpression()
+            expect(")", "expected ')' after for clauses")
+            val body = parseStatement() ?: SyntaxBlock(emptyList(), start.range, direct(start.range))
+            val range = span(start.range, body.range)
+            return SyntaxFor(initializer, condition, increment, body, range, direct(range))
+        }
+        if (match("break")) {
+            val start = previous()
+            expect(";", "expected ';' after break")
+            val range = span(start.range, previous().range)
+            return SyntaxBreak(range, direct(range))
+        }
+        if (match("continue")) {
+            val start = previous()
+            expect(";", "expected ';' after continue")
+            val range = span(start.range, previous().range)
+            return SyntaxContinue(range, direct(range))
+        }
+        if (looksLikeVariableDeclaration()) {
+            return parseVariableDeclaration()
         }
         val expression = parseExpression() ?: return null
         expect(";", "expected ';' after expression")
         val range = span(expression.range, previous().range)
         return SyntaxExpressionStatement(expression, range, direct(range))
+    }
+
+    private fun parseVariableDeclaration(): SyntaxVariableDeclaration? {
+        val type = parseType() ?: return null
+        val name = expectIdentifier("expected local variable name") ?: return null
+        val arrayDimensions = parseArrayDimensions()
+        val initializer = if (match("=")) parseExpression() else null
+        expect(";", "expected ';' after local declaration")
+        val range = span(type.range, previous().range)
+        return SyntaxVariableDeclaration(type, name.lexeme, initializer, range, direct(range), arrayDimensions)
+    }
+
+    private fun parseArrayDimensions(): List<String> {
+        val dimensions = mutableListOf<String>()
+        while (match("[")) {
+            val parts = mutableListOf<String>()
+            while (!atEnd() && !peek().isLexeme("]")) parts += advance().lexeme
+            expect("]", "expected ']' after array dimension")
+            dimensions += parts.joinToString("")
+        }
+        return dimensions
     }
 
     private fun parseExpression(minPrecedence: Int = 0): SyntaxExpression? {
@@ -310,8 +492,14 @@ class Parser(private val lexed: LexedSource) {
 
     private fun parseType(): TypeSyntax? {
         val start = peek()
-        val isStruct = match("struct")
-        val name = if (isStruct) {
+        val declarationKind = when {
+            match("struct") -> "struct"
+            match("union") -> "union"
+            match("enum") -> "enum"
+            else -> "named"
+        }
+        val isStruct = declarationKind == "struct"
+        val name = if (declarationKind != "named") {
             expectIdentifier("expected structure type name")
         } else if (peek().kind == TokenKind.KEYWORD || peek().kind == TokenKind.IDENTIFIER) {
             advance()
@@ -322,11 +510,11 @@ class Parser(private val lexed: LexedSource) {
         var pointers = 0
         while (match("*")) pointers++
         val range = span(start.range, previous().range)
-        return TypeSyntax(name?.lexeme ?: "<error>", isStruct, pointers, range, direct(range))
+        return TypeSyntax(name?.lexeme ?: "<error>", isStruct, pointers, range, direct(range), declarationKind)
     }
 
     private fun looksLikeVariableDeclaration(): Boolean {
-        if (peek().isLexeme("struct")) return true
+        if (peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum")) return true
         if (peek().lexeme in primitiveTypes) return true
         return peek().kind == TokenKind.IDENTIFIER && peek(1).kind == TokenKind.IDENTIFIER
     }

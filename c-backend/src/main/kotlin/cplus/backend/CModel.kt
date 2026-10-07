@@ -3,7 +3,10 @@ package cplus.backend
 import cplus.core.Origin
 
 data class CTranslationUnit(
+    val includes: List<String>,
     val structs: List<CStructDeclaration>,
+    val unions: List<CUnionDeclaration>,
+    val enums: List<CEnumDeclaration>,
     val globals: List<CGlobalDeclaration>,
     val functions: List<CFunction>
 )
@@ -17,6 +20,25 @@ data class CStructDeclaration(
 data class CField(
     val type: CType,
     val name: String,
+    val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
+)
+
+data class CUnionDeclaration(
+    val name: String,
+    val fields: List<CField>,
+    val origin: Origin
+)
+
+data class CEnumDeclaration(
+    val name: String,
+    val values: List<CEnumValue>,
+    val origin: Origin
+)
+
+data class CEnumValue(
+    val name: String,
+    val value: String?,
     val origin: Origin
 )
 
@@ -24,7 +46,8 @@ data class CGlobalDeclaration(
     val type: CType,
     val name: String,
     val initializer: CExpression?,
-    val origin: Origin
+    val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 )
 
 data class CFunction(
@@ -38,7 +61,8 @@ data class CFunction(
 data class CParameter(
     val type: CType,
     val name: String,
-    val origin: Origin
+    val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
 )
 
 sealed interface CType {
@@ -50,6 +74,14 @@ sealed interface CType {
 
     data class Struct(val name: String, val pointerDepth: Int = 0) : CType {
         override fun render(): String = "struct $name" + "*".repeat(pointerDepth)
+    }
+
+    data class Union(val name: String, val pointerDepth: Int = 0) : CType {
+        override fun render(): String = "union $name" + "*".repeat(pointerDepth)
+    }
+
+    data class Enum(val name: String, val pointerDepth: Int = 0) : CType {
+        override fun render(): String = "enum $name" + "*".repeat(pointerDepth)
     }
 
     data object Unknown : CType {
@@ -80,8 +112,34 @@ data class CVariableDeclaration(
     val type: CType,
     val name: String,
     val initializer: CExpression?,
+    override val origin: Origin,
+    val arrayDimensions: List<String> = emptyList()
+) : CStatement
+
+data class CIf(
+    val condition: CExpression,
+    val thenBranch: CStatement,
+    val elseBranch: CStatement?,
     override val origin: Origin
 ) : CStatement
+
+data class CWhile(
+    val condition: CExpression,
+    val body: CStatement,
+    override val origin: Origin
+) : CStatement
+
+data class CFor(
+    val initializer: CStatement?,
+    val condition: CExpression?,
+    val increment: CExpression?,
+    val body: CStatement,
+    override val origin: Origin
+) : CStatement
+
+data class CBreak(override val origin: Origin) : CStatement
+
+data class CContinue(override val origin: Origin) : CStatement
 
 sealed interface CExpression {
     val origin: Origin

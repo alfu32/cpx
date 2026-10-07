@@ -7,37 +7,62 @@ class AstBuilder {
     )
 
     private fun declaration(node: SyntaxDeclaration): AstDeclaration = when (node) {
+        is SyntaxPackage -> AstPackage(node.name, node.origin)
+        is SyntaxUnion -> AstUnion(node.name, node.fields.map(::field), node.origin)
+        is SyntaxEnum -> AstEnum(
+            node.name,
+            node.values.map { AstEnumValue(it.name, it.value, it.origin) },
+            node.origin
+        )
         is SyntaxStruct -> AstStruct(
             node.name,
             node.fields.map(::field),
             node.methods.map { function(it, node.name) },
             node.origin
         )
-        is SyntaxGlobalVariable -> AstGlobalVariable(type(node.type), node.name, node.initializer?.let(::expression), node.origin)
+        is SyntaxGlobalVariable -> AstGlobalVariable(type(node.type), node.name, node.initializer?.let(::expression), node.origin, node.arrayDimensions)
         is SyntaxComptimeFunction -> AstComptimeFunction(node.name, node.category, node.parameters.map { it.name }, node.template, node.origin)
         is SyntaxCpxInvocation -> AstCpxInvocation(node.name, node.arguments, node.origin)
+        is SyntaxImport -> AstImport(node.names, node.module, node.alias, node.origin)
         is SyntaxFunction -> function(node, node.ownerName)
     }
 
     private fun function(node: SyntaxFunction, ownerName: String?): AstFunction = AstFunction(
         type(node.returnType),
         node.name,
-        node.parameters.map { AstParameter(type(it.type), it.name, it.isReceiver, it.origin) },
+        node.parameters.map { AstParameter(type(it.type), it.name, it.isReceiver, it.origin, it.arrayDimensions) },
         node.body?.let(::statement),
         node.isMethod,
         ownerName,
         node.origin
     )
 
-    private fun field(node: SyntaxField): AstField = AstField(type(node.type), node.name, node.origin)
+    private fun field(node: SyntaxField): AstField = AstField(type(node.type), node.name, node.origin, node.arrayDimensions)
 
-    private fun type(node: TypeSyntax): AstTypeRef = AstTypeRef(node.name, node.isStruct, node.pointerDepth, node.origin)
+    private fun type(node: TypeSyntax): AstTypeRef = AstTypeRef(node.name, node.isStruct, node.pointerDepth, node.origin, node.declarationKind)
 
     private fun statement(node: SyntaxStatement): AstStatement = when (node) {
         is SyntaxBlock -> AstBlock(node.statements.map(::statement), node.origin)
         is SyntaxReturn -> AstReturn(node.expression?.let(::expression), node.origin)
         is SyntaxExpressionStatement -> AstExpressionStatement(expression(node.expression), node.origin)
-        is SyntaxVariableDeclaration -> AstVariableDeclaration(type(node.type), node.name, node.initializer?.let(::expression), node.origin)
+        is SyntaxDefer -> AstDefer(expression(node.expression), node.origin)
+        is SyntaxIf -> AstIf(
+            expression(node.condition),
+            statement(node.thenBranch),
+            node.elseBranch?.let(::statement),
+            node.origin
+        )
+        is SyntaxWhile -> AstWhile(expression(node.condition), statement(node.body), node.origin)
+        is SyntaxFor -> AstFor(
+            node.initializer?.let(::statement),
+            node.condition?.let(::expression),
+            node.increment?.let(::expression),
+            statement(node.body),
+            node.origin
+        )
+        is SyntaxBreak -> AstBreak(node.origin)
+        is SyntaxContinue -> AstContinue(node.origin)
+            is SyntaxVariableDeclaration -> AstVariableDeclaration(type(node.type), node.name, node.initializer?.let(::expression), node.origin, node.arrayDimensions)
     }
 
     private fun expression(node: SyntaxExpression): AstExpression = when (node) {

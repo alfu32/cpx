@@ -3,19 +3,19 @@
 ## Dashboard
 
 ```text
-Overall: 22/80
+Overall: 32/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [2/16] 2. Semantic model and modules
-[DOING] [2/20] 3. Compile-time and CPX system
-[DOING] [3/16] 4. Lowering and C backend
+[DOING] [8/27] 2. Semantic model and modules
+[DOING] [6/20] 3. Compile-time and CPX system
+[DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-3.2.1 — CPX categories and template node model
+2.2.1.2.2 — function type representation
 
 Current milestone:
-M1 — Minimal C+ → C vertical compiler
+M5 — Advanced runtime lowering
 ```
 
 All tasks initially have status `TODO`.
@@ -434,9 +434,9 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.2 [DOING] [1/4] Type and method system
+## 2.2 [DOING] [3/9] Type and method system
 
-### 2.2.1 [TODO] Canonical type universe representation
+### 2.2.1 [DOING] [2/6] Canonical type universe representation
 
 **Technical**
 - TS §12 Type System Model
@@ -448,6 +448,75 @@ All tasks initially have status `TODO`.
 
 **Depends**
 - 2.1
+
+#### 2.2.1.1 [DONE] Register primitive and aggregate type identities
+
+**Acceptance**
+- primitive, struct, union, and enum types receive semantic identities.
+- aggregate fields resolve through the canonical type maps.
+- emitted C declarations preserve aggregate kind.
+
+**Depends**
+- 2.1.1
+
+#### 2.2.1.2 [DOING] [1/4] Add arrays, function types, aliases and foreign types
+
+**Acceptance**
+- array, function, alias, and foreign type categories are representable semantically.
+- type references resolve through the same canonical universe.
+
+**Depends**
+- 2.2.1.1
+
+##### 2.2.1.2.1 [DONE] Represent array declarators and semantic array types
+
+**Acceptance**
+- fixed-size and unsized array dimensions parse on fields, globals, parameters and locals.
+- array dimensions survive AST and semantic resolution as `ArrayType` values.
+- the C backend emits readable array declarators in every supported declaration position.
+- generated C containing arrays compiles and executes through the integration path.
+
+**Depends**
+- 2.2.1.1
+
+##### 2.2.1.2.2 [TODO] Represent function types
+
+**Acceptance**
+- function types are explicit semantic values with return and parameter types.
+- function-valued declarations and references resolve through the canonical type universe.
+- C lowering preserves callable declarator shape where supported.
+
+**Depends**
+- 2.2.1.2.1
+
+##### 2.2.1.2.3 [TODO] Represent aliases
+
+**Acceptance**
+- alias declarations have distinct symbols and canonical target types.
+- alias references resolve without losing alias metadata required by diagnostics and CPX identity.
+- generated C preserves the requested alias declaration or expands it according to lowering rules.
+
+**Depends**
+- 2.2.1.2.1
+
+##### 2.2.1.2.4 [TODO] Represent foreign types
+
+**Acceptance**
+- imported C types have explicit foreign semantic identities.
+- foreign types retain external spelling/linkage metadata.
+- unsupported foreign type forms remain diagnosed rather than guessed.
+
+**Depends**
+- 2.2.1.2.1
+
+#### 2.2.1.3 [TODO] Canonicalize type equality and identity
+
+**Acceptance**
+- equivalent type spellings compare by semantic identity.
+- pointer and aggregate identity does not depend on emitted C spelling.
+
+**Depends**
+- 2.2.1.2
 
 ### 2.2.2 [TODO] Type reference and alias resolution
 
@@ -498,9 +567,9 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.3 [TODO] [0/4] Packages and C+ imports
+## 2.3 [DOING] [3/8] Packages and C+ imports
 
-### 2.3.1 [TODO] Package and module representation
+### 2.3.1 [DOING] [1/3] Package and module representation
 
 **Language**
 - LS §3.2 Package
@@ -517,7 +586,34 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.1
 
-### 2.3.2 [TODO] Module dependency graph
+#### 2.3.1.1 [DONE] Parse package declarations into the AST
+
+**Acceptance**
+- `package name;` and qualified package names are retained as structured declarations.
+- package origins remain available to later module passes.
+
+**Depends**
+- 1.3.3
+
+#### 2.3.1.2 [TODO] Construct qualified package identities
+
+**Acceptance**
+- package, module, and declaration names combine deterministically.
+- semantic symbols expose qualified identity independently of emitted C names.
+
+**Depends**
+- 2.3.1.1
+
+#### 2.3.1.3 [TODO] Associate compilation units with packages
+
+**Acceptance**
+- multiple source files can share one package identity.
+- package visibility and exported declarations are represented before import resolution.
+
+**Depends**
+- 2.3.1.2
+
+### 2.3.2 [DONE] Module dependency graph
 
 **Technical**
 - TS §27
@@ -531,7 +627,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.3.1
 
-### 2.3.3 [TODO] Import, alias and selective-import resolution
+### 2.3.3 [DOING] [1/3] Import, alias and selective-import resolution
 
 **Language**
 - LS §21.1–21.4
@@ -546,6 +642,33 @@ all create correct bindings.
 
 **Depends**
 - 2.3.2
+
+#### 2.3.3.1 [DONE] Normalize import forms and preserve aliases
+
+**Acceptance**
+- qualified modules, selective names, and `as` aliases remain structured in syntax and AST nodes.
+- parser and AST tests cover all supported import spellings.
+
+**Depends**
+- 2.3.2
+
+#### 2.3.3.2 [TODO] Resolve imported bindings by module
+
+**Acceptance**
+- imported names resolve against the declaring module rather than an accidental global catalogue.
+- qualified module references and aliases produce deterministic bindings.
+
+**Depends**
+- 2.3.3.1
+
+#### 2.3.3.3 [TODO] Diagnose import collisions and unresolved names
+
+**Acceptance**
+- conflicting unqualified imports require qualification or aliasing.
+- unresolved imports identify the module and imported name.
+
+**Depends**
+- 2.3.3.2
 
 ### 2.3.4 [TODO] C+ import cycle analysis
 
@@ -563,7 +686,7 @@ all create correct bindings.
 
 ---
 
-## 2.4 [TODO] [0/4] C interoperability model
+## 2.4 [DOING] [1/6] C interoperability model
 
 ### 2.4.1 [TODO] Foreign symbol and type representation
 
@@ -582,7 +705,7 @@ all create correct bindings.
 **Depends**
 - 2.2.1
 
-### 2.4.2 [TODO] C declaration parser/import adapter
+### 2.4.2 [DOING] [1/3] C declaration parser/import adapter
 
 **Language**
 - LS §22.1–22.3
@@ -594,6 +717,35 @@ all create correct bindings.
 
 **Depends**
 - 2.4.1
+
+#### 2.4.2.1 [DONE] Bootstrap `c.stdio` foreign import adapter
+
+**Acceptance**
+- selective `c.stdio` imports register `printf` as a variadic foreign function.
+- the C backend emits the corresponding standard-library include.
+- an imported call compiles and executes through the CLI path.
+
+**Depends**
+- 1.3.3
+- 2.2.1
+
+#### 2.4.2.2 [TODO] Parse C header declarations
+
+**Acceptance**
+- supported declarations from configured C headers populate foreign symbols.
+- typedefs and supported function signatures resolve without hand-written adapters.
+
+**Depends**
+- 2.4.2.1
+
+#### 2.4.2.3 [TODO] Preserve unsupported preprocessor boundaries
+
+**Acceptance**
+- unsupported preprocessor constructs remain explicit diagnostics or opaque boundaries.
+- the adapter never silently invents foreign declarations.
+
+**Depends**
+- 2.4.2.2
 
 ### 2.4.3 [TODO] C source import and build dependency representation
 
@@ -816,7 +968,7 @@ all create correct bindings.
 - 3.1.4
 - 3.3.1
 
-### 3.3.3 [TODO] Dependency-driven compile-time scheduler
+### 3.3.3 [DONE] Dependency-driven compile-time scheduler
 
 **Language**
 - LS §38 Compile-time Execution Order
@@ -1069,7 +1221,7 @@ all create correct bindings.
 
 ---
 
-## 4.2 [DOING] [1/4] C+ feature lowering
+## 4.2 [DOING] [4/6] C+ feature lowering
 
 ### 4.2.1 [DONE] Method lowering
 
@@ -1109,7 +1261,7 @@ all create correct bindings.
 - 4.1
 - 2.1.2
 
-### 4.2.3 [TODO] `defer` lowering and control-flow integration
+### 4.2.3 [DONE] [3/3] `defer` lowering and control-flow integration
 
 **Language**
 - LS §15
@@ -1124,6 +1276,36 @@ all create correct bindings.
 
 **Depends**
 - 4.1
+
+#### 4.2.3.1 [DONE] Lexical defer cleanup-stack lowering
+
+**Acceptance**
+- deferred expressions are registered in source order.
+- return and normal block fallthrough execute deferred expressions in reverse order.
+- generated C contains no residual `defer` syntax.
+- integration coverage compiles and runs a foreign-call cleanup fixture.
+
+**Depends**
+- 4.1.1
+- 4.3.1
+
+#### 4.2.3.2 [DONE] CFG exit cleanup integration
+
+**Acceptance**
+- every supported control-flow exit receives the correct deferred cleanup.
+- nested blocks do not run outer cleanups prematurely.
+
+**Depends**
+- 4.2.3.1
+
+#### 4.2.3.3 [DONE] Loop break/continue cleanup integration
+
+**Acceptance**
+- `break` and `continue` run exactly the cleanups required by their lexical scope.
+- CFG tests cover nested loops and multiple deferred actions.
+
+**Depends**
+- 4.2.3.2
 
 ### 4.2.4 [TODO] String-template and remaining expression lowering
 

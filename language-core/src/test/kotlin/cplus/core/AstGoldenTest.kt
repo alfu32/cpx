@@ -17,10 +17,14 @@ class AstGoldenTest {
         assertEquals(listOf("point_t", "main"), ast.declarations.map {
             when (it) {
                 is AstStruct -> it.name
+                is AstPackage -> it.name
+                is AstUnion -> it.name
+                is AstEnum -> it.name
                 is AstFunction -> it.name
                 is AstGlobalVariable -> it.name
                 is AstComptimeFunction -> it.name
                 is AstCpxInvocation -> it.name
+                is AstImport -> it.module
             }
         })
         val structure = ast.declarations.first() as AstStruct
@@ -72,5 +76,30 @@ class AstGoldenTest {
         assertEquals("T", definition.parameters.single().name)
         assertTrue(definition.template.contains("optional_{T}_t"))
         assertEquals(listOf("int"), invocation.arguments)
+    }
+
+    @Test
+    fun importsPreserveSelectiveNamesQualifiedModuleAndAlias() {
+        val text = "import { add, subtract } from math.arithmetic as arithmetic; int main() { return 0; }"
+        val source = SourceFile(SourceFileId(4), Path.of("imports.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        val import = parsed.syntax.declarations.first() as SyntaxImport
+        assertEquals(listOf("add", "subtract"), import.names)
+        assertEquals("math.arithmetic", import.module)
+        assertEquals("arithmetic", import.alias)
+        val astImport = AstBuilder().build(parsed.syntax).declarations.first() as AstImport
+        assertEquals("arithmetic", astImport.alias)
+    }
+
+    @Test
+    fun packageDeclarationRemainsAStructuredModuleBoundary() {
+        val source = SourceFile(SourceFileId(5), Path.of("package.cp"), "package collections.core; int main() { return 0; }", 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        val packageDeclaration = AstBuilder().build(parsed.syntax).declarations.first() as AstPackage
+        assertEquals("collections.core", packageDeclaration.name)
     }
 }
