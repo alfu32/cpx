@@ -17,6 +17,7 @@ rootProject.name = "cplus"
 include(
     ":language-core",
     ":semantic",
+    ":comptime",
     ":c-backend",
     ":compiler",
     ":cli"

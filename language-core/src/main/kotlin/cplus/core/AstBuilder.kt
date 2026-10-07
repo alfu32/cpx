@@ -14,6 +14,8 @@ class AstBuilder {
             node.origin
         )
         is SyntaxGlobalVariable -> AstGlobalVariable(type(node.type), node.name, node.initializer?.let(::expression), node.origin)
+        is SyntaxComptimeFunction -> AstComptimeFunction(node.name, node.category, node.parameters.map { it.name }, node.template, node.origin)
+        is SyntaxCpxInvocation -> AstCpxInvocation(node.name, node.arguments, node.origin)
         is SyntaxFunction -> function(node, node.ownerName)
     }
 

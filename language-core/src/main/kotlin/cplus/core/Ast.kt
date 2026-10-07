@@ -38,6 +38,20 @@ data class AstGlobalVariable(
     override val origin: Origin
 ) : AstDeclaration
 
+data class AstComptimeFunction(
+    val name: String,
+    val category: String,
+    val parameters: List<String>,
+    val template: String,
+    override val origin: Origin
+) : AstDeclaration
+
+data class AstCpxInvocation(
+    val name: String,
+    val arguments: List<String>,
+    override val origin: Origin
+) : AstDeclaration
+
 data class AstFunction(
     val returnType: AstTypeRef,
     val name: String,

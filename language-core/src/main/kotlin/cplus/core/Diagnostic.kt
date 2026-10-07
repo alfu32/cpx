@@ -26,6 +26,10 @@ class DiagnosticBag {
         entries += diagnostic
     }
 
+    fun addAll(diagnostics: Iterable<Diagnostic>) {
+        entries += diagnostics
+    }
+
     fun error(message: String, range: SourceRange? = null, code: String? = null) {
         add(Diagnostic(DiagnosticSeverity.ERROR, message, range, code))
     }

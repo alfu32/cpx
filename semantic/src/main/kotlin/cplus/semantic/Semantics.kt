@@ -160,6 +160,7 @@ class SemanticAnalyzer {
                         globals[declaration.name] = newSymbol(declaration.name, SymbolKind.VARIABLE, type, declaration.origin)
                     }
                 }
+                is AstComptimeFunction, is AstCpxInvocation -> Unit
             }
         }
 

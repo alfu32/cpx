@@ -158,6 +158,8 @@ private class AstPrinter {
                 }
                 declaration.body?.let { appendStatement(it, depth + 1) }
             }
+            is AstComptimeFunction -> appendLine("Comptime ${declaration.category} ${declaration.name}")
+            is AstCpxInvocation -> appendLine("CpxInvocation ${declaration.name}(${declaration.arguments.joinToString(", ")})")
         }
     }
 

@@ -44,6 +44,29 @@ data class SyntaxGlobalVariable(
     override val origin: Origin
 ) : SyntaxDeclaration
 
+data class SyntaxComptimeParameter(
+    val kind: String,
+    val name: String,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxNode
+
+data class SyntaxComptimeFunction(
+    val name: String,
+    val category: String,
+    val parameters: List<SyntaxComptimeParameter>,
+    val template: String,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxDeclaration
+
+data class SyntaxCpxInvocation(
+    val name: String,
+    val arguments: List<String>,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxDeclaration
+
 data class SyntaxFunction(
     val returnType: TypeSyntax,
     val name: String,

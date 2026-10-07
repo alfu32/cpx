@@ -1,6 +1,8 @@
 package cplus.compiler
 
 import cplus.backend.*
+import cplus.comptime.CpxExpansionResult
+import cplus.comptime.CpxExpander
 import cplus.core.*
 import cplus.semantic.*
 import java.nio.file.Files
@@ -25,6 +27,7 @@ data class CompilationArtifacts(
     val source: SourceFile,
     val lexed: LexedSource,
     val parsed: Parser.ParsedSource,
+    val expanded: CpxExpansionResult?,
     val ast: AstProgram,
     val semantic: SemanticResult,
     val lowered: LoweredCResult?,
@@ -53,6 +56,7 @@ class CompilerContext(
     val lexer: Lexer = Lexer(),
     val astBuilder: AstBuilder = AstBuilder(),
     val semanticAnalyzer: SemanticAnalyzer = SemanticAnalyzer(),
+    val cpxExpander: CpxExpander = CpxExpander(lexer),
     val cLowererFactory: (SemanticModel) -> CLowerer = ::CLowerer,
     val cEmitter: CEmitter = CEmitter()
 )
@@ -85,7 +89,7 @@ class CPlusCompiler(
                 SyntaxProgram(emptyList(), missingRange, Origin.Direct(missingRange)),
                 listOf(diagnostic)
             )
-            return CompilationArtifacts(source, lexed, parsed, AstProgram(emptyList(), parsed.syntax.origin), SemanticResult(null, listOf(diagnostic)), null, null)
+            return CompilationArtifacts(source, lexed, parsed, null, AstProgram(emptyList(), parsed.syntax.origin), SemanticResult(null, listOf(diagnostic)), null, null)
         }
         val source = context.sourceRepository.put(path, path.readText())
         return compileSource(source, options)
@@ -94,18 +98,19 @@ class CPlusCompiler(
     private fun compileSource(source: SourceFile, options: CompilerOptions): CompilationArtifacts {
         val lexed = context.lexer.lex(source)
         val parsed = Parser(lexed).parse()
-        val ast = context.astBuilder.build(parsed.syntax)
+        val expanded = context.cpxExpander.expand(source, parsed.syntax)
+        val ast = context.astBuilder.build(expanded.program)
         val semantic = context.semanticAnalyzer.analyze(ast)
         if (!semantic.isSuccessful) {
-            return CompilationArtifacts(source, lexed, parsed, ast, semantic, null, null)
+            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null)
         }
-        val model = semantic.model ?: return CompilationArtifacts(source, lexed, parsed, ast, semantic, null, null)
+        val model = semantic.model ?: return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null)
         val lowered = context.cLowererFactory(model).lower(ast)
         if (lowered.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
-            return CompilationArtifacts(source, lexed, parsed, ast, semantic, lowered, null)
+            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, null)
         }
         val generated = context.cEmitter.emit(lowered.unit)
-        return CompilationArtifacts(source, lexed, parsed, ast, semantic, lowered, generated)
+        return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, generated)
     }
 
     private fun resultOf(artifacts: List<CompilationArtifacts>): CompileResult = CompileResult(
@@ -118,6 +123,7 @@ class CPlusCompiler(
     private fun CompilationArtifacts.allDiagnostics(): List<Diagnostic> = buildList {
         addAll(lexed.diagnostics)
         addAll(parsed.diagnostics.filterNot { it in lexed.diagnostics })
+        addAll(expanded?.diagnostics.orEmpty())
         addAll(semantic.diagnostics)
         addAll(lowered?.diagnostics.orEmpty())
     }

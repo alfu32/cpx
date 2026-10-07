@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 16/80
+Overall: 18/80
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [2/16] 2. Semantic model and modules
-[TODO] [0/20] 3. Compile-time and CPX system
+[DOING] [2/20] 3. Compile-time and CPX system
 [DOING] [3/16] 4. Lowering and C backend
 [TODO] [0/12] 5. Tooling, integration and quality
 
 Current task:
-1.2.3 — CPX interpolation lexical rules
+3.2.1 — CPX categories and template node model
 
 Current milestone:
 M1 — Minimal C+ → C vertical compiler
@@ -779,7 +779,7 @@ all create correct bindings.
 
 ---
 
-## 3.3 [TODO] [0/4] Evaluator, scheduler and expansion identity
+## 3.3 [DOING] [1/4] Evaluator, scheduler and expansion identity
 
 ### 3.3.1 [TODO] `ComptimeContext` and evaluator API
 
@@ -833,7 +833,7 @@ all create correct bindings.
 **Depends**
 - 3.3.2
 
-### 3.3.4 [TODO] CPX recursion and cycle detection
+### 3.3.4 [DONE] CPX recursion and cycle detection
 
 **Language**
 - LS §10.3
@@ -852,9 +852,9 @@ all create correct bindings.
 
 ---
 
-## 3.4 [TODO] [0/4] Generics and recursive specialization
+## 3.4 [DOING] [1/4] Generics and recursive specialization
 
-### 3.4.1 [TODO] Generic declaration generation through CPX
+### 3.4.1 [DONE] Generic declaration generation through CPX
 
 **Language**
 - LS §9.1–9.3

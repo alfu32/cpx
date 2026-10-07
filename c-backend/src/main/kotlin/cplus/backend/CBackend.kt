@@ -168,6 +168,11 @@ class CEmitter {
             append("\n")
         }
 
+        if (usesBool(unit)) {
+            appendLine("#include <stdbool.h>")
+            appendLine()
+        }
+
         unit.structs.forEachIndexed { index, structure ->
             appendLine("struct ${structure.name} {", structure.origin)
             structure.fields.forEach { field ->
@@ -193,6 +198,23 @@ class CEmitter {
         }
 
         return GeneratedCUnit(output.toString(), mappings)
+    }
+
+    private fun usesBool(unit: CTranslationUnit): Boolean {
+        fun typeUsesBool(type: CType): Boolean = type is CType.Primitive && type.name == "bool"
+        fun statementUsesBool(statement: CStatement): Boolean = when (statement) {
+            is CBlock -> statement.statements.any(::statementUsesBool)
+            is CReturn -> false
+            is CExpressionStatement -> false
+            is CVariableDeclaration -> typeUsesBool(statement.type)
+        }
+        return unit.structs.any { structure -> structure.fields.any { typeUsesBool(it.type) } } ||
+            unit.globals.any { typeUsesBool(it.type) } ||
+            unit.functions.any { function ->
+                typeUsesBool(function.returnType) ||
+                    function.parameters.any { typeUsesBool(it.type) } ||
+                    function.body?.let(::statementUsesBool) == true
+            }
     }
 
     private fun emitFunction(

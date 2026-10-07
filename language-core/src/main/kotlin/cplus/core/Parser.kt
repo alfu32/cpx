@@ -24,6 +24,8 @@ class Parser(private val lexed: LexedSource) {
 
     private fun parseDeclaration(): SyntaxDeclaration? {
         while (peek().lexeme in setOf("pub", "static", "extern", "inline")) advance()
+        if (peek().isLexeme("comptime")) return parseComptimeFunction()
+        if (peek().kind == TokenKind.IDENTIFIER && peek(1).isLexeme("(")) return parseCpxInvocation()
         if (match("struct") && peek(1).isLexeme("{")) {
             return parseStruct(peek(-1))
         }
@@ -41,6 +43,73 @@ class Parser(private val lexed: LexedSource) {
             expect(";", "expected ';' after global declaration")
             SyntaxGlobalVariable(type, name.lexeme, initializer, span(type.range, previous().range), direct(span(type.range, previous().range)))
         }
+    }
+
+    private fun parseComptimeFunction(): SyntaxComptimeFunction {
+        val start = expect("comptime", "expected 'comptime'") ?: previous()
+        if (peek().isLexeme("cpx")) advance()
+        else diagnostics.error("expected 'cpx' after 'comptime'", peek().range, "PARSE501")
+        val category = if (match("<")) {
+            val categoryToken = advance()
+            expect(">", "expected '>' after CPX category")
+            categoryToken.lexeme
+        } else {
+            "decl"
+        }
+        val name = expectIdentifier("expected compile-time function name") ?: syntheticToken("cpx", start.range)
+        expect("(", "expected '(' after compile-time function name")
+        val parameters = mutableListOf<SyntaxComptimeParameter>()
+        if (!peek().isLexeme(")")) {
+            do {
+                val kind = if (peek().isLexeme("type")) advance() else {
+                    diagnostics.error("compile-time parameters must declare a value kind", peek().range, "PARSE502")
+                    advance()
+                }
+                val parameterName = expectIdentifier("expected compile-time parameter name")
+                    ?: syntheticToken("parameter", kind.range)
+                val parameterRange = span(kind.range, parameterName.range)
+                parameters += SyntaxComptimeParameter(kind.lexeme, parameterName.lexeme, parameterRange, direct(parameterRange))
+            } while (match(","))
+        }
+        expect(")", "expected ')' after compile-time parameters")
+        expect("{", "expected '{' before compile-time function body")
+        expect("return", "expected 'return' in compile-time function")
+        val templateOpen = expect("{", "expected '{' to start CPX template") ?: previous()
+        var depth = 1
+        var templateEnd = templateOpen.range.endOffset
+        while (!atEnd() && depth > 0) {
+            val token = advance()
+            when (token.lexeme) {
+                "{" -> depth++
+                "}" -> {
+                    depth--
+                    if (depth == 0) templateEnd = token.range.startOffset
+                }
+            }
+        }
+        val template = lexed.source.text.substring(templateOpen.range.endOffset, templateEnd)
+        expect(";", "expected ';' after CPX template")
+        val close = expect("}", "expected '}' after compile-time function") ?: previous()
+        val range = span(start.range, close.range)
+        return SyntaxComptimeFunction(name.lexeme, category, parameters, template, range, direct(range))
+    }
+
+    private fun parseCpxInvocation(): SyntaxCpxInvocation {
+        val name = advance()
+        expect("(", "expected '(' after CPX invocation name")
+        val arguments = mutableListOf<String>()
+        while (!atEnd() && !peek().isLexeme(")")) {
+            val parts = mutableListOf<String>()
+            while (!atEnd() && !peek().isLexeme(",") && !peek().isLexeme(")")) {
+                parts += advance().lexeme
+            }
+            if (parts.isNotEmpty()) arguments += parts.joinToString(" ")
+            if (!match(",")) break
+        }
+        val close = expect(")", "expected ')' after CPX invocation arguments") ?: previous()
+        expect(";", "expected ';' after CPX invocation")
+        val range = span(name.range, previous().range)
+        return SyntaxCpxInvocation(name.lexeme, arguments, range, direct(range))
     }
 
     private fun parseStruct(structKeyword: Token): SyntaxStruct {
