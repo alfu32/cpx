@@ -1741,7 +1741,7 @@ all create correct bindings.
 - 4.3.3.1
 - 4.3.2
 
-#### 4.3.3.3 [TODO] Preserve public/private dependency boundaries
+#### 4.3.3.3 [DONE] Preserve public/private dependency boundaries
 
 **Acceptance**
 - private imports contribute only to implementation dependencies when absent from the public API.
@@ -1751,6 +1751,12 @@ all create correct bindings.
 
 **Depends**
 - 4.3.3.2
+
+**Implementation**
+- implementation dependency collection includes private imports and foreign types needed by generated C.
+- public dependency collection traverses only exported aggregates, aliases, globals, and function signatures.
+- private globals and declarations are filtered from generated headers while public system dependencies remain available.
+- Integration coverage verifies private `FILE*` usage adds `<stdio.h>` to implementation C but not the public header.
 
 #### 4.3.3.4 [DONE] Synthesize local and foreign library dependencies
 
