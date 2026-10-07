@@ -48,6 +48,10 @@ below. Its current execution sequence is:
 
 Latest completed implementation commits:
 
+- `60047dc` — central C primitive metadata and reopen R5.1 on audit;
+- `76a1876` — preserve parsed integer identity across target ABI layouts;
+- `bc60a1e` — verify integer spellings across compiler and CLI/LSP front ends;
+- `7321b66` — normalize complete C integer specifier sequences;
 - `c7e6817` — target-neutral native std value foundations;
 - `0fd8835` — executable Linux C17 conformance gate;
 - `a6cc980` — advanced Linux C17 runtime families;
