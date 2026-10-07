@@ -282,7 +282,67 @@ internal class Cli {
             System.err.println("a source file is required")
             return null
         }
-        return FileArguments(listOf(source) + sources, cSources, output, headerOutput, libraries, includeDirectories)
+        return FileArguments(
+            discoverModuleSources(listOf(source) + sources),
+            cSources,
+            output,
+            headerOutput,
+            libraries,
+            includeDirectories
+        )
+    }
+
+    private fun discoverModuleSources(requested: List<Path>): List<Path> {
+        val discovered = linkedSetOf<Path>()
+
+        fun visit(path: Path) {
+            val normalized = path.toAbsolutePath().normalize()
+            if (!discovered.add(normalized) || !Files.isRegularFile(normalized)) return
+            val imports = runCatching {
+                MODULE_IMPORT.findAll(Files.readString(normalized))
+                    .map { match -> match.groupValues[1].ifEmpty { match.groupValues[2] } }
+                    .distinct()
+                    .toList()
+            }.getOrDefault(emptyList())
+            imports.forEach { moduleName ->
+                findModuleSource(normalized, moduleName)?.let(::visit)
+            }
+        }
+
+        requested.forEach(::visit)
+        return discovered.toList()
+    }
+
+    private fun findModuleSource(source: Path, moduleReference: String): Path? {
+        val reference = moduleReference.trim()
+        val isPathImport = reference.startsWith(".") ||
+            reference.startsWith("/") ||
+            reference.endsWith(".cp")
+        if (isPathImport) {
+            val path = Path.of(reference)
+            val relativeCandidates = listOfNotNull(
+                source.parent?.resolve(path),
+                Path.of("").toAbsolutePath().normalize().resolve(path)
+            )
+            relativeCandidates.firstOrNull { Files.isRegularFile(it) }?.let { return it }
+        }
+        val moduleName = reference
+            .substringAfterLast('/')
+            .substringAfterLast('.')
+            .removeSuffix(".cp")
+        val sibling = source.parent?.resolve("$moduleName.cp")
+        if (sibling != null && Files.isRegularFile(sibling)) return sibling
+        val directory = source.parent ?: return null
+        return runCatching {
+            Files.walk(directory).use { paths ->
+                paths
+                    .filter { candidate ->
+                        Files.isRegularFile(candidate) && candidate.fileName.toString() == "$moduleName.cp"
+                    }
+                    .findFirst()
+                    .orElse(null)
+            }
+        }.getOrNull()
     }
 
     private fun printDiagnostics(diagnostics: List<Diagnostic>, source: Path) {
@@ -320,6 +380,10 @@ internal class Cli {
         val libraries: List<String>,
         val includeDirectories: List<Path>
     )
+
+    private companion object {
+        val MODULE_IMPORT = Regex("""\bfrom\s+(?:"([^"]+)"|([^\s;]+))""")
+    }
 }
 
 internal class AstPrinter {
@@ -372,7 +436,9 @@ internal class AstPrinter {
             is AstComptimeFunction -> appendLine("Comptime ${declaration.category} ${declaration.name}")
             is AstCpxInvocation -> appendLine("CpxInvocation ${declaration.name}(${declaration.arguments.joinToString(", ")})")
             is AstImport -> appendLine(
-                "Import ${declaration.module} ${declaration.alias?.let { "as $it " } ?: ""}{${declaration.names.joinToString(", ")}}"
+                "Import ${declaration.module} ${declaration.alias?.let { "as $it " } ?: ""}{${declaration.names.joinToString(", ") { name ->
+                    declaration.nameAliases[name]?.let { "$name as $it" } ?: name
+                }}}"
             )
         }
     }

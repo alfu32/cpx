@@ -2117,6 +2117,7 @@ all create correct bindings.
 - Integration coverage verifies initialization capabilities and non-empty semantic-token output.
 - Added `vscode-extension/` with the C+ `.cp` language declaration, language configuration, TextMate grammar, LSP client activation, configurable Java/JAR/CLI arguments, and a restart command.
 - Added the CLI `fatJar` distribution task; the extension launches the configured artifact as `java -jar <cli.jar> lsp`, bundles `vscode-languageclient` into its activation entrypoint, and produces a self-contained `.vsix`.
+- Added `C+: Run Main`, which launches the configured CLI artifact as `java -jar <cli.jar> run <main.cp> ...` in an integrated terminal and includes discoverable imported C+ sources.
 
 ### 5.1.3 [DONE] Completion and hover
 
@@ -2246,6 +2247,7 @@ all create correct bindings.
 - `ast` now prints the parsed pre-CPX AST while `expand` prints the post-CPX/pre-lowering AST.
 - `CompilationArtifacts.expandedSyntax` exposes the phase boundary through language-core types without leaking the comptime implementation type into CLI clients.
 - The Gradle `cli:run` task uses the repository root as its working directory, so documented root-relative source paths resolve consistently.
+- `run`, `build`, `check`, `ast`, `expand`, and `transcode` recursively discover local imported `.cp` sources; relative, quoted path, logical package, and selective-alias imports are normalized before workspace compilation.
 
 ### 5.2.3 [DONE] Incremental dependency invalidation
 

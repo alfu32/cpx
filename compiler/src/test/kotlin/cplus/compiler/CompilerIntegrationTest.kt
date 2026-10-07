@@ -1232,6 +1232,58 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun resolvesPathImportsPackagePathsAndSelectiveFunctionAliases() {
+        val directory = Files.createTempDirectory("cplus-import-targets")
+        val helper = directory.resolve("module_helpers.cp").also {
+            it.writeText(
+                """
+                    pub int add(int left, int right) {
+                        return left + right;
+                    }
+                """.trimIndent()
+            )
+        }
+        val io = directory.resolve("io.cp").also {
+            it.writeText(
+                """
+                    package stdlib;
+                    pub int fs() {
+                        return 3;
+                    }
+                """.trimIndent()
+            )
+        }
+        val pathMain = directory.resolve("path_main.cp").also {
+            it.writeText(
+                """
+                    import { add as sum } from "./module_helpers.cp";
+
+                    int main() {
+                        return sum(7, 5);
+                    }
+                """.trimIndent()
+            )
+        }
+        val packageMain = directory.resolve("package_main.cp").also {
+            it.writeText(
+                """
+                    import { fs as fs1 } from stdlib/io;
+
+                    int main() {
+                        return fs1();
+                    }
+                """.trimIndent()
+            )
+        }
+
+        val pathResult = CPlusCompiler().compile(CompileRequest(listOf(pathMain, helper)))
+        val packageResult = CPlusCompiler().compile(CompileRequest(listOf(packageMain, io)))
+
+        assertTrue(pathResult.isSuccessful, pathResult.diagnostics.joinToString())
+        assertTrue(packageResult.isSuccessful, packageResult.diagnostics.joinToString())
+    }
+
+    @Test
     fun declarationCatalogueAllowsCircularModuleImports() {
         val directory = Files.createTempDirectory("cplus-circular-modules")
         val first = directory.resolve("first.cp")

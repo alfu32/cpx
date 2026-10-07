@@ -2,7 +2,7 @@
   "name": "cplus-language-support",
   "displayName": "C+ Language Support",
   "description": "Language support for C+ powered by the C+ Kotlin language server.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "cplus",
   "engines": {
     "vscode": "^1.85.0"
@@ -45,6 +45,10 @@
       {
         "command": "cplus.restartServer",
         "title": "C+: Restart Language Server"
+      },
+      {
+        "command": "cplus.runMain",
+        "title": "C+: Run Main"
       }
     ],
     "configuration": {
@@ -74,6 +78,11 @@
           "type": "string",
           "default": "${workspaceFolder}",
           "description": "Working directory for the language server."
+        },
+        "cplus.run.mainSource": {
+          "type": "string",
+          "default": "${file}",
+          "description": "C+ source file used as the entry point by C+: Run Main."
         }
       }
     }

@@ -1015,7 +1015,19 @@ Supported conceptual forms include:
 import foo;
 import foo as bar;
 import { a, b, c } from foo;
+import { add } from ./module_helpers.cp;
+import { fs } from stdlib/io;
+import { fs as fs1 } from "some/ref.cp";
 ```
+
+An import target without a leading relative-path marker is a logical module or
+package name. Logical package segments MAY be separated by `/`, as in
+`stdlib/io`, and dotted module names remain supported for compatibility.
+
+A target beginning with `./` or `../`, or a quoted target naming a `.cp` file,
+is a source-path import. A source-path import SHALL be resolved relative to the
+importing compilation unit. The compiler SHALL preserve the imported file's
+module identity when resolving its declarations.
 
 ## 21.2 Import semantics
 
@@ -1042,9 +1054,12 @@ binds the imported module or package to local name `bar`.
 
 ```c
 import { a, b } from foo;
+import { fs as fs1 } from "some/ref.cp";
 ```
 
 introduces only the selected public entities into the destination scope.
+Each selective name MAY be followed by `as localName`; references in the
+destination scope then use `localName`.
 
 Name collisions are compile-time errors unless explicitly resolved through qualification or aliasing.
 

@@ -119,6 +119,7 @@ data class SyntaxImport(
     val names: List<String>,
     val module: String,
     val alias: String? = null,
+    val nameAliases: Map<String, String> = emptyMap(),
     override val range: SourceRange,
     override val origin: Origin,
     override val isPublic: Boolean = false

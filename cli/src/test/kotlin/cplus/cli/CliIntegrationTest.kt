@@ -200,6 +200,34 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun runDiscoversLocalImportedModulesFromTheEntryPoint() {
+        val directory = Files.createTempDirectory("cplus-cli-run-modules")
+        val helper = directory.resolve("module_helpers.cp").also {
+            it.writeText(
+                """
+                    pub int add(int left, int right) {
+                        return left + right;
+                    }
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("module_main.cp").also {
+            it.writeText(
+                """
+                    import { add } from module_helpers;
+
+                    int main() {
+                        return add(7, 5);
+                    }
+                """.trimIndent()
+            )
+        }
+
+        assertEquals(12, Cli().run(listOf("run", main.toString())))
+        assertTrue(helper.exists())
+    }
+
+    @Test
     fun checkReportsFailureWithNonzeroExitCode() {
         val directory = Files.createTempDirectory("cplus-cli-check")
         val source = directory.resolve("invalid.cp").also {

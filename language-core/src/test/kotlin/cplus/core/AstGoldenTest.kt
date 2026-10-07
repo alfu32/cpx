@@ -95,6 +95,26 @@ class AstGoldenTest {
     }
 
     @Test
+    fun importsSupportRelativePathsPackagePathsAndSelectiveAliases() {
+        val text = """
+            import { add as sum } from ./module_helpers.cp;
+            import { fs as fs1 } from "some/ref.cp";
+            import { fs } from stdlib/io;
+            int main() { return 0; }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(6), Path.of("imports.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        val imports = parsed.syntax.declarations.filterIsInstance<SyntaxImport>()
+        assertEquals("./module_helpers.cp", imports[0].module)
+        assertEquals(mapOf("add" to "sum"), imports[0].nameAliases)
+        assertEquals("some/ref.cp", imports[1].module)
+        assertEquals(mapOf("fs" to "fs1"), imports[1].nameAliases)
+        assertEquals("stdlib/io", imports[2].module)
+    }
+
+    @Test
     fun packageDeclarationRemainsAStructuredModuleBoundary() {
         val source = SourceFile(SourceFileId(5), Path.of("package.cp"), "package collections.core; int main() { return 0; }", 1)
         val parsed = Parser(Lexer().lex(source)).parse()

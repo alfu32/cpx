@@ -1058,9 +1058,14 @@ The import resolver processes:
 import foo;
 import foo as bar;
 import { a, b } from foo;
+import { add } from ./module_helpers.cp;
+import { fs } from stdlib/io;
+import { fs as fs1 } from "some/ref.cp";
 ```
 
-It SHALL produce explicit scope bindings.
+It SHALL distinguish logical package/module targets from relative source-path
+targets, resolve source paths relative to the importing source file, and
+produce explicit scope bindings for selective aliases.
 
 ```kotlin
 class ImportResolver

@@ -13,17 +13,21 @@ function expandWorkspaceVariable(value, workspace) {
   return value.replaceAll('${workspaceFolder}', workspace || '');
 }
 
-function configuration() {
+function expandFileVariable(value) {
+  const activeFile = vscode.window.activeTextEditor?.document.fileName || '';
+  return value.replaceAll('${file}', activeFile);
+}
+
+function cliConfiguration(cliArguments) {
   const settings = vscode.workspace.getConfiguration('cplus');
   const workspace = workspaceDirectory();
   const configuredJarPath = settings.get('server.jarPath', '');
   const javaPath = settings.get('server.javaPath', 'java');
-  const args = settings.get('server.args', ['lsp']);
   const configuredCwd = settings.get('server.cwd', '${workspaceFolder}');
   const cwd = path.resolve(expandWorkspaceVariable(configuredCwd, workspace));
   const jarPath = path.resolve(expandWorkspaceVariable(configuredJarPath, workspace));
   if (!configuredJarPath) {
-    vscode.window.showErrorMessage('C+ language server JAR is not configured. Set cplus.server.jarPath.');
+    vscode.window.showErrorMessage('C+ CLI JAR is not configured. Set cplus.server.jarPath.');
     return undefined;
   }
   if (!fs.existsSync(jarPath)) {
@@ -32,9 +36,15 @@ function configuration() {
   }
   return {
     command: javaPath,
-    args: ['-jar', jarPath, ...(Array.isArray(args) ? args.map(String) : ['lsp'])],
+    args: ['-jar', jarPath, ...cliArguments],
     cwd
   };
+}
+
+function configuration() {
+  const settings = vscode.workspace.getConfiguration('cplus');
+  const args = settings.get('server.args', ['lsp']);
+  return cliConfiguration(Array.isArray(args) ? args.map(String) : ['lsp']);
 }
 
 function createClient(server) {
@@ -79,9 +89,86 @@ async function restartClient() {
   await startClient();
 }
 
+async function importedSources(entryPoint) {
+  const sources = [];
+  const visited = new Set();
+
+  async function visit(sourcePath) {
+    const normalized = path.resolve(sourcePath);
+    if (visited.has(normalized) || !fs.existsSync(normalized)) return;
+    visited.add(normalized);
+    sources.push(normalized);
+
+    const text = fs.readFileSync(normalized, 'utf8');
+    const imports = [...text.matchAll(/\bfrom\s+(?:"([^"]+)"|([^\s;]+))/g)]
+      .map((match) => match[1] || match[2])
+      .filter(Boolean);
+    for (const moduleReference of imports) {
+      const isPathImport = moduleReference.startsWith('.') ||
+        path.isAbsolute(moduleReference) ||
+        moduleReference.endsWith('.cp');
+      if (isPathImport) {
+        const pathCandidates = [
+          path.resolve(path.dirname(normalized), moduleReference),
+          path.resolve(workspaceDirectory() || process.cwd(), moduleReference)
+        ];
+        const importedPath = pathCandidates.find((candidate) => fs.existsSync(candidate));
+        if (importedPath) await visit(importedPath);
+        continue;
+      }
+      const moduleName = moduleReference
+        .split('/')
+        .pop()
+        .split('.')
+        .pop();
+      const sibling = path.join(path.dirname(normalized), `${moduleName}.cp`);
+      if (fs.existsSync(sibling)) {
+        await visit(sibling);
+        continue;
+      }
+      const matches = await vscode.workspace.findFiles(`**/${moduleName}.cp`, '**/{node_modules,build,dist}/**', 1);
+      if (matches.length > 0) await visit(matches[0].fsPath);
+    }
+  }
+
+  await visit(entryPoint);
+  return sources;
+}
+
+async function runMain() {
+  const settings = vscode.workspace.getConfiguration('cplus');
+  const configuredSource = expandFileVariable(
+    expandWorkspaceVariable(settings.get('run.mainSource', '${file}'), workspaceDirectory())
+  );
+  const entryPoint = path.resolve(configuredSource);
+  if (!configuredSource || !fs.existsSync(entryPoint)) {
+    vscode.window.showErrorMessage(`C+ main source was not found: ${entryPoint}`);
+    return;
+  }
+
+  const document = vscode.workspace.textDocuments.find((candidate) =>
+    path.resolve(candidate.fileName) === entryPoint
+  );
+  if (document?.isDirty && !(await document.save())) {
+    vscode.window.showErrorMessage(`C+ main source could not be saved: ${entryPoint}`);
+    return;
+  }
+
+  const server = cliConfiguration(['run', ...(await importedSources(entryPoint))]);
+  if (!server) return;
+  const terminal = vscode.window.createTerminal({
+    name: 'C+ Run',
+    shellPath: server.command,
+    shellArgs: server.args,
+    cwd: server.cwd
+  });
+  terminal.show(true);
+}
+
 function activate(context) {
   context.subscriptions.push(
-    vscode.commands.registerCommand('cplus.restartServer', restartClient)
+    vscode.commands.registerCommand('cplus.restartServer', restartClient),
+    vscode.commands.registerCommand('cplus.runMain', runMain)
   );
   return startClient();
 }

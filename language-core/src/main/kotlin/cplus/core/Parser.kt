@@ -191,10 +191,18 @@ class Parser(private val lexed: LexedSource) {
     private fun parseImport(): SyntaxImport {
         val start = expect("import", "expected 'import'") ?: previous()
         val names = mutableListOf<String>()
+        val nameAliases = linkedMapOf<String, String>()
         if (match("{")) {
             while (!atEnd() && !peek().isLexeme("}")) {
                 val name = expectIdentifier("expected imported name")
-                if (name != null) names += name.lexeme
+                if (name != null) {
+                    names += name.lexeme
+                    if (match("as")) {
+                        expectIdentifier("expected local alias after 'as'")?.let { alias ->
+                            nameAliases[name.lexeme] = alias.lexeme
+                        }
+                    }
+                }
                 if (!match(",")) break
             }
             expect("}", "expected '}' after imported names")
@@ -206,12 +214,17 @@ class Parser(private val lexed: LexedSource) {
             if (match("as")) {
                 alias = expectIdentifier("expected alias after 'as'")?.lexeme
             } else {
-                moduleParts += advance().lexeme
+                val token = advance()
+                moduleParts += if (token.kind == TokenKind.STRING_LITERAL) {
+                    token.lexeme.removePrefix("\"").removeSuffix("\"")
+                } else {
+                    token.lexeme
+                }
             }
         }
         expect(";", "expected ';' after import")
         val range = span(start.range, previous().range)
-        return SyntaxImport(names, moduleParts.joinToString(""), alias, range, direct(range))
+        return SyntaxImport(names, moduleParts.joinToString(""), alias, nameAliases, range, direct(range))
     }
 
     private fun parseStruct(structKeyword: Token, isPublic: Boolean): SyntaxStruct {

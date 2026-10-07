@@ -34,6 +34,12 @@ The server provides diagnostics, semantic tokens, completion, hover,
 definition, references, and signature help. Use **C+: Restart Language Server**
 after changing server settings.
 
+Use **C+: Run Main** to execute the configured main source through the same
+CLI JAR. The command launches `java -jar <jar> run <main.cp> ...` in an
+integrated terminal and includes locally discoverable imported `.cp` modules.
+Set `cplus.run.mainSource` when the active editor is not the program entry
+point.
+
 ## Development
 
 ```text

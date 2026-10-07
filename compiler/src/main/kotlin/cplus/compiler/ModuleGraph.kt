@@ -109,5 +109,10 @@ class ModuleGraphBuilder {
 
     private fun moduleName(path: Path): String = path.nameWithoutExtension
 
-    private fun normalizeImport(module: String): String = module.substringAfterLast('.')
+    private fun normalizeImport(module: String): String = module
+        .trim()
+        .removeSurrounding("\"")
+        .substringAfterLast('/')
+        .removeSuffix(".cp")
+        .substringAfterLast('.')
 }

@@ -10,9 +10,9 @@ by a focused test or by an end-to-end compiler/CLI fixture.
 | LS §§5, 23, 32–36, 44 | declaration catalogue, scopes, symbols, lookup, ambiguity diagnostics | semantic scope/catalogue/reference tests; compiler semantic tests |
 | LS §§6, 14, 30, 34 | declarations, Pratt expressions, methods, closures, parser recovery | AST golden tests; method and closure compiler integration tests |
 | LS §§7–13, 17–20, 29, 35–38 | typed CPX values, interpolation, hygiene, fixed point, phase barrier, cycles | `comptime` expansion/scheduler tests; CPX compiler integration tests |
-| LS §§21–22, 43 | packages, imports, C headers, C sources, foreign symbols | semantic and compiler import tests; CLI C dependency tests |
+| LS §§21–22, 43 | packages, relative/quoted imports, logical package imports, selective aliases, C headers, C sources, foreign symbols | parser golden test; semantic/compiler import tests; CLI module-run test and C dependency tests |
 | LS §§24–27, 39, 47–51 | hoisting, headers, dependencies, incremental compilation, diagnostics | c-backend/compiler/CLI golden and incremental tests |
-| LS §§40–42 | workspace edits, semantic tokens, completion, hover, navigation, references, signature help, VS Code client and TextMate grammar | CLI LSP integration/workspace tests; `vscode-extension` package tests and `.vsix` build |
+| LS §§40–42 | workspace edits, semantic tokens, completion, hover, navigation, references, signature help, VS Code client, Run Main command, and TextMate grammar | CLI LSP integration/workspace tests; CLI module-run test; `vscode-extension` package tests and `.vsix` build |
 | LS §52 | end-to-end implementation architecture | full Gradle suite and native C smoke tests |
 | TS §§1–8, 65–70 | module structure, source model, lexer/parser, AST, recovery, hot-path storage | language-core tests and incremental lexer tests |
 | TS §§9–14, 26–30, 56 | symbols, scopes, types, methods, modules, C import adapter, foreign tooling | semantic/compiler tests and foreign-symbol LSP test |

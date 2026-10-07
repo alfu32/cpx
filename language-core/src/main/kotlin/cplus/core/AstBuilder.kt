@@ -32,7 +32,7 @@ class AstBuilder {
         is SyntaxGlobalVariable -> AstGlobalVariable(type(node.type), node.name, node.initializer?.let(::expression), node.origin, node.arrayDimensions, node.isPublic)
         is SyntaxComptimeFunction -> AstComptimeFunction(node.name, node.category, node.parameters.map { it.name }, node.template, node.origin, node.isPublic)
         is SyntaxCpxInvocation -> AstCpxInvocation(node.name, node.arguments, node.origin, node.isPublic)
-        is SyntaxImport -> AstImport(node.names, node.module, node.alias, node.origin, node.isPublic)
+        is SyntaxImport -> AstImport(node.names, node.module, node.alias, node.nameAliases, node.origin, node.isPublic)
         is SyntaxFunction -> function(node, node.ownerName)
     }
 

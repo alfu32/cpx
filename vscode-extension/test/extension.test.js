@@ -10,6 +10,7 @@ test('extension manifest declares C+ language and LSP client', () => {
   assert.equal(manifest.main, './dist/extension.js');
   assert.equal(manifest.contributes.languages[0].id, 'cplus');
   assert.deepEqual(manifest.contributes.languages[0].extensions, ['.cp']);
+  assert.ok(manifest.contributes.commands.some((command) => command.command === 'cplus.runMain'));
   assert.equal(
     manifest.contributes.configuration.properties['cplus.server.jarPath'].default,
     '${workspaceFolder}/cli/build/libs/cplus-cli-0.1.0-SNAPSHOT-all.jar'

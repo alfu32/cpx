@@ -1045,13 +1045,18 @@ class SemanticAnalyzer(
             moduleFunctions[moduleName].orEmpty().forEach { (name, function) -> visible[name] = function }
             foreignSourceFunctions.forEach { (name, function) -> visible.putIfAbsent(name, function) }
             declarations.filterIsInstance<AstImport>().forEach { import ->
-                val targetName = import.module.substringAfterLast('.')
-                val targetFunctions = moduleFunctions[import.module] ?: moduleFunctions[targetName]
+                val targetNames = moduleTargetNames(import.module)
+                val targetName = targetNames.getOrElse(1) { targetNames.first() }
+                val targetFunctions = targetNames.asSequence()
+                    .mapNotNull(moduleFunctions::get)
+                    .firstOrNull()
                 val exportedFunctions = targetFunctions?.filterValues {
                     it.symbol.visibility == Visibility.PUBLIC || it.symbol.kind == SymbolKind.FOREIGN
                 }.orEmpty()
                 if (targetFunctions == null) {
-                    if (import.module !in setOf("c.stdio", "c.stddef", "c.stdlib", "c.math") && targetName !in knownModules) {
+                    if (import.module !in setOf("c.stdio", "c.stddef", "c.stdlib", "c.math") &&
+                        targetNames.none { it in knownModules }
+                    ) {
                         diagnostics.error("module import '${import.module}' cannot be resolved", rangeOf(import.origin), "SEM402")
                     } else if (import.names.isNotEmpty()) {
                         import.names.forEach { name ->
@@ -1076,14 +1081,26 @@ class SemanticAnalyzer(
                     } else if (function.symbol.visibility != Visibility.PUBLIC && function.symbol.kind != SymbolKind.FOREIGN) {
                         diagnostics.error("imported function '$name' is not public in module '${import.module}'", rangeOf(import.origin), "SEM406")
                     } else if (import.alias != null) {
-                        visible["${import.alias}.$name"] = function
-                    } else if (visible.putIfAbsent(name, function) != null) {
-                        diagnostics.error("imported name '$name' conflicts in module '$moduleName'", rangeOf(import.origin), "SEM405")
+                        val localName = import.nameAliases[name] ?: name
+                        visible["${import.alias}.$localName"] = function
+                    } else {
+                        val localName = import.nameAliases[name] ?: name
+                        if (visible.putIfAbsent(localName, function) != null) {
+                            diagnostics.error("imported name '$localName' conflicts in module '$moduleName'", rangeOf(import.origin), "SEM405")
+                        }
                     }
                 }
             }
             visible
         }
+    }
+
+    private fun moduleTargetNames(module: String): List<String> {
+        val normalized = module.trim().removeSurrounding("\"")
+        val basename = normalized.substringAfterLast('/')
+        val withoutExtension = basename.removeSuffix(".cp")
+        val dottedName = normalized.substringAfterLast('.')
+        return linkedSetOf(normalized, basename, withoutExtension, dottedName).toList()
     }
 
     private fun resolveType(
