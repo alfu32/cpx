@@ -2,10 +2,12 @@ package cplus.cli
 
 import cplus.compiler.CPlusCompiler
 import cplus.core.DiagnosticSeverity
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.readLines
 import kotlin.io.path.readText
+import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -19,6 +21,23 @@ class CliGoldenFixtureTest {
     @Test
     fun malformedFixtureMatchesDiagnosticsAndPublishesNoCArtifacts() {
         assertFixture("malformed")
+    }
+
+    @Test
+    fun deterministicCpxFixtureCompilesAndExecutesGeneratedC() {
+        assertFixture("cpx-deterministic")
+        val resource = requireNotNull(javaClass.getResource("/golden/cpx-deterministic"))
+        val input = Path.of(resource.toURI()).resolve("input.cp")
+        val result = CPlusCompiler().compileText(input, input.readText())
+        val directory = Files.createTempDirectory("cplus-cpx-golden-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(requireNotNull(result.generatedUnits.singleOrNull()).text) }
+        val executable = directory.resolve("program")
+        val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val output = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), output)
+        assertEquals(0, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
     }
 
     private fun assertFixture(name: String) {

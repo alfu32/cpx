@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R2.1 — typed CPX value and interpolation conformance
+R2.2 — recursive expansion, fixed points, cycles and cache invalidation
 
 Current milestone:
 R2 — CPX, generics and reflection conformance
@@ -3488,7 +3488,7 @@ project policy.
   and type arguments.
   - R2.1.1 [DONE] — complete typed value-category parsing and evaluation.
   - R2.1.2 [DONE] — close interpolation boundary, hygiene, and provenance cases.
-  - R2.1.3 [TODO] — add deterministic expanded-source and generated-C fixtures.
+  - R2.1.3 [DONE] — add deterministic expanded-source and generated-C fixtures.
 - R2.2 [TODO] — complete recursive expansion, fixed points, cycles, and cache
   invalidation.
 - R2.3 [TODO] — complete stabilized reflection and type-universe conformance.
@@ -3516,9 +3516,23 @@ Implemented and tested on Linux:
 - captured expression/declaration trees recursively preserve generated
   provenance on every nested AST node.
 
-R2.1.3 remains open for deterministic expanded-source and generated-C fixtures.
+R2.1.3 is covered by the deterministic expanded-source and generated-C fixture
+recorded below.
 Windows execution remains part of the final cross-platform validation pass by
 project policy.
+
+### R2.1.3 completion record
+
+Implemented and tested on Linux:
+
+- the CLI golden fixture records deterministic post-expansion AST and emitted C
+  for a typed, numeric specialization;
+- the same fixture compiles as C17 and executes with the expected exit status;
+- the golden harness compares expanded representation and generated C from a
+  clean compiler invocation, preventing source-format or expansion-order drift.
+
+R2.1 is complete. The next stage audits recursive fixed-point scheduling,
+dependency publication, cycle handling, and cache invalidation semantics.
 
 **Deliverables**
 
