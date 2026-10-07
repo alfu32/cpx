@@ -362,6 +362,8 @@ class CompilerIntegrationTest {
         val main = directory.resolve("main.cp")
         helper.writeText(
             """
+                package demo.core;
+
                 int add(int left, int right) {
                     return left + right;
                 }
@@ -369,6 +371,7 @@ class CompilerIntegrationTest {
         )
         main.writeText(
             """
+                package demo.core;
                 import { add } from helpers;
 
                 int main() {
@@ -382,6 +385,7 @@ class CompilerIntegrationTest {
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         assertEquals(emptyList(), result.diagnostics)
         assertEquals(listOf("helpers", "main"), result.moduleGraph?.components?.flatMap { it.modules }?.map(ModuleId::value)?.sorted())
+        assertEquals("demo.core::helpers::add", result.semanticModel!!.functions.getValue("add").symbol.qualifiedName.value)
         val generated = result.generatedUnits.single().text
         assertTrue(generated.contains("int add(int left, int right);"))
         assertTrue(generated.contains("return add(7, 5);"))

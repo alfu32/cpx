@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 38/93
+Overall: 39/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [14/27] 2. Semantic model and modules
+[DOING] [15/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.3.1.2 — construct qualified package identities
+2.3.1.3 — associate compilation units with packages
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -569,7 +569,7 @@ All tasks initially have status `TODO`.
 
 ## 2.3 [DOING] [3/8] Packages and C+ imports
 
-### 2.3.1 [DOING] [1/3] Package and module representation
+### 2.3.1 [DOING] [2/3] Package and module representation
 
 **Language**
 - LS §3.2 Package
@@ -595,7 +595,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.3.3
 
-#### 2.3.1.2 [TODO] Construct qualified package identities
+#### 2.3.1.2 [DONE] Construct qualified package identities
 
 **Acceptance**
 - package, module, and declaration names combine deterministically.

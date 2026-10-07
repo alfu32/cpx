@@ -9,6 +9,9 @@ value class SymbolId(val value: Int)
 @JvmInline
 value class TypeId(val value: Int)
 
+@JvmInline
+value class QualifiedName(val value: String)
+
 enum class SymbolKind {
     STRUCT,
     UNION,
@@ -128,7 +131,8 @@ data class Symbol(
     val type: CType,
     val origin: Origin,
     val visibility: Visibility = Visibility.PRIVATE,
-    val moduleName: String? = null
+    val moduleName: String? = null,
+    val qualifiedName: QualifiedName = QualifiedName(name)
 )
 
 data class FieldSymbol(
@@ -173,7 +177,8 @@ data class SemanticModel(
     val enums: Map<String, EnumType> = emptyMap(),
     val aliases: Map<String, AliasType> = emptyMap(),
     val foreignTypes: Map<String, ForeignType> = emptyMap(),
-    val canonicalTypeIds: Map<String, TypeId> = emptyMap()
+    val canonicalTypeIds: Map<String, TypeId> = emptyMap(),
+    val modulePackages: Map<String, String> = emptyMap()
 ) {
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
 
@@ -218,6 +223,14 @@ class SemanticAnalyzer {
                 module.declarations.forEach { declarationModules[it] = module.name }
             }
         }
+        val modulePackages = linkedMapOf<String, String>()
+        if (program.modules.isEmpty()) {
+            program.declarations.filterIsInstance<AstPackage>().firstOrNull()?.let { modulePackages[defaultModule] = it.name }
+        } else {
+            program.modules.forEach { module ->
+                module.declarations.filterIsInstance<AstPackage>().firstOrNull()?.let { modulePackages[module.name] = it.name }
+            }
+        }
         val scopes = ScopeTable()
         val rootScope = scopes.create(ScopeKind.PACKAGE)
         val primitiveTypes = linkedMapOf<String, PrimitiveType>()
@@ -239,7 +252,15 @@ class SemanticAnalyzer {
         }
 
         fun newSymbol(name: String, kind: SymbolKind, type: CType, origin: Origin, moduleName: String? = null): Symbol = Symbol(
-            SymbolId(nextSymbolId.next()), name, kind, type, origin, moduleName = moduleName
+            SymbolId(nextSymbolId.next()),
+            name,
+            kind,
+            type,
+            origin,
+            moduleName = moduleName,
+            qualifiedName = QualifiedName(
+                listOfNotNull(moduleName?.let { modulePackages[it] }, moduleName, name).joinToString("::")
+            )
         ).also(symbols::add)
 
         fun registerForeignType(name: String, moduleName: String, origin: Origin) {
@@ -477,7 +498,8 @@ class SemanticAnalyzer {
             types.fold(linkedMapOf<String, TypeId>()) { ids, type ->
                 ids.putIfAbsent(canonicalTypeKey(type), type.id)
                 ids
-            }
+            },
+            modulePackages
         )
         return SemanticResult(model, diagnostics.diagnostics)
     }
