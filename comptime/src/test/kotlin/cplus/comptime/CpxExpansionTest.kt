@@ -10,6 +10,59 @@ import kotlin.test.assertTrue
 
 class CpxExpansionTest {
     @Test
+    fun expandsTypedScalarExpressionAndEntityArguments() {
+        val sourceText = """
+            comptime cpx<decl> build(type T, expr E, int N, float F, bool B, string S, identifier I) {
+                return {
+                    struct box_{I}_{N}_t { T value; };
+                    double number_{I} = F;
+                    int flag_{I} = B;
+                    char* text_{I} = S;
+                    int sum_{I}() { return E + N; }
+                };
+            }
+            build(int, 1 + 2, 03, 1.50e1, true, "ok", item);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(30), Path.of("typed-values.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        assertEquals(
+            setOf(
+                ExpansionKey(
+                    "build",
+                    listOf("int", "1 + 2", "3", "15", "true", "\"ok\"", "item"),
+                    listOf("type", "expr", "int", "float", "bool", "string", "identifier")
+                )
+            ),
+            result.expandedKeys
+        )
+        assertEquals(listOf("box_item_3_t"), result.program.declarations.filterIsInstance<SyntaxStruct>().map { it.name })
+        assertEquals(listOf("number_item", "flag_item", "text_item"), result.program.declarations.filterIsInstance<SyntaxGlobalVariable>().map { it.name })
+        assertEquals(listOf("sum_item"), result.program.declarations.filterIsInstance<SyntaxFunction>().map { it.name })
+        assertEquals("int", result.program.declarations.filterIsInstance<SyntaxStruct>().single().fields.single().type.name)
+    }
+
+    @Test
+    fun rejectsArgumentsThatDoNotMatchTheirCompileTimeKind() {
+        val sourceText = """
+            comptime cpx<decl> build(int N) {
+                return { struct value_{N}_t { int value; }; };
+            }
+            build(not_an_integer);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(31), Path.of("invalid-value.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        assertTrue(result.diagnostics.any { it.code == "CPX010" }, result.diagnostics.joinToString())
+        assertTrue(result.program.declarations.none { it is SyntaxStruct })
+    }
+
+    @Test
     fun templateNodesDistinguishDirectBindingFromIdentifierComposition() {
         val origin = Origin.Direct(SourceRange(SourceFileId(12), 0, 1))
         val template = CpxTemplateParser().parse(

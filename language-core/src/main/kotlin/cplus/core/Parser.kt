@@ -115,9 +115,9 @@ class Parser(private val lexed: LexedSource) {
         val parameters = mutableListOf<SyntaxComptimeParameter>()
         if (!peek().isLexeme(")")) {
             do {
-                val kind = if (peek().isLexeme("type")) advance() else {
-                    diagnostics.error("compile-time parameters must declare a value kind", peek().range, "PARSE502")
-                    advance()
+                val kind = advance()
+                if (kind.lexeme.lowercase() !in comptimeParameterKinds) {
+                    diagnostics.error("unsupported compile-time parameter kind '${kind.lexeme}'", kind.range, "PARSE502")
                 }
                 val parameterName = expectIdentifier("expected compile-time parameter name")
                     ?: syntheticToken("parameter", kind.range)
@@ -154,8 +154,17 @@ class Parser(private val lexed: LexedSource) {
         val arguments = mutableListOf<String>()
         while (!atEnd() && !peek().isLexeme(")")) {
             val parts = mutableListOf<String>()
-            while (!atEnd() && !peek().isLexeme(",") && !peek().isLexeme(")")) {
-                parts += advance().lexeme
+            var nesting = 0
+            while (!atEnd()) {
+                val token = peek()
+                if (token.isLexeme(",") && nesting == 0) break
+                if (token.isLexeme(")") && nesting == 0) break
+                advance()
+                when (token.lexeme) {
+                    "(", "[", "{" -> nesting++
+                    ")", "]", "}" -> nesting--
+                }
+                parts += token.lexeme
             }
             if (parts.isNotEmpty()) arguments += parts.joinToString(" ")
             if (!match(",")) break
@@ -686,6 +695,26 @@ class Parser(private val lexed: LexedSource) {
         "*", "/", "%" -> 20
         else -> -1
     }
+
+    private val comptimeParameterKinds = setOf(
+        "type",
+        "identifier",
+        "int",
+        "integer",
+        "float",
+        "bool",
+        "boolean",
+        "string",
+        "expr",
+        "expression",
+        "stmt",
+        "statement",
+        "decl",
+        "declaration",
+        "member",
+        "unit",
+        "cpx"
+    )
 
     private val assignmentOperators = setOf("=", "+=", "-=", "*=", "/=", "%=")
 

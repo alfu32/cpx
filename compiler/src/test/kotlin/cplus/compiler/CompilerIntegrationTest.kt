@@ -929,6 +929,41 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun scalarAndExpressionCpxArgumentsReachTheCBackend() {
+        val source = """
+            comptime cpx<decl> make(expr E, int N) {
+                return {
+                    int generated_{N}() {
+                        return E + N;
+                    }
+                };
+            }
+
+            make(1 + 2, 4);
+
+            int main() {
+                return generated_4() == 7 ? 0 : 1;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-cpx-values", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("int generated_4()"))
+        assertTrue(generated.contains("return ((1 + 2) + 4);"))
+
+        val directory = Files.createTempDirectory("cplus-cpx-values-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        assertEquals(0, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
+    }
+
+    @Test
     fun foreignImportAndDeferLoweringPreserveCleanupOrder() {
         val source = """
             import { printf } from c.stdio;

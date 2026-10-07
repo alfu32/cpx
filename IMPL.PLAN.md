@@ -12,10 +12,10 @@ Overall: 91/113
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-5.3.1 — layered automated test suites
+3.1.1 — typed scalar and source-backed CPX values
 
 Current milestone:
-M6 — Development environment
+M4 — Full compile-time model
 ```
 
 All tasks initially have status `TODO`.
@@ -849,9 +849,9 @@ all create correct bindings.
 
 ---
 
-## 3.1 [TODO] [0/4] Compile-time values and arguments
+## 3.1 [DOING] [0/4] Compile-time values and arguments
 
-### 3.1.1 [TODO] Compile-time scalar and entity values
+### 3.1.1 [DOING] Compile-time scalar and entity values
 
 **Language**
 - LS §7.2
@@ -867,6 +867,16 @@ all create correct bindings.
 
 **Depends**
 - 2.1
+
+**Implementation**
+- CPX parameters now accept typed `type`, `identifier`, `int`, `float`, `bool`, `string`, `expr`, `stmt`, `decl`, `member`, `unit`, and `cpx` kinds.
+- Scalar arguments validate at expansion time and retain semantic kind, canonical cache text, and deterministic rendering text.
+- Expression arguments are parser-validated before interpolation; nested invocation argument commas are depth-aware.
+- Expansion keys include non-type parameter kinds so typed values cannot alias type specializations.
+- End-to-end coverage compiles and executes a generated function using expression and integer arguments.
+
+**Remaining**
+- compile-time lists, semantic `TypeId` values, and syntax-bearing `NodeId`/origin values remain in 3.1.2–3.1.4.
 
 ### 3.1.2 [TODO] `CtType` and semantic type arguments
 

@@ -1,6 +1,8 @@
 package cplus.comptime
 
 import cplus.core.*
+import java.math.BigDecimal
+import java.math.BigInteger
 import java.nio.file.Path
 import java.util.ArrayDeque
 
@@ -19,14 +21,86 @@ enum class CpxCategory {
 }
 
 sealed interface ComptimeValue {
-    data class CtType(
-        val sourceText: String,
-        val identifierText: String = sourceText.removePrefix("struct ").trim()
-    ) : ComptimeValue
+    val sourceText: String
+    val canonicalKind: String
+    val canonicalText: String
 
-    data class CtIdentifier(val text: String) : ComptimeValue
-    data class CtString(val text: String) : ComptimeValue
+    data class CtType(
+        override val sourceText: String,
+        val identifierText: String = sourceText.removePrefix("struct ").trim()
+    ) : ComptimeValue {
+        override val canonicalKind: String = "type"
+        override val canonicalText: String = identifierText
+    }
+
+    data class CtIdentifier(val text: String) : ComptimeValue {
+        override val sourceText: String = text
+        override val canonicalKind: String = "identifier"
+        override val canonicalText: String = text
+    }
+
+    data class CtInteger(val text: String, val value: BigInteger) : ComptimeValue {
+        override val sourceText: String = value.toString()
+        override val canonicalKind: String = "int"
+        override val canonicalText: String = value.toString()
+    }
+
+    data class CtFloat(val text: String, val value: BigDecimal) : ComptimeValue {
+        override val sourceText: String = value.stripTrailingZeros().toPlainString()
+        override val canonicalKind: String = "float"
+        override val canonicalText: String = value.stripTrailingZeros().toPlainString()
+    }
+
+    data class CtBoolean(val value: Boolean, val text: String = value.toString()) : ComptimeValue {
+        override val sourceText: String = value.toString()
+        override val canonicalKind: String = "bool"
+        override val canonicalText: String = value.toString()
+    }
+
+    data class CtString(val text: String) : ComptimeValue {
+        override val sourceText: String = text
+        override val canonicalKind: String = "string"
+        override val canonicalText: String = text
+    }
+
+    data class CtExpression(val text: String) : ComptimeValue {
+        override val sourceText: String = text
+        override val canonicalKind: String = "expr"
+        override val canonicalText: String = canonicalSyntax(text)
+    }
+
+    data class CtStatement(val text: String) : ComptimeValue {
+        override val sourceText: String = text
+        override val canonicalKind: String = "stmt"
+        override val canonicalText: String = canonicalSyntax(text)
+    }
+
+    data class CtDeclaration(val text: String) : ComptimeValue {
+        override val sourceText: String = text
+        override val canonicalKind: String = "decl"
+        override val canonicalText: String = canonicalSyntax(text)
+    }
+
+    data class CtMember(val text: String) : ComptimeValue {
+        override val sourceText: String = text
+        override val canonicalKind: String = "member"
+        override val canonicalText: String = canonicalSyntax(text)
+    }
+
+    data class CtUnit(val text: String) : ComptimeValue {
+        override val sourceText: String = text
+        override val canonicalKind: String = "unit"
+        override val canonicalText: String = canonicalSyntax(text)
+    }
+
+    data class CtCpx(val text: String) : ComptimeValue {
+        override val sourceText: String = text
+        override val canonicalKind: String = "cpx"
+        override val canonicalText: String = canonicalSyntax(text)
+    }
 }
+
+private fun canonicalSyntax(text: String): String = text.trim().replace(Regex("\\s+"), " ")
 
 sealed interface TemplateNode {
     data class Literal(val text: String) : TemplateNode
@@ -46,9 +120,7 @@ data class CpxTemplate(
                     val value = bindings[node.name]
                     when (value) {
                         is ComptimeValue.CtType -> append(if (node.explicit) value.identifierText else value.sourceText)
-                        is ComptimeValue.CtIdentifier -> append(value.text)
-                        is ComptimeValue.CtString -> append(value.text)
-                        null -> append(node.name)
+                        else -> append(value?.sourceText ?: node.name)
                     }
                 }
             }
@@ -93,7 +165,8 @@ class CpxTemplateParser {
 
 data class ExpansionKey(
     val functionName: String,
-    val arguments: List<String>
+    val arguments: List<String>,
+    val argumentKinds: List<String> = emptyList()
 ) {
     val canonical: String
         get() = "$functionName(${arguments.joinToString(",")})"
@@ -101,7 +174,9 @@ data class ExpansionKey(
     val specializationKey: SpecializationKey
         get() = SpecializationKey(
             functionName,
-            arguments.map { CanonicalComptimeValue("type", it) }
+            arguments.mapIndexed { index, argument ->
+                CanonicalComptimeValue(argumentKinds.getOrNull(index) ?: "type", argument)
+            }
         )
 }
 
@@ -614,8 +689,10 @@ class CpxExpander(
                 )
                 continue
             }
-            if (task.definition.parameters.any { it.kind != "type" }) {
-                diagnostics.error("only type CPX parameters are implemented in the initial structural slice", task.definition.origin.primaryRange, "CPX005")
+            val values = task.definition.parameters.zip(task.invocation.arguments).mapNotNull { (parameter, argument) ->
+                parseComptimeValue(parameter.kind, argument, task.invocation, source, diagnostics)
+            }
+            if (values.size != task.definition.parameters.size) {
                 continue
             }
 
@@ -640,8 +717,8 @@ class CpxExpander(
                         task.definition.origin,
                         task.definition.parameters.map { it.name }.toSet()
                     )
-                    val bindings = task.definition.parameters.zip(task.invocation.arguments).associate { (parameter, argument) ->
-                        parameter.name to ComptimeValue.CtType(argument.trim())
+                    val bindings = task.definition.parameters.zip(values).associate { (parameter, value) ->
+                        parameter.name to value
                     }
                     template.render(bindings).also {
                         specializationCache.put(specializationKey, definitionFingerprint, it)
@@ -720,7 +797,16 @@ class CpxExpander(
     ): ExpansionTask = ExpansionTask(
         invocation,
         definition,
-        ExpansionKey(definition.name, invocation.arguments.map(::canonicalArgument)),
+        ExpansionKey(
+            definition.name,
+            invocation.arguments.mapIndexed { index, argument ->
+                canonicalArgument(definition.parameters.getOrNull(index)?.kind, argument)
+            },
+            definition.parameters
+                .map { normalizeParameterKind(it.kind) }
+                .takeUnless { kinds -> kinds.all { it == "type" } }
+                .orEmpty()
+        ),
         ancestors,
         phase = phaseFor(definition.category)
     ).let { task ->
@@ -764,11 +850,92 @@ class CpxExpander(
         else -> declaration::class.simpleName ?: "declaration"
     }
 
-    private fun canonicalArgument(argument: String): String = argument
-        .trim()
-        .replace(Regex("\\s+"), " ")
-        .removePrefix("struct ")
-        .trim()
+    private fun normalizeParameterKind(kind: String): String = when (kind.trim().lowercase()) {
+        "integer" -> "int"
+        "boolean" -> "bool"
+        "expression" -> "expr"
+        "statement" -> "stmt"
+        "declaration" -> "decl"
+        else -> kind.trim().lowercase()
+    }
+
+    private fun canonicalArgument(kind: String?, argument: String): String {
+        val normalized = normalizeParameterKind(kind ?: "type")
+        val trimmed = argument.trim()
+        return when (normalized) {
+            "type" -> trimmed
+                .replace(Regex("\\s+"), " ")
+                .removePrefix("struct ")
+                .trim()
+            "int" -> trimmed.toBigIntegerOrNull()?.toString() ?: canonicalSyntax(trimmed)
+            "float" -> trimmed.toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString() ?: canonicalSyntax(trimmed)
+            "bool" -> trimmed.lowercase()
+            else -> canonicalSyntax(trimmed)
+        }
+    }
+
+    private fun parseComptimeValue(
+        kind: String,
+        argument: String,
+        invocation: SyntaxCpxInvocation,
+        source: SourceFile,
+        diagnostics: DiagnosticBag
+    ): ComptimeValue? {
+        val normalized = normalizeParameterKind(kind)
+        val text = argument.trim()
+        fun invalid(expected: String): ComptimeValue? {
+            diagnostics.error(
+                "CPX argument '$text' is not a valid $expected compile-time value",
+                invocation.origin.primaryRange,
+                "CPX010"
+            )
+            return null
+        }
+        if (text.isEmpty()) return invalid(normalized)
+        return when (normalized) {
+            "type" -> ComptimeValue.CtType(
+                text.replace(Regex("\\s+"), " "),
+                text.replace(Regex("\\s+"), " ").removePrefix("struct ").trim()
+            )
+            "identifier" -> if (identifierPattern.matches(text)) ComptimeValue.CtIdentifier(text) else invalid("identifier")
+            "int" -> text.toBigIntegerOrNull()?.let { ComptimeValue.CtInteger(text, it) } ?: invalid("integer")
+            "float" -> text.toBigDecimalOrNull()?.let { ComptimeValue.CtFloat(text, it) } ?: invalid("floating-point value")
+            "bool" -> when (text.lowercase()) {
+                "true" -> ComptimeValue.CtBoolean(true, text)
+                "false" -> ComptimeValue.CtBoolean(false, text)
+                else -> invalid("boolean")
+            }
+            "string" -> if (text.length >= 2 && text.first() == '"' && text.last() == '"') {
+                ComptimeValue.CtString(text)
+            } else invalid("string")
+            "expr" -> if (isExpression(text, source)) ComptimeValue.CtExpression(text) else invalid("expression")
+            "stmt" -> ComptimeValue.CtStatement(text)
+            "decl" -> ComptimeValue.CtDeclaration(text)
+            "member" -> ComptimeValue.CtMember(text)
+            "unit" -> ComptimeValue.CtUnit(text)
+            "cpx" -> ComptimeValue.CtCpx(text)
+            else -> {
+                diagnostics.error(
+                    "unsupported compile-time parameter kind '$kind'",
+                    invocation.origin.primaryRange,
+                    "CPX005"
+                )
+                null
+            }
+        }
+    }
+
+    private fun isExpression(text: String, source: SourceFile): Boolean {
+        val fragmentSource = source.copy(
+            id = SourceFileId(-source.id.value - 1),
+            path = source.path.resolveSibling("<cpx-expression>"),
+            text = text
+        )
+        val parsed = Parser(lexer.lex(fragmentSource)).parseExpressionFragment()
+        return parsed.expression != null && parsed.diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
+    }
+
+    private val identifierPattern = Regex("[A-Za-z_][A-Za-z0-9_]*")
 
     private fun registerStructuralDeclarations(
         universe: ComptimeTypeUniverse,
