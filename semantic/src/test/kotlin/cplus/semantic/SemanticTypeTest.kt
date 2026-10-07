@@ -43,6 +43,25 @@ class SemanticTypeTest {
     }
 
     @Test
+    fun callResolutionChecksArgumentTypes() {
+        val text = """
+            int identity(int value) {
+                return value;
+            }
+
+            int main() {
+                return identity("wrong");
+            }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(5), Path.of("call-types.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        val result = SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+        assertTrue(result.diagnostics.any { it.code == "SEM306" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun equivalentAliasAndPointerSpellingSharesCanonicalTypeIdentity() {
         val text = """
             typedef int count_t;

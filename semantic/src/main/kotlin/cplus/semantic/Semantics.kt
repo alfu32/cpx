@@ -717,10 +717,7 @@ class SemanticAnalyzer {
                         diagnostics,
                         primitive
                     )
-                    val owner = when (val receiver = methodCall.receiver) {
-                        is AstIdentifier -> structs[receiver.name] ?: receiverType as? StructType
-                        else -> receiverType as? StructType
-                    }
+                    val owner = ownerStruct(methodCall.receiver, receiverType, structs)
                     owner?.methods?.firstOrNull { it.symbol.name == methodCall.member }
                 } else null
                 when {
@@ -751,14 +748,11 @@ class SemanticAnalyzer {
                     qualifiedFunction.signature
                 } else {
                     val receiver = validateExpression(expression.receiver, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                    val fields = when (receiver) {
-                        is StructType -> receiver.fields
-                        is UnionType -> receiver.fields
-                        else -> emptyList()
-                    }
+                    val fields = aggregateFields(receiver)
                     val field = fields.firstOrNull { it.symbol.name == expression.member }
                     if (field != null) field.symbol.type else {
-                        if (receiver !is StructType || receiver.methods.none { it.symbol.name == expression.member }) {
+                        val owner = aggregateStruct(receiver)
+                        if (owner == null || owner.methods.none { it.symbol.name == expression.member }) {
                             diagnostics.error("unknown member '${expression.member}'", rangeOf(expression.origin), "SEM304")
                         }
                         UnknownType(TypeId(-1))
@@ -793,16 +787,49 @@ class SemanticAnalyzer {
                 "SEM303"
             )
         }
-        call.arguments.forEach {
+        val actualTypes = call.arguments.map {
             validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+        }
+        parameters.zip(actualTypes).forEach { (parameter, actual) ->
+            if (actual !is UnknownType && !argumentCompatible(parameter.type, actual)) {
+                diagnostics.error(
+                    "argument for '${parameter.name}' has type '${actual.name}', expected '${parameter.type.name}'",
+                    rangeOf(call.origin),
+                    "SEM306"
+                )
+            }
         }
     }
 
     private fun equivalentTypes(left: CType, right: CType): Boolean = canonicalTypeKey(left) == canonicalTypeKey(right)
 
+    private fun argumentCompatible(expected: CType, actual: CType): Boolean = when {
+        expected is ArrayType && actual is ArrayType -> equivalentTypes(expected.element, actual.element)
+        else -> equivalentTypes(expected, actual)
+    }
+
     private fun canonicalType(type: CType): CType = when (type) {
         is AliasType -> canonicalType(type.target)
         else -> type
+    }
+
+    private fun aggregateFields(type: CType): List<FieldSymbol> = when (val canonical = aggregateType(type)) {
+        is StructType -> canonical.fields
+        is UnionType -> canonical.fields
+        else -> emptyList()
+    }
+
+    private fun aggregateStruct(type: CType): StructType? = aggregateType(type) as? StructType
+
+    private fun aggregateType(type: CType): CType = when (type) {
+        is AliasType -> aggregateType(type.target)
+        is PointerType -> aggregateType(type.pointee)
+        else -> type
+    }
+
+    private fun ownerStruct(receiver: AstExpression, receiverType: CType, structs: Map<String, StructType>): StructType? = when (receiver) {
+        is AstIdentifier -> structs[receiver.name] ?: aggregateStruct(receiverType)?.let { structs[it.name] ?: it }
+        else -> aggregateStruct(receiverType)?.let { structs[it.name] ?: it }
     }
 
     private fun rangeOf(origin: Origin): SourceRange? = origin.primaryRange

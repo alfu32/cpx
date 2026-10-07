@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 37/93
+Overall: 38/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [13/27] 2. Semantic model and modules
+[DOING] [14/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.2.4 — member access and call resolution
+2.3.1.2 — construct qualified package identities
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -434,7 +434,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.2 [DOING] [8/9] Type and method system
+## 2.2 [DONE] [9/9] Type and method system
 
 ### 2.2.1 [DONE] [6/6] Canonical type universe representation
 
@@ -547,7 +547,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.2.2
 
-### 2.2.4 [TODO] Member access and call resolution
+### 2.2.4 [DONE] Member access and call resolution
 
 **Language**
 - LS §6.4–6.5

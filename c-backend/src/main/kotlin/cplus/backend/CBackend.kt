@@ -295,7 +295,7 @@ class CLowerer(private val semantic: SemanticModel) {
             CMemberAccess(
                 expression(receiver, ownerName, instanceMethod),
                 node.member,
-                pointerReceiver = instanceMethod && receiver is AstIdentifier && receiver.name == "self",
+                pointerReceiver = instanceMethod && receiver is AstIdentifier && receiver.name == "self" || isPointerReceiver(receiver),
                 node.origin
             )
         }
@@ -325,10 +325,7 @@ class CLowerer(private val semantic: SemanticModel) {
         }
 
         val receiverType = semantic.expressionTypes[member.receiver]
-        val owner = when (val receiver = member.receiver) {
-            is AstIdentifier -> semantic.structs[receiver.name] ?: receiverType as? cplus.semantic.StructType
-            else -> receiverType as? cplus.semantic.StructType
-        }
+        val owner = ownerStruct(member.receiver, receiverType)
         val method = owner?.methods?.firstOrNull { it.symbol.name == member.member }
         if (method == null) {
             diagnostics.error("cannot lower unknown method '${member.member}'", member.origin.primaryRange, "LOW201")
@@ -344,6 +341,8 @@ class CLowerer(private val semantic: SemanticModel) {
                 val receiver = member.receiver
                 if (instanceMethod && receiver is AstIdentifier && receiver.name == "self") {
                     add(CIdentifier("self", receiver.origin))
+                } else if (isPointerReceiver(receiver)) {
+                    add(expression(receiver, ownerName, instanceMethod))
                 } else {
                     add(CUnary("&", expression(receiver, ownerName, instanceMethod), receiver.origin))
                 }
@@ -351,6 +350,29 @@ class CLowerer(private val semantic: SemanticModel) {
             node.arguments.forEach { add(expression(it, ownerName, instanceMethod)) }
         }
         return CCall(target, arguments, node.origin)
+    }
+
+    private fun ownerStruct(receiver: AstExpression, receiverType: cplus.semantic.CType?): cplus.semantic.StructType? = when (receiver) {
+        is AstIdentifier -> semantic.structs[receiver.name] ?: aggregateStruct(receiverType)?.let { semantic.structs[it.name] ?: it }
+        else -> aggregateStruct(receiverType)?.let { semantic.structs[it.name] ?: it }
+    }
+
+    private fun aggregateStruct(type: cplus.semantic.CType?): cplus.semantic.StructType? = when (type) {
+        is cplus.semantic.AliasType -> aggregateStruct(type.target)
+        is cplus.semantic.PointerType -> aggregateStruct(type.pointee)
+        is cplus.semantic.StructType -> type
+        else -> null
+    }
+
+    private fun isPointerReceiver(expression: AstExpression): Boolean = when (val type = semantic.expressionTypes[expression]) {
+        is cplus.semantic.AliasType -> isPointerType(type.target)
+        else -> isPointerType(type)
+    }
+
+    private fun isPointerType(type: cplus.semantic.CType?): Boolean = when (type) {
+        is cplus.semantic.PointerType -> true
+        is cplus.semantic.AliasType -> isPointerType(type.target)
+        else -> false
     }
 
     companion object {

@@ -178,10 +178,16 @@ class CompilerIntegrationTest {
                 }
             };
 
+            point_t* pointer;
+
             int main() {
                 point_t point;
                 point.x = 3;
                 return point.get() + point_t.default_value();
+            }
+
+            int pointer_value() {
+                return pointer.get();
             }
         """.trimIndent()
         val result = CPlusCompiler().compileText(Files.createTempFile("cplus-methods", ".cp"), source)
@@ -192,6 +198,7 @@ class CompilerIntegrationTest {
         assertTrue(generated.contains("int point_t__default_value();"))
         assertTrue(generated.contains("point_t__get(&point)"))
         assertTrue(generated.contains("point_t__default_value()"))
+        assertTrue(generated.contains("point_t__get(pointer)"))
     }
 
     @Test
