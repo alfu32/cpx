@@ -178,7 +178,8 @@ data class SemanticModel(
     val aliases: Map<String, AliasType> = emptyMap(),
     val foreignTypes: Map<String, ForeignType> = emptyMap(),
     val canonicalTypeIds: Map<String, TypeId> = emptyMap(),
-    val modulePackages: Map<String, String> = emptyMap()
+    val modulePackages: Map<String, String> = emptyMap(),
+    val packageModules: Map<String, Set<String>> = emptyMap()
 ) {
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
 
@@ -251,13 +252,21 @@ class SemanticAnalyzer {
             }
         }
 
-        fun newSymbol(name: String, kind: SymbolKind, type: CType, origin: Origin, moduleName: String? = null): Symbol = Symbol(
+        fun newSymbol(
+            name: String,
+            kind: SymbolKind,
+            type: CType,
+            origin: Origin,
+            moduleName: String? = null,
+            visibility: Visibility = Visibility.PRIVATE
+        ): Symbol = Symbol(
             SymbolId(nextSymbolId.next()),
             name,
             kind,
             type,
             origin,
             moduleName = moduleName,
+            visibility = visibility,
             qualifiedName = QualifiedName(
                 listOfNotNull(moduleName?.let { modulePackages[it] }, moduleName, name).joinToString("::")
             )
@@ -272,6 +281,9 @@ class SemanticAnalyzer {
             scopes.define(rootScope, name, symbol.id)
         }
 
+        fun declarationVisibility(declaration: AstDeclaration): Visibility =
+            if (declaration.isPublic) Visibility.PUBLIC else Visibility.PRIVATE
+
         resolveAlias = { name ->
             aliases[name] ?: run {
                 val declaration = aliasDeclarations[name]?.singleOrNull() ?: return@run null
@@ -284,7 +296,14 @@ class SemanticAnalyzer {
                 AliasType(TypeId(nextTypeId.next()), name, target).also { type ->
                     aliases[name] = type
                     types += type
-                    val symbol = newSymbol(name, SymbolKind.ALIAS, type, declaration.origin, declarationModules[declaration] ?: defaultModule)
+                    val symbol = newSymbol(
+                        name,
+                        SymbolKind.ALIAS,
+                        type,
+                        declaration.origin,
+                        declarationModules[declaration] ?: defaultModule,
+                        if (declaration.isPublic) Visibility.PUBLIC else Visibility.PRIVATE
+                    )
                     scopes.define(rootScope, symbol.name, symbol.id)
                 }
             }
@@ -308,7 +327,7 @@ class SemanticAnalyzer {
                         val type = UnionType(TypeId(nextTypeId.next()), declaration.name, emptyList())
                         unions[declaration.name] = type
                         types += type
-                        val symbol = newSymbol(declaration.name, SymbolKind.UNION, type, declaration.origin, moduleName)
+                        val symbol = newSymbol(declaration.name, SymbolKind.UNION, type, declaration.origin, moduleName, declarationVisibility(declaration))
                         scopes.define(rootScope, symbol.name, symbol.id)
                         scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
                     }
@@ -320,7 +339,7 @@ class SemanticAnalyzer {
                         val type = EnumType(TypeId(nextTypeId.next()), declaration.name, declaration.values.map { it.name })
                         enums[declaration.name] = type
                         types += type
-                        val symbol = newSymbol(declaration.name, SymbolKind.ENUM, type, declaration.origin, moduleName)
+                        val symbol = newSymbol(declaration.name, SymbolKind.ENUM, type, declaration.origin, moduleName, declarationVisibility(declaration))
                         scopes.define(rootScope, symbol.name, symbol.id)
                         scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
                     }
@@ -332,7 +351,7 @@ class SemanticAnalyzer {
                         val type = StructType(TypeId(nextTypeId.next()), declaration.name, emptyList())
                         structs[declaration.name] = type
                         types += type
-                        val symbol = newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin, moduleName)
+                        val symbol = newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin, moduleName, declarationVisibility(declaration))
                         scopes.define(rootScope, symbol.name, symbol.id)
                         scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
                     }
@@ -351,7 +370,7 @@ class SemanticAnalyzer {
                             returnType,
                             parameterSymbols.map { it.type }
                         ).also(types::add)
-                        val functionSymbol = newSymbol(declaration.name, SymbolKind.FUNCTION, signature, declaration.origin, moduleName)
+                        val functionSymbol = newSymbol(declaration.name, SymbolKind.FUNCTION, signature, declaration.origin, moduleName, declarationVisibility(declaration))
                         val function = FunctionSymbol(functionSymbol, returnType, parameterSymbols, signature = signature)
                         functions[declaration.name] = function
                         moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
@@ -365,7 +384,7 @@ class SemanticAnalyzer {
                         diagnostics.error("duplicate global '${declaration.name}'", rangeOf(declaration.origin), "SEM003")
                     } else {
                         val type = resolve(declaration.type, declaration.arrayDimensions)
-                        val symbol = newSymbol(declaration.name, SymbolKind.VARIABLE, type, declaration.origin, moduleName)
+                        val symbol = newSymbol(declaration.name, SymbolKind.VARIABLE, type, declaration.origin, moduleName, declarationVisibility(declaration))
                         globals[declaration.name] = symbol
                         scopes.define(rootScope, symbol.name, symbol.id)
                     }
@@ -499,7 +518,8 @@ class SemanticAnalyzer {
                 ids.putIfAbsent(canonicalTypeKey(type), type.id)
                 ids
             },
-            modulePackages
+            modulePackages,
+            modulePackages.entries.groupBy({ it.value }, { it.key }).mapValues { (_, modules) -> modules.toSet() }
         )
         return SemanticResult(model, diagnostics.diagnostics)
     }

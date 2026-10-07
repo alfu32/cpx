@@ -14,7 +14,7 @@ import kotlin.test.assertTrue
 class SemanticTypeTest {
     @Test
     fun packageAndModuleNamesFormDeterministicQualifiedSymbols() {
-        val text = "package demo.core; int main() { return 0; }"
+        val text = "package demo.core; pub int main() { return 0; }"
         val source = SourceFile(SourceFileId(6), Path.of("package-symbols.cp"), text, 1)
         val parsed = Parser(Lexer().lex(source)).parse()
         assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
@@ -23,7 +23,9 @@ class SemanticTypeTest {
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         val model = result.model!!
         assertEquals("demo.core", model.modulePackages["<main>"])
+        assertEquals(setOf("<main>"), model.packageModules["demo.core"])
         assertEquals("demo.core::<main>::main", model.functions.getValue("main").symbol.qualifiedName.value)
+        assertEquals(Visibility.PUBLIC, model.functions.getValue("main").symbol.visibility)
     }
 
     @Test

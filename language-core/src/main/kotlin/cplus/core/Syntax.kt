@@ -11,7 +11,10 @@ data class SyntaxProgram(
     override val origin: Origin
 ) : SyntaxNode
 
-sealed interface SyntaxDeclaration : SyntaxNode
+sealed interface SyntaxDeclaration : SyntaxNode {
+    val isPublic: Boolean
+        get() = false
+}
 
 data class SyntaxPackage(
     val name: String,
@@ -24,21 +27,24 @@ data class SyntaxAlias(
     val name: String,
     val arrayDimensions: List<String> = emptyList(),
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxUnion(
     val name: String,
     val fields: List<SyntaxField>,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxEnum(
     val name: String,
     val values: List<SyntaxEnumValue>,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxEnumValue(
@@ -62,7 +68,8 @@ data class SyntaxStruct(
     val fields: List<SyntaxField>,
     val methods: List<SyntaxFunction> = emptyList(),
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxField(
@@ -79,7 +86,8 @@ data class SyntaxGlobalVariable(
     val initializer: SyntaxExpression?,
     override val range: SourceRange,
     override val origin: Origin,
-    val arrayDimensions: List<String> = emptyList()
+    val arrayDimensions: List<String> = emptyList(),
+    override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxComptimeParameter(
@@ -95,14 +103,16 @@ data class SyntaxComptimeFunction(
     val parameters: List<SyntaxComptimeParameter>,
     val template: String,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxCpxInvocation(
     val name: String,
     val arguments: List<String>,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxImport(
@@ -110,7 +120,8 @@ data class SyntaxImport(
     val module: String,
     val alias: String? = null,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxFunction(
@@ -121,7 +132,8 @@ data class SyntaxFunction(
     val isMethod: Boolean = false,
     val ownerName: String? = null,
     override val range: SourceRange,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxParameter(

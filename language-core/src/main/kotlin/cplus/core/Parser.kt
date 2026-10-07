@@ -23,32 +23,35 @@ class Parser(private val lexed: LexedSource) {
     }
 
     private fun parseDeclaration(): SyntaxDeclaration? {
-        while (peek().lexeme in setOf("pub", "static", "extern", "inline")) advance()
+        var isPublic = false
+        while (peek().lexeme in setOf("pub", "static", "extern", "inline")) {
+            if (match("pub")) isPublic = true else advance()
+        }
         if (peek().isLexeme("package")) return parsePackage()
-        if (match("typedef")) return parseAlias(previous())
+        if (match("typedef")) return parseAlias(previous(), isPublic)
         if (peek().isLexeme("import")) return parseImport()
-        if (peek().isLexeme("comptime")) return parseComptimeFunction()
+        if (peek().isLexeme("comptime")) return parseComptimeFunction(isPublic)
         if (peek().kind == TokenKind.IDENTIFIER && peek(1).isLexeme("(")) return parseCpxInvocation()
         if (match("struct") && peek(1).isLexeme("{")) {
-            return parseStruct(peek(-1))
+            return parseStruct(peek(-1), isPublic)
         }
         if (peek().isLexeme("struct") && peek(2).isLexeme("{")) {
             val structKeyword = advance()
-            return parseStruct(structKeyword)
+            return parseStruct(structKeyword, isPublic)
         }
         if (peek().isLexeme("union") && peek(2).isLexeme("{")) {
             val unionKeyword = advance()
-            return parseUnion(unionKeyword)
+            return parseUnion(unionKeyword, isPublic)
         }
         if (peek().isLexeme("enum") && peek(2).isLexeme("{")) {
             val enumKeyword = advance()
-            return parseEnum(enumKeyword)
+            return parseEnum(enumKeyword, isPublic)
         }
 
         val type = parseType() ?: return recoverDeclaration()
         val name = expectIdentifier("expected declaration name") ?: return recoverDeclaration()
         return if (match("(")) {
-            parseFunction(type, name)
+            parseFunction(type, name, isPublic = isPublic)
         } else {
             val arrayDimensions = parseArrayDimensions()
             val initializer = if (match("=")) parseExpression() else null
@@ -59,7 +62,8 @@ class Parser(private val lexed: LexedSource) {
                 initializer,
                 span(type.range, previous().range),
                 direct(span(type.range, previous().range)),
-                arrayDimensions
+                arrayDimensions,
+                isPublic
             )
         }
     }
@@ -73,16 +77,16 @@ class Parser(private val lexed: LexedSource) {
         return SyntaxPackage(parts.joinToString(""), range, direct(range))
     }
 
-    private fun parseAlias(start: Token): SyntaxAlias? {
+    private fun parseAlias(start: Token, isPublic: Boolean): SyntaxAlias? {
         val target = parseType() ?: return recoverDeclaration()?.let { null }
         val name = expectIdentifier("expected alias name") ?: return recoverDeclaration()?.let { null }
         val arrayDimensions = parseArrayDimensions()
         expect(";", "expected ';' after type alias")
         val range = span(start.range, previous().range)
-        return SyntaxAlias(target, name.lexeme, arrayDimensions, range, direct(range))
+        return SyntaxAlias(target, name.lexeme, arrayDimensions, range, direct(range), isPublic)
     }
 
-    private fun parseComptimeFunction(): SyntaxComptimeFunction {
+    private fun parseComptimeFunction(isPublic: Boolean): SyntaxComptimeFunction {
         val start = expect("comptime", "expected 'comptime'") ?: previous()
         if (peek().isLexeme("cpx")) advance()
         else diagnostics.error("expected 'cpx' after 'comptime'", peek().range, "PARSE501")
@@ -128,7 +132,7 @@ class Parser(private val lexed: LexedSource) {
         expect(";", "expected ';' after CPX template")
         val close = expect("}", "expected '}' after compile-time function") ?: previous()
         val range = span(start.range, close.range)
-        return SyntaxComptimeFunction(name.lexeme, category, parameters, template, range, direct(range))
+        return SyntaxComptimeFunction(name.lexeme, category, parameters, template, range, direct(range), isPublic)
     }
 
     private fun parseCpxInvocation(): SyntaxCpxInvocation {
@@ -175,7 +179,7 @@ class Parser(private val lexed: LexedSource) {
         return SyntaxImport(names, moduleParts.joinToString(""), alias, range, direct(range))
     }
 
-    private fun parseStruct(structKeyword: Token): SyntaxStruct {
+    private fun parseStruct(structKeyword: Token, isPublic: Boolean): SyntaxStruct {
         val name = expectIdentifier("expected structure name")
             ?: syntheticToken("anonymous_struct", structKeyword.range)
         expect("{", "expected '{' after structure name")
@@ -207,10 +211,10 @@ class Parser(private val lexed: LexedSource) {
         val close = expect("}", "expected '}' after structure body") ?: previous()
         expect(";", "expected ';' after structure declaration")
         val structureRange = span(structKeyword.range, previous().range)
-        return SyntaxStruct(name.lexeme, fields, methods, structureRange, direct(structureRange))
+        return SyntaxStruct(name.lexeme, fields, methods, structureRange, direct(structureRange), isPublic)
     }
 
-    private fun parseUnion(unionKeyword: Token): SyntaxUnion {
+    private fun parseUnion(unionKeyword: Token, isPublic: Boolean): SyntaxUnion {
         val name = expectIdentifier("expected union name") ?: syntheticToken("anonymous_union", unionKeyword.range)
         expect("{", "expected '{' after union name")
         val fields = mutableListOf<SyntaxField>()
@@ -236,10 +240,10 @@ class Parser(private val lexed: LexedSource) {
         val close = expect("}", "expected '}' after union body") ?: previous()
         expect(";", "expected ';' after union declaration")
         val range = span(unionKeyword.range, previous().range)
-        return SyntaxUnion(name.lexeme, fields, range, direct(range))
+        return SyntaxUnion(name.lexeme, fields, range, direct(range), isPublic)
     }
 
-    private fun parseEnum(enumKeyword: Token): SyntaxEnum {
+    private fun parseEnum(enumKeyword: Token, isPublic: Boolean): SyntaxEnum {
         val name = expectIdentifier("expected enum name") ?: syntheticToken("anonymous_enum", enumKeyword.range)
         expect("{", "expected '{' after enum name")
         val values = mutableListOf<SyntaxEnumValue>()
@@ -260,7 +264,7 @@ class Parser(private val lexed: LexedSource) {
         expect("}", "expected '}' after enum body")
         expect(";", "expected ';' after enum declaration")
         val range = span(enumKeyword.range, previous().range)
-        return SyntaxEnum(name.lexeme, values, range, direct(range))
+        return SyntaxEnum(name.lexeme, values, range, direct(range), isPublic)
     }
 
     private fun enumValueText(expression: SyntaxExpression): String? = when (expression) {
@@ -273,7 +277,8 @@ class Parser(private val lexed: LexedSource) {
         returnType: TypeSyntax,
         name: Token,
         isMethod: Boolean = false,
-        ownerName: String? = null
+        ownerName: String? = null,
+        isPublic: Boolean = false
     ): SyntaxFunction {
         val parameters = mutableListOf<SyntaxParameter>()
         if (!peek().isLexeme(")")) {
@@ -320,7 +325,8 @@ class Parser(private val lexed: LexedSource) {
             isMethod,
             ownerName,
             functionRange,
-            direct(functionRange)
+            direct(functionRange),
+            isPublic
         )
     }
 

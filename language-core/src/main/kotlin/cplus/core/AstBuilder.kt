@@ -8,23 +8,25 @@ class AstBuilder {
 
     private fun declaration(node: SyntaxDeclaration): AstDeclaration = when (node) {
         is SyntaxPackage -> AstPackage(node.name, node.origin)
-        is SyntaxAlias -> AstAlias(type(node.target), node.name, node.arrayDimensions, node.origin)
-        is SyntaxUnion -> AstUnion(node.name, node.fields.map(::field), node.origin)
+        is SyntaxAlias -> AstAlias(type(node.target), node.name, node.arrayDimensions, node.origin, node.isPublic)
+        is SyntaxUnion -> AstUnion(node.name, node.fields.map(::field), node.origin, node.isPublic)
         is SyntaxEnum -> AstEnum(
             node.name,
             node.values.map { AstEnumValue(it.name, it.value, it.origin) },
-            node.origin
+            node.origin,
+            node.isPublic
         )
         is SyntaxStruct -> AstStruct(
             node.name,
             node.fields.map(::field),
             node.methods.map { function(it, node.name) },
-            node.origin
+            node.origin,
+            node.isPublic
         )
-        is SyntaxGlobalVariable -> AstGlobalVariable(type(node.type), node.name, node.initializer?.let(::expression), node.origin, node.arrayDimensions)
-        is SyntaxComptimeFunction -> AstComptimeFunction(node.name, node.category, node.parameters.map { it.name }, node.template, node.origin)
-        is SyntaxCpxInvocation -> AstCpxInvocation(node.name, node.arguments, node.origin)
-        is SyntaxImport -> AstImport(node.names, node.module, node.alias, node.origin)
+        is SyntaxGlobalVariable -> AstGlobalVariable(type(node.type), node.name, node.initializer?.let(::expression), node.origin, node.arrayDimensions, node.isPublic)
+        is SyntaxComptimeFunction -> AstComptimeFunction(node.name, node.category, node.parameters.map { it.name }, node.template, node.origin, node.isPublic)
+        is SyntaxCpxInvocation -> AstCpxInvocation(node.name, node.arguments, node.origin, node.isPublic)
+        is SyntaxImport -> AstImport(node.names, node.module, node.alias, node.origin, node.isPublic)
         is SyntaxFunction -> function(node, node.ownerName)
     }
 
@@ -35,7 +37,8 @@ class AstBuilder {
         node.body?.let(::statement),
         node.isMethod,
         ownerName,
-        node.origin
+        node.origin,
+        node.isPublic
     )
 
     private fun field(node: SyntaxField): AstField = AstField(type(node.type), node.name, node.origin, node.arrayDimensions)

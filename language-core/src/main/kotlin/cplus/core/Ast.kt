@@ -15,7 +15,10 @@ data class AstModule(
     val declarations: List<AstDeclaration>
 )
 
-sealed interface AstDeclaration : AstNode
+sealed interface AstDeclaration : AstNode {
+    val isPublic: Boolean
+        get() = false
+}
 
 data class AstPackage(
     val name: String,
@@ -26,19 +29,22 @@ data class AstAlias(
     val target: AstTypeRef,
     val name: String,
     val arrayDimensions: List<String> = emptyList(),
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : AstDeclaration
 
 data class AstUnion(
     val name: String,
     val fields: List<AstField>,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : AstDeclaration
 
 data class AstEnum(
     val name: String,
     val values: List<AstEnumValue>,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : AstDeclaration
 
 data class AstEnumValue(
@@ -59,7 +65,8 @@ data class AstStruct(
     val name: String,
     val fields: List<AstField>,
     val methods: List<AstFunction> = emptyList(),
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : AstDeclaration
 
 data class AstField(
@@ -74,7 +81,8 @@ data class AstGlobalVariable(
     val name: String,
     val initializer: AstExpression?,
     override val origin: Origin,
-    val arrayDimensions: List<String> = emptyList()
+    val arrayDimensions: List<String> = emptyList(),
+    override val isPublic: Boolean = false
 ) : AstDeclaration
 
 data class AstComptimeFunction(
@@ -82,20 +90,23 @@ data class AstComptimeFunction(
     val category: String,
     val parameters: List<String>,
     val template: String,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : AstDeclaration
 
 data class AstCpxInvocation(
     val name: String,
     val arguments: List<String>,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : AstDeclaration
 
 data class AstImport(
     val names: List<String>,
     val module: String,
     val alias: String? = null,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : AstDeclaration
 
 data class AstFunction(
@@ -105,7 +116,8 @@ data class AstFunction(
     val body: AstStatement?,
     val isMethod: Boolean = false,
     val ownerName: String? = null,
-    override val origin: Origin
+    override val origin: Origin,
+    override val isPublic: Boolean = false
 ) : AstDeclaration
 
 data class AstParameter(
