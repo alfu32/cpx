@@ -3,7 +3,7 @@
 ## Dashboard
 
 ```text
-Overall: 90/113
+Overall: 91/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
@@ -12,7 +12,7 @@ Overall: 90/113
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-4.3.2.4 — preserve hoisting provenance through generated declarations
+4.3.3.3 — preserve public/private dependency boundaries
 
 Current milestone:
 M4 — Full compile-time model
@@ -1644,7 +1644,7 @@ all create correct bindings.
 **Depends**
 - 4.1
 
-### 4.3.2 [DOING] [3/4] Hoisting and forward-declaration synthesis
+### 4.3.2 [DONE] [4/4] Hoisting and forward-declaration synthesis
 
 **Language**
 - LS §24–25
@@ -1690,7 +1690,13 @@ all create correct bindings.
 **Depends**
 - 4.3.2.1
 
-#### 4.3.2.4 [TODO] Preserve hoisting provenance through generated declarations
+#### 4.3.2.4 [DONE] Preserve hoisting provenance through generated declarations
+
+**Implementation**
+- Hoisted environment structs and functions use `Origin.Generated` derived from the inner function origin.
+- Generated fields, parameters, environment initialization, and rewritten closure calls retain the originating closure chain.
+- C emission and source-map generation therefore keep closure-generated declarations traceable to their source construct.
+- Integration coverage asserts generated AST declaration origins and compiles the resulting C17 fixture.
 
 ### 4.3.3 [DONE] [4/4] Header and dependency/include generation
 

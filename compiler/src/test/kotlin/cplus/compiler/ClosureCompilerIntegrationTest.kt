@@ -1,6 +1,9 @@
 package cplus.compiler
 
 import java.nio.file.Files
+import cplus.core.AstFunction
+import cplus.core.AstStruct
+import cplus.core.Origin
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -30,6 +33,12 @@ class ClosureCompilerIntegrationTest {
         val result = CPlusCompiler().compile(CompileRequest(listOf(source)))
 
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val hoisted = result.artifacts.single().ast.declarations.filter {
+            (it is AstStruct && it.name == "outer__add__env_t") ||
+                (it is AstFunction && it.name == "outer__add")
+        }
+        assertEquals(2, hoisted.size)
+        assertTrue(hoisted.all { it.origin is Origin.Generated })
         val generated = result.generatedUnits.single().text
         assertTrue(generated.contains("struct outer__add__env_t"))
         assertTrue(generated.contains("int outer__add"))
