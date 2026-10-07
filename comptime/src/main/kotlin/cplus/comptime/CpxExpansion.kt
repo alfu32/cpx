@@ -887,6 +887,12 @@ class CpxExpander(
             initializer = statement.initializer?.let { reorigin(it, origin) },
             origin = origin
         )
+        is SyntaxInnerFunction -> statement.copy(
+            returnType = reorigin(statement.returnType, origin),
+            parameters = statement.parameters.map { it.copy(type = reorigin(it.type, origin), origin = origin) },
+            body = reorigin(statement.body, origin),
+            origin = origin
+        )
     }
 
     private fun reorigin(expression: SyntaxExpression, origin: Origin): SyntaxExpression = when (expression) {

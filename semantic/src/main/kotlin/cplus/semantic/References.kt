@@ -160,6 +160,15 @@ internal object ReferenceCollector {
                     statement.initializer?.let { collectExpression(it, locals) }
                     locals[statement.name] = SymbolId(nextLocalId--)
                 }
+                is AstInnerFunction -> {
+                    val nestedLocals = locals.toMutableMap()
+                    statement.function.parameters.forEach { parameter ->
+                        id(parameter)
+                        collectType(parameter.type)
+                        nestedLocals[parameter.name] = SymbolId(nextLocalId--)
+                    }
+                    statement.function.body?.let { collectStatement(it, nestedLocals) }
+                }
                 is AstBreak, is AstContinue -> Unit
             }
         }

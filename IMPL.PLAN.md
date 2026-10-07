@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 88/113
+Overall: 89/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [13/20] 3. Compile-time and CPX system
-[DOING] [32/34] 4. Lowering and C backend
+[DOING] [33/34] 4. Lowering and C backend
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-4.2.2 — inner functions and closure lowering
+4.3.2.2 — hoist inner and generated declarations
 
 Current milestone:
 M4 — Full compile-time model
@@ -1376,7 +1376,7 @@ all create correct bindings.
 - 2.2
 - 4.1
 
-### 4.2.2 [TODO] Inner functions and closure lowering
+### 4.2.2 [DONE] Inner functions and closure lowering
 
 **Language**
 - LS §14
@@ -1394,6 +1394,14 @@ all create correct bindings.
 **Depends**
 - 4.1
 - 2.1.2
+
+**Implementation**
+- Nested function syntax is parsed as `SyntaxInnerFunction` and normalized to an AST inner-function statement.
+- `AstClosureLowerer` performs lexical capture analysis before semantic resolution and removes nested functions from the runtime AST.
+- Mutable captures use reference-mode environment fields; immutable captures use value-mode fields.
+- Environment structs, local environment instances, hoisted functions, capture initialization, and closure-call environment arguments are synthesized with generated origins.
+- `ClosurePlanner` rejects explicit escaping mutable-reference captures with `CLOSURE001`; unsupported nested-closure recursion is diagnosed explicitly.
+- An end-to-end C17 fixture verifies a captured inner function compiles and executes correctly.
 
 ### 4.2.3 [DONE] [3/3] `defer` lowering and control-flow integration
 

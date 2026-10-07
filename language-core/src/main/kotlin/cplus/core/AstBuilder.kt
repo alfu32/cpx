@@ -67,6 +67,20 @@ class AstBuilder {
         is SyntaxBreak -> AstBreak(node.origin)
         is SyntaxContinue -> AstContinue(node.origin)
             is SyntaxVariableDeclaration -> AstVariableDeclaration(type(node.type), node.name, node.initializer?.let(::expression), node.origin, node.arrayDimensions)
+            is SyntaxInnerFunction -> AstInnerFunction(
+                function(
+                    SyntaxFunction(
+                        node.returnType,
+                        node.name,
+                        node.parameters,
+                        node.body,
+                        range = node.range,
+                        origin = node.origin
+                    ),
+                    null
+                ),
+                node.origin
+            )
     }
 
     private fun expression(node: SyntaxExpression): AstExpression = when (node) {

@@ -86,6 +86,7 @@ class CompilerContext(
     val astBuilder: AstBuilder = AstBuilder(),
     val semanticAnalyzer: SemanticAnalyzer = SemanticAnalyzer(),
     val cpxExpander: CpxExpander = CpxExpander(lexer),
+    val closureLowerer: AstClosureLowerer = AstClosureLowerer(),
     val cLowererFactory: (SemanticModel) -> CLowerer = ::CLowerer,
     val cEmitter: CEmitter = CEmitter(),
     val target: TargetInfo = TargetInfo()
@@ -213,16 +214,16 @@ class CPlusCompiler(
         val ast = frontend.ast
         val semantic = context.semanticAnalyzer.analyze(ast, foreignSources = foreignSources)
         if (!semantic.isSuccessful) {
-            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null)
+            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
         }
-        val model = semantic.model ?: return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null)
+        val model = semantic.model ?: return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
         val lowered = context.cLowererFactory(model).lower(ast)
         if (lowered.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
-            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, null)
+            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, null, frontend.closureDiagnostics)
         }
         val generated = context.cEmitter.emit(lowered.unit)
         val header = CHeaderGenerator().generate(lowered.unit)
-        return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, generated, header = header)
+        return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, generated, frontend.closureDiagnostics, header)
     }
 
     private fun compileWorkspace(
@@ -258,7 +259,7 @@ class CPlusCompiler(
             }
         )
         val semantic = context.semanticAnalyzer.analyze(mergedAst, moduleGraph.moduleNames, foreignInputs.units)
-        val additionalDiagnostics = units.drop(1).flatMap { it.diagnostics() } +
+        val additionalDiagnostics = first.closureDiagnostics + units.drop(1).flatMap { it.diagnostics() } +
             unresolvedImportCycleDiagnostics(moduleGraph, semantic.diagnostics) +
             foreignInputs.diagnostics +
             linkDiagnostics
@@ -460,12 +461,14 @@ class CPlusCompiler(
         val lexed: LexedSource,
         val parsed: Parser.ParsedSource,
         val expanded: CpxExpansionResult?,
-        val ast: AstProgram
+        val ast: AstProgram,
+        val closureDiagnostics: List<Diagnostic> = emptyList()
     ) {
         fun diagnostics(): List<Diagnostic> = buildList {
             addAll(lexed.diagnostics)
             addAll(parsed.diagnostics.filterNot { it in lexed.diagnostics })
             addAll(expanded?.diagnostics.orEmpty())
+            addAll(closureDiagnostics)
         }
     }
 
@@ -531,7 +534,8 @@ class CPlusCompiler(
         val parsed = Parser(lexed).parse()
         val expanded = context.cpxExpander.expand(source, parsed.syntax)
         val ast = context.astBuilder.build(expanded.program)
-        return FrontendUnit(source, lexed, parsed, expanded, ast)
+        val closure = context.closureLowerer.lower(ast)
+        return FrontendUnit(source, lexed, parsed, expanded, closure.program, closure.diagnostics)
     }
 
     private data class ForeignInputs(

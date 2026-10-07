@@ -426,6 +426,9 @@ class Parser(private val lexed: LexedSource) {
             val range = span(start.range, previous().range)
             return SyntaxContinue(range, direct(range))
         }
+        if (looksLikeInnerFunction()) {
+            return parseInnerFunction()
+        }
         if (looksLikeVariableDeclaration()) {
             return parseVariableDeclaration()
         }
@@ -443,6 +446,18 @@ class Parser(private val lexed: LexedSource) {
         expect(";", "expected ';' after local declaration")
         val range = span(type.range, previous().range)
         return SyntaxVariableDeclaration(type, name.lexeme, initializer, range, direct(range), arrayDimensions)
+    }
+
+    private fun parseInnerFunction(): SyntaxInnerFunction? {
+        val returnType = parseType() ?: return null
+        val name = expectIdentifier("expected inner function name") ?: return null
+        expect("(", "expected '(' after inner function name")
+        val parsed = parseFunction(returnType, name)
+        val body = parsed.body ?: run {
+            val range = parsed.range
+            SyntaxBlock(emptyList(), range, direct(range))
+        }
+        return SyntaxInnerFunction(returnType, name.lexeme, parsed.parameters, body, parsed.range, parsed.origin)
     }
 
     private fun parseArrayDimensions(): List<String> {
@@ -637,6 +652,18 @@ class Parser(private val lexed: LexedSource) {
         if (peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum")) return true
         if (peek().lexeme in primitiveTypes) return true
         return peek().kind == TokenKind.IDENTIFIER && peek(1).kind == TokenKind.IDENTIFIER
+    }
+
+    private fun looksLikeInnerFunction(): Boolean {
+        val typeEnd = when {
+            peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum") -> 2
+            peek().lexeme in primitiveTypes -> 1
+            peek().kind == TokenKind.IDENTIFIER -> 2
+            else -> return false
+        }
+        var nameOffset = typeEnd
+        while (peek(nameOffset).isLexeme("*")) nameOffset++
+        return peek(nameOffset).kind == TokenKind.IDENTIFIER && peek(nameOffset + 1).isLexeme("(")
     }
 
     private fun looksLikeCast(): Boolean = peek().isLexeme("(") &&

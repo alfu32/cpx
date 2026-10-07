@@ -214,6 +214,15 @@ data class SyntaxVariableDeclaration(
     val arrayDimensions: List<String> = emptyList()
 ) : SyntaxStatement
 
+data class SyntaxInnerFunction(
+    val returnType: TypeSyntax,
+    val name: String,
+    val parameters: List<SyntaxParameter>,
+    val body: SyntaxStatement,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxStatement
+
 sealed interface SyntaxExpression : SyntaxNode
 
 data class SyntaxIntegerLiteral(

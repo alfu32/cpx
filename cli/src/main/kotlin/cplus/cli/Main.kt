@@ -415,6 +415,10 @@ private class AstPrinter {
             is AstBreak -> appendLine("Break")
             is AstContinue -> appendLine("Continue")
             is AstVariableDeclaration -> appendLine("Variable ${statement.type.name} ${statement.name}")
+            is AstInnerFunction -> {
+                appendLine("InnerFunction ${statement.function.returnType.name} ${statement.function.name}")
+                statement.function.body?.let { appendStatement(it, depth + 1) }
+            }
         }
     }
 

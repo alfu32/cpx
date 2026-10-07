@@ -895,6 +895,15 @@ class SemanticAnalyzer(
                     validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 }
             }
+            is AstInnerFunction -> {
+                val nestedLocals = LinkedHashMap(locals)
+                statement.function.parameters.forEach { parameter ->
+                    val type = resolveType(parameter.type, structs, unions, enums, aliases, foreignTypes, primitive, diagnostics, parameter.arrayDimensions)
+                    nestedLocals[parameter.name] = Symbol(SymbolId(-nestedLocals.size - 1), parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
+                }
+                val returnType = resolveType(statement.function.returnType, structs, unions, enums, aliases, foreignTypes, primitive, diagnostics)
+                validateStatement(statement.function.body ?: AstBlock(emptyList(), statement.origin), returnType, nestedLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopDepth)
+            }
         }
     }
 

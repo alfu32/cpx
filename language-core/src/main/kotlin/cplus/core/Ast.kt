@@ -183,6 +183,11 @@ data class AstVariableDeclaration(
     val arrayDimensions: List<String> = emptyList()
 ) : AstStatement
 
+data class AstInnerFunction(
+    val function: AstFunction,
+    override val origin: Origin
+) : AstStatement
+
 sealed interface AstExpression : AstNode
 
 data class AstIntegerLiteral(val text: String, override val origin: Origin) : AstExpression

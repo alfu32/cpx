@@ -30,6 +30,10 @@ class DiagnosticBag {
         entries += diagnostics
     }
 
+    fun clear() {
+        entries.clear()
+    }
+
     fun error(message: String, range: SourceRange? = null, code: String? = null) {
         add(Diagnostic(DiagnosticSeverity.ERROR, message, range, code))
     }

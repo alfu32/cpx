@@ -237,7 +237,7 @@ class CLowerer(
             (statement.condition?.let(::containsStringTemplate) == true) ||
             (statement.increment?.let(::containsStringTemplate) == true) ||
             containsStringTemplate(statement.body)
-        is AstBreak, is AstContinue -> false
+        is AstBreak, is AstContinue, is AstInnerFunction -> false
         is AstVariableDeclaration -> statement.initializer?.let(::containsStringTemplate) == true
     }
 
@@ -442,6 +442,14 @@ class CLowerer(
             ),
             fallsThrough = true
         )
+        is AstInnerFunction -> {
+            diagnostics.error(
+                "inner function reached C lowering without closure transformation",
+                node.origin.primaryRange,
+                "LOW501"
+            )
+            LoweredStatements(emptyList(), fallsThrough = true)
+        }
     }
 
     private fun lowerBlock(
