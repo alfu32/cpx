@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 35/93
+Overall: 36/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [11/27] 2. Semantic model and modules
+[DOING] [12/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.2.1.3 — canonical type equality and identity
+2.2.2 — type reference and alias resolution
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -434,9 +434,9 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.2 [DOING] [6/9] Type and method system
+## 2.2 [DOING] [7/9] Type and method system
 
-### 2.2.1 [DOING] [5/6] Canonical type universe representation
+### 2.2.1 [DONE] [6/6] Canonical type universe representation
 
 **Technical**
 - TS §12 Type System Model
@@ -509,7 +509,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.2.1.2.1
 
-#### 2.2.1.3 [TODO] Canonicalize type equality and identity
+#### 2.2.1.3 [DONE] Canonicalize type equality and identity
 
 **Acceptance**
 - equivalent type spellings compare by semantic identity.

@@ -103,6 +103,19 @@ data class ForeignType(
     val externalName: String = name
 ) : CType
 
+private fun canonicalTypeKey(type: CType): String = when (type) {
+    is PrimitiveType -> "primitive:${type.name}"
+    is StructType -> "struct:${type.name}"
+    is UnionType -> "union:${type.name}"
+    is EnumType -> "enum:${type.name}"
+    is PointerType -> "pointer:${canonicalTypeKey(type.pointee)}"
+    is ArrayType -> "array:${canonicalTypeKey(type.element)}:${type.dimensions.joinToString(",")}" 
+    is FunctionType -> "function:${canonicalTypeKey(type.returnType)}:${type.parameterTypes.joinToString(",") { canonicalTypeKey(it) }}:${type.isVariadic}"
+    is AliasType -> canonicalTypeKey(type.target)
+    is ForeignType -> "foreign:${type.externalName}"
+    is UnknownType -> "unknown:${type.id.value}"
+}
+
 data class UnknownType(
     override val id: TypeId,
     override val name: String = "<unknown>"
@@ -159,9 +172,12 @@ data class SemanticModel(
     val unions: Map<String, UnionType> = emptyMap(),
     val enums: Map<String, EnumType> = emptyMap(),
     val aliases: Map<String, AliasType> = emptyMap(),
-    val foreignTypes: Map<String, ForeignType> = emptyMap()
+    val foreignTypes: Map<String, ForeignType> = emptyMap(),
+    val canonicalTypeIds: Map<String, TypeId> = emptyMap()
 ) {
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
+
+    fun canonicalTypeId(type: CType): TypeId = canonicalTypeIds[canonicalTypeKey(type)] ?: type.id
 }
 
 data class SemanticResult(
@@ -208,7 +224,9 @@ class SemanticAnalyzer {
         }
 
         fun resolve(reference: AstTypeRef, dimensions: List<String> = emptyList()): CType =
-            resolveType(reference, structs, unions, enums, aliases, foreignTypes, ::primitive, diagnostics, dimensions)
+            resolveType(reference, structs, unions, enums, aliases, foreignTypes, ::primitive, diagnostics, dimensions).also { resolved ->
+                if (resolved !is UnknownType && types.none { it.id == resolved.id }) types += resolved
+            }
 
         fun newSymbol(name: String, kind: SymbolKind, type: CType, origin: Origin, moduleName: String? = null): Symbol = Symbol(
             SymbolId(nextSymbolId.next()), name, kind, type, origin, moduleName = moduleName
@@ -432,7 +450,11 @@ class SemanticAnalyzer {
             unions,
             enums,
             aliases,
-            foreignTypes
+            foreignTypes,
+            types.fold(linkedMapOf<String, TypeId>()) { ids, type ->
+                ids.putIfAbsent(canonicalTypeKey(type), type.id)
+                ids
+            }
         )
         return SemanticResult(model, diagnostics.diagnostics)
     }
@@ -528,7 +550,7 @@ class SemanticAnalyzer {
         }
         var resolved = base
         repeat(reference.pointerDepth) {
-            resolved = PointerType(TypeId(-1 - it), resolved)
+            resolved = PointerType(TypeId(nextTypeId.next()), resolved)
         }
         if (arrayDimensions.isNotEmpty()) {
             resolved = ArrayType(TypeId(nextTypeId.next()), resolved, arrayDimensions)
@@ -753,7 +775,7 @@ class SemanticAnalyzer {
         }
     }
 
-    private fun equivalentTypes(left: CType, right: CType): Boolean = canonicalType(left).name == canonicalType(right).name
+    private fun equivalentTypes(left: CType, right: CType): Boolean = canonicalTypeKey(left) == canonicalTypeKey(right)
 
     private fun canonicalType(type: CType): CType = when (type) {
         is AliasType -> canonicalType(type.target)
