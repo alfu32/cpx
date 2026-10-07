@@ -35,7 +35,8 @@ data class CompileRequest(
     val options: CompilerOptions = CompilerOptions(),
     val cSources: List<Path> = emptyList(),
     val cLibraries: List<String> = emptyList(),
-    val cIncludeDirectories: List<Path> = emptyList()
+    val cIncludeDirectories: List<Path> = emptyList(),
+    val sdkManifest: Path = SdkManifestLocator.defaultManifestPath()
 )
 
 data class TextSource(
@@ -136,6 +137,8 @@ class CPlusCompiler(
     }
 
     fun compile(request: CompileRequest): CompileResult {
+        val sdk = SdkManifestLoader.load(request.sdkManifest)
+        if (!sdk.isSuccessful) return sdkFailure(sdk.diagnostics)
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
         val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
@@ -164,6 +167,8 @@ class CPlusCompiler(
         recompute: Set<Path>,
         fingerprints: Map<Path, String>
     ): IncrementalPipeline {
+        val sdk = SdkManifestLoader.load(request.sdkManifest)
+        if (!sdk.isSuccessful) return IncrementalPipeline(sdkFailure(sdk.diagnostics), emptyMap())
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
         val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
@@ -206,11 +211,22 @@ class CPlusCompiler(
         return IncrementalPipeline(result, entries)
     }
 
-    fun compileText(path: Path, text: String, options: CompilerOptions = CompilerOptions()): CompileResult {
-        return compileTextWorkspace(listOf(TextSource(path, text)), options)
+    fun compileText(
+        path: Path,
+        text: String,
+        options: CompilerOptions = CompilerOptions(),
+        sdkManifest: Path = SdkManifestLocator.defaultManifestPath()
+    ): CompileResult {
+        return compileTextWorkspace(listOf(TextSource(path, text)), options, sdkManifest)
     }
 
-    fun compileTextWorkspace(sources: List<TextSource>, options: CompilerOptions = CompilerOptions()): CompileResult {
+    fun compileTextWorkspace(
+        sources: List<TextSource>,
+        options: CompilerOptions = CompilerOptions(),
+        sdkManifest: Path = SdkManifestLocator.defaultManifestPath()
+    ): CompileResult {
+        val sdk = SdkManifestLoader.load(sdkManifest)
+        if (!sdk.isSuccessful) return sdkFailure(sdk.diagnostics)
         val sourceFiles = sources
             .distinctBy { it.path.toAbsolutePath().normalize() }
             .map { source -> context.sourceRepository.put(source.path, source.text) }
@@ -229,6 +245,13 @@ class CPlusCompiler(
     }
 
     fun sourcePathFor(file: SourceFileId): Path? = context.sourceRepository.find(file)?.path
+
+    private fun sdkFailure(diagnostics: List<Diagnostic>): CompileResult = CompileResult(
+        diagnostics = diagnostics,
+        generatedUnits = emptyList(),
+        semanticModel = null,
+        artifacts = emptyList()
+    )
 
     private fun compileOne(path: Path, options: CompilerOptions, foreignSources: List<CSourceUnit>): CompilationArtifacts {
         return compileFrontend(frontend(path), options, foreignSources)

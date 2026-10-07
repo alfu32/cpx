@@ -40,7 +40,8 @@ data class IncrementalCacheKey(
     val target: TargetInfo,
     val options: CompilerOptions,
     val cLibraries: List<String>,
-    val cIncludeDirectories: List<Path>
+    val cIncludeDirectories: List<Path>,
+    val sdkIdentity: SdkManifestIdentity
 )
 
 /**
@@ -60,6 +61,15 @@ class IncrementalCompiler(
     @Synchronized
     fun compile(request: CompileRequest): IncrementalCompileResult {
         val canonicalRequest = request.canonicalized()
+        val sdk = SdkManifestLoader.load(canonicalRequest.sdkManifest)
+        if (!sdk.isSuccessful) {
+            return IncrementalCompileResult(
+                CompileResult(sdk.diagnostics, emptyList(), null, emptyList()),
+                InvalidationReport(emptySet(), emptySet(), emptySet()),
+                null
+            )
+        }
+        val sdkIdentity = sdk.manifest!!.identity
         val sourceFingerprints = canonicalRequest.sources.associateWith(::fingerprint)
         val foreignFingerprints = canonicalRequest.cSources.associateWith(::fingerprint)
         val cacheKey = IncrementalCacheKey(
@@ -68,7 +78,8 @@ class IncrementalCompiler(
             canonicalRequest.target,
             canonicalRequest.options,
             canonicalRequest.cLibraries,
-            canonicalRequest.cIncludeDirectories
+            canonicalRequest.cIncludeDirectories,
+            sdkIdentity
         )
         val configuration = RequestConfiguration.from(canonicalRequest)
         val previous = state
@@ -257,16 +268,22 @@ class IncrementalCompiler(
         val options: CompilerOptions,
         val cSources: List<Path>,
         val cLibraries: List<String>,
-        val cIncludeDirectories: List<Path>
+        val cIncludeDirectories: List<Path>,
+        val sdkIdentity: SdkManifestIdentity
     ) {
         companion object {
-            fun from(request: CompileRequest): RequestConfiguration = RequestConfiguration(
+            fun from(request: CompileRequest): RequestConfiguration {
+                val sdk = SdkManifestLoader.load(request.sdkManifest)
+                check(sdk.isSuccessful) { "validated SDK manifest must be available" }
+                return RequestConfiguration(
                 request.target,
                 request.options,
                 request.cSources,
                 request.cLibraries,
-                request.cIncludeDirectories
-            )
+                request.cIncludeDirectories,
+                sdk.manifest!!.identity
+                )
+            }
         }
     }
 

@@ -2,6 +2,7 @@ package cplus.cli
 
 import cplus.compiler.CPlusCompiler
 import cplus.compiler.CompileRequest
+import cplus.compiler.SdkManifestLocator
 import cplus.core.*
 import java.nio.file.Files
 import java.nio.file.Path
@@ -42,7 +43,13 @@ internal class Cli {
     private fun transcode(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val result = CPlusCompiler().compile(
-            CompileRequest(parsed.sources, cSources = parsed.cSources, cLibraries = parsed.libraries, cIncludeDirectories = parsed.includeDirectories)
+            CompileRequest(
+                parsed.sources,
+                cSources = parsed.cSources,
+                cLibraries = parsed.libraries,
+                cIncludeDirectories = parsed.includeDirectories,
+                sdkManifest = parsed.sdkManifest
+            )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         if (!result.isSuccessful) return 1
@@ -63,7 +70,13 @@ internal class Cli {
     private fun check(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val result = CPlusCompiler().compile(
-            CompileRequest(parsed.sources, cSources = parsed.cSources, cLibraries = parsed.libraries, cIncludeDirectories = parsed.includeDirectories)
+            CompileRequest(
+                parsed.sources,
+                cSources = parsed.cSources,
+                cLibraries = parsed.libraries,
+                cIncludeDirectories = parsed.includeDirectories,
+                sdkManifest = parsed.sdkManifest
+            )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         if (result.isSuccessful) println("OK: ${parsed.sources.joinToString(", ")}")
@@ -73,7 +86,13 @@ internal class Cli {
     private fun ast(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val result = CPlusCompiler().compile(
-            CompileRequest(parsed.sources, cSources = parsed.cSources, cLibraries = parsed.libraries, cIncludeDirectories = parsed.includeDirectories)
+            CompileRequest(
+                parsed.sources,
+                cSources = parsed.cSources,
+                cLibraries = parsed.libraries,
+                cIncludeDirectories = parsed.includeDirectories,
+                sdkManifest = parsed.sdkManifest
+            )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         val artifact = result.artifacts.singleOrNull() ?: return 1
@@ -84,7 +103,13 @@ internal class Cli {
     private fun expand(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val result = CPlusCompiler().compile(
-            CompileRequest(parsed.sources, cSources = parsed.cSources, cLibraries = parsed.libraries, cIncludeDirectories = parsed.includeDirectories)
+            CompileRequest(
+                parsed.sources,
+                cSources = parsed.cSources,
+                cLibraries = parsed.libraries,
+                cIncludeDirectories = parsed.includeDirectories,
+                sdkManifest = parsed.sdkManifest
+            )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         val artifact = result.artifacts.singleOrNull() ?: return 1
@@ -102,7 +127,8 @@ internal class Cli {
             executable,
             parsed.headerOutput,
             parsed.libraries,
-            parsed.includeDirectories
+            parsed.includeDirectories,
+            parsed.sdkManifest
         )
     }
 
@@ -116,7 +142,8 @@ internal class Cli {
             executable,
             parsed.headerOutput,
             parsed.libraries,
-            parsed.includeDirectories
+            parsed.includeDirectories,
+            parsed.sdkManifest
         )
         if (buildExitCode != 0) return buildExitCode
         val process = ProcessBuilder(executable.toString()).inheritIO().start()
@@ -137,7 +164,8 @@ internal class Cli {
         executable: Path,
         headerOutput: Path? = null,
         libraries: List<String> = emptyList(),
-        includeDirectories: List<Path> = emptyList()
+        includeDirectories: List<Path> = emptyList(),
+        sdkManifest: Path = SdkManifestLocator.defaultManifestPath()
     ): Int {
         val compiler = CPlusCompiler()
         val result = compiler.compile(
@@ -145,7 +173,8 @@ internal class Cli {
                 sources,
                 cSources = cSources,
                 cLibraries = libraries,
-                cIncludeDirectories = includeDirectories
+                cIncludeDirectories = includeDirectories,
+                sdkManifest = sdkManifest
             )
         )
         printDiagnostics(result.diagnostics, sources.first())
@@ -217,6 +246,7 @@ internal class Cli {
         val cSources = mutableListOf<Path>()
         val libraries = mutableListOf<String>()
         val includeDirectories = mutableListOf<Path>()
+        var sdkManifest: Path? = null
         var output: Path? = null
         var headerOutput: Path? = null
         var index = 0
@@ -267,6 +297,15 @@ internal class Cli {
                     includeDirectories.add(Path.of(value))
                     index += 2
                 }
+                "--sdk", "--sdk-manifest" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    if (value == null) {
+                        System.err.println("missing SDK manifest path after $argument")
+                        return null
+                    }
+                    sdkManifest = Path.of(value)
+                    index += 2
+                }
                 else -> {
                     if (argument.startsWith("-l") && argument.length > 2) {
                         libraries += argument.removePrefix("-l")
@@ -288,7 +327,8 @@ internal class Cli {
             output,
             headerOutput,
             libraries,
-            includeDirectories
+            includeDirectories,
+            sdkManifest ?: SdkManifestLocator.defaultManifestPath()
         )
     }
 
@@ -359,7 +399,7 @@ internal class Cli {
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
         stream.println("C+ CLI transcoder")
-        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
+        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--sdk <manifest>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
         stream.println()
         stream.println("commands:")
         stream.println("  transcode   translate one C+ source file to C")
@@ -378,7 +418,8 @@ internal class Cli {
         val output: Path?,
         val headerOutput: Path?,
         val libraries: List<String>,
-        val includeDirectories: List<Path>
+        val includeDirectories: List<Path>,
+        val sdkManifest: Path
     )
 
     private companion object {

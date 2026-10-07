@@ -1,0 +1,5 @@
+sdk_version = "0.1.0"
+language_abi_version = "1"
+runtime_abi_version = "1"
+cplus_abi_version = "1"
+libc_profile_version = "c17-1"
