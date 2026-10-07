@@ -7,6 +7,7 @@ import cplus.core.*
 import cplus.semantic.*
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.Executors
 import kotlin.io.path.readText
 
 data class TargetInfo(
@@ -14,8 +15,14 @@ data class TargetInfo(
 )
 
 data class CompilerOptions(
-    val emitSourceMap: Boolean = true
-)
+    val emitSourceMap: Boolean = true,
+    /** Maximum number of independent front-end workers for incremental builds. */
+    val parallelism: Int = 1
+) {
+    init {
+        require(parallelism > 0) { "parallelism must be positive" }
+    }
+}
 
 data class CompileRequest(
     val sources: List<Path>,
@@ -82,6 +89,16 @@ class CompilerContext(
     val cEmitter: CEmitter = CEmitter()
 )
 
+internal data class FrontendCacheEntry(
+    val fingerprint: String,
+    val frontend: CPlusCompiler.FrontendUnit
+)
+
+internal data class IncrementalPipeline(
+    val result: CompileResult,
+    val frontends: Map<Path, FrontendCacheEntry>
+)
+
 class CPlusCompiler(
     private val context: CompilerContext = CompilerContext()
 ) {
@@ -112,6 +129,61 @@ class CPlusCompiler(
             )
         }
         return compileWorkspace(request, foreignInputs, cLinkDependencies, linkDiagnostics)
+    }
+
+    /**
+     * Runs a workspace compilation while reusing front-end units whose
+     * fingerprints are unchanged and which the incremental coordinator has
+     * not invalidated. Semantic analysis still receives the complete merged
+     * workspace, so a changed declaration cannot be hidden by a stale module
+     * result. The returned front-end map is the next cache snapshot.
+     */
+    internal fun compileIncremental(
+        request: CompileRequest,
+        cached: Map<Path, FrontendCacheEntry>,
+        recompute: Set<Path>,
+        fingerprints: Map<Path, String>
+    ): IncrementalPipeline {
+        val foreignInputs = loadForeignSources(request.cSources)
+        val cLinkDependencies = linkDependencies(request.cLibraries)
+        val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
+        val entries = linkedMapOf<Path, FrontendCacheEntry>()
+        val paths = request.sources.map { it.toAbsolutePath().normalize() }
+        val pathsToCompute = paths.filter { path ->
+            val fingerprint = fingerprints.getValue(path)
+            val reusable = cached[path]
+            path in recompute || reusable?.fingerprint != fingerprint
+        }
+        val computed = prepareFrontends(pathsToCompute, request.options.parallelism)
+        val units = paths.map { path ->
+            val fingerprint = fingerprints.getValue(path)
+            val reusable = cached[path]
+            val entry = if (path !in recompute && reusable?.fingerprint == fingerprint) {
+                reusable
+            } else {
+                FrontendCacheEntry(fingerprint, computed.getValue(path))
+            }
+            entries[path] = entry
+            entry.frontend
+        }
+        val result = if (request.sources.size <= 1) {
+            val artifacts = units.map { compileFrontend(it, request.options, foreignInputs.units) }
+            resultOf(
+                artifacts,
+                cSourceDependencies = dependencies(request.cSources),
+                additionalDiagnostics = foreignInputs.diagnostics + linkDiagnostics,
+                cLinkDependencies = cLinkDependencies
+            )
+        } else {
+            compileWorkspace(
+                request,
+                foreignInputs,
+                cLinkDependencies,
+                linkDiagnostics,
+                units
+            )
+        }
+        return IncrementalPipeline(result, entries)
     }
 
     fun compileText(path: Path, text: String, options: CompilerOptions = CompilerOptions()): CompileResult {
@@ -151,9 +223,9 @@ class CPlusCompiler(
         request: CompileRequest,
         foreignInputs: ForeignInputs,
         cLinkDependencies: List<CLinkDependency>,
-        linkDiagnostics: List<Diagnostic>
+        linkDiagnostics: List<Diagnostic>,
+        units: List<FrontendUnit> = request.sources.map { frontend(it) }
     ): CompileResult {
-        val units = request.sources.map(::frontend)
         val moduleGraph = ModuleGraphBuilder().build(
             units.map { ModuleSource(it.source, it.expanded?.program ?: it.parsed.syntax) }
         )
@@ -377,7 +449,7 @@ class CPlusCompiler(
         addAll(additionalDiagnostics)
     }
 
-    private data class FrontendUnit(
+    internal data class FrontendUnit(
         val source: SourceFile,
         val lexed: LexedSource,
         val parsed: Parser.ParsedSource,
@@ -394,22 +466,58 @@ class CPlusCompiler(
     private fun frontend(path: Path): FrontendUnit {
         if (!Files.exists(path)) {
             val source = context.sourceRepository.put(path, "")
-            val diagnostic = Diagnostic(
-                DiagnosticSeverity.ERROR,
-                "source file does not exist: $path",
-                SourceRange(source.id, 0, 0),
-                "CLI001"
-            )
-            val lexed = LexedSource(source, emptyList(), listOf(diagnostic))
-            val missingRange = SourceRange(source.id, 0, 0)
-            val parsed = Parser.ParsedSource(
-                SyntaxProgram(emptyList(), missingRange, Origin.Direct(missingRange)),
-                listOf(diagnostic)
-            )
-            return FrontendUnit(source, lexed, parsed, null, AstProgram(emptyList(), parsed.syntax.origin))
+            return missingFrontend(source)
         }
         val source = context.sourceRepository.put(path, path.readText())
         return frontend(source)
+    }
+
+    private fun prepareFrontends(paths: List<Path>, parallelism: Int): Map<Path, FrontendUnit> {
+        if (paths.isEmpty()) return emptyMap()
+        // Register every source in request order before workers start. This
+        // keeps SourceFileId assignment independent of worker scheduling.
+        val prepared = paths.associateWith { path ->
+            if (Files.exists(path)) {
+                PreparedSource(context.sourceRepository.put(path, path.readText()), false)
+            } else {
+                PreparedSource(context.sourceRepository.put(path, ""), true)
+            }
+        }
+        fun compute(preparedSource: PreparedSource): FrontendUnit = if (preparedSource.missing) {
+            missingFrontend(preparedSource.source)
+        } else {
+            frontend(preparedSource.source)
+        }
+        if (parallelism == 1 || paths.size == 1) {
+            return paths.associateWith { path -> compute(prepared.getValue(path)) }
+        }
+
+        val workers = Executors.newFixedThreadPool(parallelism.coerceAtMost(paths.size))
+        return try {
+            val futures = paths.map { path ->
+                path to workers.submit<FrontendUnit> { compute(prepared.getValue(path)) }
+            }
+            futures.associate { (path, future) -> path to future.get() }
+        } finally {
+            workers.shutdown()
+        }
+    }
+
+    private fun missingFrontend(source: SourceFile): FrontendUnit {
+        val path = source.path
+        val diagnostic = Diagnostic(
+            DiagnosticSeverity.ERROR,
+            "source file does not exist: $path",
+            SourceRange(source.id, 0, 0),
+            "CLI001"
+        )
+        val lexed = LexedSource(source, emptyList(), listOf(diagnostic))
+        val missingRange = SourceRange(source.id, 0, 0)
+        val parsed = Parser.ParsedSource(
+            SyntaxProgram(emptyList(), missingRange, Origin.Direct(missingRange)),
+            listOf(diagnostic)
+        )
+        return FrontendUnit(source, lexed, parsed, null, AstProgram(emptyList(), parsed.syntax.origin))
     }
 
     private fun frontend(source: SourceFile): FrontendUnit {
@@ -423,5 +531,10 @@ class CPlusCompiler(
     private data class ForeignInputs(
         val units: List<CSourceUnit>,
         val diagnostics: List<Diagnostic>
+    )
+
+    private data class PreparedSource(
+        val source: SourceFile,
+        val missing: Boolean
     )
 }

@@ -41,6 +41,15 @@ class CpxExpansionTest {
 
         assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
         assertEquals(setOf(ExpansionKey("optional", listOf("int"))), result.expandedKeys)
+        assertEquals(
+            setOf(
+                SpecializationKey(
+                    "optional",
+                    listOf(CanonicalComptimeValue("type", "int"))
+                )
+            ),
+            result.specializationKeys
+        )
         assertEquals(listOf("optional_int_t"), result.program.declarations.filterIsInstance<SyntaxStruct>().map { it.name })
         val generated = result.program.declarations.filterIsInstance<SyntaxStruct>().single()
         assertEquals("int", generated.fields.single().type.name)
@@ -59,6 +68,27 @@ class CpxExpansionTest {
         val result = CpxExpander().expand(source, parsed.syntax)
 
         assertTrue(result.diagnostics.any { it.code == "CPX002" }, result.diagnostics.joinToString())
+    }
+
+    @Test
+    fun equivalentTypeSpellingSharesOneSpecializationKey() {
+        val sourceText = """
+            comptime cpx<decl> optional(type T) {
+                return { struct optional_{T}_t { T value; }; };
+            }
+            optional(struct item);
+            optional(item);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(15), Path.of("canonical.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        assertEquals(setOf(ExpansionKey("optional", listOf("item"))), result.expandedKeys)
+        assertEquals(
+            setOf(SpecializationKey("optional", listOf(CanonicalComptimeValue("type", "item")))),
+            result.specializationKeys
+        )
     }
 
     @Test
@@ -96,5 +126,45 @@ class CpxExpansionTest {
         assertNull(scheduler.next())
         assertEquals(ComptimeTaskState.PENDING, scheduler.state(keyA))
         assertEquals(ComptimeTaskState.PENDING, scheduler.state(keyB))
+        assertEquals(
+            listOf(listOf(keyA, keyB, keyA)),
+            scheduler.dependencyCycles()
+        )
+    }
+
+    @Test
+    fun schedulerUsesExplicitReadinessChannelsForSemanticDependencies() {
+        val source = SourceFile(SourceFileId(14), Path.of("channels.cp"), "", 1)
+        val range = SourceRange(source.id, 0, 0)
+        val invocation = SyntaxCpxInvocation("ready", emptyList(), range, Origin.Direct(range))
+        val definition = SyntaxComptimeFunction(
+            "ready",
+            "decl",
+            listOf(),
+            "struct ready_value { int value; };",
+            range,
+            Origin.Direct(range)
+        )
+        val key = ExpansionKey("ready", emptyList())
+        val symbol = ComptimeDependency.Symbol("Input")
+        val type = ComptimeDependency.Type("InputType")
+        val module = ComptimeDependency.Module("input")
+        val stableUniverse = ComptimeDependency.StableTypeUniverse
+        val scheduler = ComptimeScheduler()
+        scheduler.enqueue(
+            ExpansionTask(
+                invocation,
+                definition,
+                key,
+                dependencies = setOf(symbol, type, module, stableUniverse)
+            )
+        )
+
+        assertNull(scheduler.next())
+        assertEquals(setOf(symbol, type, module, stableUniverse), scheduler.waitingDependencies(key))
+        scheduler.publishAll(listOf(symbol, type, module, stableUniverse))
+
+        assertEquals(key, scheduler.next()?.key)
+        assertTrue(scheduler.isPublished(symbol))
     }
 }

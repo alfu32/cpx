@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 75/113
+Overall: 77/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
-[DOING] [6/20] 3. Compile-time and CPX system
+[DOING] [7/20] 3. Compile-time and CPX system
 [DOING] [28/34] 4. Lowering and C backend
-[DOING] [4/14] 5. Tooling, integration and quality
+[DOING] [5/14] 5. Tooling, integration and quality
 
 Current task:
-5.2.3 — incremental dependency invalidation
+5.2.4 — compiler caches and deterministic concurrency
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -831,7 +831,7 @@ all create correct bindings.
 
 ---
 
-# 3. [TODO] [0/20] Compile-time and CPX system
+# 3. [DOING] [7/20] Compile-time and CPX system
 
 **Purpose:** Implement the compile-time language, readable CPX templates, generics, fixed-point expansion, hygiene and reflection.
 
@@ -982,7 +982,7 @@ all create correct bindings.
 
 ---
 
-## 3.3 [DOING] [1/4] Evaluator, scheduler and expansion identity
+## 3.3 [DOING] [2/4] Evaluator, scheduler and expansion identity
 
 ### 3.3.1 [TODO] `ComptimeContext` and evaluator API
 
@@ -1036,6 +1036,11 @@ all create correct bindings.
 **Depends**
 - 3.3.2
 
+**Implementation**
+- `ComptimeScheduler` exposes explicit symbol, type, module, expansion, and stabilized-type readiness channels.
+- Published readiness tokens unblock waiting tasks without recursive phase calls.
+- Pending expansion dependencies are queryable and deterministic task-to-task cycles are rendered as expansion-key paths.
+
 ### 3.3.4 [DONE] CPX recursion and cycle detection
 
 **Language**
@@ -1055,7 +1060,7 @@ all create correct bindings.
 
 ---
 
-## 3.4 [DOING] [1/4] Generics and recursive specialization
+## 3.4 [DOING] [2/4] Generics and recursive specialization
 
 ### 3.4.1 [DONE] Generic declaration generation through CPX
 
@@ -1075,7 +1080,7 @@ all create correct bindings.
 - 3.2
 - 3.3
 
-### 3.4.2 [TODO] Generic specialization identity
+### 3.4.2 [DONE] Generic specialization identity
 
 **Language**
 - LS §9.4
@@ -1092,6 +1097,12 @@ all create correct bindings.
 **Depends**
 - 3.4.1
 - 3.1.4
+
+**Implementation**
+- `CanonicalComptimeValue` and `SpecializationKey` provide stable specialization identity independent of equivalent type spelling.
+- `ExpansionKey` exposes its canonical specialization key and duplicate equivalent invocations reuse one expansion.
+- Incremental invalidation reports preserve specialization keys separately from expansion invocation keys.
+- Tests cover duplicate reuse and equivalent `struct item`/`item` spellings.
 
 ### 3.4.3 [TODO] Specialization cache
 
@@ -1819,7 +1830,7 @@ all create correct bindings.
 
 ---
 
-# 5. [DOING] [3/14] Tooling, integration and quality
+# 5. [DOING] [5/14] Tooling, integration and quality
 
 **Purpose:** Make the compiler usable as a development platform through LSP, CLI, incremental compilation, test coverage and specification audits.
 
@@ -1910,7 +1921,7 @@ all create correct bindings.
 
 ---
 
-## 5.2 [DOING] [4/6] CLI, build and incremental compiler
+## 5.2 [DOING] [5/6] CLI, build and incremental compiler
 
 ### 5.2.1 [DONE] Public compiler API
 
@@ -1979,7 +1990,7 @@ all create correct bindings.
 - `didOpen`, full-text `didChange`, and `didClose` use `CPlusCompiler` and publish structured diagnostics.
 - CLI integration tests cover framed requests, compiler diagnostics, executable builds, headers, and failure exit codes.
 
-### 5.2.3 [TODO] Incremental dependency invalidation
+### 5.2.3 [DONE] Incremental dependency invalidation
 
 **Technical**
 - TS §47–48
@@ -1994,7 +2005,15 @@ all create correct bindings.
 - 2.3.2
 - 5.2.1
 
-### 5.2.4 [TODO] Compiler caches and deterministic concurrency
+**Implementation**
+- `IncrementalCompiler` fingerprints source and foreign C inputs and keeps a workspace-local front-end cache.
+- Changed modules invalidate the reverse module-dependency closure, including dependent semantic results.
+- Cached lexed, parsed, expanded, and AST units are reused for unaffected modules.
+- Compile-time expansion and specialization keys are reported as invalidated or reused with the source closure.
+- Unchanged requests return the previous immutable `CompileResult` without rerunning the pipeline.
+- Tests cover dependent invalidation, unrelated-module reuse, CPX invalidation, and stable-result reuse.
+
+### 5.2.4 [DOING] Compiler caches and deterministic concurrency
 
 **Language**
 - LS §39 Determinism
@@ -2010,6 +2029,12 @@ all create correct bindings.
 **Depends**
 - 5.2.3
 - 3.4.3
+
+**Implementation in progress**
+- Incremental front-end preparation accepts a bounded worker count through `CompilerOptions.parallelism`.
+- Sources are registered in request order before workers start, preserving stable source IDs and output ordering.
+- Sequential and parallel front-end preparation are covered by deterministic-output tests.
+- Semantic and specialization cache keys remain to be completed with the corresponding CPX cache work.
 
 ---
 

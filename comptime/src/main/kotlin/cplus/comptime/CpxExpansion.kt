@@ -97,9 +97,34 @@ data class ExpansionKey(
 ) {
     val canonical: String
         get() = "$functionName(${arguments.joinToString(",")})"
+
+    val specializationKey: SpecializationKey
+        get() = SpecializationKey(
+            functionName,
+            arguments.map { CanonicalComptimeValue("type", it) }
+        )
+}
+
+data class CanonicalComptimeValue(
+    val kind: String,
+    val value: String
+) {
+    val canonical: String
+        get() = "$kind:$value"
+}
+
+data class SpecializationKey(
+    val declaration: String,
+    val arguments: List<CanonicalComptimeValue>
+) {
+    val canonical: String
+        get() = "$declaration(${arguments.joinToString(",") { it.canonical }})"
 }
 
 sealed interface ComptimeDependency {
+    data class Symbol(val name: String) : ComptimeDependency
+    data class Type(val name: String) : ComptimeDependency
+    data class Module(val name: String) : ComptimeDependency
     data class Expansion(val key: ExpansionKey) : ComptimeDependency
     data object StableTypeUniverse : ComptimeDependency
 }
@@ -134,6 +159,7 @@ class ComptimeScheduler {
     private val pending = ArrayDeque<ExpansionTask>()
     private val expanded = linkedSetOf<ExpansionKey>()
     private val states = linkedMapOf<ExpansionKey, ComptimeTaskState>()
+    private val published = linkedSetOf<ComptimeDependency>()
 
     fun enqueue(task: ExpansionTask) {
         pending.addLast(task)
@@ -159,8 +185,27 @@ class ComptimeScheduler {
 
     fun markExpanded(key: ExpansionKey) {
         expanded += key
+        published += ComptimeDependency.Expansion(key)
         states[key] = ComptimeTaskState.EXPANDED
     }
+
+    /** Publish a semantic readiness token to every task waiting on it. */
+    fun publish(dependency: ComptimeDependency) {
+        published += dependency
+    }
+
+    fun publishAll(dependencies: Iterable<ComptimeDependency>) {
+        published += dependencies
+    }
+
+    fun isPublished(dependency: ComptimeDependency): Boolean = dependency in published
+
+    fun waitingDependencies(key: ExpansionKey): Set<ComptimeDependency> = pending
+        .firstOrNull { it.key == key }
+        ?.dependencies
+        ?.filterNot(::dependencyReady)
+        ?.toSet()
+        .orEmpty()
 
     fun markFailed(key: ExpansionKey) {
         states[key] = ComptimeTaskState.FAILED
@@ -174,11 +219,46 @@ class ComptimeScheduler {
 
     fun pendingKeys(): Set<ExpansionKey> = pending.map { it.key }.toSet()
 
-    private fun dependenciesReady(task: ExpansionTask): Boolean = task.dependencies.all { dependency ->
-        when (dependency) {
-            is ComptimeDependency.Expansion -> dependency.key in expanded
-            ComptimeDependency.StableTypeUniverse -> false
+    /**
+     * Returns deterministic expansion-key cycles among currently pending
+     * tasks. Non-expansion dependencies are deliberately excluded because
+     * they are external readiness channels rather than task-to-task edges.
+     */
+    fun dependencyCycles(): List<List<ExpansionKey>> {
+        val tasks = pending.associateBy { it.key }
+        val cycles = linkedSetOf<List<ExpansionKey>>()
+        val visiting = linkedSetOf<ExpansionKey>()
+        val visited = mutableSetOf<ExpansionKey>()
+
+        fun visit(key: ExpansionKey, path: List<ExpansionKey>) {
+            if (key in visiting) {
+                val start = path.indexOf(key)
+                if (start >= 0) cycles += path.subList(start, path.size) + key
+                return
+            }
+            if (!visited.add(key)) return
+            val task = tasks[key] ?: return
+            visiting += key
+            task.dependencies
+                .mapNotNull { (it as? ComptimeDependency.Expansion)?.key }
+                .filter { it in tasks }
+                .sortedBy(ExpansionKey::canonical)
+                .forEach { visit(it, path + key) }
+            visiting -= key
         }
+
+        tasks.keys.sortedBy(ExpansionKey::canonical).forEach { visit(it, emptyList()) }
+        return cycles.sortedBy { cycle -> cycle.joinToString(" -> ") { it.canonical } }
+    }
+
+    private fun dependenciesReady(task: ExpansionTask): Boolean = task.dependencies.all(::dependencyReady)
+
+    private fun dependencyReady(dependency: ComptimeDependency): Boolean = when (dependency) {
+        is ComptimeDependency.Expansion -> dependency.key in expanded
+        is ComptimeDependency.Symbol,
+        is ComptimeDependency.Type,
+        is ComptimeDependency.Module,
+        ComptimeDependency.StableTypeUniverse -> dependency in published
     }
 
     val hasPending: Boolean
@@ -186,12 +266,16 @@ class ComptimeScheduler {
 
     val expandedKeys: Set<ExpansionKey>
         get() = expanded.toSet()
+
+    val specializationKeys: Set<SpecializationKey>
+        get() = expanded.map { it.specializationKey }.toSet()
 }
 
 data class CpxExpansionResult(
     val program: SyntaxProgram,
     val diagnostics: List<Diagnostic>,
-    val expandedKeys: Set<ExpansionKey>
+    val expandedKeys: Set<ExpansionKey>,
+    val specializationKeys: Set<SpecializationKey> = expandedKeys.map { it.specializationKey }.toSet()
 )
 
 class CpxExpander(
@@ -219,8 +303,14 @@ class CpxExpander(
             val task = scheduler.next()
             if (task == null) {
                 scheduler.pendingKeys().forEach(scheduler::markBlocked)
+                val cycle = scheduler.dependencyCycles().firstOrNull()
+                val cycleText = cycle?.joinToString(" -> ") { it.canonical }
                 diagnostics.error(
-                    "compile-time dependency cycle or unsatisfied phase barrier: ${scheduler.pendingKeys().joinToString { it.canonical }}",
+                    if (cycleText != null) {
+                        "compile-time dependency cycle: $cycleText"
+                    } else {
+                        "compile-time dependency cycle or unsatisfied phase barrier: ${scheduler.pendingKeys().joinToString { it.canonical }}"
+                    },
                     program.origin.primaryRange,
                     "CPX006"
                 )
@@ -295,7 +385,8 @@ class CpxExpander(
         return CpxExpansionResult(
             SyntaxProgram(retained + generated, range, program.origin),
             diagnostics.diagnostics,
-            scheduler.expandedKeys
+            scheduler.expandedKeys,
+            scheduler.specializationKeys
         )
     }
 
@@ -326,6 +417,8 @@ class CpxExpander(
     private fun canonicalArgument(argument: String): String = argument
         .trim()
         .replace(Regex("\\s+"), " ")
+        .removePrefix("struct ")
+        .trim()
 
     private fun reorigin(declaration: SyntaxDeclaration, origin: Origin): SyntaxDeclaration = when (declaration) {
         is SyntaxPackage -> declaration.copy(origin = origin)
