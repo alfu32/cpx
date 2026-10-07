@@ -141,7 +141,8 @@ class CHeaderGenerator {
 
         val publicGlobals = unit.globals.filter { it.isPublic }
         publicGlobals.forEach { global ->
-            appendLine("extern ${global.type.renderDeclaration(global.name)}${arraySuffix(global.arrayDimensions)};", global.origin)
+            val threadLocal = if (global.threadLocal) "_Thread_local " else ""
+            appendLine("extern ${threadLocal}${global.type.renderDeclaration(global.name)}${arraySuffix(global.arrayDimensions)};", global.origin)
         }
         if (publicGlobals.isNotEmpty() && unit.functions.any { it.isPublic }) appendLine()
 

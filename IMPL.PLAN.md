@@ -3316,12 +3316,12 @@ specifications.
 
 ```text
 Foundation tasks: 146/146
-Completion phases: [DOING] [2/9]
+Completion phases: [DOING] [3/9]
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance
 [DONE]  R2 — CPX, generics and reflection conformance
-[TODO]  R3 — C backend and ABI interoperability conformance
+[DOING] R3 — C backend and ABI interoperability conformance
 [TODO]  R4 — runtime, allocator and libc behavior
 [TODO]  R5 — complete native std and platform services
 [TODO]  R6 — CLI transcoder and build-product completion
@@ -3359,7 +3359,7 @@ The scope is now frozen around the normative requirements in `SPEC.LANG.md`,
 `SPEC.STDLIB.md`, and `SPEC.TECH.md`. New work MUST first be assigned to one
 of R1–R8 or deliberately recorded as a post-release extension.
 
-## R1 [DOING] Language and front-end conformance
+## R1 [DONE] Language and front-end conformance
 
 **Progress**
 
@@ -3608,15 +3608,15 @@ reuses equivalent specializations, rejects cycles and post-stabilization
 structural mutations, and preserves source origins through every generated
 declaration.
 
-## R3 [TODO] C backend and ABI interoperability conformance
+## R3 [DOING] C backend and ABI interoperability conformance
 
 **Progress**
 
 - R3.1 [DOING] — close target ABI layout, calling convention, storage, and
   declaration interoperability.
-  - R3.1.1 [TODO] — execute scalar, pointer, aggregate, callback, and variadic
+  - R3.1.1 [DONE] — execute scalar, pointer, aggregate, callback, and variadic
     C+/C caller round trips on Linux.
-  - R3.1.2 [TODO] — execute globals, TLS, export/link-name, and aggregate-return
+  - R3.1.2 [DONE] — execute globals, TLS, export/link-name, and aggregate-return
     interoperability fixtures.
   - R3.1.3 [TODO] — audit generated declarations against target ABI layout and
     calling-convention metadata.
@@ -3624,6 +3624,27 @@ declaration.
   diagnostic remapping as one audited product.
 - R3.3 [TODO] — identify compiler-generated runtime helpers and either provide
   them through the selected SDK or reject them before linking.
+
+### R3.1.1/R3.1.2 completion record
+
+Implemented and executed on Linux:
+
+- an independently compiled C17 caller includes the generated public header,
+  links the generated C unit, and executes scalar, object-pointer, aggregate
+  by-value, callback, and variadic calls;
+- aggregate return values are consumed by the independent caller and checked
+  field-by-field;
+- exported C+ declarations preserve an explicit linker name independently of
+  their source-level name;
+- public thread-local globals are emitted as `_Thread_local` declarations and
+  retain per-thread storage semantics through the generated header and source;
+- ordinary function and method lowering preserve the variadic bit through the
+  C model, so generated prototypes retain `...`.
+
+R3.1.3 remains open for a target-matrix audit of generated declarations against
+the ABI descriptor's widths, alignment, calling convention, storage, and symbol
+rules. Windows execution is deferred to the final cross-platform validation
+pass by project policy.
 
 **Deliverables**
 

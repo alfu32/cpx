@@ -51,8 +51,13 @@ class Parser(private val lexed: LexedSource) {
     private fun parseDeclaration(): SyntaxDeclaration? {
         val attributes = parseAttributes()
         var isPublic = false
-        while (peek().lexeme in setOf("pub", "static", "extern", "inline")) {
-            if (match("pub")) isPublic = true else advance()
+        var threadLocal = false
+        while (peek().lexeme in setOf("pub", "static", "extern", "inline", "thread_local")) {
+            when {
+                match("pub") -> isPublic = true
+                match("thread_local") -> threadLocal = true
+                else -> advance()
+            }
         }
         if (peek().isLexeme("package")) return parsePackage()
         if (match("typedef")) return parseAlias(previous(), isPublic)
@@ -89,7 +94,8 @@ class Parser(private val lexed: LexedSource) {
                 span(declarator.type.range, previous().range),
                 direct(span(declarator.type.range, previous().range)),
                 declarator.arrayDimensions,
-                isPublic
+                isPublic,
+                threadLocal
             )
         }
     }

@@ -1173,6 +1173,75 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun independentCCallerUsesGeneratedHeaderForScalarsAggregatesCallbacksAndVarargs() {
+        val source = """
+            pub struct c_api_pair {
+                int left;
+                int right;
+            };
+
+            @export_name("cplus_add_values") pub int add_values(int left, int right) { return left + right; }
+
+            pub int sum_pair(struct c_api_pair pair) {
+                return pair.left + pair.right;
+            }
+
+            pub struct c_api_pair make_pair(int base) {
+                struct c_api_pair pair;
+                pair.left = base;
+                pair.right = base + 1;
+                return pair;
+            }
+
+            pub int read_pointer(struct c_api_pair* pair) {
+                return pair->left + pair->right;
+            }
+
+            pub int apply_callback(int (*callback)(int value), int value) {
+                return callback(value);
+            }
+
+            pub int first_variadic(int value, ...) { return value; }
+
+            pub thread_local int tls_value;
+            pub int increment_tls() { tls_value = tls_value + 1; return tls_value; }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-c-caller", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val directory = Files.createTempDirectory("cplus-c-caller-e2e")
+        directory.resolve("api.h").writeText(result.generatedHeaders.single().text)
+        val generated = directory.resolve("api.c").also { it.writeText(result.generatedUnits.single().text) }
+        val caller = directory.resolve("caller.c").also {
+            it.writeText(
+                """
+                    #include "api.h"
+                    static int triple(int value) { return value * 3; }
+                    int main(void) {
+                        struct c_api_pair pair = { 2, 3 };
+                        struct c_api_pair made = make_pair(6);
+                        return cplus_add_values(4, 5) == 9 &&
+                            sum_pair(pair) == 5 &&
+                            made.left == 6 && made.right == 7 &&
+                            read_pointer(&pair) == 5 &&
+                            apply_callback(triple, 4) == 12 &&
+                            first_variadic(7, 99) == 7 &&
+                            increment_tls() == 1 &&
+                            increment_tls() == 2 ? 0 : 1;
+                    }
+                """.trimIndent()
+            )
+        }
+        val executable = directory.resolve("caller")
+        val compile = ProcessBuilder("cc", "-std=c17", "-I", directory.toString(), generated.toString(), caller.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val output = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), output)
+        assertEquals(0, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
+    }
+
+    @Test
     fun reflectionCanDriveAGeneratedDeclarationAfterStabilization() {
         val expander = CpxExpander(
             evaluator = ComptimeEvaluator { _, _, bindings, context ->

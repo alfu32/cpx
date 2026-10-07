@@ -1725,7 +1725,22 @@ Equivalent machine calling conventions do not erase this semantic distinction.
 Foreign and exported declarations retain their source name separately from
 their linker name and library. Target-specific storage requests such as
 thread-local storage, explicit alignment, packed layout, and no-return are
-validated against the target descriptor.
+validated against the target descriptor. A `thread_local` object declaration
+requests target TLS storage; when it is public, the generated C header and
+definition SHALL carry the corresponding target C TLS storage specifier. The
+request SHALL be rejected when the selected target does not advertise TLS.
+
+An exported declaration MAY provide an explicit linker name with
+`@export_name("...")`. The source-level declaration remains the name used by
+C+ semantic lookup, while the supplied name is used by generated C callers and
+public headers. The external name SHALL be unique within the emitted linkage
+unit and SHALL not alter foreign-import names.
+
+Variadic declarations retain their variadic parameter boundary through
+semantic analysis, C lowering, and public header generation. A generated
+prototype for a declaration with an ellipsis SHALL include `...`; a C+ call
+site SHALL obey the selected C ABI's fixed-parameter and variadic-argument
+rules.
 
 ## 43.3 Runtime and standard-library profiles
 

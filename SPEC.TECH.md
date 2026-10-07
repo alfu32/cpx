@@ -2779,6 +2779,15 @@ same generated contract is valid under Linux LP64 and Windows LLP64. The
 linker includes `fs.c` and exactly one target platform runtime unit in a
 self-hosted product.
 
+The C backend's ABI gate includes an independently compiled C17 caller fixture.
+The fixture MUST consume the generated public header and link against generated
+C, exercising scalar and object-pointer parameters, aggregate by-value
+parameters and returns, callbacks, variadic declarations, exported linker
+names, and public thread-local globals. Variadic metadata and TLS storage
+qualifiers MUST survive syntax, AST, semantic, lowered-C, header, and emission
+boundaries. A green C+ compilation or a syntax-only header check alone does
+not satisfy this gate.
+
 The CLI exposes these boundaries through `sdk doctor|verify|package`,
 `target list|show`, `abi verify`, `runtime inspect`, `libc test`, and `audit`.
 All package indexes and generated metadata are deterministic and versioned.

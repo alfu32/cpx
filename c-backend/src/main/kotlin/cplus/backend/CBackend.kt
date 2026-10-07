@@ -134,7 +134,8 @@ class CLowerer(
                 declaration.initializer?.let(::expression),
                 declaration.origin,
                 declaration.arrayDimensions,
-                isPublic = declaration.isPublic
+                isPublic = declaration.isPublic,
+                threadLocal = declaration.threadLocal
             )
         }
         val declaredGlobalNames = programGlobals.mapTo(mutableSetOf()) { it.name }
@@ -161,6 +162,7 @@ class CLowerer(
                 declaration.parameters.map { CParameter(type(it.type), it.name, it.origin, it.arrayDimensions) },
                 declaration.body?.let { lowerBody(it, declaration.ownerName, declaration.isMethod) },
                 declaration.origin,
+                isVariadic = declaration.isVariadic,
                 isPublic = declaration.isPublic
             )
         } + program.declarations.filterIsInstance<AstStruct>().flatMap { structure ->
@@ -306,7 +308,8 @@ class CLowerer(
                 ?: "${ownerName}__${method.name}",
             parameters,
             method.body?.let { lowerBody(it, ownerName, instance) },
-            method.origin
+            method.origin,
+            isVariadic = method.isVariadic
         )
     }
 
@@ -804,7 +807,10 @@ class CEmitter {
 
         unit.globals.forEach { global ->
             val initializer = global.initializer?.let { " = ${expression(it)}" } ?: ""
-            val storage = if (global.isExtern) "extern " else ""
+            val storage = buildString {
+                if (global.isExtern) append("extern ")
+                if (global.threadLocal) append("_Thread_local ")
+            }
             appendLine("$storage${global.type.renderDeclaration(global.name)}${arraySuffix(global.arrayDimensions)}$initializer;", global.origin)
         }
         if (unit.globals.isNotEmpty() && unit.functions.isNotEmpty()) appendLine()

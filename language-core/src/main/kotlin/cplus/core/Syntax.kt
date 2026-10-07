@@ -93,7 +93,8 @@ data class SyntaxGlobalVariable(
     override val range: SourceRange,
     override val origin: Origin,
     val arrayDimensions: List<String> = emptyList(),
-    override val isPublic: Boolean = false
+    override val isPublic: Boolean = false,
+    val threadLocal: Boolean = false
 ) : SyntaxDeclaration
 
 data class SyntaxComptimeParameter(

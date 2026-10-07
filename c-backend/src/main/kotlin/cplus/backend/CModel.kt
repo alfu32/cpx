@@ -84,7 +84,8 @@ data class CGlobalDeclaration(
     val origin: Origin,
     val arrayDimensions: List<String> = emptyList(),
     val isExtern: Boolean = false,
-    val isPublic: Boolean = false
+    val isPublic: Boolean = false,
+    val threadLocal: Boolean = false
 )
 
 data class CFunction(

@@ -36,6 +36,9 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
   typedef layout, pointer arithmetic, aggregate pointer casts, global/local
   initializer checks, LSP primitives, and the
   Linux/Windows self-hosted startup path;
+- independent Linux C17 caller interoperability for scalar, object-pointer,
+  aggregate, callback, variadic, export/link-name, aggregate-return, and
+  public TLS declarations through the generated header;
 - Linux and Windows self-hosted stdout/process exit;
 - Linux and Windows basic PAL file open/read/write/close/rename with canonical
   UTF-8 slash paths, including the `std_fs_*` forwarding façade.
