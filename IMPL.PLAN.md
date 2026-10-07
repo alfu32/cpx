@@ -12,7 +12,7 @@ Overall: 91/113
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-4.3.3.3 — preserve public/private dependency boundaries
+4.2.4.3.2.2.2.2.2.3 — reject syntax-error expressions before C emission
 
 Current milestone:
 M4 — Full compile-time model
@@ -1355,7 +1355,7 @@ all create correct bindings.
 
 ---
 
-## 4.2 [DOING] [11/14] C+ feature lowering
+## 4.2 [DOING] [12/14] C+ feature lowering
 
 ### 4.2.1 [DONE] Method lowering
 
@@ -1449,7 +1449,7 @@ all create correct bindings.
 **Depends**
 - 4.2.3.2
 
-### 4.2.4 [DOING] [8/9] String-template and remaining expression lowering
+### 4.2.4 [DONE] [9/9] String-template and remaining expression lowering
 
 **Language**
 - LS §16
@@ -1489,7 +1489,7 @@ all create correct bindings.
 - The first supported runtime form is `${expression}` inside an ordinary C string literal.
 - Lowering uses a generated bounded `vsnprintf` helper and preserves interpolation origins.
 
-#### 4.2.4.3 [DOING] [3/4] Complete remaining expression and lvalue lowering
+#### 4.2.4.3 [DONE] [4/4] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1509,7 +1509,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.2
 
-#### 4.2.4.3.2 [DOING] [3/4] Complete remaining expression and lvalue lowering
+#### 4.2.4.3.2 [DONE] [4/4] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1528,7 +1528,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.1
 
-##### 4.2.4.3.2.2 [DOING] [2/3] Complete remaining expression and lvalue lowering
+##### 4.2.4.3.2.2 [DONE] [3/3] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1547,7 +1547,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.1
 
-###### 4.2.4.3.2.2.2 [DOING] [2/3] Complete remaining expression and lvalue lowering
+###### 4.2.4.3.2.2.2 [DONE] [3/3] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1566,7 +1566,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.2.2
 
-####### 4.2.4.3.2.2.2.2 [DOING] [1/2] Complete remaining expression and lvalue lowering
+####### 4.2.4.3.2.2.2.2 [DONE] [2/2] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1585,7 +1585,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.2.2.1
 
-######## 4.2.4.3.2.2.2.2.2 [DOING] [2/3] Complete remaining expression and lvalue lowering
+######## 4.2.4.3.2.2.2.2.2 [DONE] [3/3] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1615,7 +1615,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.2.2.2.2.1
 
-######### 4.2.4.3.2.2.2.2.2.3 [TODO] Complete remaining expression and lvalue lowering
+######### 4.2.4.3.2.2.2.2.2.3 [DONE] Reject syntax-error expressions before C emission
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1623,6 +1623,12 @@ all create correct bindings.
 
 **Depends**
 - 4.2.4.3.2.2.2.2.2.1
+
+**Implementation**
+- `AstErrorExpression` is no longer silently lowered as a successful C literal.
+- C lowering emits source-mapped `LOW408` and retains only a diagnostic-bearing partial C node for tooling inspection.
+- The compiler refuses to publish generated C when the lowering diagnostic is an error.
+- Integration coverage verifies parser-recovery expressions produce no generated C unit.
 
 ---
 

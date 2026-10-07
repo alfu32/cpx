@@ -535,7 +535,17 @@ class CLowerer(
             node.origin
         )
         is AstParenthesized -> CParenthesized(expression(node.expression, ownerName, instanceMethod), node.origin)
-        is AstErrorExpression -> CIntegerLiteral("0", node.origin)
+        is AstErrorExpression -> {
+            diagnostics.error(
+                "cannot lower a syntax-error expression to C",
+                node.origin.primaryRange,
+                "LOW408"
+            )
+            // Keep lowering structurally total so callers can inspect the
+            // partial C AST, while the diagnostic prevents it from being
+            // emitted as a successful translation unit.
+            CIntegerLiteral("0", node.origin)
+        }
     }
 
     private fun lowerStringTemplate(node: AstStringTemplate, ownerName: String?, instanceMethod: Boolean): CExpression {

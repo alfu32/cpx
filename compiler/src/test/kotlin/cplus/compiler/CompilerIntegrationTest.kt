@@ -330,6 +330,22 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun syntaxErrorExpressionsAreRejectedBeforeCEmission() {
+        val source = """
+            int main() {
+                sizeof();
+                return 0;
+            }
+        """.trimIndent()
+
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-error-expression", ".cp"), source)
+
+        assertTrue(result.diagnostics.any { it.code == "LOW408" }, result.diagnostics.joinToString())
+        assertTrue(result.generatedUnits.isEmpty())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun publicDeclarationsGenerateAVisibilityFilteredHeader() {
         val source = """
             pub struct PublicBox {
