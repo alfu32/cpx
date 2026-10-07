@@ -2,6 +2,7 @@ package cplus.cli
 
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import java.nio.file.Files
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -11,6 +12,30 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class CliIntegrationTest {
+    @Test
+    fun astAndExpandInspectDifferentCompilerPhaseRepresentations() {
+        val directory = Files.createTempDirectory("cplus-cli-inspection")
+        val source = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    comptime cpx<decl> box(type T) {
+                        return { struct box_{T}_t { T value; }; };
+                    }
+                    box(int);
+                    int main() { return 0; }
+                """.trimIndent()
+            )
+        }
+        val astOutput = captureStdout { assertEquals(0, Cli().run(listOf("ast", source.toString()))) }
+        val expandedOutput = captureStdout { assertEquals(0, Cli().run(listOf("expand", source.toString()))) }
+
+        assertTrue(astOutput.contains("Comptime decl box"))
+        assertTrue(astOutput.contains("CpxInvocation box(int)"))
+        assertTrue(!astOutput.contains("Struct box_int_t"))
+        assertTrue(expandedOutput.contains("Struct box_int_t"))
+        assertTrue(!expandedOutput.contains("CpxInvocation"))
+    }
+
     @Test
     fun lspServesInitializationAndCompilerDiagnosticsOverStdio() {
         val directory = Files.createTempDirectory("cplus-cli-lsp")
@@ -86,4 +111,16 @@ class CliIntegrationTest {
 
     private fun frame(message: String): String =
         "Content-Length: ${message.toByteArray(Charsets.UTF_8).size}\r\n\r\n$message"
+
+    private fun captureStdout(action: () -> Unit): String {
+        val original = System.out
+        val captured = ByteArrayOutputStream()
+        System.setOut(PrintStream(captured, true, Charsets.UTF_8))
+        return try {
+            action()
+            captured.toString(Charsets.UTF_8)
+        } finally {
+            System.setOut(original)
+        }
+    }
 }

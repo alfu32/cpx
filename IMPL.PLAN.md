@@ -12,10 +12,10 @@ Overall: 91/113
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-4.2.4.3.2.2.2.2.2.4 — lower boolean literals
+3.1.2 — semantic type identities for CPX arguments
 
 Current milestone:
-M5 — Advanced runtime lowering
+M4 — Full compile-time model
 ```
 
 All tasks initially have status `TODO`.
@@ -2123,6 +2123,8 @@ all create correct bindings.
 - `lsp` is a stdio JSON-RPC command with initialize, shutdown, exit, and document lifecycle handling.
 - `didOpen`, full-text `didChange`, and `didClose` use `CPlusCompiler` and publish structured diagnostics.
 - CLI integration tests cover framed requests, compiler diagnostics, executable builds, headers, and failure exit codes.
+- `ast` now prints the parsed pre-CPX AST while `expand` prints the post-CPX/pre-lowering AST.
+- `CompilationArtifacts.expandedSyntax` exposes the phase boundary through language-core types without leaking the comptime implementation type into CLI clients.
 
 ### 5.2.3 [DONE] Incremental dependency invalidation
 

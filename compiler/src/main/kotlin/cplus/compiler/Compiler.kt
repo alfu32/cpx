@@ -57,7 +57,11 @@ data class CompilationArtifacts(
     val generated: GeneratedCUnit?,
     val additionalDiagnostics: List<Diagnostic> = emptyList(),
     val header: GeneratedCUnit? = null
-)
+) {
+    /** Public phase boundary for inspection without exposing the CPX module type. */
+    val expandedSyntax: SyntaxProgram?
+        get() = expanded?.program
+}
 
 data class CompileResult(
     val diagnostics: List<Diagnostic>,

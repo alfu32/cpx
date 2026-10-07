@@ -77,7 +77,7 @@ internal class Cli {
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         val artifact = result.artifacts.singleOrNull() ?: return 1
-        println(AstPrinter().print(artifact.ast))
+        println(AstPrinter().print(AstBuilder().build(artifact.parsed.syntax)))
         return if (result.isSuccessful) 0 else 1
     }
 
@@ -88,7 +88,8 @@ internal class Cli {
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         val artifact = result.artifacts.singleOrNull() ?: return 1
-        println(AstPrinter().print(artifact.ast))
+        val expanded = artifact.expandedSyntax ?: return 1
+        println(AstPrinter().print(AstBuilder().build(expanded)))
         return if (result.isSuccessful) 0 else 1
     }
 
