@@ -1171,8 +1171,9 @@ all create correct bindings.
 
 **Implementation in progress**
 - Generated CPX declarations are catalogued during expansion and can resolve later queued invocations.
+- Unresolved CPX invocations are deferred while structural waves run, then diagnosed only after no later structural declaration can satisfy them.
 - Structural output exposes a declaration fingerprint based on semantic shape rather than source text, ranges, or origins.
-- Full type-universe stabilization and resolver feedback between structural waves remain to be completed.
+- Explicit structural-wave accounting and resolver integration beyond CPX-generated invocations remain to be completed.
 
 ### 3.5.2 [DONE] Type-universe stabilization barrier
 

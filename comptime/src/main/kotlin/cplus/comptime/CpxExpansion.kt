@@ -294,6 +294,11 @@ data class ExpansionTask(
     val dependencies: Set<ComptimeDependency> = emptySet()
 )
 
+private data class DeferredCpxInvocation(
+    val invocation: SyntaxCpxInvocation,
+    val ancestors: List<ExpansionKey>
+)
+
 /**
  * Work-queue scheduler for compile-time expansion.
  *
@@ -507,14 +512,39 @@ class CpxExpander(
             .filterIsInstance<SyntaxComptimeFunction>()
             .forEach { definitions[it.name] = it }
         val scheduler = ComptimeScheduler()
-        registerStructuralDeclarations(scheduler.typeUniverse, program.declarations)
-        program.declarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
+        val deferredInvocations = mutableListOf<DeferredCpxInvocation>()
+
+        fun queueInvocation(invocation: SyntaxCpxInvocation, ancestors: List<ExpansionKey> = emptyList()) {
             val definition = definitions[invocation.name]
             if (definition == null) {
-                diagnostics.error("unknown compile-time function '${invocation.name}'", invocation.origin.primaryRange, "CPX001")
+                deferredInvocations += DeferredCpxInvocation(invocation, ancestors)
             } else {
-                scheduler.enqueue(taskFor(invocation, definition))
+                scheduler.enqueue(taskFor(invocation, definition, ancestors))
             }
+        }
+
+        fun resolveDeferredInvocations() {
+            val iterator = deferredInvocations.iterator()
+            while (iterator.hasNext()) {
+                val deferred = iterator.next()
+                val definition = definitions[deferred.invocation.name] ?: continue
+                val phase = phaseFor(definition.category)
+                if (scheduler.isStructuralPhaseClosed && phase == CpxPhase.STRUCTURAL) {
+                    diagnostics.error(
+                        "reflective CPX cannot schedule structural invocation '${deferred.invocation.name}' after type-universe stabilization",
+                        deferred.invocation.origin.primaryRange,
+                        "CPX008"
+                    )
+                } else {
+                    scheduler.enqueue(taskFor(deferred.invocation, definition, deferred.ancestors))
+                }
+                iterator.remove()
+            }
+        }
+
+        registerStructuralDeclarations(scheduler.typeUniverse, program.declarations)
+        program.declarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
+            queueInvocation(invocation)
         }
 
         val generated = mutableListOf<SyntaxDeclaration>()
@@ -652,6 +682,7 @@ class CpxExpander(
             acceptedDeclarations
                 .filterIsInstance<SyntaxComptimeFunction>()
                 .forEach { definitions.putIfAbsent(it.name, it) }
+            resolveDeferredInvocations()
             if (generated.size + acceptedDeclarations.count { it !is SyntaxComptimeFunction && it !is SyntaxCpxInvocation } > limits.maxGeneratedDeclarations) {
                 scheduler.markFailed(task.key)
                 diagnostics.error(
@@ -663,24 +694,14 @@ class CpxExpander(
             }
             generated += acceptedDeclarations.filterNot { it is SyntaxComptimeFunction || it is SyntaxCpxInvocation }
             acceptedDeclarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
-                val definition = definitions[invocation.name]
-                if (definition == null) {
-                    diagnostics.error("unknown compile-time function '${invocation.name}'", invocation.origin.primaryRange, "CPX001")
-                } else {
-                    val nestedPhase = phaseFor(definition.category)
-                    if (scheduler.isStructuralPhaseClosed && nestedPhase == CpxPhase.STRUCTURAL) {
-                        diagnostics.error(
-                            "reflective CPX cannot schedule structural invocation '${invocation.name}' after type-universe stabilization",
-                            invocation.origin.primaryRange,
-                            "CPX008"
-                        )
-                    } else {
-                        scheduler.enqueue(taskFor(invocation, definition, task.ancestors + task.key))
-                    }
-                }
+                queueInvocation(invocation, task.ancestors + task.key)
             }
         }
 
+        resolveDeferredInvocations()
+        deferredInvocations.forEach { deferred ->
+            diagnostics.error("unknown compile-time function '${deferred.invocation.name}'", deferred.invocation.origin.primaryRange, "CPX001")
+        }
         if (scheduler.pendingKeys().isEmpty()) scheduler.closeStructuralPhase()
         val retained = program.declarations.filterNot { it is SyntaxComptimeFunction || it is SyntaxCpxInvocation }
         val range = program.range

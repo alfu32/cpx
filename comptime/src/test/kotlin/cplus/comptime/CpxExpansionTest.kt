@@ -206,6 +206,34 @@ class CpxExpansionTest {
     }
 
     @Test
+    fun deferredInvocationResolvesWhenAStructuralWaveIntroducesItsDefinition() {
+        val sourceText = """
+            inner(int);
+            comptime cpx<decl> factory(type T) {
+                return {
+                    comptime cpx<decl> inner(type U) {
+                        return { struct deferred_{U}_t { U value; }; };
+                    }
+                };
+            }
+            factory(int);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(26), Path.of("deferred.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        assertEquals(listOf("deferred_int_t"), result.program.declarations.filterIsInstance<SyntaxStruct>().map { it.name })
+        assertEquals(
+            setOf(
+                ExpansionKey("factory", listOf("int")),
+                ExpansionKey("inner", listOf("int"))
+            ),
+            result.expandedKeys
+        )
+    }
+
+    @Test
     fun structuralFingerprintIgnoresSourceFormattingAndOrigins() {
         fun fingerprint(sourceId: Int, text: String): String {
             val source = SourceFile(SourceFileId(sourceId), Path.of("fingerprint$sourceId.cp"), text, 1)
