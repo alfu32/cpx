@@ -5,6 +5,8 @@ out/
 *.jar
 *.c
 *.h
+!cli/src/test/resources/golden/**/expected.c
+!cli/src/test/resources/golden/**/expected.h
 *.o
 *.exe
 *.log

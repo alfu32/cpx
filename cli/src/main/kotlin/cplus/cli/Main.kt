@@ -321,7 +321,7 @@ internal class Cli {
     )
 }
 
-private class AstPrinter {
+internal class AstPrinter {
     fun print(program: AstProgram): String = buildString {
         appendLine("Program")
         program.declarations.forEach { declaration -> appendDeclaration(declaration, 1) }

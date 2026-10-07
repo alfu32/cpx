@@ -1933,7 +1933,7 @@ all create correct bindings.
 
 ---
 
-# 5. [DOING] [6/14] Tooling, integration and quality
+# 5. [DOING] [8/14] Tooling, integration and quality
 
 **Purpose:** Make the compiler usable as a development platform through LSP, CLI, incremental compilation, test coverage and specification audits.
 
@@ -2148,9 +2148,9 @@ all create correct bindings.
 
 ---
 
-## 5.3 [TODO] [0/4] Verification and specification completion
+## 5.3 [DOING] [2/4] Verification and specification completion
 
-### 5.3.1 [TODO] Layered automated test suites
+### 5.3.1 [DONE] Layered automated test suites
 
 **Technical**
 - TS §63
@@ -2163,7 +2163,12 @@ all create correct bindings.
 **Depends**
 - incremental throughout project
 
-### 5.3.2 [TODO] Golden compiler fixture framework
+**Implementation**
+- Independent Gradle test tasks cover language-core, semantic, comptime, c-backend, compiler, and CLI layers.
+- Compiler integration tests cover parsing, semantic resolution, lowering, diagnostics, source maps, and native C execution.
+- Negative/error tests assert stable diagnostic codes and no generated artifacts where publication is unsafe.
+
+### 5.3.2 [DONE] Golden compiler fixture framework
 
 **Technical**
 - TS §64
@@ -2181,6 +2186,12 @@ all create correct bindings.
 **Depends**
 - 4.4
 - 5.3.1
+
+**Implementation**
+- CLI golden fixtures load `input.cp` from test resources and compare optional expanded AST, generated C, generated header, source-map, and diagnostic snapshots.
+- Source-map snapshots use deterministic generated-byte and source-range records.
+- Diagnostic fixtures assert stable error-code ordering and reject unexpected C/header publication.
+- Fixture assertion failures identify the exact resource path and expected/actual content.
 
 ### 5.3.3 [TODO] Specification coverage audit
 
