@@ -3,10 +3,10 @@
 ## Dashboard
 
 ```text
-Overall: 32/93
+Overall: 33/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [8/27] 2. Semantic model and modules
+[DOING] [9/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
@@ -434,9 +434,9 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.2 [DOING] [3/9] Type and method system
+## 2.2 [DOING] [4/9] Type and method system
 
-### 2.2.1 [DOING] [2/6] Canonical type universe representation
+### 2.2.1 [DOING] [3/6] Canonical type universe representation
 
 **Technical**
 - TS §12 Type System Model
@@ -459,7 +459,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.1.1
 
-#### 2.2.1.2 [DOING] [1/4] Add arrays, function types, aliases and foreign types
+#### 2.2.1.2 [DOING] [2/4] Add arrays, function types, aliases and foreign types
 
 **Acceptance**
 - array, function, alias, and foreign type categories are representable semantically.
@@ -479,7 +479,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.2.1.1
 
-##### 2.2.1.2.2 [TODO] Represent function types
+##### 2.2.1.2.2 [DONE] Represent function types
 
 **Acceptance**
 - function types are explicit semantic values with return and parameter types.

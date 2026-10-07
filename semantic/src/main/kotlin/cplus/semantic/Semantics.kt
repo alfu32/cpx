@@ -71,6 +71,24 @@ data class ArrayType(
     override val name: String = element.name + dimensions.joinToString(separator = "") { "[$it]" }
 }
 
+data class FunctionType(
+    override val id: TypeId,
+    val returnType: CType,
+    val parameterTypes: List<CType>,
+    val isVariadic: Boolean = false
+) : CType {
+    override val name: String = buildString {
+        append("fn(")
+        append(parameterTypes.joinToString(", ") { it.name })
+        if (isVariadic) {
+            if (parameterTypes.isNotEmpty()) append(", ")
+            append("...")
+        }
+        append(")->")
+        append(returnType.name)
+    }
+}
+
 data class UnknownType(
     override val id: TypeId,
     override val name: String = "<unknown>"
@@ -95,7 +113,8 @@ data class FunctionSymbol(
     val symbol: Symbol,
     val returnType: CType,
     val parameters: List<Symbol>,
-    val isVariadic: Boolean = false
+    val isVariadic: Boolean = false,
+    val signature: FunctionType
 )
 
 enum class ReceiverKind {
@@ -108,7 +127,8 @@ data class MethodSymbol(
     val owner: StructType,
     val receiverKind: ReceiverKind,
     val returnType: CType,
-    val parameters: List<Symbol>
+    val parameters: List<Symbol>,
+    val signature: FunctionType
 )
 
 data class SemanticModel(
@@ -225,8 +245,13 @@ class SemanticAnalyzer {
                             val type = resolve(parameter.type, parameter.arrayDimensions)
                             newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin, moduleName)
                         }
-                        val functionSymbol = newSymbol(declaration.name, SymbolKind.FUNCTION, returnType, declaration.origin, moduleName)
-                        val function = FunctionSymbol(functionSymbol, returnType, parameterSymbols)
+                        val signature = FunctionType(
+                            TypeId(nextTypeId.next()),
+                            returnType,
+                            parameterSymbols.map { it.type }
+                        ).also(types::add)
+                        val functionSymbol = newSymbol(declaration.name, SymbolKind.FUNCTION, signature, declaration.origin, moduleName)
+                        val function = FunctionSymbol(functionSymbol, returnType, parameterSymbols, signature = signature)
                         functions[declaration.name] = function
                         moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
                         val functionScope = scopes.create(ScopeKind.FUNCTION, rootScope, functionSymbol.id)
@@ -249,8 +274,9 @@ class SemanticAnalyzer {
                         declaration.names.forEach { name ->
                             if (name == "printf") {
                                 val returnType = primitive("int")
-                                val symbol = newSymbol(name, SymbolKind.FOREIGN, returnType, declaration.origin, declaration.module)
-                                val function = FunctionSymbol(symbol, returnType, emptyList(), isVariadic = true)
+                                val signature = FunctionType(TypeId(nextTypeId.next()), returnType, emptyList(), isVariadic = true).also(types::add)
+                                val symbol = newSymbol(name, SymbolKind.FOREIGN, signature, declaration.origin, declaration.module)
+                                val function = FunctionSymbol(symbol, returnType, emptyList(), isVariadic = true, signature = signature)
                                 functions[name] = function
                                 moduleFunctions.getOrPut(declaration.module) { linkedMapOf() }[name] = function
                                 scopes.define(rootScope, name, symbol.id)
@@ -278,8 +304,13 @@ class SemanticAnalyzer {
                     newSymbol(parameter.name, SymbolKind.PARAMETER, parameterType, parameter.origin, declarationModules[declaration] ?: defaultModule)
                 }
                 val receiverKind = if (method.parameters.any { it.isReceiver }) ReceiverKind.INSTANCE else ReceiverKind.STATIC
-                val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, returnType, method.origin, declarationModules[declaration] ?: defaultModule)
-                method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols)
+                val signature = FunctionType(
+                    TypeId(nextTypeId.next()),
+                    returnType,
+                    parameterSymbols.map { it.type }
+                ).also(types::add)
+                val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, signature, method.origin, declarationModules[declaration] ?: defaultModule)
+                method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols, signature)
             }
             val updatedStruct = struct.copy(fields = fields, methods = methodSymbols.values.toList())
             structs[declaration.name] = updatedStruct
@@ -547,9 +578,9 @@ class SemanticAnalyzer {
             is AstStringLiteral -> PointerType(TypeId(-1), primitive("char"))
             is AstCharacterLiteral -> primitive("char")
             is AstIdentifier -> {
-                locals[expression.name]?.type
+                    locals[expression.name]?.type
                     ?: globals[expression.name]?.type
-                    ?: functions[expression.name]?.returnType
+                    ?: functions[expression.name]?.signature
                     ?: structs[expression.name]
                     ?: run {
                         diagnostics.error("unknown identifier '${expression.name}'", rangeOf(expression.origin), "SEM301")
@@ -611,7 +642,7 @@ class SemanticAnalyzer {
                     functions["${receiver.name}.${expression.member}"]
                 }
                 if (qualifiedFunction != null) {
-                    qualifiedFunction.returnType
+                    qualifiedFunction.signature
                 } else {
                     val receiver = validateExpression(expression.receiver, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                     val fields = when (receiver) {
