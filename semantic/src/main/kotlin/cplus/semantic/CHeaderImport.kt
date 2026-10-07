@@ -26,6 +26,13 @@ class CHeaderImportService(
     fun declarations(module: String): Map<String, CHeaderDeclaration> =
         configuredHeaders[module].orEmpty().let(::parse)
 
+    fun unsupportedPreprocessorLines(module: String): List<String> = configuredHeaders[module]
+        .orEmpty()
+        .lineSequence()
+        .map(String::trim)
+        .filter { it.startsWith("#") }
+        .toList()
+
     private fun parse(text: String): Map<String, CHeaderDeclaration> {
         val declarations = linkedMapOf<String, CHeaderDeclaration>()
         val functionPattern = Regex(

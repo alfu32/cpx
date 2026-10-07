@@ -477,6 +477,13 @@ class SemanticAnalyzer(
                     }
                 }
                 is AstImport -> {
+                    headerImportService.unsupportedPreprocessorLines(declaration.module).forEach { line ->
+                        diagnostics.error(
+                            "unsupported preprocessor construct in ${declaration.module}: $line",
+                            rangeOf(declaration.origin),
+                            "SEM409"
+                        )
+                    }
                     if (declaration.module == "c.stdio") {
                         declaration.names.forEach { name ->
                             when (name) {

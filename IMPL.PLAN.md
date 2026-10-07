@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 45/93
+Overall: 46/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [21/27] 2. Semantic model and modules
+[DOING] [22/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.4.2.3 — preserve unsupported preprocessor boundaries
+2.4.3 — C source import and build dependency representation
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -686,7 +686,7 @@ all create correct bindings.
 
 ---
 
-## 2.4 [DOING] [2/6] C interoperability model
+## 2.4 [DOING] [3/6] C interoperability model
 
 ### 2.4.1 [DONE] Foreign symbol and type representation
 
@@ -705,7 +705,7 @@ all create correct bindings.
 **Depends**
 - 2.2.1
 
-### 2.4.2 [DOING] [2/3] C declaration parser/import adapter
+### 2.4.2 [DONE] [3/3] C declaration parser/import adapter
 
 **Language**
 - LS §22.1–22.3
@@ -738,7 +738,7 @@ all create correct bindings.
 **Depends**
 - 2.4.2.1
 
-#### 2.4.2.3 [TODO] Preserve unsupported preprocessor boundaries
+#### 2.4.2.3 [DONE] Preserve unsupported preprocessor boundaries
 
 **Acceptance**
 - unsupported preprocessor constructs remain explicit diagnostics or opaque boundaries.

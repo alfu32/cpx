@@ -13,6 +13,18 @@ import kotlin.test.assertTrue
 
 class SemanticTypeTest {
     @Test
+    fun unsupportedHeaderPreprocessorContentRemainsDiagnostic() {
+        val service = CHeaderImportService(mapOf("c.test" to "#define MAGIC 1\n"))
+        val text = "import { MAGIC } from c.test; int main() { return 0; }"
+        val source = SourceFile(SourceFileId(7), Path.of("header-boundary.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        val result = SemanticAnalyzer(service).analyze(AstBuilder().build(parsed.syntax))
+        assertTrue(result.diagnostics.any { it.code == "SEM409" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun packageAndModuleNamesFormDeterministicQualifiedSymbols() {
         val text = "package demo.core; pub int main() { return 0; }"
         val source = SourceFile(SourceFileId(6), Path.of("package-symbols.cp"), text, 1)
