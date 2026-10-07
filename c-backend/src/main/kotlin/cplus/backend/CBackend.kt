@@ -494,6 +494,7 @@ class CLowerer(
 
     private fun expression(node: AstExpression, ownerName: String? = null, instanceMethod: Boolean = false): CExpression = when (node) {
         is AstIntegerLiteral -> CIntegerLiteral(node.text, node.origin)
+        is AstBooleanLiteral -> CIntegerLiteral(if (node.text == "true") "1" else "0", node.origin)
         is AstFloatLiteral -> CFloatLiteral(node.text, node.origin)
         is AstStringLiteral -> CStringLiteral(node.text, node.origin)
         is AstStringTemplate -> lowerStringTemplate(node, ownerName, instanceMethod)

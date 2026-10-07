@@ -85,6 +85,7 @@ class AstBuilder {
 
     private fun expression(node: SyntaxExpression): AstExpression = when (node) {
         is SyntaxIntegerLiteral -> AstIntegerLiteral(node.text, node.origin)
+        is SyntaxBooleanLiteral -> AstBooleanLiteral(node.text, node.origin)
         is SyntaxFloatLiteral -> AstFloatLiteral(node.text, node.origin)
         is SyntaxStringLiteral -> AstStringLiteral(node.text, node.origin)
         is SyntaxStringTemplate -> AstStringTemplate(

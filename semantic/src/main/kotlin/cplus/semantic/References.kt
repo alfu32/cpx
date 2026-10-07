@@ -125,6 +125,7 @@ internal object ReferenceCollector {
                 }
                 is AstParenthesized -> collectExpression(expression.expression, locals)
                 is AstIntegerLiteral,
+                is AstBooleanLiteral,
                 is AstFloatLiteral,
                 is AstStringLiteral,
                 is AstCharacterLiteral,

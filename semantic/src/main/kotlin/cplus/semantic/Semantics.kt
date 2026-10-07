@@ -920,6 +920,7 @@ class SemanticAnalyzer(
     ): CType {
         val type = when (expression) {
             is AstIntegerLiteral -> primitive("int")
+            is AstBooleanLiteral -> primitive("bool")
             is AstFloatLiteral -> primitive("double")
             is AstStringLiteral -> PointerType(TypeId(-1), primitive("char"))
             is AstStringTemplate -> {

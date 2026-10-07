@@ -424,6 +424,7 @@ internal class AstPrinter {
 
     private fun expression(expression: AstExpression): String = when (expression) {
         is AstIntegerLiteral -> expression.text
+        is AstBooleanLiteral -> expression.text
         is AstFloatLiteral -> expression.text
         is AstStringLiteral -> expression.text
         is AstStringTemplate -> expression.parts.joinToString(separator = "", prefix = "\"", postfix = "\"") { part ->

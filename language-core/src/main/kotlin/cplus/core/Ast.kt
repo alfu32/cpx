@@ -191,6 +191,7 @@ data class AstInnerFunction(
 sealed interface AstExpression : AstNode
 
 data class AstIntegerLiteral(val text: String, override val origin: Origin) : AstExpression
+data class AstBooleanLiteral(val text: String, override val origin: Origin) : AstExpression
 data class AstFloatLiteral(val text: String, override val origin: Origin) : AstExpression
 data class AstStringLiteral(val text: String, override val origin: Origin) : AstExpression
 

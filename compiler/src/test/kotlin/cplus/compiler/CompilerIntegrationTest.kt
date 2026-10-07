@@ -964,6 +964,40 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun booleanLiteralsAndBoolCpxArgumentsLowerToPortableC() {
+        val source = """
+            comptime cpx<decl> make(bool B) {
+                return {
+                    int generated() {
+                        return B ? 1 : 0;
+                    }
+                };
+            }
+
+            make(false);
+
+            int main() {
+                return generated();
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-bool", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("return (0 ? 1 : 0);"))
+
+        val directory = Files.createTempDirectory("cplus-bool-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        assertEquals(0, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
+    }
+
+    @Test
     fun foreignImportAndDeferLoweringPreserveCleanupOrder() {
         val source = """
             import { printf } from c.stdio;

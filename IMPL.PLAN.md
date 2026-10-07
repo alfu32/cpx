@@ -12,10 +12,10 @@ Overall: 91/113
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-3.1.1 — typed scalar and source-backed CPX values
+4.2.4.3.2.2.2.2.2.4 — lower boolean literals
 
 Current milestone:
-M4 — Full compile-time model
+M5 — Advanced runtime lowering
 ```
 
 All tasks initially have status `TODO`.
@@ -1499,7 +1499,7 @@ all create correct bindings.
 - The first supported runtime form is `${expression}` inside an ordinary C string literal.
 - Lowering uses a generated bounded `vsnprintf` helper and preserves interpolation origins.
 
-#### 4.2.4.3 [DONE] [4/4] Complete remaining expression and lvalue lowering
+#### 4.2.4.3 [DONE] [5/5] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1519,7 +1519,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.2
 
-#### 4.2.4.3.2 [DONE] [4/4] Complete remaining expression and lvalue lowering
+#### 4.2.4.3.2 [DONE] [5/5] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1538,7 +1538,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.1
 
-##### 4.2.4.3.2.2 [DONE] [3/3] Complete remaining expression and lvalue lowering
+##### 4.2.4.3.2.2 [DONE] [4/4] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1557,7 +1557,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.1
 
-###### 4.2.4.3.2.2.2 [DONE] [3/3] Complete remaining expression and lvalue lowering
+###### 4.2.4.3.2.2.2 [DONE] [4/4] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1576,7 +1576,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.2.2
 
-####### 4.2.4.3.2.2.2.2 [DONE] [2/2] Complete remaining expression and lvalue lowering
+####### 4.2.4.3.2.2.2.2 [DONE] [3/3] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1595,7 +1595,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.2.2.1
 
-######## 4.2.4.3.2.2.2.2.2 [DONE] [3/3] Complete remaining expression and lvalue lowering
+######## 4.2.4.3.2.2.2.2.2 [DONE] [4/4] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1639,6 +1639,22 @@ all create correct bindings.
 - C lowering emits source-mapped `LOW408` and retains only a diagnostic-bearing partial C node for tooling inspection.
 - The compiler refuses to publish generated C when the lowering diagnostic is an error.
 - Integration coverage verifies parser-recovery expressions produce no generated C unit.
+
+######### 4.2.4.3.2.2.2.2.2.4 [DONE] Lower boolean literals
+
+**Acceptance**
+- `true` and `false` parse as boolean literals rather than unresolved identifiers.
+- semantic analysis assigns boolean literals the `bool` primitive type.
+- C lowering emits portable `1` and `0` literals with preserved origins.
+- CPX-generated boolean values compile and execute through the C backend.
+
+**Depends**
+- 4.2.4.3.2.2.2.2.2.3
+
+**Implementation**
+- Added syntax and AST boolean literal nodes and lexer keyword recognition.
+- Added semantic typing, reference traversal, closure traversal, CLI AST printing, and CPX re-origin support.
+- Added an end-to-end fixture for a `bool` CPX argument and generated conditional expression.
 
 ---
 

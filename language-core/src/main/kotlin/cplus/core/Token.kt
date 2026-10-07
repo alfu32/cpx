@@ -32,7 +32,7 @@ class Lexer {
         "do", "double", "else", "enum", "extern", "float", "for", "if", "inline",
         "int", "long", "package", "return", "short", "signed", "sizeof", "static",
         "struct", "switch", "typedef", "union", "enum", "unsigned", "void", "volatile", "while",
-        "comptime", "import", "pub", "defer", "as"
+        "comptime", "import", "pub", "defer", "as", "true", "false"
     )
 
     private val multiCharacterSymbols = listOf(

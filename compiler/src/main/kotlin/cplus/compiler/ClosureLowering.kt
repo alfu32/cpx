@@ -158,6 +158,7 @@ class ClosurePlanner {
                 is AstIndexAccess -> { expression(node.receiver); expression(node.index) }
                 is AstParenthesized -> expression(node.expression)
                 is AstIntegerLiteral,
+                is AstBooleanLiteral,
                 is AstFloatLiteral,
                 is AstStringLiteral,
                 is AstCharacterLiteral,
@@ -446,6 +447,7 @@ class AstClosureLowerer {
         )
         is AstParenthesized -> expression.copy(expression = lowerExpression(expression.expression, callables, rewrites))
         is AstIntegerLiteral,
+        is AstBooleanLiteral,
         is AstFloatLiteral,
         is AstStringLiteral,
         is AstCharacterLiteral,
@@ -481,7 +483,7 @@ class AstClosureLowerer {
                 is AstMemberAccess -> expression(node.receiver)
                 is AstIndexAccess -> { expression(node.receiver); expression(node.index) }
                 is AstParenthesized -> expression(node.expression)
-                is AstIntegerLiteral, is AstFloatLiteral, is AstStringLiteral, is AstCharacterLiteral, is AstErrorExpression -> Unit
+                is AstIntegerLiteral, is AstBooleanLiteral, is AstFloatLiteral, is AstStringLiteral, is AstCharacterLiteral, is AstErrorExpression -> Unit
             }
         }
         fun visit(node: AstStatement) {

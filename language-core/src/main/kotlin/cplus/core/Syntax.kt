@@ -231,6 +231,12 @@ data class SyntaxIntegerLiteral(
     override val origin: Origin
 ) : SyntaxExpression
 
+data class SyntaxBooleanLiteral(
+    val text: String,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxExpression
+
 data class SyntaxFloatLiteral(
     val text: String,
     override val range: SourceRange,
