@@ -24,7 +24,9 @@ enum class CpxCategory {
 }
 
 data class ComptimeTargetInfo(
-    val cDialect: String = "c17"
+    val cDialect: String = "c17",
+    val runtimeProfile: String = "cplus",
+    val libcProfile: String = "c17"
 )
 
 data class ExpansionId(
@@ -728,8 +730,13 @@ class CpxExpander(
     val specializationCache: SpecializationCache = SpecializationCache(),
     private val limits: CpxExpansionLimits = CpxExpansionLimits(),
     private val evaluator: ComptimeEvaluator = TemplateComptimeEvaluator(),
-    private val target: ComptimeTargetInfo = ComptimeTargetInfo()
+    private var target: ComptimeTargetInfo = ComptimeTargetInfo()
 ) {
+    @Synchronized
+    fun configureTarget(target: ComptimeTargetInfo) {
+        this.target = target
+    }
+
     fun invalidateSpecializations(keys: Set<SpecializationKey>) {
         specializationCache.invalidate(keys)
     }

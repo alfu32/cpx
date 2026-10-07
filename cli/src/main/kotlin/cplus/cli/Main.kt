@@ -2,7 +2,11 @@ package cplus.cli
 
 import cplus.compiler.CPlusCompiler
 import cplus.compiler.CompileRequest
+import cplus.compiler.BuildProfile
+import cplus.compiler.LibcProfile
+import cplus.compiler.RuntimeProfile
 import cplus.compiler.SdkManifestLocator
+import cplus.compiler.TargetInfo
 import cplus.core.*
 import java.nio.file.Files
 import java.nio.file.Path
@@ -48,7 +52,8 @@ internal class Cli {
                 cSources = parsed.cSources,
                 cLibraries = parsed.libraries,
                 cIncludeDirectories = parsed.includeDirectories,
-                sdkManifest = parsed.sdkManifest
+                sdkManifest = parsed.sdkManifest,
+                target = parsed.target
             )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
@@ -75,7 +80,8 @@ internal class Cli {
                 cSources = parsed.cSources,
                 cLibraries = parsed.libraries,
                 cIncludeDirectories = parsed.includeDirectories,
-                sdkManifest = parsed.sdkManifest
+                sdkManifest = parsed.sdkManifest,
+                target = parsed.target
             )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
@@ -91,7 +97,8 @@ internal class Cli {
                 cSources = parsed.cSources,
                 cLibraries = parsed.libraries,
                 cIncludeDirectories = parsed.includeDirectories,
-                sdkManifest = parsed.sdkManifest
+                sdkManifest = parsed.sdkManifest,
+                target = parsed.target
             )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
@@ -108,7 +115,8 @@ internal class Cli {
                 cSources = parsed.cSources,
                 cLibraries = parsed.libraries,
                 cIncludeDirectories = parsed.includeDirectories,
-                sdkManifest = parsed.sdkManifest
+                sdkManifest = parsed.sdkManifest,
+                target = parsed.target
             )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
@@ -128,7 +136,8 @@ internal class Cli {
             parsed.headerOutput,
             parsed.libraries,
             parsed.includeDirectories,
-            parsed.sdkManifest
+            parsed.sdkManifest,
+            parsed.target
         )
     }
 
@@ -143,7 +152,8 @@ internal class Cli {
             parsed.headerOutput,
             parsed.libraries,
             parsed.includeDirectories,
-            parsed.sdkManifest
+            parsed.sdkManifest,
+            parsed.target
         )
         if (buildExitCode != 0) return buildExitCode
         val process = ProcessBuilder(executable.toString()).inheritIO().start()
@@ -165,7 +175,8 @@ internal class Cli {
         headerOutput: Path? = null,
         libraries: List<String> = emptyList(),
         includeDirectories: List<Path> = emptyList(),
-        sdkManifest: Path = SdkManifestLocator.defaultManifestPath()
+        sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
+        target: TargetInfo = TargetInfo()
     ): Int {
         val compiler = CPlusCompiler()
         val result = compiler.compile(
@@ -174,7 +185,8 @@ internal class Cli {
                 cSources = cSources,
                 cLibraries = libraries,
                 cIncludeDirectories = includeDirectories,
-                sdkManifest = sdkManifest
+                sdkManifest = sdkManifest,
+                target = target
             )
         )
         printDiagnostics(result.diagnostics, sources.first())
@@ -247,6 +259,8 @@ internal class Cli {
         val libraries = mutableListOf<String>()
         val includeDirectories = mutableListOf<Path>()
         var sdkManifest: Path? = null
+        var runtime: RuntimeProfile? = null
+        var libc: LibcProfile? = null
         var output: Path? = null
         var headerOutput: Path? = null
         var index = 0
@@ -306,6 +320,16 @@ internal class Cli {
                     sdkManifest = Path.of(value)
                     index += 2
                 }
+                "--runtime" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    runtime = parseRuntime(value, argument) ?: return null
+                    index += 2
+                }
+                "--libc" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    libc = parseLibc(value, argument) ?: return null
+                    index += 2
+                }
                 else -> {
                     if (argument.startsWith("-l") && argument.length > 2) {
                         libraries += argument.removePrefix("-l")
@@ -321,6 +345,12 @@ internal class Cli {
             System.err.println("a source file is required")
             return null
         }
+        val selectedRuntime = runtime ?: RuntimeProfile.CPLUS
+        val selectedLibc = libc ?: if (selectedRuntime == RuntimeProfile.FREESTANDING) {
+            LibcProfile.NONE
+        } else {
+            LibcProfile.C17
+        }
         return FileArguments(
             discoverModuleSources(listOf(source) + sources),
             cSources,
@@ -328,8 +358,29 @@ internal class Cli {
             headerOutput,
             libraries,
             includeDirectories,
-            sdkManifest ?: SdkManifestLocator.defaultManifestPath()
+            sdkManifest ?: SdkManifestLocator.defaultManifestPath(),
+            TargetInfo(buildProfile = BuildProfile(selectedRuntime, selectedLibc))
         )
+    }
+
+    private fun parseRuntime(value: String?, option: String): RuntimeProfile? = when (value?.lowercase()) {
+        "freestanding" -> RuntimeProfile.FREESTANDING
+        "cplus" -> RuntimeProfile.CPLUS
+        "system" -> RuntimeProfile.SYSTEM
+        else -> {
+            System.err.println("invalid runtime profile '${value ?: ""}' after $option; expected freestanding, cplus, or system")
+            null
+        }
+    }
+
+    private fun parseLibc(value: String?, option: String): LibcProfile? = when (value?.lowercase()) {
+        "none" -> LibcProfile.NONE
+        "c17" -> LibcProfile.C17
+        "c23" -> LibcProfile.C23
+        else -> {
+            System.err.println("invalid libc profile '${value ?: ""}' after $option; expected none, c17, or c23")
+            null
+        }
     }
 
     private fun discoverModuleSources(requested: List<Path>): List<Path> {
@@ -399,7 +450,7 @@ internal class Cli {
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
         stream.println("C+ CLI transcoder")
-        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--sdk <manifest>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
+        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--runtime <profile>] [--libc <profile>] [--sdk <manifest>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
         stream.println()
         stream.println("commands:")
         stream.println("  transcode   translate one C+ source file to C")
@@ -419,7 +470,8 @@ internal class Cli {
         val headerOutput: Path?,
         val libraries: List<String>,
         val includeDirectories: List<Path>,
-        val sdkManifest: Path
+        val sdkManifest: Path,
+        val target: TargetInfo
     )
 
     private companion object {

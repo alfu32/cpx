@@ -16,7 +16,8 @@ import java.util.concurrent.Executors
 import kotlin.io.path.readText
 
 data class TargetInfo(
-    val cDialect: String = "c17"
+    val cDialect: String = "c17",
+    val buildProfile: BuildProfile = BuildProfile()
 )
 
 data class CompilerOptions(
@@ -100,7 +101,7 @@ class CompilerContext(
     val astBuilder: AstBuilder = AstBuilder(),
     val semanticAnalyzer: SemanticAnalyzer = SemanticAnalyzer(),
     val target: TargetInfo = TargetInfo(),
-    val cpxExpander: CpxExpander = CpxExpander(lexer, target = ComptimeTargetInfo(target.cDialect)),
+    val cpxExpander: CpxExpander = CpxExpander(lexer, target = BuildProfileValidator.toComptimeTarget(target)),
     val closureLowerer: AstClosureLowerer = AstClosureLowerer(),
     val cLowererFactory: (SemanticModel) -> CLowerer = ::CLowerer,
     val cEmitter: CEmitter = CEmitter()
@@ -139,6 +140,9 @@ class CPlusCompiler(
     fun compile(request: CompileRequest): CompileResult {
         val sdk = SdkManifestLoader.load(request.sdkManifest)
         if (!sdk.isSuccessful) return sdkFailure(sdk.diagnostics)
+        val profileDiagnostics = BuildProfileValidator.validate(request.target.buildProfile, sdk.manifest!!)
+        if (profileDiagnostics.isNotEmpty()) return sdkFailure(profileDiagnostics)
+        context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(request.target))
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
         val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
@@ -169,6 +173,9 @@ class CPlusCompiler(
     ): IncrementalPipeline {
         val sdk = SdkManifestLoader.load(request.sdkManifest)
         if (!sdk.isSuccessful) return IncrementalPipeline(sdkFailure(sdk.diagnostics), emptyMap())
+        val profileDiagnostics = BuildProfileValidator.validate(request.target.buildProfile, sdk.manifest!!)
+        if (profileDiagnostics.isNotEmpty()) return IncrementalPipeline(sdkFailure(profileDiagnostics), emptyMap())
+        context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(request.target))
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
         val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
@@ -215,18 +222,23 @@ class CPlusCompiler(
         path: Path,
         text: String,
         options: CompilerOptions = CompilerOptions(),
-        sdkManifest: Path = SdkManifestLocator.defaultManifestPath()
+        sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
+        target: TargetInfo = TargetInfo()
     ): CompileResult {
-        return compileTextWorkspace(listOf(TextSource(path, text)), options, sdkManifest)
+        return compileTextWorkspace(listOf(TextSource(path, text)), options, sdkManifest, target)
     }
 
     fun compileTextWorkspace(
         sources: List<TextSource>,
         options: CompilerOptions = CompilerOptions(),
-        sdkManifest: Path = SdkManifestLocator.defaultManifestPath()
+        sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
+        target: TargetInfo = TargetInfo()
     ): CompileResult {
         val sdk = SdkManifestLoader.load(sdkManifest)
         if (!sdk.isSuccessful) return sdkFailure(sdk.diagnostics)
+        val profileDiagnostics = BuildProfileValidator.validate(target.buildProfile, sdk.manifest!!)
+        if (profileDiagnostics.isNotEmpty()) return sdkFailure(profileDiagnostics)
+        context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(target))
         val sourceFiles = sources
             .distinctBy { it.path.toAbsolutePath().normalize() }
             .map { source -> context.sourceRepository.put(source.path, source.text) }
@@ -234,7 +246,7 @@ class CPlusCompiler(
         if (frontends.size <= 1) {
             return resultOf(frontends.map { compileFrontend(it, options) })
         }
-        val request = CompileRequest(sourceFiles.map { it.path }, options = options)
+        val request = CompileRequest(sourceFiles.map { it.path }, target = target, options = options, sdkManifest = sdkManifest)
         return compileWorkspace(
             request,
             ForeignInputs(emptyList(), emptyList()),

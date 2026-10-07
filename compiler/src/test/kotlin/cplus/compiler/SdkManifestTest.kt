@@ -44,6 +44,29 @@ class SdkManifestTest {
         assertTrue(!result.isSuccessful)
     }
 
+    @Test
+    fun validatesRuntimeAndLibcProfileCombinations() {
+        val sdk = assertNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+
+        assertTrue(BuildProfileValidator.validate(BuildProfile(RuntimeProfile.CPLUS, LibcProfile.C17), sdk).isEmpty())
+        assertTrue(BuildProfileValidator.validate(BuildProfile(RuntimeProfile.FREESTANDING, LibcProfile.C17), sdk)
+            .any { it.code == "SDK005" })
+        assertTrue(BuildProfileValidator.validate(BuildProfile(RuntimeProfile.CPLUS, LibcProfile.NONE), sdk)
+            .any { it.code == "SDK005" })
+        assertTrue(BuildProfileValidator.validate(BuildProfile(RuntimeProfile.CPLUS, LibcProfile.C23), sdk)
+            .any { it.code == "SDK006" || it.code == "SDK007" })
+    }
+
+    @Test
+    fun exposesSelectedProfilesToComptimeTargetMetadata() {
+        val target = TargetInfo(buildProfile = BuildProfile(RuntimeProfile.FREESTANDING, LibcProfile.NONE))
+
+        val comptimeTarget = BuildProfileValidator.toComptimeTarget(target)
+
+        assertEquals("freestanding", comptimeTarget.runtimeProfile)
+        assertEquals("none", comptimeTarget.libcProfile)
+    }
+
     private fun manifestText(): String = """
         sdk_version = "0.1.0"
         language_abi_version = "1"

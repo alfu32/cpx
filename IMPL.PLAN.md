@@ -3,14 +3,14 @@
 ## Dashboard
 
 ```text
-Overall: 114/145
+Overall: 115/145
 
 [DONE] [16/16] 1. Language front-end
 [DONE] [30/30] 2. Semantic model and modules
 [DONE] [20/20] 3. Compile-time and CPX system
 [DONE] [34/34] 4. Lowering and C backend
 [DONE] [14/14] 5. Tooling, integration and quality
-[TODO] [1/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
+[TODO] [2/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
 6.1.1.2 — Implement runtime and libc profile selection
@@ -2425,7 +2425,7 @@ all create correct bindings.
 
 ---
 
-## 6.1 [TODO] [1/8] SDK packaging and runtime foundation
+## 6.1 [TODO] [2/8] SDK packaging and runtime foundation
 
 **SDK**
 - SDK §2–6
@@ -2435,7 +2435,7 @@ all create correct bindings.
 - SDK §78–81
 - SDK §93–101
 
-### 6.1.1 [TODO] [1/4] SDK distribution, profiles and resolver
+### 6.1.1 [TODO] [2/4] SDK distribution, profiles and resolver
 
 #### 6.1.1.1 [DONE] [4/4] Define SDK manifest and ABI/runtime version contract
 
@@ -2468,7 +2468,7 @@ all create correct bindings.
 - 5.2.1
 - 5.2.4
 
-#### 6.1.1.2 [TODO] Implement runtime and libc profile selection
+#### 6.1.1.2 [DONE] [4/4] Implement runtime and libc profile selection
 
 **SDK**
 - SDK §5 Build Profiles
@@ -2487,6 +2487,13 @@ all create correct bindings.
 - default hosted mode resolves to `runtime=cplus`, `libc=c17` until C23 is complete.
 - selected profiles are visible to compile-time `target` metadata.
 - profile choices participate in build/cache identity.
+
+**Implementation**
+- Added typed `RuntimeProfile` and `LibcProfile` selections to `TargetInfo` and compiler cache identity.
+- Added CLI `--runtime=freestanding|cplus|system` and `--libc=none|c17|c23` parsing with hosted defaults.
+- Added deterministic validation for invalid combinations and unsupported SDK libc profiles.
+- Exposed the selected runtime/libc profile through `ComptimeTargetInfo`.
+- Added profile-combination and compile-time-target metadata tests.
 
 **Depends**
 - 6.1.1.1
