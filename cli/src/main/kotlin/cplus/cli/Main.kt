@@ -27,6 +27,7 @@ private class Cli {
             "transcode", "emit-c" -> transcode(args.drop(1))
             "check" -> check(args.drop(1))
             "ast" -> ast(args.drop(1))
+            "expand" -> expand(args.drop(1))
             "build" -> build(args.drop(1))
             "run" -> runProgram(args.drop(1))
             else -> {
@@ -42,11 +43,7 @@ private class Cli {
         val result = CPlusCompiler().compile(CompileRequest(parsed.sources, cSources = parsed.cSources))
         printDiagnostics(result.diagnostics, parsed.sources.first())
         if (!result.isSuccessful) return 1
-        val generated = result.generatedUnits.singleOrNull()?.text
-            ?: run {
-                System.err.println("transcode currently accepts exactly one source file")
-                return 2
-            }
+        val generated = result.generatedUnits.singleOrNull()?.text ?: return 2
         if (parsed.output == null) {
             print(generated)
         } else {
@@ -64,6 +61,15 @@ private class Cli {
     }
 
     private fun ast(arguments: List<String>): Int {
+        val parsed = parseFileArguments(arguments) ?: return 2
+        val result = CPlusCompiler().compile(CompileRequest(parsed.sources, cSources = parsed.cSources))
+        printDiagnostics(result.diagnostics, parsed.sources.first())
+        val artifact = result.artifacts.singleOrNull() ?: return 1
+        println(AstPrinter().print(artifact.ast))
+        return if (result.isSuccessful) 0 else 1
+    }
+
+    private fun expand(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val result = CPlusCompiler().compile(CompileRequest(parsed.sources, cSources = parsed.cSources))
         printDiagnostics(result.diagnostics, parsed.sources.first())
@@ -92,11 +98,7 @@ private class Cli {
         val result = CPlusCompiler().compile(CompileRequest(sources, cSources = cSources))
         printDiagnostics(result.diagnostics, sources.first())
         if (!result.isSuccessful) return 1
-        val generated = result.generatedUnits.singleOrNull()?.text
-            ?: run {
-                System.err.println("build currently accepts exactly one source file")
-                return 2
-            }
+        val generated = result.generatedUnits.singleOrNull()?.text ?: return 2
         val cFile = executable.resolveSibling("${executable.fileName}.c")
         cFile.parent?.let { Files.createDirectories(it) }
         executable.parent?.let { Files.createDirectories(it) }
@@ -178,6 +180,7 @@ private class Cli {
         stream.println("  emit-c      alias for transcode")
         stream.println("  check       parse and semantically validate one source file")
         stream.println("  ast         print the normalized AST")
+        stream.println("  expand      print the post-CPX normalized AST")
         stream.println("  build       transcode and compile one source file with cc")
         stream.println("  run         build and execute one source file")
     }

@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 53/100
+Overall: 55/102
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [10/22] 4. Lowering and C backend
-[DOING] [1/12] 5. Tooling, integration and quality
+[DOING] [3/14] 5. Tooling, integration and quality
 
 Current task:
-4.2.4.3.2.2 — remaining expression and lvalue lowering
+5.2.2.3 — remaining CLI commands
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1587,7 +1587,7 @@ all create correct bindings.
 
 ---
 
-# 5. [TODO] [0/12] Tooling, integration and quality
+# 5. [DOING] [3/14] Tooling, integration and quality
 
 **Purpose:** Make the compiler usable as a development platform through LSP, CLI, incremental compilation, test coverage and specification audits.
 
@@ -1678,7 +1678,7 @@ all create correct bindings.
 
 ---
 
-## 5.2 [DOING] [1/4] CLI, build and incremental compiler
+## 5.2 [DOING] [3/6] CLI, build and incremental compiler
 
 ### 5.2.1 [DONE] Public compiler API
 
@@ -1693,7 +1693,7 @@ all create correct bindings.
 **Depends**
 - 4
 
-### 5.2.2 [TODO] CLI commands
+### 5.2.2 [DOING] [2/3] CLI commands
 
 **Technical**
 - TS §57
@@ -1710,6 +1710,37 @@ all create correct bindings.
 
 **Depends**
 - 5.2.1
+
+#### 5.2.2.1 [DONE] Core check, transcode, build, and run commands
+
+**Acceptance**
+- `check`, `transcode`, `build`, and `run` return compilation-aware exit codes.
+- build and run accept multiple C+ sources through the compiler workspace path.
+- external C source dependencies remain available to build and run.
+
+**Depends**
+- 5.2.1
+
+#### 5.2.2.2 [DONE] AST and post-CPX expansion inspection
+
+**Acceptance**
+- `ast` prints the normalized semantic input representation.
+- `expand` prints the post-CPX/pre-lowering representation.
+- diagnostics are printed with source locations and stable codes.
+
+**Depends**
+- 5.2.1
+
+#### 5.2.2.3 [TODO] Remaining CLI commands
+
+**Acceptance**
+- `lsp` and any specified formatting/inspection commands have documented behavior.
+- command help and argument validation cover all supported commands.
+- CLI integration tests exercise success and failure exit codes.
+
+**Depends**
+- 5.2.2.1
+- 5.2.2.2
 
 ### 5.2.3 [TODO] Incremental dependency invalidation
 
