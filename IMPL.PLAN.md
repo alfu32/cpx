@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 70/113
+Overall: 73/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
-[DOING] [24/34] 4. Lowering and C backend
+[DOING] [27/34] 4. Lowering and C backend
 [DOING] [3/14] 5. Tooling, integration and quality
 
 Current task:
-4.4.3 — external C diagnostic remapping
+4.4.4 — end-to-end C execution fixtures
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1193,7 +1193,7 @@ all create correct bindings.
 
 ---
 
-# 4. [DOING] [24/34] Lowering and C backend
+# 4. [DOING] [27/34] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1596,7 +1596,7 @@ all create correct bindings.
 
 #### 4.3.2.4 [TODO] Preserve hoisting provenance through generated declarations
 
-### 4.3.3 [DOING] [2/4] Header and dependency/include generation
+### 4.3.3 [DONE] [4/4] Header and dependency/include generation
 
 **Language**
 - LS §26–27
@@ -1641,9 +1641,25 @@ all create correct bindings.
 
 #### 4.3.3.3 [TODO] Preserve public/private dependency boundaries
 
-#### 4.3.3.4 [TODO] Synthesize local and foreign library dependencies
+**Acceptance**
+- private imports contribute only to implementation dependencies when absent from the public API.
+- public headers include system dependencies required by exported types and signatures.
+- private globals and declarations never appear in generated public headers.
+- an integration fixture verifies implementation/header dependency separation.
 
-### 4.3.4 [DOING] [2/3] C symbol naming and C-subset validation
+**Depends**
+- 4.3.3.2
+
+#### 4.3.3.4 [DONE] Synthesize local and foreign library dependencies
+
+**Acceptance**
+- compile requests represent local archive/shared-library paths separately from foreign `-l` names.
+- duplicate library arguments are removed without changing explicit linker order.
+- missing local library paths produce stable compiler diagnostics before C emission/build.
+- CLI build and run forward include directories, local libraries, and foreign libraries to `cc`.
+- integration coverage verifies dependency normalization and missing-library diagnostics.
+
+### 4.3.4 [DONE] [4/4] C symbol naming and C-subset validation
 
 **Language**
 - LS §23
@@ -1696,7 +1712,15 @@ all create correct bindings.
 **Depends**
 - 4.3.4.2
 
-#### 4.3.4.4 [TODO] Validate generated helper and linkage namespaces
+#### 4.3.4.4 [DONE] Validate generated helper and linkage namespaces
+
+**Acceptance**
+- compiler-owned helper names are reserved independently from general C identifier checks.
+- user declarations colliding with generated helpers produce a stable lowering diagnostic.
+- generated helper validation covers functions, globals, aliases, and enum values.
+
+**Depends**
+- 4.3.4.3
 
 ---
 

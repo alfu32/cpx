@@ -21,10 +21,22 @@ data class CompileRequest(
     val sources: List<Path>,
     val target: TargetInfo = TargetInfo(),
     val options: CompilerOptions = CompilerOptions(),
-    val cSources: List<Path> = emptyList()
+    val cSources: List<Path> = emptyList(),
+    val cLibraries: List<String> = emptyList(),
+    val cIncludeDirectories: List<Path> = emptyList()
 )
 
 data class CSourceDependency(val path: Path)
+
+enum class CLinkDependencyKind {
+    LOCAL,
+    FOREIGN
+}
+
+data class CLinkDependency(
+    val value: String,
+    val kind: CLinkDependencyKind
+)
 
 data class CompilationArtifacts(
     val source: SourceFile,
@@ -46,7 +58,8 @@ data class CompileResult(
     val artifacts: List<CompilationArtifacts>,
     val moduleGraph: ModuleGraph? = null,
     val cSourceDependencies: List<CSourceDependency> = emptyList(),
-    val generatedHeaders: List<GeneratedCUnit> = emptyList()
+    val generatedHeaders: List<GeneratedCUnit> = emptyList(),
+    val cLinkDependencies: List<CLinkDependency> = emptyList()
 ) {
     val isSuccessful: Boolean
         get() = diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
@@ -87,15 +100,18 @@ class CPlusCompiler(
 
     fun compile(request: CompileRequest): CompileResult {
         val foreignInputs = loadForeignSources(request.cSources)
+        val cLinkDependencies = linkDependencies(request.cLibraries)
+        val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
         if (request.sources.size <= 1) {
             val artifacts = request.sources.map { compileOne(it, request.options, foreignInputs.units) }
             return resultOf(
                 artifacts,
                 cSourceDependencies = dependencies(request.cSources),
-                additionalDiagnostics = foreignInputs.diagnostics
+                additionalDiagnostics = foreignInputs.diagnostics + linkDiagnostics,
+                cLinkDependencies = cLinkDependencies
             )
         }
-        return compileWorkspace(request, foreignInputs)
+        return compileWorkspace(request, foreignInputs, cLinkDependencies, linkDiagnostics)
     }
 
     fun compileText(path: Path, text: String, options: CompilerOptions = CompilerOptions()): CompileResult {
@@ -131,14 +147,29 @@ class CPlusCompiler(
         return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, generated, header = header)
     }
 
-    private fun compileWorkspace(request: CompileRequest, foreignInputs: ForeignInputs): CompileResult {
+    private fun compileWorkspace(
+        request: CompileRequest,
+        foreignInputs: ForeignInputs,
+        cLinkDependencies: List<CLinkDependency>,
+        linkDiagnostics: List<Diagnostic>
+    ): CompileResult {
         val units = request.sources.map(::frontend)
         val moduleGraph = ModuleGraphBuilder().build(
             units.map { ModuleSource(it.source, it.expanded?.program ?: it.parsed.syntax) }
         )
         val first = units.firstOrNull()
         val cSourceDependencies = dependencies(request.cSources)
-        if (first == null) return CompileResult(emptyList(), emptyList(), null, emptyList(), moduleGraph, cSourceDependencies)
+        if (first == null) {
+            return CompileResult(
+                emptyList(),
+                emptyList(),
+                null,
+                emptyList(),
+                moduleGraph,
+                cSourceDependencies,
+                cLinkDependencies = cLinkDependencies
+            )
+        }
 
         val mergedOrigin = first.ast.origin
         val mergedAst = AstProgram(
@@ -151,7 +182,8 @@ class CPlusCompiler(
         val semantic = context.semanticAnalyzer.analyze(mergedAst, moduleGraph.moduleNames, foreignInputs.units)
         val additionalDiagnostics = units.drop(1).flatMap { it.diagnostics() } +
             unresolvedImportCycleDiagnostics(moduleGraph, semantic.diagnostics) +
-            foreignInputs.diagnostics
+            foreignInputs.diagnostics +
+            linkDiagnostics
         val base = first
         if (!semantic.isSuccessful) {
             return resultOf(
@@ -169,7 +201,8 @@ class CPlusCompiler(
                     )
                 ),
                 moduleGraph,
-                cSourceDependencies
+                cSourceDependencies,
+                cLinkDependencies = cLinkDependencies
             )
         }
         val model = semantic.model
@@ -189,7 +222,8 @@ class CPlusCompiler(
                     )
                 ),
                 moduleGraph,
-                cSourceDependencies
+                cSourceDependencies,
+                cLinkDependencies = cLinkDependencies
             )
         }
         val lowered = context.cLowererFactory(model).lower(mergedAst)
@@ -209,7 +243,8 @@ class CPlusCompiler(
                     )
                 ),
                 moduleGraph,
-                cSourceDependencies
+                cSourceDependencies,
+                cLinkDependencies = cLinkDependencies
             )
         }
         val generated = context.cEmitter.emit(lowered.unit)
@@ -230,7 +265,8 @@ class CPlusCompiler(
                 )
             ),
             moduleGraph,
-            cSourceDependencies
+            cSourceDependencies,
+            cLinkDependencies = cLinkDependencies
         )
     }
 
@@ -238,7 +274,8 @@ class CPlusCompiler(
         artifacts: List<CompilationArtifacts>,
         moduleGraph: ModuleGraph? = null,
         cSourceDependencies: List<CSourceDependency> = emptyList(),
-        additionalDiagnostics: List<Diagnostic> = emptyList()
+        additionalDiagnostics: List<Diagnostic> = emptyList(),
+        cLinkDependencies: List<CLinkDependency> = emptyList()
     ): CompileResult = CompileResult(
         diagnostics = artifacts.flatMap { it.allDiagnostics() } + additionalDiagnostics,
         generatedUnits = artifacts.mapNotNull { it.generated },
@@ -246,13 +283,45 @@ class CPlusCompiler(
         artifacts = artifacts,
         moduleGraph = moduleGraph,
         cSourceDependencies = cSourceDependencies,
-        generatedHeaders = artifacts.mapNotNull { it.header }
+        generatedHeaders = artifacts.mapNotNull { it.header },
+        cLinkDependencies = cLinkDependencies
     )
 
     private fun dependencies(paths: List<Path>): List<CSourceDependency> = paths
         .map { it.toAbsolutePath().normalize() }
         .distinct()
         .map(::CSourceDependency)
+
+    private fun linkDependencies(values: List<String>): List<CLinkDependency> = buildList {
+        values.forEach { value ->
+            val path = runCatching { Path.of(value) }.getOrNull()
+            val isLocal = path != null && (
+                Files.exists(path) ||
+                    value.contains('/') ||
+                    value.contains('\\') ||
+                    value.endsWith(".a") ||
+                    value.endsWith(".so") ||
+                    value.endsWith(".dylib")
+                )
+            val dependency = if (isLocal) {
+                CLinkDependency(path!!.toAbsolutePath().normalize().toString(), CLinkDependencyKind.LOCAL)
+            } else {
+                CLinkDependency(value.removePrefix("-l"), CLinkDependencyKind.FOREIGN)
+            }
+            if (none { it == dependency }) add(dependency)
+        }
+    }
+
+    private fun validateLinkDependencies(dependencies: List<CLinkDependency>): List<Diagnostic> = dependencies
+        .filter { it.kind == CLinkDependencyKind.LOCAL && !Files.isRegularFile(Path.of(it.value)) }
+        .map { dependency ->
+            Diagnostic(
+                DiagnosticSeverity.ERROR,
+                "C library dependency does not exist or is not a regular file: ${dependency.value}",
+                null,
+                "CIMP003"
+            )
+        }
 
     private fun loadForeignSources(paths: List<Path>): ForeignInputs {
         val units = mutableListOf<CSourceUnit>()

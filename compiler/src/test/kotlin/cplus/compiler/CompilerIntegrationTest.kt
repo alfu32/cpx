@@ -67,6 +67,49 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun cLinkDependenciesPreserveLocalAndForeignLinkageKinds() {
+        val directory = Files.createTempDirectory("cplus-c-link-dependencies")
+        val source = directory.resolve("main.cp").also {
+            it.writeText("int main() { return 0; }")
+        }
+        val localLibrary = directory.resolve("libhelper.a").also {
+            Files.write(it, byteArrayOf())
+        }
+
+        val result = CPlusCompiler().compile(
+            CompileRequest(
+                listOf(source),
+                cLibraries = listOf(localLibrary.toString(), "m", "-lm")
+            )
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals(
+            listOf(
+                CLinkDependency(localLibrary.toAbsolutePath().normalize().toString(), CLinkDependencyKind.LOCAL),
+                CLinkDependency("m", CLinkDependencyKind.FOREIGN)
+            ),
+            result.cLinkDependencies
+        )
+    }
+
+    @Test
+    fun missingLocalCLinkDependenciesProduceCompilerDiagnostics() {
+        val directory = Files.createTempDirectory("cplus-missing-c-link")
+        val source = directory.resolve("main.cp").also {
+            it.writeText("int main() { return 0; }")
+        }
+        val missing = directory.resolve("libmissing.a")
+
+        val result = CPlusCompiler().compile(
+            CompileRequest(listOf(source), cLibraries = listOf(missing.toString()))
+        )
+
+        assertTrue(result.diagnostics.any { it.code == "CIMP003" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun cSourceImplementationCanSatisfyPrototypeOnlyDeclaration() {
         val directory = Files.createTempDirectory("cplus-c-source-link")
         val source = directory.resolve("main.cp").also {
@@ -338,6 +381,31 @@ class CompilerIntegrationTest {
             .start()
         val headerOutput = headerCheck.inputStream.bufferedReader().readText()
         assertEquals(0, headerCheck.waitFor(), headerOutput)
+    }
+
+    @Test
+    fun publicHeadersPreservePrivateSystemDependencyBoundaries() {
+        val source = """
+            import { FILE } from c.stdio;
+
+            FILE* private_handle;
+
+            pub int exported_value;
+
+            int main() {
+                return exported_value;
+            }
+        """.trimIndent()
+
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-public-dependency-boundary", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val implementation = result.generatedUnits.single().text
+        val header = result.generatedHeaders.single().text
+        assertTrue(implementation.contains("#include <stdio.h>"))
+        assertTrue(!header.contains("#include <stdio.h>"))
+        assertTrue(header.contains("extern int exported_value;"))
+        assertTrue(!header.contains("private_handle"))
     }
 
     @Test

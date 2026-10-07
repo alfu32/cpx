@@ -52,7 +52,32 @@ class CSubsetValidator {
             }
             function.body?.let { validateStatement(it, diagnostics) }
         }
+        validateGeneratedNamespaces(unit, diagnostics)
         return diagnostics.diagnostics
+    }
+
+    private fun validateGeneratedNamespaces(unit: CTranslationUnit, diagnostics: DiagnosticBag) {
+        val generatedNames = buildSet {
+            if (unit.requiresStringTemplateRuntime) add("__cplus_format")
+        }
+        if (generatedNames.isEmpty()) return
+
+        val declaredNames = buildList {
+            addAll(unit.functions.map { it.name })
+            addAll(unit.globals.map { it.name })
+            addAll(unit.aliases.map { it.name })
+            addAll(unit.enums.flatMap { enumeration -> enumeration.values.map { it.name } })
+        }
+        declaredNames.filter { it in generatedNames }.distinct().forEach { name ->
+            diagnostics.error(
+                "user declaration collides with generated C helper '$name'",
+                unit.functions.firstOrNull { it.name == name }?.origin?.primaryRange
+                    ?: unit.globals.firstOrNull { it.name == name }?.origin?.primaryRange
+                    ?: unit.aliases.firstOrNull { it.name == name }?.origin?.primaryRange
+                    ?: unit.enums.flatMap { it.values }.firstOrNull { it.name == name }?.origin?.primaryRange,
+                "LOW407"
+            )
+        }
     }
 
     private fun validateType(type: CType, origin: Origin, diagnostics: DiagnosticBag, allowVoid: Boolean = false) {

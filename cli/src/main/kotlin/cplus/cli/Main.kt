@@ -15,7 +15,7 @@ fun main(args: Array<String>) {
     if (exitCode != 0) exitProcess(exitCode)
 }
 
-private class Cli {
+internal class Cli {
     fun run(args: List<String>): Int {
         if (args.isEmpty() || args.first() in setOf("-h", "--help", "help")) {
             printUsage()
@@ -40,7 +40,9 @@ private class Cli {
 
     private fun transcode(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val result = CPlusCompiler().compile(CompileRequest(parsed.sources, cSources = parsed.cSources))
+        val result = CPlusCompiler().compile(
+            CompileRequest(parsed.sources, cSources = parsed.cSources, cLibraries = parsed.libraries, cIncludeDirectories = parsed.includeDirectories)
+        )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         if (!result.isSuccessful) return 1
         val generated = result.generatedUnits.singleOrNull()?.text ?: return 2
@@ -59,7 +61,9 @@ private class Cli {
 
     private fun check(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val result = CPlusCompiler().compile(CompileRequest(parsed.sources, cSources = parsed.cSources))
+        val result = CPlusCompiler().compile(
+            CompileRequest(parsed.sources, cSources = parsed.cSources, cLibraries = parsed.libraries, cIncludeDirectories = parsed.includeDirectories)
+        )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         if (result.isSuccessful) println("OK: ${parsed.sources.joinToString(", ")}")
         return if (result.isSuccessful) 0 else 1
@@ -67,7 +71,9 @@ private class Cli {
 
     private fun ast(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val result = CPlusCompiler().compile(CompileRequest(parsed.sources, cSources = parsed.cSources))
+        val result = CPlusCompiler().compile(
+            CompileRequest(parsed.sources, cSources = parsed.cSources, cLibraries = parsed.libraries, cIncludeDirectories = parsed.includeDirectories)
+        )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         val artifact = result.artifacts.singleOrNull() ?: return 1
         println(AstPrinter().print(artifact.ast))
@@ -76,7 +82,9 @@ private class Cli {
 
     private fun expand(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val result = CPlusCompiler().compile(CompileRequest(parsed.sources, cSources = parsed.cSources))
+        val result = CPlusCompiler().compile(
+            CompileRequest(parsed.sources, cSources = parsed.cSources, cLibraries = parsed.libraries, cIncludeDirectories = parsed.includeDirectories)
+        )
         printDiagnostics(result.diagnostics, parsed.sources.first())
         val artifact = result.artifacts.singleOrNull() ?: return 1
         println(AstPrinter().print(artifact.ast))
@@ -86,14 +94,28 @@ private class Cli {
     private fun build(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val executable = parsed.output ?: parsed.sources.first().resolveSibling(parsed.sources.first().nameWithoutExtension)
-        return buildExecutable(parsed.sources, parsed.cSources, executable, parsed.headerOutput)
+        return buildExecutable(
+            parsed.sources,
+            parsed.cSources,
+            executable,
+            parsed.headerOutput,
+            parsed.libraries,
+            parsed.includeDirectories
+        )
     }
 
     private fun runProgram(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val temporaryDirectory = Files.createTempDirectory("cplus-run")
         val executable = temporaryDirectory.resolve(parsed.sources.first().nameWithoutExtension)
-        val buildExitCode = buildExecutable(parsed.sources, parsed.cSources, executable, parsed.headerOutput)
+        val buildExitCode = buildExecutable(
+            parsed.sources,
+            parsed.cSources,
+            executable,
+            parsed.headerOutput,
+            parsed.libraries,
+            parsed.includeDirectories
+        )
         if (buildExitCode != 0) return buildExitCode
         val process = ProcessBuilder(executable.toString()).inheritIO().start()
         return process.waitFor()
@@ -103,10 +125,19 @@ private class Cli {
         sources: List<Path>,
         cSources: List<Path>,
         executable: Path,
-        headerOutput: Path? = null
+        headerOutput: Path? = null,
+        libraries: List<String> = emptyList(),
+        includeDirectories: List<Path> = emptyList()
     ): Int {
         val compiler = CPlusCompiler()
-        val result = compiler.compile(CompileRequest(sources, cSources = cSources))
+        val result = compiler.compile(
+            CompileRequest(
+                sources,
+                cSources = cSources,
+                cLibraries = libraries,
+                cIncludeDirectories = includeDirectories
+            )
+        )
         printDiagnostics(result.diagnostics, sources.first())
         if (!result.isSuccessful) return 1
         val generated = result.generatedUnits.singleOrNull()?.text ?: return 2
@@ -121,7 +152,20 @@ private class Cli {
         }
         val process = try {
             val dependencySources = result.cSourceDependencies.map { it.path.toString() }
-            ProcessBuilder(listOf("cc", "-std=c17", cFile.toString()) + dependencySources + listOf("-o", executable.toString()))
+            val includeFlags = includeDirectories
+                .map { it.toAbsolutePath().normalize().toString() }
+                .distinct()
+                .flatMap { listOf("-I", it) }
+            val libraryFlags = result.cLinkDependencies.map { dependency ->
+                when (dependency.kind) {
+                    cplus.compiler.CLinkDependencyKind.LOCAL -> dependency.value
+                    cplus.compiler.CLinkDependencyKind.FOREIGN -> "-l${dependency.value}"
+                }
+            }
+            ProcessBuilder(
+                listOf("cc", "-std=c17") + includeFlags + listOf(cFile.toString()) +
+                    dependencySources + libraryFlags + listOf("-o", executable.toString())
+            )
                 .redirectErrorStream(true)
                 .start()
         } catch (error: java.io.IOException) {
@@ -161,6 +205,8 @@ private class Cli {
         var source: Path? = null
         val sources = mutableListOf<Path>()
         val cSources = mutableListOf<Path>()
+        val libraries = mutableListOf<String>()
+        val includeDirectories = mutableListOf<Path>()
         var output: Path? = null
         var headerOutput: Path? = null
         var index = 0
@@ -193,8 +239,30 @@ private class Cli {
                     cSources.add(Path.of(value))
                     index += 2
                 }
+                "--library", "-l" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    if (value == null) {
+                        System.err.println("missing library name or path after $argument")
+                        return null
+                    }
+                    libraries += value
+                    index += 2
+                }
+                "--include-dir", "-I" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    if (value == null) {
+                        System.err.println("missing include directory after $argument")
+                        return null
+                    }
+                    includeDirectories.add(Path.of(value))
+                    index += 2
+                }
                 else -> {
-                    if (source == null) source = Path.of(argument)
+                    if (argument.startsWith("-l") && argument.length > 2) {
+                        libraries += argument.removePrefix("-l")
+                    } else if (argument.startsWith("-I") && argument.length > 2) {
+                        includeDirectories.add(Path.of(argument.removePrefix("-I")))
+                    } else if (source == null) source = Path.of(argument)
                     else sources.add(Path.of(argument))
                     index++
                 }
@@ -204,7 +272,7 @@ private class Cli {
             System.err.println("a source file is required")
             return null
         }
-        return FileArguments(listOf(source) + sources, cSources, output, headerOutput)
+        return FileArguments(listOf(source) + sources, cSources, output, headerOutput, libraries, includeDirectories)
     }
 
     private fun printDiagnostics(diagnostics: List<Diagnostic>, source: Path) {
@@ -221,7 +289,7 @@ private class Cli {
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
         stream.println("C+ CLI transcoder")
-        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--c-source <file>] [--output <file>] [--header <file>]")
+        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
         stream.println()
         stream.println("commands:")
         stream.println("  transcode   translate one C+ source file to C")
@@ -237,7 +305,9 @@ private class Cli {
         val sources: List<Path>,
         val cSources: List<Path>,
         val output: Path?,
-        val headerOutput: Path?
+        val headerOutput: Path?,
+        val libraries: List<String>,
+        val includeDirectories: List<Path>
     )
 }
 
