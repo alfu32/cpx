@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R1.3.3 — unsupported declarator diagnostics and recovery
+R2.1 — typed CPX value and interpolation conformance
 
 Current milestone:
 R1 — Language and front-end conformance
@@ -3373,12 +3373,12 @@ of R1–R8 or deliberately recorded as a post-release extension.
   - R1.2.2 [DONE] — complete leading/pointer qualifiers, preserve structured
     declarators through C emission, and resolve foreign fixed-width/`stddef`
     aliases against their underlying target-aware types.
-- R1.3 [DOING] — close the remaining declaration matrix in dependency order.
+- R1.3 [DONE] — close the remaining declaration matrix in dependency order.
   - R1.3.1 [DONE] — represent function types and function-pointer declarators
     from source through semantic validation, indirect calls, and C emission.
   - R1.3.2 [DONE] — reconcile arrays, pointer arithmetic, casts, globals, and
     initializer/lvalue rules across parser, semantic analysis, and lowering.
-  - R1.3.3 [DOING] — add stable unsupported-declarator diagnostics and recovery
+  - R1.3.3 [DONE] — add stable unsupported-declarator diagnostics and recovery
     fixtures so parser acceptance cannot outrun backend support.
 
 **Deliverables**
@@ -3465,7 +3465,37 @@ Implemented and tested on Linux:
 Windows execution remains part of the final cross-platform validation pass by
 project policy.
 
+### R1.3.3 completion record
+
+Implemented and tested on Linux:
+
+- unsupported function-return-pointer suffixes produce the stable `PARSE410`
+  diagnostic;
+- parser recovery resumes at the next declaration terminator and preserves
+  later valid declarations;
+- the specification now distinguishes supported callback pointers from the
+  remaining unsupported declarator forms.
+
+Windows execution remains part of the final cross-platform validation pass by
+project policy.
+
 ## R2 [TODO] CPX, generics and reflection conformance
+
+**Progress**
+
+- R2.1 [DOING] — cover typed CPX values and interpolation categories across
+  direct bindings, composed identifiers, expressions, statements, declarations,
+  and type arguments.
+  - R2.1.1 [TODO] — complete typed value-category parsing and evaluation.
+  - R2.1.2 [TODO] — close interpolation boundary, hygiene, and provenance cases.
+  - R2.1.3 [TODO] — add deterministic expanded-source and generated-C fixtures.
+- R2.2 [TODO] — complete recursive expansion, fixed points, cycles, and cache
+  invalidation.
+- R2.3 [TODO] — complete stabilized reflection and type-universe conformance.
+
+R2.1 MUST finish before recursive specialization work because expansion results
+must have stable typed representations before identity and caching can be
+validated.
 
 **Deliverables**
 

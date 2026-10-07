@@ -81,6 +81,16 @@ class AstGoldenTest {
     }
 
     @Test
+    fun unsupportedFunctionReturnDeclaratorsRecoverAtTheNextDeclaration() {
+        val text = "int (*factory())(int); int later() { return 0; }"
+        val source = SourceFile(SourceFileId(11), Path.of("unsupported-declarator.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        assertTrue(parsed.diagnostics.any { it.code == "PARSE410" }, parsed.diagnostics.joinToString())
+        assertEquals(listOf("later"), parsed.syntax.declarations.filterIsInstance<SyntaxFunction>().map { it.name })
+    }
+
+    @Test
     fun astArenaProvidesStableAddressableNodes() {
         val range = SourceRange(SourceFileId(1), 0, 1)
         val first = AstIntegerLiteral("1", Origin.Direct(range))

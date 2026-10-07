@@ -373,6 +373,15 @@ class Parser(private val lexed: LexedSource) {
                 pointerQualifiers += qualifiers
             } while (peek().isLexeme("*"))
             val name = expectIdentifier("expected $context name in function-pointer declarator") ?: return null
+            if (!peek().isLexeme(")")) {
+                diagnostics.error(
+                    "function-pointer declarators with a function return suffix are not supported",
+                    peek().range,
+                    "PARSE410"
+                )
+                recoverTo(";")
+                return null
+            }
             expect(")", "expected ')' after function-pointer declarator")
             expect("(", "expected '(' after function-pointer name")
             val parameters = parseParameterList(false)

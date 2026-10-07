@@ -1738,8 +1738,8 @@ do not change the storage size or alignment of the qualified type.
 Pointer depth and pointer qualifiers SHALL be represented structurally rather
 than embedded in a guessed type name. Array dimensions remain declarator data
 associated with the declared identifier. Unsupported declarator forms, including
-function-pointer declarators until their dedicated implementation stage, SHALL
-produce a diagnostic rather than silently changing type meaning.
+function-return-pointer suffixes not covered by the current declarator model,
+SHALL produce a stable diagnostic rather than silently changing type meaning.
 
 Foreign typedefs SHALL retain both their external C spelling and their known
 underlying semantic type when the selected header catalogue provides it. ABI
