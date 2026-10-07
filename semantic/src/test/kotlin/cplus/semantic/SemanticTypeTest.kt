@@ -61,6 +61,36 @@ class SemanticTypeTest {
     }
 
     @Test
+    fun rejectsUnimportedWorkspaceTypesButKeepsLocalForwardReferences() {
+        val clientText = """
+            struct LocalHolder { LocalLater* next; SharedType* shared; };
+            struct LocalLater { int value; };
+            int consume(SharedType* value) { return sizeof(struct SharedType); }
+            int main() { SharedType* value; return consume(value); }
+        """.trimIndent()
+        val providerText = "pub struct SharedType { int value; };"
+        val clientSource = SourceFile(SourceFileId(30), Path.of("client.cp"), clientText, 1)
+        val providerSource = SourceFile(SourceFileId(31), Path.of("types.cp"), providerText, 1)
+        val clientParsed = Parser(Lexer().lex(clientSource)).parse()
+        val providerParsed = Parser(Lexer().lex(providerSource)).parse()
+        assertTrue(clientParsed.diagnostics.isEmpty(), clientParsed.diagnostics.joinToString())
+        assertTrue(providerParsed.diagnostics.isEmpty(), providerParsed.diagnostics.joinToString())
+        val clientDeclarations = AstBuilder().build(clientParsed.syntax).declarations
+        val providerDeclarations = AstBuilder().build(providerParsed.syntax).declarations
+        val program = AstProgram(
+            clientDeclarations + providerDeclarations,
+            clientParsed.syntax.origin,
+            listOf(AstModule("client", clientDeclarations), AstModule("types", providerDeclarations))
+        )
+
+        val result = SemanticAnalyzer().analyze(program)
+
+        assertEquals(4, result.diagnostics.count { it.code == "SEM410" }, result.diagnostics.joinToString())
+        assertTrue(result.diagnostics.none { it.message.contains("LocalLater") }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun cSourceSymbolsExposeForeignToolingInformation() {
         val cText = "int helper_value(void) { return 12; }"
         val cSource = SourceFile(SourceFileId(18), Path.of("helper.c"), cText, 1)

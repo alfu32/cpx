@@ -11,14 +11,14 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    26/49 evidenced on Linux
+Roadmap leaf tasks:    27/49 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R1.4.2 — enforce module-local type resolution and visibility
+Current task:          R1.4.3 — bind selective type imports and aliases
 Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 9/15 primitive, ABI, type-import, and user-alias conformance open
+R1 [DOING] 10/15 primitive, ABI, type-import, and user-alias conformance open
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
@@ -27,7 +27,7 @@ R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       26/49 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       27/49 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -3484,7 +3484,7 @@ of R1–R8 or deliberately recorded as a post-release extension.
     initializer/lvalue rules across parser, semantic analysis, and lowering.
   - R1.3.3 [DONE] — add stable unsupported-declarator diagnostics and recovery
     fixtures so parser acceptance cannot outrun backend support.
-- R1.4 [DOING] [1/5] — implement kind-aware source type imports and
+- R1.4 [DOING] [2/5] — implement kind-aware source type imports and
   module-scoped visibility. This is a prerequisite for R1.2.4.
   - R1.4.1 [DONE] — catalogue module-owned source type declarations and their
     public/private export status, including aliases, structs, unions, and
@@ -3493,9 +3493,15 @@ of R1–R8 or deliberately recorded as a post-release extension.
       module and exposes a public-only export map while retaining each symbol's
       kind and visibility. Tests cover aliases, structs, unions, and enums;
       `:semantic:test` and `:compiler:test` pass on Linux.
-  - R1.4.2 [TODO] — resolve locally declared types in their owning module and
+  - R1.4.2 [DONE] — resolve locally declared types in their owning module and
     reject unimported cross-module references while preserving forward type
     references and existing C-header imports.
+    - Added a recursive type-reference visibility check over declarations,
+      fields, signatures, locals, casts, and type/layout queries. Cross-module
+      source types without imports receive SEM410; same-module forward
+      references remain valid. C-header type imports remain unaffected.
+    - `:semantic:test` and `:compiler:test` pass on Linux, including the
+      explicit unimported-type and local-forward-reference cases.
   - R1.4.3 [TODO] — bind selective type imports and `as` renames into the
     importing module; validate missing/private exports, mixed symbol kinds,
     and collisions with stable diagnostics.

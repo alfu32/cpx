@@ -1125,6 +1125,20 @@ class SemanticAnalyzer(
             scopes.create(ScopeKind.CPX_TEMPLATE, moduleScope(declarationModules[declaration] ?: defaultModule))
         }
 
+        val sourceTypeOwners = SourceTypeCatalogue.from(symbols).declarationsByModule
+            .flatMap { (moduleName, declarations) -> declarations.keys.map { it to moduleName } }
+            .toMap()
+        ModuleTypeReferenceCollector.collect(program).forEach { reference ->
+            val ownerModule = sourceTypeOwners[reference.type.name]
+            if (ownerModule != null && ownerModule != reference.moduleName) {
+                diagnostics.error(
+                    "type '${reference.type.name}' belongs to module '$ownerModule' and is not imported into module '${reference.moduleName}'",
+                    rangeOf(reference.type.origin),
+                    "SEM410"
+                )
+            }
+        }
+
         val initialModel = SemanticModel(
             program,
             symbols,
