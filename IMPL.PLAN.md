@@ -11,14 +11,14 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 (complete; retained for traceability)
-Roadmap leaf tasks:    22/42 evidenced on Linux
+Roadmap leaf tasks:    22/44 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
 Current task:          R1.1.1 — parse complete C primitive type specifiers
 Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 4/8  primitive parsing and ABI fidelity reopened
+R1 [DOING] 4/10 primitive parsing, ABI fidelity, and user aliases reopened
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
@@ -36,9 +36,11 @@ below. Its current execution sequence is:
    diagnostics through CLI, LSP, and generated C.
 2. R1.2.1/R1.2.3 — preserve primitive signedness, target widths, and one
    canonical type identity through semantic analysis, ABI layout, and C output.
-3. R3.1.3 — verify parsed spellings through emitted C and independent ABI
-   fixtures.
-4. R5.2 onward — resume native std and platform work after the type boundary
+3. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
+   and `u8`…`u64`, then define capability-gated `i128`/`u128` support.
+4. R3.1.3 — verify parsed spellings and aliases through emitted C and
+   independent ABI fixtures.
+5. R5.2 onward — resume native std and platform work after the type boundary
    is reliable, then finish R6–R8 and perform the deferred Windows validation
    and patch pass.
 
@@ -2922,14 +2924,18 @@ all create correct bindings.
 - SDK §45 Compiler-generated Memory Operations
 
 **Acceptance**
-- fixed-width primitives, `usize/isize`, low-level numeric limits and pointer/memory utilities are available without hosted OS dependencies.
+- target-neutral byte/size/index aliases, `usize/isize`, low-level numeric
+  limits, and pointer/memory utilities are available without hosted OS
+  dependencies; opt-in `iN`/`uN` aliases are tracked separately in R1.2.4–R1.2.5.
 - portable copy/move/set/compare/zero operations exist.
 - C symbols `memcpy`, `memmove`, `memset`, `memcmp` can be provided by the self-hosted runtime.
 - compiler/runtime tests verify overlap and alignment edge cases.
 
 **Implementation**
 - Added source-delivered `std.mem` copy/move/set/compare operations and compiler-runtime equivalents with overlap-safe behavior.
-- Added fixed-width/core aliases and explicit byte/text source contracts without hosted OS dependencies.
+- Added target-neutral core aliases and explicit byte/text source contracts
+  without hosted OS dependencies. This does not implement the opt-in
+  `std.fixed_width` aliases tracked by R1.2.4–R1.2.5.
 - SDK libc/std source modules import their dependencies explicitly and all delivered `.cp` sources pass CLI semantic checking as individual package entry points.
 
 **Depends**
@@ -3411,6 +3417,20 @@ of R1–R8 or deliberately recorded as a post-release extension.
   - R1.2.3 [TODO] — audit semantic, ABI-layout, reflection, and C-backend
     primitive tables against one canonical type identity; keep SDK declarations
     idiomatic C and remove unused custom integer aliases from `std.core`.
+  - R1.2.4 [TODO] — provide `std.fixed_width` as an explicit-import user-level
+    source module defining ordinary typedef aliases `i8`, `i16`, `i32`, `i64`,
+    `u8`, `u16`, `u32`, and `u64` over the target's corresponding C
+    `intN_t`/`uintN_t` types. Keep these names out of compiler built-ins,
+    `std.core`, and native SDK API signatures; do not inject them implicitly.
+    Require the aliases on supported Linux/Windows x86_64 targets, diagnose
+    unavailable exact widths on other targets, and test imports, aggregates,
+    pointers, function signatures, and generated C.
+  - R1.2.5 [TODO] — establish target/compiler capability and exact ABI support
+    for signed and unsigned 128-bit integers; because standard C does not
+    provide `int128_t`/`uint128_t`, expose `i128`/`u128` in `std.fixed_width`
+    only where primitive representation, calling convention, and generated-C
+    mapping are verified; test layout, arithmetic, conversions, function
+    arguments/returns, and generated C, with explicit diagnostics elsewhere.
 - R1.3 [DONE] — close the remaining declaration matrix in dependency order.
   - R1.3.1 [DONE] — represent function types and function-pointer declarators
     from source through semantic validation, indirect calls, and C emission.
@@ -3428,8 +3448,10 @@ of R1–R8 or deliberately recorded as a post-release extension.
   `unsigned char`, and between `int`, `long`, and `long long` variants;
 - keep SDK public declarations in idiomatic C, using standard C names such as
   `size_t`, `ptrdiff_t`, and `uintN_t` where appropriate; do not add custom
-  `u8`/`i8`-style SDK aliases. User code MAY define opt-in aliases with normal
-  `typedef` declarations, while 128-bit aliases require explicit target support;
+  `u8`/`i8`-style aliases to `std.core` or native SDK APIs. Provide `i8` through
+  `i64` and `u8` through `u64` as ordinary typedefs in the explicitly imported
+  user-level `std.fixed_width` source module; expose 128-bit aliases there
+  only with verified compiler and target support;
 - close parser/AST/semantic gaps for initializers, lvalues, casts, pointer
   arithmetic, arrays, globals, declarations, control flow, and diagnostics;
 - make every normative language example compile or produce the specified
@@ -3902,8 +3924,9 @@ dependencies.
 - R5.5 [TODO] — record Darwin as either executablely supported or explicitly
   capability-gated, without claiming a partial adapter as complete.
 
-R5.2 is sequenced after R1.1.1–R1.2.3 and R3.1.3 because it extends public SDK
-function signatures and must use the verified C primitive and alias boundary.
+R5.2 is sequenced after R1.1.1–R1.2.5 and R3.1.3 because it extends public
+SDK function signatures and must use the verified C primitive and alias
+boundary.
 
 ### R5.1 completion record
 

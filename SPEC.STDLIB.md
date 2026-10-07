@@ -423,7 +423,6 @@ The C compatibility library is a compatibility façade over the same runtime whe
 It SHALL include:
 
 ```text
-fixed-width integer aliases
 usize / isize
 pointer utilities
 result/error primitives
@@ -440,6 +439,17 @@ The SDK provides target-neutral byte, size, and index aliases together with
 explicit `std_error_t`, `std_result_t`, and `std_option_t` value carriers.
 These carriers contain status and value data only; PAL handles, raw syscall
 numbers, and host `errno` values are not part of their representation.
+
+`std.core` SHALL NOT add custom `i8`/`i16`/`i32`/`i64`, `u8`/`u16`/`u32`/`u64`,
+or 128-bit aliases to compiler built-ins or native SDK API signatures. Programs
+that want concise fixed-width names MAY explicitly import the user-level
+`std.fixed_width` source module. That module defines ordinary aliases over
+the target's exact-width integer types (`i8` through `i64` over `int8_t`
+through `int64_t`, and `u8` through `u64` over `uint8_t` through `uint64_t`);
+it is not implicitly imported. The `i128` and `u128` aliases are available only
+on targets for which the compiler, generated-C mapping, and ABI support are
+verified. Unsupported widths MUST produce a diagnostic rather than silently
+changing width or signedness.
 
 ---
 
