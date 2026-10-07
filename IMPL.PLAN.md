@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 43/93
+Overall: 44/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [19/27] 2. Semantic model and modules
+[DOING] [20/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.4.1 — foreign symbol and type representation
+2.4.2.2 — parse C header declarations
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -686,9 +686,9 @@ all create correct bindings.
 
 ---
 
-## 2.4 [DOING] [1/6] C interoperability model
+## 2.4 [DOING] [2/6] C interoperability model
 
-### 2.4.1 [TODO] Foreign symbol and type representation
+### 2.4.1 [DONE] Foreign symbol and type representation
 
 **Language**
 - LS §22

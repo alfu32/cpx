@@ -1,5 +1,6 @@
 package cplus.compiler
 
+import cplus.semantic.SymbolKind
 import java.nio.file.Files
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -11,13 +12,15 @@ class CompilerIntegrationTest {
     fun importedForeignTypesRetainCNamesAndHeaders() {
         val source = """
             import { FILE } from c.stdio;
+            import { EOF } from c.stdio;
+            import { SEEK_SET } from c.stdio;
             import { size_t } from c.stddef;
 
             FILE* output;
             size_t length;
 
             int main() {
-                return 0;
+                return EOF - EOF;
             }
         """.trimIndent()
         val result = CPlusCompiler().compileText(Files.createTempFile("cplus-foreign-types", ".cp"), source)
@@ -28,6 +31,9 @@ class CompilerIntegrationTest {
         assertTrue(generated.contains("#include <stdio.h>"))
         assertTrue(generated.contains("FILE* output;"))
         assertTrue(generated.contains("size_t length;"))
+        assertTrue(generated.contains("return (EOF - EOF);"))
+        assertEquals("EOF", result.semanticModel!!.foreignGlobals.getValue("EOF").externalName)
+        assertEquals(SymbolKind.FOREIGN_ENUM_VALUE, result.semanticModel!!.foreignGlobals.getValue("SEEK_SET").kind)
 
         val directory = Files.createTempDirectory("cplus-foreign-types-e2e")
         val cFile = directory.resolve("program.c")

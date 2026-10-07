@@ -18,6 +18,7 @@ enum class SymbolKind {
     ENUM,
     ALIAS,
     FOREIGN_TYPE,
+    FOREIGN_ENUM_VALUE,
     ENUM_VALUE,
     FIELD,
     FUNCTION,
@@ -132,7 +133,8 @@ data class Symbol(
     val origin: Origin,
     val visibility: Visibility = Visibility.PRIVATE,
     val moduleName: String? = null,
-    val qualifiedName: QualifiedName = QualifiedName(name)
+    val qualifiedName: QualifiedName = QualifiedName(name),
+    val externalName: String? = null
 )
 
 data class FieldSymbol(
@@ -179,7 +181,8 @@ data class SemanticModel(
     val foreignTypes: Map<String, ForeignType> = emptyMap(),
     val canonicalTypeIds: Map<String, TypeId> = emptyMap(),
     val modulePackages: Map<String, String> = emptyMap(),
-    val packageModules: Map<String, Set<String>> = emptyMap()
+    val packageModules: Map<String, Set<String>> = emptyMap(),
+    val foreignGlobals: Map<String, Symbol> = emptyMap()
 ) {
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
 
@@ -214,6 +217,7 @@ class SemanticAnalyzer {
         val functions = linkedMapOf<String, FunctionSymbol>()
         val methods = linkedMapOf<String, Map<String, MethodSymbol>>()
         val globals = linkedMapOf<String, Symbol>()
+        val foreignGlobals = linkedMapOf<String, Symbol>()
         val moduleFunctions = linkedMapOf<String, LinkedHashMap<String, FunctionSymbol>>()
         val declarationModules = IdentityHashMap<AstDeclaration, String>()
         val defaultModule = "<main>"
@@ -258,7 +262,8 @@ class SemanticAnalyzer {
             type: CType,
             origin: Origin,
             moduleName: String? = null,
-            visibility: Visibility = Visibility.PRIVATE
+            visibility: Visibility = Visibility.PRIVATE,
+            externalName: String? = null
         ): Symbol = Symbol(
             SymbolId(nextSymbolId.next()),
             name,
@@ -267,6 +272,7 @@ class SemanticAnalyzer {
             origin,
             moduleName = moduleName,
             visibility = visibility,
+            externalName = externalName,
             qualifiedName = QualifiedName(
                 listOfNotNull(moduleName?.let { modulePackages[it] }, moduleName, name).joinToString("::")
             )
@@ -278,6 +284,14 @@ class SemanticAnalyzer {
             foreignTypes[name] = type
             types += type
             val symbol = newSymbol(name, SymbolKind.FOREIGN_TYPE, type, origin, moduleName, Visibility.PUBLIC)
+            scopes.define(rootScope, name, symbol.id)
+        }
+
+        fun registerForeignConstant(name: String, moduleName: String, origin: Origin, kind: SymbolKind) {
+            if (foreignGlobals.containsKey(name)) return
+            val symbol = newSymbol(name, kind, primitive("int"), origin, moduleName, Visibility.PUBLIC, name)
+            globals[name] = symbol
+            foreignGlobals[name] = symbol
             scopes.define(rootScope, name, symbol.id)
         }
 
@@ -396,13 +410,23 @@ class SemanticAnalyzer {
                                 "printf" -> {
                                     val returnType = primitive("int")
                                     val signature = FunctionType(TypeId(nextTypeId.next()), returnType, emptyList(), isVariadic = true).also(types::add)
-                                    val symbol = newSymbol(name, SymbolKind.FOREIGN, signature, declaration.origin, declaration.module, Visibility.PUBLIC)
+                                    val symbol = newSymbol(
+                                        name,
+                                        SymbolKind.FOREIGN,
+                                        signature,
+                                        declaration.origin,
+                                        declaration.module,
+                                        Visibility.PUBLIC,
+                                        name
+                                    )
                                     val function = FunctionSymbol(symbol, returnType, emptyList(), isVariadic = true, signature = signature)
                                     functions[name] = function
                                     moduleFunctions.getOrPut(declaration.module) { linkedMapOf() }[name] = function
                                     scopes.define(rootScope, name, symbol.id)
                                 }
                                 "FILE" -> registerForeignType(name, declaration.module, declaration.origin)
+                                "EOF" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN)
+                                "SEEK_SET", "SEEK_CUR", "SEEK_END" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN_ENUM_VALUE)
                                 else -> diagnostics.error("unsupported imported C symbol '$name' from c.stdio", rangeOf(declaration.origin), "SEM401")
                             }
                         }
@@ -470,7 +494,7 @@ class SemanticAnalyzer {
             }
         }
 
-        val visibleFunctions = resolveImportedFunctions(program, moduleFunctions, foreignTypes, diagnostics, knownModules)
+        val visibleFunctions = resolveImportedFunctions(program, moduleFunctions, foreignTypes, foreignGlobals, diagnostics, knownModules)
 
         program.declarations.filterIsInstance<AstFunction>().forEach { declaration ->
             val function = functions[declaration.name] ?: return@forEach
@@ -519,7 +543,8 @@ class SemanticAnalyzer {
                 ids
             },
             modulePackages,
-            modulePackages.entries.groupBy({ it.value }, { it.key }).mapValues { (_, modules) -> modules.toSet() }
+            modulePackages.entries.groupBy({ it.value }, { it.key }).mapValues { (_, modules) -> modules.toSet() },
+            foreignGlobals
         )
         return SemanticResult(model, diagnostics.diagnostics)
     }
@@ -528,6 +553,7 @@ class SemanticAnalyzer {
         program: AstProgram,
         moduleFunctions: Map<String, Map<String, FunctionSymbol>>,
         foreignTypes: Map<String, ForeignType>,
+        foreignGlobals: Map<String, Symbol>,
         diagnostics: DiagnosticBag,
         knownModules: Set<String>
     ): Map<String, Map<String, FunctionSymbol>> {
@@ -550,7 +576,7 @@ class SemanticAnalyzer {
                         diagnostics.error("module import '${import.module}' cannot be resolved", rangeOf(import.origin), "SEM402")
                     } else if (import.names.isNotEmpty()) {
                         import.names.forEach { name ->
-                            if (name !in foreignTypes) {
+                            if (name !in foreignTypes && name !in foreignGlobals) {
                                 diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
                             }
                         }
@@ -564,7 +590,7 @@ class SemanticAnalyzer {
                     return@forEach
                 }
                 import.names.forEach { name ->
-                    if (name in foreignTypes) return@forEach
+                    if (name in foreignTypes || name in foreignGlobals) return@forEach
                     val function = targetFunctions[name]
                     if (function == null) {
                         diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
