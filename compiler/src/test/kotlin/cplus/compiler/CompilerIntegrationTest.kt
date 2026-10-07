@@ -50,6 +50,35 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun configuredHeaderDeclarationsResolveForeignFunctionSignatures() {
+        val source = """
+            import { puts } from c.stdio;
+
+            int main() {
+                puts("header adapter");
+                return 0;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-header-import", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("puts", result.semanticModel!!.functions.getValue("puts").symbol.externalName)
+        val directory = Files.createTempDirectory("cplus-header-import-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(result.generatedUnits.single().text)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(0, execution.waitFor())
+        assertEquals("header adapter\n", execution.inputStream.bufferedReader().readText())
+    }
+
+    @Test
     fun typeAliasesResolveAndEmitAsTypedefs() {
         val source = """
             count_t total;

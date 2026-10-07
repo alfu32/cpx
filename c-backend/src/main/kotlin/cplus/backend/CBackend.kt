@@ -18,6 +18,7 @@ class CLowerer(private val semantic: SemanticModel) {
                 when (import.module) {
                     "c.stdio" -> listOf("stdio.h")
                     "c.stddef" -> listOf("stddef.h")
+                    "c.stdlib" -> listOf("stdlib.h")
                     "c.math" -> listOf("math.h")
                     else -> emptyList()
                 }

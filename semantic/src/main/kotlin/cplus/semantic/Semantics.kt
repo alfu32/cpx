@@ -197,7 +197,9 @@ data class SemanticResult(
         get() = model != null && diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
 }
 
-class SemanticAnalyzer {
+class SemanticAnalyzer(
+    private val headerImportService: CHeaderImportService = CHeaderImportService()
+) {
     private val nextSymbolId = generateSequence(1) { it + 1 }.iterator()
     private val nextTypeId = generateSequence(1) { it + 1 }.iterator()
 
@@ -293,6 +295,77 @@ class SemanticAnalyzer {
             globals[name] = symbol
             foreignGlobals[name] = symbol
             scopes.define(rootScope, name, symbol.id)
+        }
+
+        fun foreignTypeFromName(typeName: String, moduleName: String, origin: Origin): CType {
+            val normalized = typeName.trim().removePrefix("const ").trim()
+            val pointerDepth = normalized.count { it == '*' }
+            val baseName = normalized.replace("*", "").trim()
+            var type = when {
+                baseName in knownPrimitiveNames -> primitive(baseName)
+                baseName == "size_t" -> {
+                    registerForeignType(baseName, "c.stddef", origin)
+                    foreignTypes.getValue(baseName)
+                }
+                foreignTypes[baseName] != null -> foreignTypes.getValue(baseName)
+                else -> {
+                    diagnostics.error("unsupported foreign type '$baseName' from $moduleName", rangeOf(origin), "SEM407")
+                    UnknownType(TypeId(-1))
+                }
+            }
+            repeat(pointerDepth) {
+                type = PointerType(TypeId(nextTypeId.next()), type)
+            }
+            return type
+        }
+
+        fun registerHeaderDeclaration(declaration: CHeaderDeclaration, moduleName: String, origin: Origin): Boolean {
+            when (declaration.kind) {
+                ForeignDeclarationKind.TYPE -> registerForeignType(declaration.name, moduleName, origin)
+                ForeignDeclarationKind.FUNCTION -> {
+                    val returnType = foreignTypeFromName(declaration.typeName ?: "void", moduleName, origin)
+                    val parameterSymbols = declaration.parameterTypes.mapIndexed { index, parameterType ->
+                        val type = foreignTypeFromName(parameterType, moduleName, origin)
+                        newSymbol("${declaration.name}_arg$index", SymbolKind.PARAMETER, type, origin, moduleName, Visibility.PUBLIC)
+                    }
+                    val signature = FunctionType(
+                        TypeId(nextTypeId.next()),
+                        returnType,
+                        parameterSymbols.map { it.type },
+                        declaration.isVariadic
+                    ).also(types::add)
+                    val symbol = newSymbol(
+                        declaration.name,
+                        SymbolKind.FOREIGN,
+                        signature,
+                        origin,
+                        moduleName,
+                        Visibility.PUBLIC,
+                        declaration.name
+                    )
+                    val function = FunctionSymbol(symbol, returnType, parameterSymbols, declaration.isVariadic, signature)
+                    functions[declaration.name] = function
+                    moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
+                    scopes.define(rootScope, declaration.name, symbol.id)
+                }
+                ForeignDeclarationKind.GLOBAL -> {
+                    val type = foreignTypeFromName(declaration.typeName ?: "int", moduleName, origin)
+                    val symbol = newSymbol(
+                        declaration.name,
+                        SymbolKind.FOREIGN,
+                        type,
+                        origin,
+                        moduleName,
+                        Visibility.PUBLIC,
+                        declaration.name
+                    )
+                    globals[declaration.name] = symbol
+                    foreignGlobals[declaration.name] = symbol
+                    scopes.define(rootScope, declaration.name, symbol.id)
+                }
+                ForeignDeclarationKind.ENUM_VALUE -> registerForeignConstant(declaration.name, moduleName, origin, SymbolKind.FOREIGN_ENUM_VALUE)
+            }
+            return true
         }
 
         fun declarationVisibility(declaration: AstDeclaration): Visibility =
@@ -427,7 +500,9 @@ class SemanticAnalyzer {
                                 "FILE" -> registerForeignType(name, declaration.module, declaration.origin)
                                 "EOF" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN)
                                 "SEEK_SET", "SEEK_CUR", "SEEK_END" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN_ENUM_VALUE)
-                                else -> diagnostics.error("unsupported imported C symbol '$name' from c.stdio", rangeOf(declaration.origin), "SEM401")
+                                else -> headerImportService.declarations(declaration.module)[name]?.let {
+                                    registerHeaderDeclaration(it, declaration.module, declaration.origin)
+                                } ?: diagnostics.error("unsupported imported C symbol '$name' from c.stdio", rangeOf(declaration.origin), "SEM401")
                             }
                         }
                     } else if (declaration.module == "c.stddef") {
@@ -435,8 +510,16 @@ class SemanticAnalyzer {
                             if (name == "size_t") {
                                 registerForeignType(name, declaration.module, declaration.origin)
                             } else {
-                                diagnostics.error("unsupported imported C symbol '$name' from c.stddef", rangeOf(declaration.origin), "SEM402")
+                                headerImportService.declarations(declaration.module)[name]?.let {
+                                    registerHeaderDeclaration(it, declaration.module, declaration.origin)
+                                } ?: diagnostics.error("unsupported imported C symbol '$name' from c.stddef", rangeOf(declaration.origin), "SEM402")
                             }
+                        }
+                    } else if (declaration.module.startsWith("c.")) {
+                        val declarations = headerImportService.declarations(declaration.module)
+                        declaration.names.forEach { name ->
+                            declarations[name]?.let { registerHeaderDeclaration(it, declaration.module, declaration.origin) }
+                                ?: diagnostics.error("unsupported imported C symbol '$name' from ${declaration.module}", rangeOf(declaration.origin), "SEM408")
                         }
                     }
                 }
@@ -572,7 +655,7 @@ class SemanticAnalyzer {
                     it.symbol.visibility == Visibility.PUBLIC || it.symbol.kind == SymbolKind.FOREIGN
                 }.orEmpty()
                 if (targetFunctions == null) {
-                    if (import.module !in setOf("c.stdio", "c.stddef", "c.math") && targetName !in knownModules) {
+                    if (import.module !in setOf("c.stdio", "c.stddef", "c.stdlib", "c.math") && targetName !in knownModules) {
                         diagnostics.error("module import '${import.module}' cannot be resolved", rangeOf(import.origin), "SEM402")
                     } else if (import.names.isNotEmpty()) {
                         import.names.forEach { name ->

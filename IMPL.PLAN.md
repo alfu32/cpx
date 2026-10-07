@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 44/93
+Overall: 45/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [20/27] 2. Semantic model and modules
+[DOING] [21/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.4.2.2 — parse C header declarations
+2.4.2.3 — preserve unsupported preprocessor boundaries
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -705,7 +705,7 @@ all create correct bindings.
 **Depends**
 - 2.2.1
 
-### 2.4.2 [DOING] [1/3] C declaration parser/import adapter
+### 2.4.2 [DOING] [2/3] C declaration parser/import adapter
 
 **Language**
 - LS §22.1–22.3
@@ -729,7 +729,7 @@ all create correct bindings.
 - 1.3.3
 - 2.2.1
 
-#### 2.4.2.2 [TODO] Parse C header declarations
+#### 2.4.2.2 [DONE] Parse C header declarations
 
 **Acceptance**
 - supported declarations from configured C headers populate foreign symbols.
