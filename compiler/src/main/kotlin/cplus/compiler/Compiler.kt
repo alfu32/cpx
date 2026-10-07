@@ -71,11 +71,16 @@ class CPlusCompiler(
     private val context: CompilerContext = CompilerContext()
 ) {
     fun compile(request: CompileRequest): CompileResult {
+        val foreignInputs = loadForeignSources(request.cSources)
         if (request.sources.size <= 1) {
-            val artifacts = request.sources.map { compileOne(it, request.options) }
-            return resultOf(artifacts, cSourceDependencies = dependencies(request.cSources))
+            val artifacts = request.sources.map { compileOne(it, request.options, foreignInputs.units) }
+            return resultOf(
+                artifacts,
+                cSourceDependencies = dependencies(request.cSources),
+                additionalDiagnostics = foreignInputs.diagnostics
+            )
         }
-        return compileWorkspace(request)
+        return compileWorkspace(request, foreignInputs)
     }
 
     fun compileText(path: Path, text: String, options: CompilerOptions = CompilerOptions()): CompileResult {
@@ -83,17 +88,21 @@ class CPlusCompiler(
         return resultOf(listOf(compileFrontend(frontend(source), options)))
     }
 
-    private fun compileOne(path: Path, options: CompilerOptions): CompilationArtifacts {
-        return compileFrontend(frontend(path), options)
+    private fun compileOne(path: Path, options: CompilerOptions, foreignSources: List<CSourceUnit>): CompilationArtifacts {
+        return compileFrontend(frontend(path), options, foreignSources)
     }
 
-    private fun compileFrontend(frontend: FrontendUnit, options: CompilerOptions): CompilationArtifacts {
+    private fun compileFrontend(
+        frontend: FrontendUnit,
+        options: CompilerOptions,
+        foreignSources: List<CSourceUnit> = emptyList()
+    ): CompilationArtifacts {
         val source = frontend.source
         val lexed = frontend.lexed
         val parsed = frontend.parsed
         val expanded = frontend.expanded
         val ast = frontend.ast
-        val semantic = context.semanticAnalyzer.analyze(ast)
+        val semantic = context.semanticAnalyzer.analyze(ast, foreignSources = foreignSources)
         if (!semantic.isSuccessful) {
             return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null)
         }
@@ -106,7 +115,7 @@ class CPlusCompiler(
         return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, generated)
     }
 
-    private fun compileWorkspace(request: CompileRequest): CompileResult {
+    private fun compileWorkspace(request: CompileRequest, foreignInputs: ForeignInputs): CompileResult {
         val units = request.sources.map(::frontend)
         val moduleGraph = ModuleGraphBuilder().build(
             units.map { ModuleSource(it.source, it.expanded?.program ?: it.parsed.syntax) }
@@ -123,8 +132,10 @@ class CPlusCompiler(
                 AstModule(unit.source.path.fileName.toString().substringBeforeLast('.'), unit.ast.declarations)
             }
         )
-        val semantic = context.semanticAnalyzer.analyze(mergedAst, moduleGraph.moduleNames)
-        val additionalDiagnostics = units.drop(1).flatMap { it.diagnostics() } + unresolvedImportCycleDiagnostics(moduleGraph, semantic.diagnostics)
+        val semantic = context.semanticAnalyzer.analyze(mergedAst, moduleGraph.moduleNames, foreignInputs.units)
+        val additionalDiagnostics = units.drop(1).flatMap { it.diagnostics() } +
+            unresolvedImportCycleDiagnostics(moduleGraph, semantic.diagnostics) +
+            foreignInputs.diagnostics
         val base = first
         if (!semantic.isSuccessful) {
             return resultOf(
@@ -208,9 +219,10 @@ class CPlusCompiler(
     private fun resultOf(
         artifacts: List<CompilationArtifacts>,
         moduleGraph: ModuleGraph? = null,
-        cSourceDependencies: List<CSourceDependency> = emptyList()
+        cSourceDependencies: List<CSourceDependency> = emptyList(),
+        additionalDiagnostics: List<Diagnostic> = emptyList()
     ): CompileResult = CompileResult(
-        diagnostics = artifacts.flatMap { it.allDiagnostics() },
+        diagnostics = artifacts.flatMap { it.allDiagnostics() } + additionalDiagnostics,
         generatedUnits = artifacts.mapNotNull { it.generated },
         semanticModel = artifacts.singleOrNull()?.semantic?.model,
         artifacts = artifacts,
@@ -222,6 +234,35 @@ class CPlusCompiler(
         .map { it.toAbsolutePath().normalize() }
         .distinct()
         .map(::CSourceDependency)
+
+    private fun loadForeignSources(paths: List<Path>): ForeignInputs {
+        val units = mutableListOf<CSourceUnit>()
+        val diagnostics = mutableListOf<Diagnostic>()
+        dependencies(paths).forEach { dependency ->
+            val path = dependency.path
+            if (!Files.isRegularFile(path)) {
+                diagnostics += Diagnostic(
+                    DiagnosticSeverity.ERROR,
+                    "C source dependency does not exist or is not a regular file: $path",
+                    null,
+                    "CIMP001"
+                )
+                return@forEach
+            }
+            try {
+                val source = context.sourceRepository.put(path, Files.readString(path))
+                units += CSourceUnit(source, "c.source.$path")
+            } catch (error: Exception) {
+                diagnostics += Diagnostic(
+                    DiagnosticSeverity.ERROR,
+                    "unable to read C source dependency '$path': ${error.message ?: error::class.simpleName}",
+                    null,
+                    "CIMP002"
+                )
+            }
+        }
+        return ForeignInputs(units, diagnostics)
+    }
 
     private fun unresolvedImportCycleDiagnostics(
         moduleGraph: ModuleGraph,
@@ -290,4 +331,9 @@ class CPlusCompiler(
         val ast = context.astBuilder.build(expanded.program)
         return FrontendUnit(source, lexed, parsed, expanded, ast)
     }
+
+    private data class ForeignInputs(
+        val units: List<CSourceUnit>,
+        val diagnostics: List<Diagnostic>
+    )
 }

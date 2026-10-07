@@ -14,7 +14,10 @@ class CompilerIntegrationTest {
         val source = directory.resolve("main.cp").also {
             it.writeText("int main() { return 0; }")
         }
-        val cSource = directory.resolve("helpers").resolve("..").resolve("helper.c")
+        Files.createDirectories(directory.resolve("helpers"))
+        val cSource = directory.resolve("helpers").resolve("..").resolve("helper.c").also {
+            it.writeText("int helper_value(void) { return 0; }")
+        }
 
         val result = CPlusCompiler().compile(
             CompileRequest(
@@ -36,8 +39,6 @@ class CompilerIntegrationTest {
         val source = directory.resolve("main.cp").also {
             it.writeText(
                 """
-                    int helper_value();
-
                     int main() {
                         return helper_value();
                     }

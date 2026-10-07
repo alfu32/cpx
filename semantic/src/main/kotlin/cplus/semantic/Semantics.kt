@@ -203,7 +203,11 @@ class SemanticAnalyzer(
     private val nextSymbolId = generateSequence(1) { it + 1 }.iterator()
     private val nextTypeId = generateSequence(1) { it + 1 }.iterator()
 
-    fun analyze(program: AstProgram, knownModules: Set<String> = emptySet()): SemanticResult {
+    fun analyze(
+        program: AstProgram,
+        knownModules: Set<String> = emptySet(),
+        foreignSources: List<CSourceUnit> = emptyList()
+    ): SemanticResult {
         val diagnostics = DiagnosticBag()
         val symbols = mutableListOf<Symbol>()
         val types = mutableListOf<CType>()
@@ -220,6 +224,7 @@ class SemanticAnalyzer(
         val methods = linkedMapOf<String, Map<String, MethodSymbol>>()
         val globals = linkedMapOf<String, Symbol>()
         val foreignGlobals = linkedMapOf<String, Symbol>()
+        val foreignSourceFunctions = linkedMapOf<String, FunctionSymbol>()
         val moduleFunctions = linkedMapOf<String, LinkedHashMap<String, FunctionSymbol>>()
         val declarationModules = IdentityHashMap<AstDeclaration, String>()
         val defaultModule = "<main>"
@@ -319,10 +324,20 @@ class SemanticAnalyzer(
             return type
         }
 
-        fun registerHeaderDeclaration(declaration: CHeaderDeclaration, moduleName: String, origin: Origin): Boolean {
+        fun registerHeaderDeclaration(
+            declaration: CHeaderDeclaration,
+            moduleName: String,
+            origin: Origin,
+            exposeGlobally: Boolean = false
+        ): Boolean {
             when (declaration.kind) {
                 ForeignDeclarationKind.TYPE -> registerForeignType(declaration.name, moduleName, origin)
                 ForeignDeclarationKind.FUNCTION -> {
+                    val existing = functions[declaration.name]
+                    if (existing?.symbol?.kind == SymbolKind.FOREIGN) {
+                        if (exposeGlobally) foreignSourceFunctions.putIfAbsent(declaration.name, existing)
+                        return true
+                    }
                     val returnType = foreignTypeFromName(declaration.typeName ?: "void", moduleName, origin)
                     val parameterSymbols = declaration.parameterTypes.mapIndexed { index, parameterType ->
                         val type = foreignTypeFromName(parameterType, moduleName, origin)
@@ -346,6 +361,7 @@ class SemanticAnalyzer(
                     val function = FunctionSymbol(symbol, returnType, parameterSymbols, declaration.isVariadic, signature)
                     functions[declaration.name] = function
                     moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
+                    if (exposeGlobally) foreignSourceFunctions[declaration.name] = function
                     scopes.define(rootScope, declaration.name, symbol.id)
                 }
                 ForeignDeclarationKind.GLOBAL -> {
@@ -393,6 +409,15 @@ class SemanticAnalyzer(
                     )
                     scopes.define(rootScope, symbol.name, symbol.id)
                 }
+            }
+        }
+
+        foreignSources.forEach { sourceUnit ->
+            headerImportService.sourceDeclarations(sourceUnit.source.text).values.forEach { declaration ->
+                val origin = declaration.sourceRange?.let { range ->
+                    Origin.Direct(SourceRange(sourceUnit.source.id, range.first, range.last + 1))
+                } ?: Origin.Synthetic(null)
+                registerHeaderDeclaration(declaration, sourceUnit.moduleName, origin, exposeGlobally = true)
             }
         }
 
@@ -444,9 +469,10 @@ class SemanticAnalyzer(
                     }
                 }
                 is AstFunction -> {
-                    if (functions.containsKey(declaration.name)) {
+                    val existing = functions[declaration.name]
+                    if (existing != null && !(existing.symbol.kind == SymbolKind.FOREIGN && declaration.body == null)) {
                         diagnostics.error("duplicate function '${declaration.name}'", rangeOf(declaration.origin), "SEM002")
-                    } else {
+                    } else if (existing == null) {
                         val returnType = resolve(declaration.returnType)
                         val parameterSymbols = declaration.parameters.map { parameter ->
                             val type = resolve(parameter.type, parameter.arrayDimensions)
@@ -584,7 +610,15 @@ class SemanticAnalyzer(
             }
         }
 
-        val visibleFunctions = resolveImportedFunctions(program, moduleFunctions, foreignTypes, foreignGlobals, diagnostics, knownModules)
+        val visibleFunctions = resolveImportedFunctions(
+            program,
+            moduleFunctions,
+            foreignTypes,
+            foreignGlobals,
+            foreignSourceFunctions,
+            diagnostics,
+            knownModules
+        )
 
         program.declarations.filterIsInstance<AstFunction>().forEach { declaration ->
             val function = functions[declaration.name] ?: return@forEach
@@ -644,6 +678,7 @@ class SemanticAnalyzer(
         moduleFunctions: Map<String, Map<String, FunctionSymbol>>,
         foreignTypes: Map<String, ForeignType>,
         foreignGlobals: Map<String, Symbol>,
+        foreignSourceFunctions: Map<String, FunctionSymbol>,
         diagnostics: DiagnosticBag,
         knownModules: Set<String>
     ): Map<String, Map<String, FunctionSymbol>> {
@@ -655,6 +690,7 @@ class SemanticAnalyzer(
         return moduleDeclarations.mapValues { (moduleName, declarations) ->
             val visible = linkedMapOf<String, FunctionSymbol>()
             moduleFunctions[moduleName].orEmpty().forEach { (name, function) -> visible[name] = function }
+            foreignSourceFunctions.forEach { (name, function) -> visible.putIfAbsent(name, function) }
             declarations.filterIsInstance<AstImport>().forEach { import ->
                 val targetName = import.module.substringAfterLast('.')
                 val targetFunctions = moduleFunctions[import.module] ?: moduleFunctions[targetName]

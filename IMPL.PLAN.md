@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 48/97
+Overall: 50/97
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [23/29] 2. Semantic model and modules
+[DOING] [25/29] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [7/20] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.4.3.2 — imported C implementation-unit declarations
+2.4.4 — foreign-symbol semantic tooling integration
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -686,7 +686,7 @@ all create correct bindings.
 
 ---
 
-## 2.4 [DOING] [4/8] C interoperability model
+## 2.4 [DOING] [6/8] C interoperability model
 
 ### 2.4.1 [DONE] Foreign symbol and type representation
 
@@ -747,7 +747,7 @@ all create correct bindings.
 **Depends**
 - 2.4.2.2
 
-### 2.4.3 [DOING] [1/3] C source import and build dependency representation
+### 2.4.3 [DONE] [3/3] C source import and build dependency representation
 
 **Language**
 - LS §22.4
@@ -770,7 +770,7 @@ all create correct bindings.
 **Depends**
 - 2.4.2
 
-#### 2.4.3.2 [TODO] Import declarations from C implementation units
+#### 2.4.3.2 [DONE] Import declarations from C implementation units
 
 **Acceptance**
 - declarations needed by a C+ translation unit are visible without parsing C definitions as C+ declarations.
@@ -780,7 +780,7 @@ all create correct bindings.
 **Depends**
 - 2.4.3.1
 
-#### 2.4.3.3 [TODO] Compile and link C sources exactly once
+#### 2.4.3.3 [DONE] Compile and link C sources exactly once
 
 **Acceptance**
 - the CLI build graph forwards each C source dependency exactly once to the C compiler.

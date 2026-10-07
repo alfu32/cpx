@@ -1,7 +1,7 @@
 package cplus.backend
 
 import cplus.core.*
-import cplus.semantic.SemanticModel
+import cplus.semantic.*
 
 data class LoweredCResult(
     val unit: CTranslationUnit,
@@ -65,7 +65,7 @@ class CLowerer(private val semantic: SemanticModel) {
                 declaration.arrayDimensions
             )
         }
-        val functions = program.declarations.filterIsInstance<AstFunction>().map { declaration ->
+        val programFunctions = program.declarations.filterIsInstance<AstFunction>().map { declaration ->
             CFunction(
                 type(declaration.returnType),
                 declaration.name,
@@ -76,7 +76,53 @@ class CLowerer(private val semantic: SemanticModel) {
         } + program.declarations.filterIsInstance<AstStruct>().flatMap { structure ->
             structure.methods.map { method -> lowerMethod(structure.name, method) }
         }
+        val declaredFunctionNames = programFunctions.mapTo(mutableSetOf()) { it.name }
+        val foreignFunctions = semantic.functions.values
+            .filter {
+                it.symbol.kind == SymbolKind.FOREIGN &&
+                    it.symbol.moduleName?.startsWith("c.source.") == true &&
+                    it.symbol.name !in declaredFunctionNames
+            }
+            .map { function ->
+                CFunction(
+                    foreignType(function.returnType),
+                    function.symbol.externalName ?: function.symbol.name,
+                    function.parameters.map { parameter ->
+                        CParameter(foreignType(parameter.type), parameter.name, parameter.origin)
+                    },
+                    null,
+                    function.symbol.origin,
+                    function.isVariadic
+                )
+            }
+        val functions = programFunctions + foreignFunctions
         return LoweredCResult(CTranslationUnit(includes, structs, unions, enums, aliases, globals, functions), diagnostics.diagnostics)
+    }
+
+    private fun foreignType(type: cplus.semantic.CType): CType {
+        var current = type
+        var pointerDepth = 0
+        while (current is PointerType) {
+            pointerDepth++
+            current = current.pointee
+        }
+        val base = when (current) {
+            is PrimitiveType -> CType.Primitive(current.name)
+            is ForeignType -> CType.Named(current.externalName)
+            is AliasType -> foreignType(current.target)
+            is StructType -> CType.Struct(current.name)
+            is UnionType -> CType.Union(current.name)
+            is EnumType -> CType.Enum(current.name)
+            else -> CType.Unknown
+        }
+        return when (base) {
+            is CType.Primitive -> base.copy(pointerDepth = base.pointerDepth + pointerDepth)
+            is CType.Named -> base.copy(pointerDepth = base.pointerDepth + pointerDepth)
+            is CType.Struct -> base.copy(pointerDepth = base.pointerDepth + pointerDepth)
+            is CType.Union -> base.copy(pointerDepth = base.pointerDepth + pointerDepth)
+            is CType.Enum -> base.copy(pointerDepth = base.pointerDepth + pointerDepth)
+            CType.Unknown -> CType.Unknown
+        }
     }
 
     private fun lowerMethod(ownerName: String, method: AstFunction): CFunction {
@@ -451,7 +497,7 @@ class CEmitter {
         if (unit.globals.isNotEmpty() && unit.functions.isNotEmpty()) appendLine()
 
         unit.functions.forEach { function ->
-            appendLine("${function.returnType.render()} ${function.name}(${parameters(function.parameters)});", function.origin)
+            appendLine("${function.returnType.render()} ${function.name}(${parameters(function.parameters, function.isVariadic)});", function.origin)
         }
         val definitions = unit.functions.filter { it.body != null }
         if (definitions.isNotEmpty()) appendLine()
@@ -490,7 +536,7 @@ class CEmitter {
         appendLine: (String, Origin?) -> Unit,
         append: (String) -> Unit
     ) {
-        appendLine("${function.returnType.render()} ${function.name}(${parameters(function.parameters)}) {", function.origin)
+        appendLine("${function.returnType.render()} ${function.name}(${parameters(function.parameters, function.isVariadic)}) {", function.origin)
         when (val body = function.body) {
             null -> Unit
             is CBlock -> body.statements.forEach { emitStatement(it, 1, appendLine) }
@@ -547,9 +593,10 @@ class CEmitter {
         else -> ""
     }
 
-    private fun parameters(parameters: List<CParameter>): String = parameters.joinToString(", ") {
-        "${it.type.render()} ${it.name}${arraySuffix(it.arrayDimensions)}"
-    }
+    private fun parameters(parameters: List<CParameter>, isVariadic: Boolean = false): String = buildList {
+        addAll(parameters.map { "${it.type.render()} ${it.name}${arraySuffix(it.arrayDimensions)}" })
+        if (isVariadic) add("...")
+    }.joinToString(", ")
 
     private fun arraySuffix(dimensions: List<String>): String = dimensions.joinToString(separator = "") { "[$it]" }
 

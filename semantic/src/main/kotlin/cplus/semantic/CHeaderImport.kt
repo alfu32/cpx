@@ -1,5 +1,7 @@
 package cplus.semantic
 
+import cplus.core.SourceFile
+
 enum class ForeignDeclarationKind {
     TYPE,
     FUNCTION,
@@ -12,7 +14,13 @@ data class CHeaderDeclaration(
     val kind: ForeignDeclarationKind,
     val typeName: String? = null,
     val parameterTypes: List<String> = emptyList(),
-    val isVariadic: Boolean = false
+    val isVariadic: Boolean = false,
+    val sourceRange: IntRange? = null
+)
+
+data class CSourceUnit(
+    val source: SourceFile,
+    val moduleName: String
 )
 
 /**
@@ -26,6 +34,9 @@ class CHeaderImportService(
     fun declarations(module: String): Map<String, CHeaderDeclaration> =
         configuredHeaders[module].orEmpty().let(::parse)
 
+    fun sourceDeclarations(text: String): Map<String, CHeaderDeclaration> =
+        parse(text, allowFunctionDefinitions = true)
+
     fun unsupportedPreprocessorLines(module: String): List<String> = configuredHeaders[module]
         .orEmpty()
         .lineSequence()
@@ -33,10 +44,10 @@ class CHeaderImportService(
         .filter { it.startsWith("#") }
         .toList()
 
-    private fun parse(text: String): Map<String, CHeaderDeclaration> {
+    private fun parse(text: String, allowFunctionDefinitions: Boolean = false): Map<String, CHeaderDeclaration> {
         val declarations = linkedMapOf<String, CHeaderDeclaration>()
         val functionPattern = Regex(
-            """(?m)^\s*(?:extern\s+)?([A-Za-z_][A-Za-z0-9_\s\*]*?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*;"""
+            """(?m)^\s*(?:extern\s+)?([A-Za-z_][A-Za-z0-9_\s\*]*?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*${if (allowFunctionDefinitions) "(?:;|\\{)" else ";"}"""
         )
         functionPattern.findAll(text).forEach { match ->
             val returnType = normalizeType(match.groupValues[1])
@@ -52,7 +63,8 @@ class CHeaderImportService(
                 ForeignDeclarationKind.FUNCTION,
                 returnType,
                 parameters,
-                variadic
+                variadic,
+                match.range
             )
         }
         val typedefPattern = Regex(
@@ -62,7 +74,8 @@ class CHeaderImportService(
             declarations[match.groupValues[2]] = CHeaderDeclaration(
                 match.groupValues[2],
                 ForeignDeclarationKind.TYPE,
-                normalizeType(match.groupValues[1])
+                normalizeType(match.groupValues[1]),
+                sourceRange = match.range
             )
         }
         val globalPattern = Regex(
@@ -73,7 +86,8 @@ class CHeaderImportService(
                 declarations[match.groupValues[2]] = CHeaderDeclaration(
                     match.groupValues[2],
                     ForeignDeclarationKind.GLOBAL,
-                    normalizeType(match.groupValues[1])
+                    normalizeType(match.groupValues[1]),
+                    sourceRange = match.range
                 )
             }
         }

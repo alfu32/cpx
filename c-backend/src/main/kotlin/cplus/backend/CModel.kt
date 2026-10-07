@@ -63,7 +63,8 @@ data class CFunction(
     val name: String,
     val parameters: List<CParameter>,
     val body: CStatement?,
-    val origin: Origin
+    val origin: Origin,
+    val isVariadic: Boolean = false
 )
 
 data class CParameter(
