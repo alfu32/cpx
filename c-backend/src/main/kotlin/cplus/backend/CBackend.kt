@@ -306,18 +306,33 @@ class CLowerer(
 
     private fun type(reference: AstTypeRef): CType {
         val result = when {
-            semantic.aliases.containsKey(reference.name) -> CType.Named(reference.name, reference.pointerDepth)
-            semantic.foreignTypes.containsKey(reference.name) -> CType.Named(reference.name, reference.pointerDepth)
+            semantic.aliases.containsKey(reference.name) -> CType.Named(
+                reference.name,
+                reference.pointerDepth,
+                reference.qualifiers,
+                reference.pointerQualifiers
+            )
+            semantic.foreignTypes.containsKey(reference.name) -> CType.Named(
+                reference.name,
+                reference.pointerDepth,
+                reference.qualifiers,
+                reference.pointerQualifiers
+            )
             reference.declarationKind == "union" || semantic.unions.containsKey(reference.name) -> {
-                CType.Union(reference.name, reference.pointerDepth)
+                CType.Union(reference.name, reference.pointerDepth, reference.qualifiers, reference.pointerQualifiers)
             }
             reference.declarationKind == "enum" || semantic.enums.containsKey(reference.name) -> {
-                CType.Enum(reference.name, reference.pointerDepth)
+                CType.Enum(reference.name, reference.pointerDepth, reference.qualifiers, reference.pointerQualifiers)
             }
             reference.isStruct || semantic.structs.containsKey(reference.name) -> {
-                CType.Struct(reference.name, reference.pointerDepth)
+                CType.Struct(reference.name, reference.pointerDepth, reference.qualifiers, reference.pointerQualifiers)
             }
-            reference.name in primitiveNames -> CType.Primitive(reference.name, reference.pointerDepth)
+            reference.name in primitiveNames -> CType.Primitive(
+                reference.name,
+                reference.pointerDepth,
+                reference.qualifiers,
+                reference.pointerQualifiers
+            )
             else -> {
                 diagnostics.error("cannot lower unknown type '${reference.name}'", reference.origin.primaryRange, "LOW101")
                 CType.Unknown

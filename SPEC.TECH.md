@@ -1125,6 +1125,13 @@ Principal component:
 class CImportService
 ```
 
+Each foreign typedef record SHALL contain its external spelling and, when the
+catalogue declares it, the resolved underlying C+ type. This distinction is
+required because a typedef such as `size_t` must be emitted as `size_t` while
+its layout follows the selected target's `unsigned long` definition. Opaque
+foreign types such as `FILE` MAY omit an underlying type and SHALL use the
+target pointer-sized fallback only for operations explicitly defined as opaque.
+
 Responsibilities:
 
 - parse C declarations;
@@ -1134,6 +1141,11 @@ Responsibilities:
 - expose enum constants;
 - register required include directives;
 - preserve external linkage names.
+
+The syntax/AST type record SHALL keep base qualifiers and qualifiers attached to
+each pointer declarator separately. Backend type records SHALL preserve that
+placement when rendering C. Semantic compatibility and ABI layout SHALL ignore
+qualifier-only differences while retaining them for diagnostics and emission.
 
 The bootstrap adapter SHALL catalogue the standard C modules `c.stdio`,
 `c.stddef`, `c.stdlib`, `c.math`, `c.string`, `c.ctype`, `c.time`, `c.stdint`,

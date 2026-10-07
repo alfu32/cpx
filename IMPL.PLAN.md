@@ -3370,8 +3370,9 @@ of R1–R8 or deliberately recorded as a post-release extension.
   and fixed-width aliases across all target ABI descriptors.
   - R1.2.1 [DONE] — apply LP64/LLP64 `long` layout rules and recognize all
     parsed numeric primitive forms in argument compatibility.
-  - R1.2.2 [DOING] — complete qualifiers, declarators, and foreign fixed-width
-    alias layout.
+  - R1.2.2 [DONE] — complete leading/pointer qualifiers, preserve structured
+    declarators through C emission, and resolve foreign fixed-width/`stddef`
+    aliases against their underlying target-aware types.
 
 **Deliverables**
 
@@ -3390,6 +3391,23 @@ of R1–R8 or deliberately recorded as a post-release extension.
 The canonical language examples and the C-compatible declaration matrix pass
 on Linux x86_64 and Windows x86_64, with stable diagnostics for unsupported
 constructs and no parser-only acceptance that later fails at C emission.
+
+### R1.2.2 completion record
+
+Implemented and tested:
+
+- `const`, `volatile`, and `restrict` are lexed and retained as base or
+  pointer-declarator qualifiers in syntax and AST records;
+- generated C preserves qualifier placement for primitive, aggregate, alias,
+  and foreign named types;
+- foreign typedef declarations retain their resolved underlying semantic type;
+- ABI layout resolves `size_t`, `ptrdiff_t`, and fixed-width `stdint` aliases
+  through that underlying type, including Linux LP64 and Windows LLP64 rules;
+- focused parser, semantic, generated-C, ABI, and compiler integration tests
+  cover the stage.
+
+Function-pointer declarators and the remaining declaration matrix stay in the
+next R1 work item; they are not implied by this stage's completion.
 
 ## R2 [TODO] CPX, generics and reflection conformance
 

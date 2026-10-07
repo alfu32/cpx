@@ -47,5 +47,35 @@ class AbiLayoutTest {
         assertEquals(8, AbiLayoutEngine(windows).layout(longLongType).size)
     }
 
+    @Test
+    fun resolvesForeignFixedWidthAndStddefAliasesToTheirUnderlyingLayouts() {
+        val result = CPlusCompiler().compileText(
+            java.nio.file.Files.createTempFile("foreign-layout", ".cp"),
+            """
+                import { size_t, ptrdiff_t } from c.stddef;
+                import { int32_t, uint32_t, int64_t, uint64_t } from c.stdint;
+                int main() { return 0; }
+            """.trimIndent()
+        )
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = requireNotNull(result.semanticModel)
+        val windows = requireNotNull(
+            TargetRegistry.load(
+                SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+                    .resolve("abi/windows-x86_64.toml")
+            ).descriptor
+        )
+        val linuxLayouts = AbiLayoutEngine(target)
+        val windowsLayouts = AbiLayoutEngine(windows)
+
+        assertEquals(8, linuxLayouts.layout(model.foreignTypes.getValue("size_t")).size)
+        assertEquals(8, linuxLayouts.layout(model.foreignTypes.getValue("ptrdiff_t")).size)
+        assertEquals(4, windowsLayouts.layout(model.foreignTypes.getValue("size_t")).size)
+        assertEquals(4, windowsLayouts.layout(model.foreignTypes.getValue("ptrdiff_t")).size)
+        assertEquals(4, windowsLayouts.layout(model.foreignTypes.getValue("uint32_t")).size)
+        assertEquals(8, windowsLayouts.layout(model.foreignTypes.getValue("int64_t")).size)
+        assertEquals(8, windowsLayouts.layout(model.foreignTypes.getValue("uint64_t")).size)
+    }
+
     private fun ownerOrigin(): cplus.core.Origin = cplus.core.Origin.Synthetic(null)
 }

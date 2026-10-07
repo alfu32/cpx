@@ -506,6 +506,27 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun qualifiedDeclarationsReachGeneratedCWithoutLosingDeclaratorQualifiers() {
+        val source = """
+            const char* message;
+            volatile int* const value;
+            int first(const char * const input) {
+                return input[0];
+            }
+            int main() {
+                return first("ok");
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-qualified", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("const char* message;"), generated)
+        assertTrue(generated.contains("volatile int* const value;"), generated)
+        assertTrue(generated.contains("int first(const char* const input)"), generated)
+    }
+
+    @Test
     fun configuredHeaderDeclarationsResolveForeignFunctionSignatures() {
         val source = """
             import { puts } from c.stdio;

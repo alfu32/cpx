@@ -714,6 +714,8 @@ class Parser(private val lexed: LexedSource) {
 
     private fun parseType(): TypeSyntax? {
         val start = peek()
+        val qualifiers = linkedSetOf<String>()
+        while (peek().lexeme in typeQualifiers) qualifiers += advance().lexeme
         val declarationKind = when {
             match("struct") -> "struct"
             match("union") -> "union"
@@ -734,9 +736,24 @@ class Parser(private val lexed: LexedSource) {
             return null
         }
         var pointers = 0
-        while (match("*")) pointers++
+        val pointerQualifiers = mutableListOf<Set<String>>()
+        while (match("*")) {
+            pointers++
+            val current = linkedSetOf<String>()
+            while (peek().lexeme in typeQualifiers) current += advance().lexeme
+            pointerQualifiers += current
+        }
         val range = span(start.range, previous().range)
-        return TypeSyntax(name?.lexeme ?: "<error>", isStruct, pointers, range, direct(range), declarationKind)
+        return TypeSyntax(
+            name?.lexeme ?: "<error>",
+            isStruct,
+            pointers,
+            range,
+            direct(range),
+            declarationKind,
+            qualifiers,
+            pointerQualifiers
+        )
     }
 
     /**
@@ -770,7 +787,7 @@ class Parser(private val lexed: LexedSource) {
 
     private fun looksLikeVariableDeclaration(): Boolean {
         if (peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum")) return true
-        if (peek().lexeme in primitiveTypes) return true
+        if (peek().lexeme in primitiveTypes || peek().lexeme in typeQualifiers) return true
         if (peek().kind != TokenKind.IDENTIFIER) return false
         var nameOffset = 1
         while (peek(nameOffset).isLexeme("*")) nameOffset++
@@ -781,7 +798,7 @@ class Parser(private val lexed: LexedSource) {
         if (peek(1).isLexeme(".") || peek(1).isLexeme("->")) return false
         val typeEnd = when {
             peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum") -> 2
-            peek().lexeme in primitiveTypes -> 1
+            peek().lexeme in primitiveTypes || peek().lexeme in typeQualifiers -> 1
             peek().kind == TokenKind.IDENTIFIER -> 2
             else -> return false
         }
@@ -791,9 +808,10 @@ class Parser(private val lexed: LexedSource) {
     }
 
     private fun looksLikeCast(): Boolean = peek().isLexeme("(") &&
-        (peek(1).lexeme in primitiveTypes || peek(1).isLexeme("struct") || peek(1).isLexeme("union") || peek(1).isLexeme("enum"))
+        (peek(1).lexeme in primitiveTypes || peek(1).lexeme in typeQualifiers ||
+            peek(1).isLexeme("struct") || peek(1).isLexeme("union") || peek(1).isLexeme("enum"))
 
-    private fun looksLikeTypeName(): Boolean = peek().lexeme in primitiveTypes ||
+    private fun looksLikeTypeName(): Boolean = peek().lexeme in primitiveTypes || peek().lexeme in typeQualifiers ||
         peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum")
 
     private fun binaryPrecedence(operator: String): Int = when (operator) {
@@ -899,5 +917,6 @@ class Parser(private val lexed: LexedSource) {
         private val primitiveTypes = setOf(
             "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned"
         )
+        private val typeQualifiers = setOf("const", "volatile", "restrict")
     }
 }

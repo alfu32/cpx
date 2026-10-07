@@ -107,28 +107,69 @@ data class CParameter(
 sealed interface CType {
     fun render(): String
 
-    data class Primitive(val name: String, val pointerDepth: Int = 0) : CType {
-        override fun render(): String = name + "*".repeat(pointerDepth)
+    data class Primitive(
+        val name: String,
+        val pointerDepth: Int = 0,
+        val qualifiers: Set<String> = emptySet(),
+        val pointerQualifiers: List<Set<String>> = emptyList()
+    ) : CType {
+        override fun render(): String = renderCType(name, pointerDepth, qualifiers, pointerQualifiers)
     }
 
-    data class Struct(val name: String, val pointerDepth: Int = 0) : CType {
-        override fun render(): String = "struct $name" + "*".repeat(pointerDepth)
+    data class Struct(
+        val name: String,
+        val pointerDepth: Int = 0,
+        val qualifiers: Set<String> = emptySet(),
+        val pointerQualifiers: List<Set<String>> = emptyList()
+    ) : CType {
+        override fun render(): String = renderCType("struct $name", pointerDepth, qualifiers, pointerQualifiers)
     }
 
-    data class Union(val name: String, val pointerDepth: Int = 0) : CType {
-        override fun render(): String = "union $name" + "*".repeat(pointerDepth)
+    data class Union(
+        val name: String,
+        val pointerDepth: Int = 0,
+        val qualifiers: Set<String> = emptySet(),
+        val pointerQualifiers: List<Set<String>> = emptyList()
+    ) : CType {
+        override fun render(): String = renderCType("union $name", pointerDepth, qualifiers, pointerQualifiers)
     }
 
-    data class Enum(val name: String, val pointerDepth: Int = 0) : CType {
-        override fun render(): String = "enum $name" + "*".repeat(pointerDepth)
+    data class Enum(
+        val name: String,
+        val pointerDepth: Int = 0,
+        val qualifiers: Set<String> = emptySet(),
+        val pointerQualifiers: List<Set<String>> = emptyList()
+    ) : CType {
+        override fun render(): String = renderCType("enum $name", pointerDepth, qualifiers, pointerQualifiers)
     }
 
-    data class Named(val name: String, val pointerDepth: Int = 0) : CType {
-        override fun render(): String = name + "*".repeat(pointerDepth)
+    data class Named(
+        val name: String,
+        val pointerDepth: Int = 0,
+        val qualifiers: Set<String> = emptySet(),
+        val pointerQualifiers: List<Set<String>> = emptyList()
+    ) : CType {
+        override fun render(): String = renderCType(name, pointerDepth, qualifiers, pointerQualifiers)
     }
 
     data object Unknown : CType {
         override fun render(): String = "int"
+    }
+}
+
+private fun renderCType(
+    baseName: String,
+    pointerDepth: Int,
+    qualifiers: Set<String>,
+    pointerQualifiers: List<Set<String>>
+): String = buildString {
+    if (qualifiers.isNotEmpty()) append(qualifiers.joinToString(" ")).append(' ')
+    append(baseName)
+    repeat(pointerDepth) { index ->
+        append('*')
+        pointerQualifiers.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let {
+            append(' ').append(it.joinToString(" "))
+        }
     }
 }
 

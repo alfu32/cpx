@@ -112,7 +112,8 @@ data class AliasType(
 data class ForeignType(
     override val id: TypeId,
     override val name: String,
-    val externalName: String = name
+    val externalName: String = name,
+    val underlyingType: CType? = null
 ) : CType
 
 private fun canonicalTypeKey(type: CType): String = when (type) {
@@ -582,9 +583,14 @@ class SemanticAnalyzer(
             )
         ).also(symbols::add)
 
-        fun registerForeignType(name: String, moduleName: String, origin: Origin) {
+        fun registerForeignType(
+            name: String,
+            moduleName: String,
+            origin: Origin,
+            underlyingType: CType? = null
+        ) {
             if (foreignTypes.containsKey(name)) return
-            val type = ForeignType(TypeId(nextTypeId.next()), name)
+            val type = ForeignType(TypeId(nextTypeId.next()), name, underlyingType = underlyingType)
             foreignTypes[name] = type
             types += type
             val symbol = newSymbol(name, SymbolKind.FOREIGN_TYPE, type, origin, moduleName, Visibility.PUBLIC)
@@ -610,17 +616,23 @@ class SemanticAnalyzer(
         }
 
         fun foreignTypeFromName(typeName: String, moduleName: String, origin: Origin): CType {
-            val normalized = typeName.trim().removePrefix("const ").trim()
+            val normalized = typeName.trim().replace(Regex("\\s+"), " ")
             val pointerDepth = normalized.count { it == '*' }
-            val baseName = normalized.replace("*", "").trim()
+            val baseName = normalized
+                .replace("*", " ")
+                .split(' ')
+                .filter { it.isNotEmpty() && it !in setOf("const", "volatile", "restrict") }
+                .joinToString(" ")
             var type = when {
-                baseName in knownPrimitiveNames -> primitive(baseName)
                 foreignTypeModule(baseName) != null -> {
                     val ownerModule = foreignTypeModule(baseName)!!
-                    registerForeignType(baseName, ownerModule, origin)
+                    val declaration = headerImportService.declarations(ownerModule)[baseName]
+                    val underlying = declaration?.typeName?.let { foreignTypeFromName(it, ownerModule, origin) }
+                    registerForeignType(baseName, ownerModule, origin, underlying)
                     foreignTypes.getValue(baseName)
                 }
                 foreignTypes[baseName] != null -> foreignTypes.getValue(baseName)
+                baseName in knownPrimitiveNames -> primitive(baseName)
                 else -> {
                     diagnostics.error("unsupported foreign type '$baseName' from $moduleName", rangeOf(origin), "SEM407")
                     UnknownType(TypeId(-1))
@@ -639,7 +651,12 @@ class SemanticAnalyzer(
             exposeGlobally: Boolean = false
         ): Boolean {
             when (declaration.kind) {
-                ForeignDeclarationKind.TYPE -> registerForeignType(declaration.name, moduleName, origin)
+                ForeignDeclarationKind.TYPE -> registerForeignType(
+                    declaration.name,
+                    moduleName,
+                    origin,
+                    declaration.typeName?.let { foreignTypeFromName(it, moduleName, origin) }
+                )
                 ForeignDeclarationKind.FUNCTION -> {
                     val existing = functions[declaration.name]
                     if (existing?.symbol?.kind == SymbolKind.FOREIGN) {
@@ -861,7 +878,9 @@ class SemanticAnalyzer(
                     } else if (declaration.module == "c.stddef") {
                         declaration.names.forEach { name ->
                             if (name == "size_t") {
-                                registerForeignType(name, declaration.module, declaration.origin)
+                                headerImportService.declarations(declaration.module)[name]?.let {
+                                    registerHeaderDeclaration(it, declaration.module, declaration.origin)
+                                } ?: registerForeignType(name, declaration.module, declaration.origin)
                             } else {
                                 headerImportService.declarations(declaration.module)[name]?.let {
                                     registerHeaderDeclaration(it, declaration.module, declaration.origin)

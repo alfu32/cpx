@@ -58,7 +58,9 @@ data class AstTypeRef(
     val isStruct: Boolean,
     val pointerDepth: Int,
     override val origin: Origin,
-    val declarationKind: String = "named"
+    val declarationKind: String = "named",
+    val qualifiers: Set<String> = emptySet(),
+    val pointerQualifiers: List<Set<String>> = emptyList()
 ) : AstNode
 
 data class AstStruct(

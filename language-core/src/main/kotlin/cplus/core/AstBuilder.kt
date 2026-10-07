@@ -52,7 +52,15 @@ class AstBuilder {
 
     private fun field(node: SyntaxField): AstField = AstField(type(node.type), node.name, node.origin, node.arrayDimensions)
 
-    private fun type(node: TypeSyntax): AstTypeRef = AstTypeRef(node.name, node.isStruct, node.pointerDepth, node.origin, node.declarationKind)
+    private fun type(node: TypeSyntax): AstTypeRef = AstTypeRef(
+        node.name,
+        node.isStruct,
+        node.pointerDepth,
+        node.origin,
+        node.declarationKind,
+        node.qualifiers,
+        node.pointerQualifiers
+    )
 
     private fun statement(node: SyntaxStatement): AstStatement = when (node) {
         is SyntaxBlock -> AstBlock(node.statements.map(::statement), node.origin)

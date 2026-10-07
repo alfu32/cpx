@@ -1724,6 +1724,28 @@ headers are generated/delivered views over the same semantic declarations;
 unsupported target facilities MUST be reported through a capability or error
 result and MUST NOT silently fall back to host headers or libraries.
 
+## 43.4 C-compatible type qualifiers and declarators
+
+C+ declarations SHALL preserve the C-compatible type qualifiers `const` and
+`volatile`. The `restrict` qualifier MAY be used where the selected C dialect
+supports it. Qualifiers before a base type apply to that base type; qualifiers
+following a pointer declarator apply to that pointer declarator.
+
+The parser and semantic model SHALL retain qualifier placement through lowering
+so that generated C preserves the corresponding declarator semantics. Qualifiers
+do not change the storage size or alignment of the qualified type.
+
+Pointer depth and pointer qualifiers SHALL be represented structurally rather
+than embedded in a guessed type name. Array dimensions remain declarator data
+associated with the declared identifier. Unsupported declarator forms, including
+function-pointer declarators until their dedicated implementation stage, SHALL
+produce a diagnostic rather than silently changing type meaning.
+
+Foreign typedefs SHALL retain both their external C spelling and their known
+underlying semantic type when the selected header catalogue provides it. ABI
+layout queries SHALL use the underlying type while C emission SHALL continue to
+use the external typedef spelling.
+
 The native filesystem API MUST accept UTF-8 paths whose separators are `/`.
 Portable C+ source MUST NOT select Windows separators, drive spelling, or a
 host character encoding. The selected PAL adapter owns conversion to the

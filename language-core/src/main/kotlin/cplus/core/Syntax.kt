@@ -60,7 +60,9 @@ data class TypeSyntax(
     val pointerDepth: Int,
     override val range: SourceRange,
     override val origin: Origin,
-    val declarationKind: String = "named"
+    val declarationKind: String = "named",
+    val qualifiers: Set<String> = emptySet(),
+    val pointerQualifiers: List<Set<String>> = emptyList()
 ) : SyntaxNode
 
 data class SyntaxStruct(

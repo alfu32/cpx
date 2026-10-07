@@ -31,7 +31,7 @@ class Lexer {
         "auto", "bool", "break", "case", "char", "const", "continue", "default",
         "do", "double", "else", "enum", "extern", "float", "for", "if", "inline",
         "int", "long", "package", "return", "short", "signed", "sizeof", "static",
-        "struct", "switch", "typedef", "union", "enum", "unsigned", "void", "volatile", "while",
+        "struct", "switch", "typedef", "union", "enum", "unsigned", "void", "volatile", "restrict", "while",
         "comptime", "import", "pub", "defer", "as", "true", "false", "alignof", "offsetof", "layoutof", "thread_local", "noreturn"
     )
 

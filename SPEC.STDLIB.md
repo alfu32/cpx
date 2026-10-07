@@ -882,6 +882,19 @@ Applications SHALL NOT define symbols in this namespace.
 
 # 21. Foreign declaration syntax
 
+Foreign C typedefs exposed by the SDK SHALL preserve their external typedef
+names while carrying their known underlying type into ABI and layout queries.
+For example, `int32_t` SHALL have the layout of the selected catalogue's
+32-bit signed integer and `size_t` SHALL follow the target C integer model.
+Opaque implementation-defined types MAY remain layout-opaque until a target
+profile supplies a concrete definition.
+
+C+ source declarations that cross the foreign boundary SHALL support the C
+qualifiers `const` and `volatile`; `restrict` MAY be used when accepted by the
+selected C dialect. Qualifiers and pointer declarators SHALL remain distinct in
+the generated declaration, and qualifier-only differences SHALL not alter ABI
+size or alignment.
+
 C+ SHALL support ABI-qualified foreign declarations.
 
 Canonical conceptual form:

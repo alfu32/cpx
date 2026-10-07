@@ -46,6 +46,25 @@ class AstGoldenTest {
     }
 
     @Test
+    fun parserRetainsTypeAndPointerQualifiers() {
+        val text = "const char* text; volatile int* const value; int main(const char * const input) { return 0; }"
+        val source = SourceFile(SourceFileId(9), Path.of("qualified-types.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val ast = AstBuilder().build(parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        val textType = ast.declarations.filterIsInstance<AstGlobalVariable>().first { it.name == "text" }.type
+        assertEquals(setOf("const"), textType.qualifiers)
+        assertEquals(emptySet(), textType.pointerQualifiers.single())
+        val valueType = ast.declarations.filterIsInstance<AstGlobalVariable>().first { it.name == "value" }.type
+        assertEquals(setOf("volatile"), valueType.qualifiers)
+        assertEquals(listOf(setOf("const")), valueType.pointerQualifiers)
+        val parameter = ast.declarations.filterIsInstance<AstFunction>().single { it.name == "main" }.parameters.single()
+        assertEquals(setOf("const"), parameter.type.qualifiers)
+        assertEquals(listOf(setOf("const")), parameter.type.pointerQualifiers)
+    }
+
+    @Test
     fun astArenaProvidesStableAddressableNodes() {
         val range = SourceRange(SourceFileId(1), 0, 1)
         val first = AstIntegerLiteral("1", Origin.Direct(range))

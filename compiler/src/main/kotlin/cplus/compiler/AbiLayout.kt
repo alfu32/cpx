@@ -28,7 +28,8 @@ class AbiLayoutEngine(private val target: TargetAbiDescriptor) {
         is UnionType -> union(type)
         is EnumType -> AbiLayout(4, 4)
         is AliasType -> layout(type.target)
-        is ForeignType -> AbiLayout(target.pointerBits / 8, target.pointerBits / 8)
+        is ForeignType -> type.underlyingType?.let(::layout)
+            ?: AbiLayout(target.pointerBits / 8, target.pointerBits / 8)
         is FunctionType -> AbiLayout(target.pointerBits / 8, target.pointerBits / 8)
         is UnknownType -> AbiLayout(0, 1)
     }
