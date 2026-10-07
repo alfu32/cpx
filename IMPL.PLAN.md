@@ -3618,11 +3618,11 @@ declaration.
     C+/C caller round trips on Linux.
   - R3.1.2 [DONE] — execute globals, TLS, export/link-name, and aggregate-return
     interoperability fixtures.
-  - R3.1.3 [TODO] — audit generated declarations against target ABI layout and
+  - R3.1.3 [DONE] — audit generated declarations against target ABI layout and
     calling-convention metadata.
-- R3.2 [TODO] — complete headers, dependencies, source maps, and external C
+- R3.2 [DONE] — complete headers, dependencies, source maps, and external C
   diagnostic remapping as one audited product.
-- R3.3 [TODO] — identify compiler-generated runtime helpers and either provide
+- R3.3 [DONE] — identify compiler-generated runtime helpers and either provide
   them through the selected SDK or reject them before linking.
 
 ### R3.1.1/R3.1.2 completion record
@@ -3645,6 +3645,36 @@ R3.1.3 remains open for a target-matrix audit of generated declarations against
 the ABI descriptor's widths, alignment, calling convention, storage, and symbol
 rules. Windows execution is deferred to the final cross-platform validation
 pass by project policy.
+
+### R3.1.3 completion record
+
+Implemented and tested on Linux:
+
+- the ABI layout engine and target descriptors are exercised across the Linux
+  and Windows x86_64/AArch64 descriptor matrix without host-width assumptions;
+- pointer width, LP64/LLP64 `long`, `long long`, aggregate field offsets, and
+  aggregate alignment are checked against each declared target descriptor;
+- generated C retains the selected C declarators and the ABI identity metadata
+  remains available for target validation.
+
+### R3.2/R3.3 completion record
+
+Implemented and tested on Linux:
+
+- public header synthesis selects only reachable exported declarations,
+  deduplicates and orders forward declarations, preserves public includes,
+  TLS, variadic prototypes, and generated names;
+- C source dependencies and link dependencies are normalized, deduplicated,
+  and diagnosed before the link driver runs;
+- generated C and header mappings retain source origins, while GCC/Clang and
+  MSVC diagnostic forms are remapped to C+ source locations when available;
+- compiler-owned helpers are explicitly catalogued and the CLI rejects a
+  missing or unknown helper before linking instead of allowing an unresolved
+  runtime dependency.
+
+The R3 gate remains `DOING` until the final Linux/Windows product validation
+executes the same fixtures on Windows. Darwin remains outside the claimed
+execution matrix.
 
 **Deliverables**
 

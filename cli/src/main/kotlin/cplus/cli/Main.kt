@@ -7,6 +7,7 @@ import cplus.compiler.LibcProfile
 import cplus.compiler.RuntimeProfile
 import cplus.compiler.RuntimeLinker
 import cplus.compiler.RuntimeDependencyAuditor
+import cplus.compiler.RuntimeHelperCatalogue
 import cplus.compiler.SdkDoctor
 import cplus.compiler.SdkPackageIndex
 import cplus.compiler.TargetRegistry
@@ -305,6 +306,10 @@ internal class Cli {
         printDiagnostics(runtimePlan.diagnostics, sources.first())
         if (!runtimePlan.isSuccessful) return 1
         val runtime = runtimePlan.plan!!
+        val runtimeHelpers = result.artifacts.flatMap { it.lowered?.unit?.runtimeDependencies.orEmpty() }
+        val runtimeDiagnostics = RuntimeHelperCatalogue.validate(runtimeHelpers, runtime)
+        printDiagnostics(runtimeDiagnostics, sources.first())
+        if (runtimeDiagnostics.any { it.severity == DiagnosticSeverity.ERROR }) return 1
         val cFile = executable.resolveSibling("${executable.fileName}.c")
         cFile.parent?.let { Files.createDirectories(it) }
         executable.parent?.let { Files.createDirectories(it) }

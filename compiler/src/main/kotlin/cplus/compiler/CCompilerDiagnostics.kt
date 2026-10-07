@@ -34,22 +34,21 @@ data class RemappedCCompilerDiagnostic(
     )
 }
 
-/** Maps standard GCC/Clang file:line:column diagnostics through generated C ranges. */
+/** Maps GCC/Clang and MSVC-style diagnostics through generated C ranges. */
 class CCompilerDiagnosticRemapper(
     private val sources: SourceRepository
 ) {
     fun remap(output: String, generatedPath: Path, generated: GeneratedCUnit): List<RemappedCCompilerDiagnostic> {
         val normalizedGeneratedPath = generatedPath.toAbsolutePath().normalize()
         return output.lineSequence().mapNotNull { line ->
-            val match = diagnosticPattern.matchEntire(line.trimEnd()) ?: return@mapNotNull null
-            val path = Path.of(match.groupValues[1]).toAbsolutePath().normalize()
-            val sourceLine = match.groupValues[2].toIntOrNull() ?: return@mapNotNull null
-            val sourceColumn = match.groupValues[3].toIntOrNull() ?: return@mapNotNull null
-            val severity = severity(match.groupValues[4])
-            val message = match.groupValues[5]
-            val isGenerated = path == normalizedGeneratedPath || path.fileName == normalizedGeneratedPath.fileName
+            val match = parse(line.trimEnd()) ?: return@mapNotNull null
+            val path = Path.of(match.path.replace('\\', '/')).toAbsolutePath().normalize()
+            val severity = severity(match.label.lowercase())
+            val isGenerated = path == normalizedGeneratedPath ||
+                path.fileName == normalizedGeneratedPath.fileName ||
+                match.path.replace('\\', '/').substringAfterLast('/') == normalizedGeneratedPath.fileName.toString()
             val origin = if (isGenerated) {
-                generated.mappingsForGeneratedLine(sourceLine).firstOrNull()?.origin
+                generated.mappingsForGeneratedLine(match.line).firstOrNull()?.origin
             } else {
                 null
             }
@@ -58,13 +57,35 @@ class CCompilerDiagnosticRemapper(
             }
             RemappedCCompilerDiagnostic(
                 severity,
-                message,
-                GeneratedCPosition(path, sourceLine, sourceColumn),
+                match.message,
+                GeneratedCPosition(path, match.line, match.column),
                 origin,
                 source,
                 line.trimEnd()
             )
         }.toList()
+    }
+
+    private fun parse(line: String): ParsedDiagnostic? {
+        gccPattern.matchEntire(line)?.let { match ->
+            return ParsedDiagnostic(
+                match.groupValues[1],
+                match.groupValues[2].toIntOrNull() ?: return null,
+                match.groupValues[3].toIntOrNull() ?: return null,
+                match.groupValues[4],
+                match.groupValues[5]
+            )
+        }
+        msvcPattern.matchEntire(line)?.let { match ->
+            return ParsedDiagnostic(
+                match.groupValues[1],
+                match.groupValues[2].toIntOrNull() ?: return null,
+                match.groupValues[3].toIntOrNull() ?: return null,
+                match.groupValues[4],
+                match.groupValues[5]
+            )
+        }
+        return null
     }
 
     private fun severity(label: String): DiagnosticSeverity = when (label) {
@@ -73,9 +94,21 @@ class CCompilerDiagnosticRemapper(
         else -> DiagnosticSeverity.ERROR
     }
 
+    private data class ParsedDiagnostic(
+        val path: String,
+        val line: Int,
+        val column: Int,
+        val label: String,
+        val message: String
+    )
+
     companion object {
-        private val diagnosticPattern = Regex(
+        private val gccPattern = Regex(
             "^(.+):(\\d+):(\\d+):\\s*(fatal error|error|warning|note):\\s*(.*)$"
+        )
+        private val msvcPattern = Regex(
+            "^(.+)\\((\\d+),(\\d+)\\):\\s*(fatal error|error|warning|note)\\s*(?:[A-Z]\\d+:\\s*)?(.*)$",
+            RegexOption.IGNORE_CASE
         )
     }
 }

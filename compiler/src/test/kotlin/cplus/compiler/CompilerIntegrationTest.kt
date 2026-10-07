@@ -46,6 +46,29 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun msvcDiagnosticsMapWindowsPathsThroughGeneratedRanges() {
+        val directory = Files.createTempDirectory("cplus-msvc-diagnostics")
+        val repository = SourceRepository()
+        val source = repository.put(directory.resolve("main.cp"), "int main() { return 0; }")
+        val origin = Origin.Direct(SourceRange(source.id, 0, 3))
+        val generated = GeneratedCUnit(
+            "int main() {\n    return 0;\n}\n",
+            listOf(SourceMapping(1, origin, 0, 12))
+        )
+
+        val diagnostic = CCompilerDiagnosticRemapper(repository).remap(
+            "C:\\\\build\\\\generated.c(1,5): error C2143: syntax error",
+            directory.resolve("generated.c"),
+            generated
+        ).single()
+
+        assertEquals("CCOMP001", diagnostic.asDiagnostic().code)
+        assertEquals(source.path, diagnostic.source!!.path)
+        assertEquals(1, diagnostic.generated.line)
+        assertEquals(5, diagnostic.generated.column)
+    }
+
+    @Test
     fun cSourceDependenciesAreNormalizedAndDeduplicated() {
         val directory = Files.createTempDirectory("cplus-c-source-dependencies")
         val source = directory.resolve("main.cp").also {

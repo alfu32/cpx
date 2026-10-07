@@ -52,6 +52,19 @@ class RuntimeLinkerTest {
     }
 
     @Test
+    fun compilerHelpersMustBePresentInTheSelectedRuntimePlan() {
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, TargetInfo()).resolution)
+        val cplusPlan = requireNotNull(RuntimeLinker.plan(resolution, TargetInfo()).plan)
+        assertTrue(RuntimeHelperCatalogue.validate(listOf("__cplus_format"), cplusPlan).isEmpty())
+
+        val systemTarget = TargetInfo(buildProfile = BuildProfile(RuntimeProfile.SYSTEM, LibcProfile.C17))
+        val systemPlan = requireNotNull(RuntimeLinker.plan(resolution, systemTarget).plan)
+        assertTrue(RuntimeHelperCatalogue.validate(listOf("__cplus_format"), systemPlan).any { it.code == "RUNTIME002" })
+        assertTrue(RuntimeHelperCatalogue.validate(listOf("__cplus_unknown"), cplusPlan).any { it.code == "RUNTIME001" })
+    }
+
+    @Test
     fun normalTerminationRunsHandlersInReverseRegistrationOrder() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)

@@ -1670,6 +1670,11 @@ CPX definition location where relevant
 generated C location optionally
 ```
 
+The adapter MUST accept both colon-delimited GCC/Clang diagnostics and
+parenthesized MSVC diagnostics, including Windows backslash paths. A diagnostic
+that does not map to a generated range SHALL remain visible with its generated
+location and a distinct unmapped status; it MUST NOT be discarded.
+
 ---
 
 # 45. Compiler context

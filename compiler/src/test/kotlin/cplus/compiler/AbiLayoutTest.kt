@@ -77,5 +77,31 @@ class AbiLayoutTest {
         assertEquals(8, windowsLayouts.layout(model.foreignTypes.getValue("uint64_t")).size)
     }
 
+    @Test
+    fun auditsPrimitiveAndAggregateLayoutAcrossDeclaredTargetMatrix() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { name ->
+            val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$name.toml")).descriptor)
+            val layouts = AbiLayoutEngine(descriptor)
+            val longSize = if (descriptor.cIntegerModel == "llp64") 4 else 8
+            assertEquals(descriptor.pointerBits / 8, layouts.layout(PointerType(TypeId(50), PrimitiveType(TypeId(51), "int"))).size, name)
+            assertEquals(longSize, layouts.layout(PrimitiveType(TypeId(52), "long")).size, name)
+            assertEquals(8, layouts.layout(PrimitiveType(TypeId(53), "long long")).size, name)
+
+            val record = StructType(TypeId(54), "AbiRecord", emptyList())
+            record.fields = listOf(
+                FieldSymbol(Symbol(SymbolId(55), "tag", SymbolKind.FIELD, PrimitiveType(TypeId(56), "char"), ownerOrigin()), record),
+                FieldSymbol(Symbol(SymbolId(57), "value", SymbolKind.FIELD, PrimitiveType(TypeId(58), "long"), ownerOrigin()), record),
+                FieldSymbol(Symbol(SymbolId(59), "pointer", SymbolKind.FIELD, PointerType(TypeId(60), PrimitiveType(TypeId(61), "int")), ownerOrigin()), record)
+            )
+            val layout = layouts.layout(record)
+            assertEquals(0, layout.fields[0].offset, name)
+            assertEquals(longSize, layout.fields[1].offset, name)
+            assertEquals(longSize, layout.fields[1].size, name)
+            assertEquals(descriptor.pointerBits / 8, layout.fields[2].size, name)
+            assertTrue(layout.alignment >= descriptor.pointerBits / 8, name)
+        }
+    }
+
     private fun ownerOrigin(): cplus.core.Origin = cplus.core.Origin.Synthetic(null)
 }
