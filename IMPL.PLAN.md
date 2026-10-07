@@ -2666,7 +2666,7 @@ all create correct bindings.
 - SDK §77–79
 - SDK §99–100
 
-### 6.2.1 [TODO] [2/4] ABI declarations, target descriptors and low-level constructs
+### 6.2.1 [DONE] [4/4] ABI declarations, target descriptors and low-level constructs
 
 #### 6.2.1.1 [DONE] [4/4] Implement Target ABI Descriptor and `target` compile-time namespace
 
