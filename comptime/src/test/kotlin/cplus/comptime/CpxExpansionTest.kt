@@ -327,6 +327,57 @@ class CpxExpansionTest {
     }
 
     @Test
+    fun reflectiveCpxRunsAfterStructuralExpansionAndGeneratesExecutableCode() {
+        val sourceText = """
+            comptime cpx<decl> makeType(type T) {
+                return { struct generated_{T}_t { T value; }; };
+            }
+            comptime cpx<stmt> makeFunction(type T) {
+                return { int generated_{T}_value() { return 7; } };
+            }
+            makeFunction(int);
+            makeType(int);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(24), Path.of("reflective.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        assertEquals(listOf("generated_int_t"), result.program.declarations.filterIsInstance<SyntaxStruct>().map { it.name })
+        assertEquals(
+            listOf("generated_int_value"),
+            result.program.declarations.filterIsInstance<SyntaxFunction>().map { it.name }
+        )
+        assertEquals(
+            setOf(
+                ExpansionKey("makeFunction", listOf("int")),
+                ExpansionKey("makeType", listOf("int"))
+            ),
+            result.expandedKeys
+        )
+    }
+
+    @Test
+    fun reflectiveCpxRejectsStructuralDeclarationsButKeepsExecutableDeclarations() {
+        val sourceText = """
+            comptime cpx<stmt> invalid(type T) {
+                return {
+                    struct forbidden_{T}_t { T value; };
+                    int generated_value() { return 1; }
+                };
+            }
+            invalid(int);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(25), Path.of("reflective-invalid.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.any { it.code == "CPX008" }, result.diagnostics.joinToString())
+        assertTrue(result.program.declarations.none { it is SyntaxStruct && it.name == "forbidden_int_t" })
+        assertTrue(result.program.declarations.any { it is SyntaxFunction && it.name == "generated_value" })
+    }
+
+    @Test
     fun typeUniverseRejectsMutationAndFullIntrospectionAfterFreeze() {
         val scheduler = ComptimeScheduler()
         val descriptor = StructuralTypeDescriptor(

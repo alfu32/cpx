@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 82/113
+Overall: 83/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
-[DOING] [11/20] 3. Compile-time and CPX system
+[DOING] [12/20] 3. Compile-time and CPX system
 [DOING] [28/34] 4. Lowering and C backend
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-3.5.4 — reflective CPX phase
+3.5.1 — structural fixed-point engine
 
 Current milestone:
 M4 — Full compile-time model
@@ -1150,7 +1150,7 @@ all create correct bindings.
 
 ---
 
-## 3.5 [DOING] [2/4] Structural stabilization and reflection
+## 3.5 [DOING] [3/4] Structural stabilization and reflection
 
 ### 3.5.1 [DOING] Structural fixed-point engine
 
@@ -1222,7 +1222,7 @@ all create correct bindings.
 - Typed references and deterministic layout metadata are retained where known.
 - Reflection over functions, scopes, and richer semantic values remains outside this initial structural API.
 
-### 3.5.4 [TODO] Reflective CPX phase
+### 3.5.4 [DONE] Reflective CPX phase
 
 **Language**
 - LS §20 Reflective Compile-time Generation
@@ -1235,6 +1235,14 @@ all create correct bindings.
 **Depends**
 - 3.5.3
 - 3.3
+
+**Implementation**
+- CPX categories now map to explicit structural and reflective scheduler phases.
+- The scheduler closes the structural phase only when no structural task remains, freezes the type universe, and then releases reflective tasks through the stabilization barrier.
+- Reflective CPX may generate executable functions, globals, and other non-structural declarations after stabilization.
+- Structural declarations emitted by reflective CPX are rejected with `CPX008` and are not incorporated into the frozen program universe.
+- Reflective nested invocations cannot reopen structural expansion after the barrier.
+- Tests cover mixed structural/reflective scheduling, generated executable functions, readiness-channel behavior, and rejection of reflective structural mutation.
 
 ---
 

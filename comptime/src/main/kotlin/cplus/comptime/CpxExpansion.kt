@@ -307,6 +307,7 @@ class ComptimeScheduler {
     private val expanded = linkedSetOf<ExpansionKey>()
     private val states = linkedMapOf<ExpansionKey, ComptimeTaskState>()
     private val published = linkedSetOf<ComptimeDependency>()
+    private var structuralPhaseClosed = false
     val typeUniverse: ComptimeTypeUniverse = ComptimeTypeUniverse()
 
     fun enqueue(task: ExpansionTask) {
@@ -353,12 +354,13 @@ class ComptimeScheduler {
     fun closeStructuralPhase(): Boolean {
         if (pending.any { it.phase == CpxPhase.STRUCTURAL }) return false
         typeUniverse.freeze()
+        structuralPhaseClosed = true
         published += ComptimeDependency.StableTypeUniverse
         return true
     }
 
     val isStructuralPhaseClosed: Boolean
-        get() = ComptimeDependency.StableTypeUniverse in published
+        get() = structuralPhaseClosed
 
     fun isPublished(dependency: ComptimeDependency): Boolean = dependency in published
 
@@ -414,7 +416,8 @@ class ComptimeScheduler {
     }
 
     private fun dependenciesReady(task: ExpansionTask): Boolean =
-        (task.phase != CpxPhase.REFLECTIVE || isStructuralPhaseClosed) &&
+        (task.phase != CpxPhase.STRUCTURAL || !isStructuralPhaseClosed) &&
+            (task.phase != CpxPhase.REFLECTIVE || isStructuralPhaseClosed) &&
             task.dependencies.all(::dependencyReady)
 
     private fun dependencyReady(dependency: ComptimeDependency): Boolean = when (dependency) {
@@ -520,6 +523,7 @@ class CpxExpander(
         while (scheduler.hasPending) {
             val task = scheduler.next()
             if (task == null) {
+                if (!scheduler.isStructuralPhaseClosed && scheduler.closeStructuralPhase()) continue
                 scheduler.pendingKeys().forEach(scheduler::markBlocked)
                 val cycle = scheduler.dependencyCycles().firstOrNull()
                 val cycleText = cycle?.joinToString(" -> ") { it.canonical }
@@ -560,9 +564,13 @@ class CpxExpander(
             }
             if (scheduler.wasExpanded(task.key)) continue
             scheduler.markExpanded(task.key)
-            if (task.definition.category != "decl" && task.definition.category != "unit") {
+            if (!isAllowedCategory(task)) {
                 diagnostics.error(
-                    "initial structural expansion requires a declaration or unit CPX, got '${task.definition.category}'",
+                    if (task.phase == CpxPhase.STRUCTURAL) {
+                        "structural expansion requires a declaration or unit CPX, got '${task.definition.category}'"
+                    } else {
+                        "reflective expansion requires a statement or expression CPX, got '${task.definition.category}'"
+                    },
                     task.definition.origin.primaryRange,
                     "CPX003"
                 )
@@ -624,11 +632,27 @@ class CpxExpander(
                 task.key.canonical
             )
             val declarations = parsed.syntax.declarations.map { reorigin(it, expansionOrigin) }
-            registerStructuralDeclarations(scheduler.typeUniverse, declarations)
-            declarations
+            val structuralDeclarations = declarations.filter(::isStructuralDeclaration)
+            if (task.phase == CpxPhase.REFLECTIVE && structuralDeclarations.isNotEmpty()) {
+                diagnostics.error(
+                    "reflective CPX '${task.definition.name}' cannot introduce structural declarations: " +
+                        structuralDeclarations.joinToString { declarationName(it) },
+                    task.invocation.origin.primaryRange,
+                    "CPX008"
+                )
+            }
+            if (task.phase == CpxPhase.STRUCTURAL) {
+                registerStructuralDeclarations(scheduler.typeUniverse, structuralDeclarations)
+            }
+            val acceptedDeclarations = if (task.phase == CpxPhase.REFLECTIVE) {
+                declarations.filterNot(::isStructuralDeclaration)
+            } else {
+                declarations
+            }
+            acceptedDeclarations
                 .filterIsInstance<SyntaxComptimeFunction>()
                 .forEach { definitions.putIfAbsent(it.name, it) }
-            if (generated.size + declarations.count { it !is SyntaxComptimeFunction && it !is SyntaxCpxInvocation } > limits.maxGeneratedDeclarations) {
+            if (generated.size + acceptedDeclarations.count { it !is SyntaxComptimeFunction && it !is SyntaxCpxInvocation } > limits.maxGeneratedDeclarations) {
                 scheduler.markFailed(task.key)
                 diagnostics.error(
                     "compile-time generated declaration limit exceeded (${limits.maxGeneratedDeclarations})",
@@ -637,13 +661,22 @@ class CpxExpander(
                 )
                 break
             }
-            generated += declarations.filterNot { it is SyntaxComptimeFunction || it is SyntaxCpxInvocation }
-            declarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
+            generated += acceptedDeclarations.filterNot { it is SyntaxComptimeFunction || it is SyntaxCpxInvocation }
+            acceptedDeclarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
                 val definition = definitions[invocation.name]
                 if (definition == null) {
                     diagnostics.error("unknown compile-time function '${invocation.name}'", invocation.origin.primaryRange, "CPX001")
                 } else {
-                    scheduler.enqueue(taskFor(invocation, definition, task.ancestors + task.key))
+                    val nestedPhase = phaseFor(definition.category)
+                    if (scheduler.isStructuralPhaseClosed && nestedPhase == CpxPhase.STRUCTURAL) {
+                        diagnostics.error(
+                            "reflective CPX cannot schedule structural invocation '${invocation.name}' after type-universe stabilization",
+                            invocation.origin.primaryRange,
+                            "CPX008"
+                        )
+                    } else {
+                        scheduler.enqueue(taskFor(invocation, definition, task.ancestors + task.key))
+                    }
                 }
             }
         }
@@ -667,7 +700,8 @@ class CpxExpander(
         invocation,
         definition,
         ExpansionKey(definition.name, invocation.arguments.map(::canonicalArgument)),
-        ancestors
+        ancestors,
+        phase = phaseFor(definition.category)
     ).let { task ->
         task.copy(
             dependencies = ancestors.lastOrNull()?.let { setOf(ComptimeDependency.Expansion(it)) }.orEmpty()
@@ -681,6 +715,32 @@ class CpxExpander(
         "expr", "expression" -> CpxCategory.EXPRESSION
         "type" -> CpxCategory.TYPE
         else -> CpxCategory.DECLARATION
+    }
+
+    private fun phaseFor(category: String): CpxPhase = when (category.lowercase()) {
+        "stmt", "statement", "expr", "expression" -> CpxPhase.REFLECTIVE
+        else -> CpxPhase.STRUCTURAL
+    }
+
+    private fun isAllowedCategory(task: ExpansionTask): Boolean = when (task.phase) {
+        CpxPhase.STRUCTURAL -> task.definition.category.lowercase() in setOf("decl", "unit")
+        CpxPhase.REFLECTIVE -> task.definition.category.lowercase() in setOf("stmt", "statement", "expr", "expression")
+    }
+
+    private fun isStructuralDeclaration(declaration: SyntaxDeclaration): Boolean = when (declaration) {
+        is SyntaxAlias,
+        is SyntaxEnum,
+        is SyntaxUnion,
+        is SyntaxStruct -> true
+        else -> false
+    }
+
+    private fun declarationName(declaration: SyntaxDeclaration): String = when (declaration) {
+        is SyntaxAlias -> "alias ${declaration.name}"
+        is SyntaxEnum -> "enum ${declaration.name}"
+        is SyntaxUnion -> "union ${declaration.name}"
+        is SyntaxStruct -> "struct ${declaration.name}"
+        else -> declaration::class.simpleName ?: "declaration"
     }
 
     private fun canonicalArgument(argument: String): String = argument
