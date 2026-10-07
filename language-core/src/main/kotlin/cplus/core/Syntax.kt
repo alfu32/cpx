@@ -295,6 +295,13 @@ data class SyntaxSizeOf(
     override val origin: Origin
 ) : SyntaxExpression
 
+data class SyntaxCast(
+    val target: TypeSyntax,
+    val operand: SyntaxExpression,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxExpression
+
 data class SyntaxCall(
     val callee: SyntaxExpression,
     val arguments: List<SyntaxExpression>,

@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 56/103
+Overall: 57/104
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
-[DOING] [11/23] 4. Lowering and C backend
+[DOING] [12/24] 4. Lowering and C backend
 [DOING] [3/14] 5. Tooling, integration and quality
 
 Current task:
-4.2.4.3.2.2.2 — remaining expression and lvalue lowering
+4.2.4.3.2.2.2.2 — remaining expression and lvalue lowering
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1193,7 +1193,7 @@ all create correct bindings.
 
 ---
 
-# 4. [DOING] [11/23] Lowering and C backend
+# 4. [DOING] [12/24] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1272,7 +1272,7 @@ all create correct bindings.
 
 ---
 
-## 4.2 [DOING] [8/11] C+ feature lowering
+## 4.2 [DOING] [9/12] C+ feature lowering
 
 ### 4.2.1 [DONE] Method lowering
 
@@ -1358,7 +1358,7 @@ all create correct bindings.
 **Depends**
 - 4.2.3.2
 
-### 4.2.4 [DOING] [5/6] String-template and remaining expression lowering
+### 4.2.4 [DOING] [6/7] String-template and remaining expression lowering
 
 **Language**
 - LS §16
@@ -1398,7 +1398,7 @@ all create correct bindings.
 - The first supported runtime form is `${expression}` inside an ordinary C string literal.
 - Lowering uses a generated bounded `vsnprintf` helper and preserves interpolation origins.
 
-#### 4.2.4.3 [DOING] [2/3] Complete remaining expression and lvalue lowering
+#### 4.2.4.3 [DOING] [3/4] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1418,7 +1418,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.2
 
-#### 4.2.4.3.2 [DOING] [2/3] Complete remaining expression and lvalue lowering
+#### 4.2.4.3.2 [DOING] [3/4] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1437,7 +1437,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.1
 
-##### 4.2.4.3.2.2 [DOING] [1/2] Complete remaining expression and lvalue lowering
+##### 4.2.4.3.2.2 [DOING] [2/3] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1456,7 +1456,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.1
 
-###### 4.2.4.3.2.2.2 [TODO] Complete remaining expression and lvalue lowering
+###### 4.2.4.3.2.2.2 [DOING] [1/2] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1464,6 +1464,25 @@ all create correct bindings.
 
 **Depends**
 - 4.2.4.3.2.2.1
+
+####### 4.2.4.3.2.2.2.1 [DONE] Lower primitive casts
+
+**Acceptance**
+- primitive cast syntax is parsed without confusing ordinary parenthesized expressions.
+- semantic analysis resolves primitive cast targets and diagnoses unsupported targets.
+- C lowering emits explicit casts with preserved operand origins.
+
+**Depends**
+- 4.2.4.3.2.2.2
+
+####### 4.2.4.3.2.2.2.2 [TODO] Complete remaining expression and lvalue lowering
+
+**Acceptance**
+- supported C+ expression and lvalue forms have explicit C AST nodes.
+- unsupported forms produce diagnostics before emission.
+
+**Depends**
+- 4.2.4.3.2.2.2.1
 
 ---
 

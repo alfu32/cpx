@@ -355,6 +355,33 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun primitiveCastsLowerToExplicitCasts() {
+        val source = """
+            int main() {
+                double value = 3.75;
+                return (int)value;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-cast", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("(int)value"))
+
+        val directory = Files.createTempDirectory("cplus-cast-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(3, execution.waitFor())
+    }
+
+    @Test
     fun minimalProgramTranscodesAndExecutes() {
         val source = """
             struct point_t {

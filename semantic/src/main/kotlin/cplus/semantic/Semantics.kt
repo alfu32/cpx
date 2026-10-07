@@ -944,6 +944,19 @@ class SemanticAnalyzer(
                 validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 primitive("size_t")
             }
+            is AstCast -> {
+                validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                if (expression.target.name !in knownPrimitiveNames) {
+                    diagnostics.error("unsupported cast target '${expression.target.name}'", rangeOf(expression.target.origin), "SEM310")
+                    UnknownType(TypeId(-1))
+                } else {
+                    var target: CType = primitive(expression.target.name)
+                    repeat(expression.target.pointerDepth) {
+                        target = PointerType(TypeId(-1), target)
+                    }
+                    target
+                }
+            }
             is AstCall -> {
                 val function = (expression.callee as? AstIdentifier)?.let { functions[it.name] }
                 val methodCall = expression.callee as? AstMemberAccess

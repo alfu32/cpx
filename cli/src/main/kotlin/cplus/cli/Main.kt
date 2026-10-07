@@ -306,6 +306,7 @@ private class AstPrinter {
             "${expression(expression.operand)}${expression.operator}"
         }
         is AstSizeOf -> "sizeof(${expression(expression.operand)})"
+        is AstCast -> "(${expression.target.name})${expression(expression.operand)}"
         is AstCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
         is AstMemberAccess -> "${expression(expression.receiver)}.${expression.member}"
         is AstIndexAccess -> "${expression(expression.receiver)}[${expression(expression.index)}]"

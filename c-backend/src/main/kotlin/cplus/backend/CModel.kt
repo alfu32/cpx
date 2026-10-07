@@ -180,6 +180,7 @@ data class CUpdate(
     override val origin: Origin
 ) : CExpression
 data class CSizeOf(val operand: CExpression, override val origin: Origin) : CExpression
+data class CCast(val target: CType, val operand: CExpression, override val origin: Origin) : CExpression
 data class CCall(val callee: CExpression, val arguments: List<CExpression>, override val origin: Origin) : CExpression
 data class CMemberAccess(
     val receiver: CExpression,

@@ -503,6 +503,13 @@ class Parser(private val lexed: LexedSource) {
                 }
                 SyntaxSizeOf(operand, span(keyword.range, operand.range), direct(span(keyword.range, operand.range)))
             }
+            looksLikeCast() -> {
+                val open = expect("(", "expected '(' before cast type") ?: token
+                val target = parseType() ?: return null
+                expect(")", "expected ')' after cast type")
+                val operand = parsePrefix() ?: return null
+                SyntaxCast(target, operand, span(open.range, operand.range), direct(span(open.range, operand.range)))
+            }
             match("++") || match("--") -> {
                 val operator = previous()
                 val operand = parsePrefix() ?: return null
@@ -624,6 +631,9 @@ class Parser(private val lexed: LexedSource) {
         if (peek().lexeme in primitiveTypes) return true
         return peek().kind == TokenKind.IDENTIFIER && peek(1).kind == TokenKind.IDENTIFIER
     }
+
+    private fun looksLikeCast(): Boolean = peek().isLexeme("(") &&
+        (peek(1).lexeme in primitiveTypes || peek(1).isLexeme("struct") || peek(1).isLexeme("union") || peek(1).isLexeme("enum"))
 
     private fun binaryPrecedence(operator: String): Int = when (operator) {
         "=", "+=", "-=", "*=", "/=", "%=" -> 1
