@@ -324,6 +324,37 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun sizeofExpressionsLowerAsNativeCOperators() {
+        val source = """
+            struct item {
+                int value;
+            };
+
+            int main() {
+                struct item item;
+                return sizeof(item) > 0 ? 0 : 1;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-sizeof", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("sizeof(item)"))
+
+        val directory = Files.createTempDirectory("cplus-sizeof-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(0, execution.waitFor())
+    }
+
+    @Test
     fun minimalProgramTranscodesAndExecutes() {
         val source = """
             struct point_t {

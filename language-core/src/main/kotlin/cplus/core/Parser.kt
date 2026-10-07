@@ -492,6 +492,17 @@ class Parser(private val lexed: LexedSource) {
     private fun parsePrefix(): SyntaxExpression? {
         val token = peek()
         var expression = when {
+            match("sizeof") -> {
+                val keyword = previous()
+                val operand = if (match("(")) {
+                    val value = parseExpression() ?: SyntaxErrorExpression(keyword.range, direct(keyword.range))
+                    expect(")", "expected ')' after sizeof operand")
+                    value
+                } else {
+                    parsePrefix() ?: SyntaxErrorExpression(keyword.range, direct(keyword.range))
+                }
+                SyntaxSizeOf(operand, span(keyword.range, operand.range), direct(span(keyword.range, operand.range)))
+            }
             match("++") || match("--") -> {
                 val operator = previous()
                 val operand = parsePrefix() ?: return null

@@ -139,6 +139,7 @@ class CLowerer(private val semantic: SemanticModel) {
             containsStringTemplate(expression.thenBranch) ||
             containsStringTemplate(expression.elseBranch)
         is AstUpdate -> containsStringTemplate(expression.operand)
+        is AstSizeOf -> containsStringTemplate(expression.operand)
         is AstCall -> containsStringTemplate(expression.callee) || expression.arguments.any(::containsStringTemplate)
         is AstMemberAccess -> containsStringTemplate(expression.receiver)
         is AstIndexAccess -> containsStringTemplate(expression.receiver) || containsStringTemplate(expression.index)
@@ -392,6 +393,7 @@ class CLowerer(private val semantic: SemanticModel) {
             node.origin
         )
         is AstUpdate -> CUpdate(expression(node.operand, ownerName, instanceMethod), node.operator, node.prefix, node.origin)
+        is AstSizeOf -> CSizeOf(expression(node.operand, ownerName, instanceMethod), node.origin)
         is AstCall -> lowerCall(node, ownerName, instanceMethod)
         is AstMemberAccess -> {
             val receiver = node.receiver
@@ -723,6 +725,7 @@ class CEmitter {
         } else {
             "${expression(expression.operand)}${expression.operator}"
         }
+        is CSizeOf -> "sizeof(${expression(expression.operand)})"
         is CCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
         is CMemberAccess -> "${expression(expression.receiver)}${if (expression.pointerReceiver) "->" else "."}${expression.member}"
         is CIndexAccess -> "${expression(expression.receiver)}[${expression(expression.index)}]"

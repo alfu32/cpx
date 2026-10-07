@@ -940,6 +940,10 @@ class SemanticAnalyzer(
                 }
                 operandType
             }
+            is AstSizeOf -> {
+                validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                primitive("size_t")
+            }
             is AstCall -> {
                 val function = (expression.callee as? AstIdentifier)?.let { functions[it.name] }
                 val methodCall = expression.callee as? AstMemberAccess

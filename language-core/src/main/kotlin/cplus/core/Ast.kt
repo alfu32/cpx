@@ -216,6 +216,7 @@ data class AstUpdate(
     val prefix: Boolean,
     override val origin: Origin
 ) : AstExpression
+data class AstSizeOf(val operand: AstExpression, override val origin: Origin) : AstExpression
 data class AstCall(val callee: AstExpression, val arguments: List<AstExpression>, override val origin: Origin) : AstExpression
 data class AstMemberAccess(val receiver: AstExpression, val member: String, override val origin: Origin) : AstExpression
 data class AstIndexAccess(val receiver: AstExpression, val index: AstExpression, override val origin: Origin) : AstExpression

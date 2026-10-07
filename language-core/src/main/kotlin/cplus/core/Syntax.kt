@@ -289,6 +289,12 @@ data class SyntaxUpdate(
     override val origin: Origin
 ) : SyntaxExpression
 
+data class SyntaxSizeOf(
+    val operand: SyntaxExpression,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxExpression
+
 data class SyntaxCall(
     val callee: SyntaxExpression,
     val arguments: List<SyntaxExpression>,

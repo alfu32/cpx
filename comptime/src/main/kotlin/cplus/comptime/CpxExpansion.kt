@@ -417,6 +417,7 @@ class CpxExpander(
             origin = origin
         )
         is SyntaxUpdate -> expression.copy(operand = reorigin(expression.operand, origin), origin = origin)
+        is SyntaxSizeOf -> expression.copy(operand = reorigin(expression.operand, origin), origin = origin)
         is SyntaxCall -> expression.copy(callee = reorigin(expression.callee, origin), arguments = expression.arguments.map { reorigin(it, origin) }, origin = origin)
         is SyntaxMemberAccess -> expression.copy(receiver = reorigin(expression.receiver, origin), origin = origin)
         is SyntaxIndexAccess -> expression.copy(receiver = reorigin(expression.receiver, origin), index = reorigin(expression.index, origin), origin = origin)
