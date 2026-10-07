@@ -34,6 +34,18 @@ class AstGoldenTest {
     }
 
     @Test
+    fun parserCombinesMultiTokenPrimitiveTypeSpecifiers() {
+        val text = "long long wide; unsigned long long count; int main() { return 0; }"
+        val source = SourceFile(SourceFileId(8), Path.of("primitive-types.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val ast = AstBuilder().build(parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        val globals = ast.declarations.filterIsInstance<AstGlobalVariable>()
+        assertEquals(listOf("long long", "unsigned long long"), globals.map { it.type.name })
+    }
+
+    @Test
     fun astArenaProvidesStableAddressableNodes() {
         val range = SourceRange(SourceFileId(1), 0, 1)
         val first = AstIntegerLiteral("1", Origin.Direct(range))

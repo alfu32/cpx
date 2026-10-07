@@ -724,7 +724,11 @@ class Parser(private val lexed: LexedSource) {
         val name = if (declarationKind != "named") {
             expectIdentifier("expected structure type name")
         } else if (peek().kind == TokenKind.KEYWORD || peek().kind == TokenKind.IDENTIFIER) {
-            advance()
+            if (peek().lexeme in primitiveTypes) {
+                syntheticToken(parsePrimitiveTypeName(), span(start.range, previous().range))
+            } else {
+                advance()
+            }
         } else {
             diagnostics.error("expected type name", peek().range, "PARSE101")
             return null
@@ -733,6 +737,35 @@ class Parser(private val lexed: LexedSource) {
         while (match("*")) pointers++
         val range = span(start.range, previous().range)
         return TypeSyntax(name?.lexeme ?: "<error>", isStruct, pointers, range, direct(range), declarationKind)
+    }
+
+    /**
+     * C permits several primitive type specifier sequences. Keep them as one
+     * semantic type name so the existing type model and C emitter can handle
+     * fixed-width declarations without treating the second specifier as the
+     * declaration name.
+     */
+    private fun parsePrimitiveTypeName(): String {
+        val parts = mutableListOf(advance().lexeme)
+        while (peek().lexeme in primitiveTypes && parts.size < 3) {
+            parts += advance().lexeme
+        }
+        return when (parts.joinToString(" ")) {
+            "signed int", "signed long int" -> "signed int"
+            "unsigned int", "unsigned long int" -> "unsigned int"
+            "signed long" -> "long"
+            "unsigned long" -> "unsigned long"
+            "signed long long" -> "long long"
+            "unsigned long long" -> "unsigned long long"
+            "long int" -> "long"
+            "long long" -> "long long"
+            "short int" -> "short"
+            "signed short" -> "short"
+            "unsigned short" -> "unsigned short"
+            "signed char" -> "char"
+            "unsigned char" -> "unsigned char"
+            else -> parts.joinToString(" ")
+        }
     }
 
     private fun looksLikeVariableDeclaration(): Boolean {

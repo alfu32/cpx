@@ -13,10 +13,10 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-none — milestone 6 implementation plan is complete
+R1.2 — semantic type/ABI-width matrix
 
 Current milestone:
-M7 — Self-hosted C+ SDK/runtime foundation
+R1 — Language and front-end conformance
 ```
 
 All tasks initially have status `TODO`.
@@ -3360,6 +3360,14 @@ The scope is now frozen around the normative requirements in `SPEC.LANG.md`,
 of R1–R8 or deliberately recorded as a post-release extension.
 
 ## R1 [DOING] Language and front-end conformance
+
+**Progress**
+
+- R1.1 [DONE] — combine multi-token primitive spellings such as `long long`
+  and `unsigned long long` in the syntax/AST path, with parser and generated-C
+  regression coverage.
+- R1.2 [DOING] — reconcile semantic primitive widths, qualifiers, declarators,
+  and fixed-width aliases across all target ABI descriptors.
 
 **Deliverables**
 

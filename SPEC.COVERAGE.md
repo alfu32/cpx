@@ -30,7 +30,8 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 
 - front-end, semantic model, methods including pointer receivers, imports,
   basic CPX expansion, lowering, C emission, source maps, incremental cache
-  behavior, LSP primitives, and the Linux/Windows self-hosted startup path;
+  behavior, multi-token primitive type parsing, LSP primitives, and the
+  Linux/Windows self-hosted startup path;
 - Linux and Windows self-hosted stdout/process exit;
 - Linux and Windows basic PAL file open/read/write/close/rename with canonical
   UTF-8 slash paths, including the `std_fs_*` forwarding façade.

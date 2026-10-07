@@ -884,6 +884,27 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun fixedWidthCPrimitiveSpellingsReachGeneratedC() {
+        val result = CPlusCompiler().compileText(
+            Files.createTempFile("cplus-fixed-width", ".cp"),
+            """
+                long long add_wide(long long left, unsigned long long right) {
+                    return left + (long long) right;
+                }
+
+                int main() {
+                    return (int) add_wide((long long) 1, (unsigned long long) 2);
+                }
+            """.trimIndent()
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("long long add_wide"), generated)
+        assertTrue(generated.contains("unsigned long long right"), generated)
+    }
+
+    @Test
     fun instanceAndStaticMethodsLowerToCallableCFunctions() {
         val source = """
             struct point_t {
