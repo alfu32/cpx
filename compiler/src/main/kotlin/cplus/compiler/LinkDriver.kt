@@ -46,7 +46,7 @@ object LinkDriver {
     }
 
     private fun gccLikeCommand(request: LinkRequest, plan: RuntimeLinkPlan, compiler: String): List<String> {
-        val includes = (listOf(request.sdk.layout.runtimeInclude) + request.includeDirectories).distinct().flatMap {
+        val includes = (listOf(request.sdk.layout.libcInclude, request.sdk.layout.runtimeInclude) + request.includeDirectories).distinct().flatMap {
             listOf("-I", it.toAbsolutePath().normalize().toString())
         }
         val libraries = request.libraries.map(::gnuLibrary)
@@ -61,7 +61,7 @@ object LinkDriver {
     }
 
     private fun msvcCommand(request: LinkRequest, plan: RuntimeLinkPlan, compiler: String): List<String> {
-        val includes = (listOf(request.sdk.layout.runtimeInclude) + request.includeDirectories).distinct().flatMap {
+        val includes = (listOf(request.sdk.layout.libcInclude, request.sdk.layout.runtimeInclude) + request.includeDirectories).distinct().flatMap {
             listOf("/I${it.toAbsolutePath().normalize()}")
         }
         val sources = listOf(request.generatedSource) + plan.runtimeSources + plan.startupSources + request.sourceDependencies

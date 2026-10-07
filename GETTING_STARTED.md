@@ -1028,6 +1028,32 @@ Target-specific implementations may use:
 
 Most standard-library code remains platform-independent C+.
 
+## Self-hosted product baseline
+
+The `cplus` runtime owns startup, compiler support, and the PAL. You do not
+select glibc, musl, MinGW, MSVCRT, or UCRT for a C+ standard-library build.
+The CLI selects a target C driver automatically and accepts an explicit driver
+only for toolchain integration:
+
+```text
+cplus build main.cp --target linux-x86_64
+cplus build main.cp --target windows-x86_64
+cplus build main.cp --target windows-x86_64 --c-compiler clang-cl
+```
+
+Linux self-hosted products are static ELF executables with direct PAL syscall
+adapters. Windows self-hosted products are PE/COFF executables with only the
+declared Windows system-DLL imports used by the PAL; the C runtime is not
+linked. Inspect a product with:
+
+```text
+cplus audit product --target windows-x86_64
+```
+
+OS-specific facilities are added behind the uniform PAL ABI, so portable
+`std` and runtime code does not change when an adapter uses a syscall, a
+documented DLL API, or a future platform shim.
+
 ---
 
 # Compiler intrinsics

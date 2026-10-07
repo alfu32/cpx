@@ -86,12 +86,14 @@ object RuntimeDependencyAuditor {
     private fun inspectPe(binary: Path, observed: MutableSet<String>, diagnostics: MutableList<String>) {
         val output = runTool(listOf("objdump", "-p", binary.toString()))
             ?: runTool(listOf("llvm-objdump", "-p", binary.toString()))
+            ?: runTool(listOf("dumpbin", "/DEPENDENTS", binary.toString()))
         if (output == null) {
-            diagnostics += "unable to inspect PE/COFF imports; install objdump or llvm-objdump"
+            diagnostics += "unable to inspect PE/COFF imports; install objdump, llvm-objdump, or dumpbin"
             return
         }
         output.text.lineSequence().forEach { line ->
             Regex("DLL Name:\\s*([^\\s]+)", RegexOption.IGNORE_CASE).find(line)?.groupValues?.get(1)?.let(observed::add)
+            line.trim().takeIf { it.matches(Regex("[A-Za-z0-9_.-]+\\.dll", RegexOption.IGNORE_CASE)) }?.let(observed::add)
         }
     }
 

@@ -84,20 +84,22 @@ object RuntimeLinker {
                     )
                 } else {
                     RuntimeLinkPlanResult(
-                    RuntimeLinkPlan(
+                        RuntimeLinkPlan(
                             target.buildProfile.runtime,
                             listOf(startup),
                             listOf(runtime, compilerRuntime, formatter, stdio, platformRuntime),
                             buildList {
-                                addAll(listOf(
-                                "-nostdlib",
-                                "-nodefaultlibs",
-                                "-nostartfiles",
-                                "-ffreestanding",
-                                "-fno-builtin",
-                                "-fno-stack-protector",
-                                "-DCPLUS_RUNTIME_NO_WEAK"
-                                ))
+                                addAll(
+                                    listOf(
+                                        "-nostdlib",
+                                        "-nodefaultlibs",
+                                        "-nostartfiles",
+                                        "-ffreestanding",
+                                        "-fno-builtin",
+                                        "-fno-stack-protector",
+                                        "-DCPLUS_RUNTIME_NO_WEAK"
+                                    )
+                                )
                                 if (descriptor.os == "linux") {
                                     add("-fno-pie")
                                 }
