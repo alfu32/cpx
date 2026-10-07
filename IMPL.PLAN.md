@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 (complete; retained for traceability)
-Roadmap leaf work:     29/45 evidenced on Linux
+Roadmap leaf work:     30/45 evidenced on Linux
 Phase gates:           3/9 complete; 2 active; 4 queued
-Current task:          R5.1 — complete target-neutral native std foundations
+Current task:          R5.2 — extend the file PAL beyond basic stream operations
 Current milestone:     R5 — native standard library and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,7 +22,7 @@ R1 [DONE]  8/8  language and front-end conformance
 R2 [DONE]  9/9  CPX, generics and reflection conformance
 R3 [DOING] 6/6  C backend and ABI evidence on Linux; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
-R5 [TODO]  0/5  native standard library and platform services
+R5 [DOING] 1/5  native std foundations complete; file PAL extensions next
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
@@ -32,7 +32,8 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R5.1–R5.4 — complete native std and the remaining Linux PAL services.
+1. R5.2 — add file seek, metadata, create/remove, directory iteration, and
+   stream adapters above the basic PAL.
 2. R6–R8 — finish CLI/product, LSP/extension, SDK packaging, then perform the
    deferred Windows validation and patch pass.
 
@@ -3841,11 +3842,11 @@ all exported headers have executable implementations or explicit supported
 diagnostics, and self-hosted products have no hidden libc/compiler-runtime
 dependencies.
 
-## R5 [TODO] Complete native std and platform services
+## R5 [DOING] Complete native std and platform services
 
 **Dependency-ordered work queue**
 
-- R5.1 [TODO] — complete target-neutral `std.core`, `std.mem`, `std.string`,
+- R5.1 [DONE] — complete target-neutral `std.core`, `std.mem`, `std.string`,
   `std.text`, and collection value/error types;
 - R5.2 [TODO] — extend the file PAL with seek, metadata, create/remove,
   directory iteration, and stream adapters;
@@ -3855,6 +3856,22 @@ dependencies.
   propagation, unavailable-service diagnostics, and dependency audits;
 - R5.5 [TODO] — record Darwin as either executablely supported or explicitly
   capability-gated, without claiming a partial adapter as complete.
+
+### R5.1 completion record
+
+Implemented and executed on Linux:
+
+- `std.core` now defines target-neutral byte/size/index aliases plus explicit
+  error, result, and option value carriers without PAL or host error fields;
+- `std.mem` provides zeroing and unsigned-byte comparison/equality in addition
+  to copy, move, and set;
+- `std.string` provides unsigned-byte comparison, copy, and append helpers;
+- `std.text` provides byte length, empty, ASCII, and prefix operations while
+  keeping UTF-8 bytes distinct from wide-character libc compatibility types;
+- `std.collections` provides explicit non-owning slice and half-open range
+  values with length/containment operations;
+- an executable C harness generated from the C+ sources validates the values
+  and operations without a hosted C library dependency.
 
 **Deliverables**
 

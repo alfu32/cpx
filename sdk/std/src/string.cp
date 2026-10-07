@@ -13,3 +13,25 @@ pub int std_string_equal(char* left, char* right) {
     }
     return left[index] == right[index];
 }
+
+pub int std_string_compare(char* left, char* right) {
+    long index = 0;
+    unsigned char* a = (unsigned char*) left;
+    unsigned char* b = (unsigned char*) right;
+    while (a[index] != 0 && a[index] == b[index]) index = index + 1;
+    if (a[index] < b[index]) return -1;
+    if (a[index] > b[index]) return 1;
+    return 0;
+}
+
+pub char* std_string_copy(char* destination, char* source) {
+    long index = 0;
+    while ((destination[index] = source[index]) != 0) index = index + 1;
+    return destination;
+}
+
+pub char* std_string_append(char* destination, char* source) {
+    long offset = std_string_length(destination);
+    std_string_copy(destination + offset, source);
+    return destination;
+}

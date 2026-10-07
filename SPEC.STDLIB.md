@@ -436,6 +436,11 @@ low-level numeric limits
 
 No operating-system dependency is permitted.
 
+The SDK provides target-neutral byte, size, and index aliases together with
+explicit `std_error_t`, `std_result_t`, and `std_option_t` value carriers.
+These carriers contain status and value data only; PAL handles, raw syscall
+numbers, and host `errno` values are not part of their representation.
+
 ---
 
 # 8. `std.mem`
@@ -463,6 +468,10 @@ memcmp
 ```
 
 where required by generated C or the downstream C compiler.
+
+The native implementation also provides zeroing and unsigned-byte equality and
+comparison. It SHALL preserve byte values independently of the signedness of
+the target C `char` type.
 
 ---
 
@@ -527,6 +536,16 @@ aligned_alloc
 `std.string` provides byte/string storage and manipulation.
 
 `std.text` provides higher-level text and Unicode facilities.
+
+The target-neutral baseline provides byte length, empty-text, ASCII, and
+prefix operations. UTF-8 byte storage remains distinct from the C17 wide
+character compatibility layer; target-specific encoding conversion belongs at
+the documented PAL/libc boundary.
+
+The initial `std.collections` value layer provides explicit non-owning slices
+and half-open ranges. These values do not imply ownership or hidden allocation;
+allocation policy remains the responsibility of the caller or selected
+allocator.
 
 This distinction prevents libc's historical null-terminated byte-string semantics from constraining native C+ text APIs.
 
