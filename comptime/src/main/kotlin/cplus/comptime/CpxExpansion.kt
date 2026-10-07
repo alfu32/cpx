@@ -198,6 +198,45 @@ enum class ComptimeTaskState {
     FAILED
 }
 
+enum class TypeUniverseAccess {
+    EARLY_SAFE,
+    FULL
+}
+
+data class TypeUniverseSnapshot(
+    val names: Set<String>,
+    val access: TypeUniverseAccess
+)
+
+/** Mutable only during structural expansion and immutable after freeze. */
+class ComptimeTypeUniverse {
+    private val names = linkedSetOf<String>()
+    private var frozen = false
+
+    fun register(name: String): Boolean {
+        if (frozen) return false
+        return names.add(name)
+    }
+
+    fun registerAll(names: Iterable<String>) {
+        names.forEach(::register)
+    }
+
+    fun freeze() {
+        frozen = true
+    }
+
+    val isFrozen: Boolean
+        get() = frozen
+
+    fun snapshot(access: TypeUniverseAccess): TypeUniverseSnapshot {
+        check(access != TypeUniverseAccess.FULL || frozen) {
+            "full type-universe introspection requires the structural barrier"
+        }
+        return TypeUniverseSnapshot(names.toSet(), access)
+    }
+}
+
 data class ExpansionTask(
     val invocation: SyntaxCpxInvocation,
     val definition: SyntaxComptimeFunction,
@@ -220,6 +259,7 @@ class ComptimeScheduler {
     private val expanded = linkedSetOf<ExpansionKey>()
     private val states = linkedMapOf<ExpansionKey, ComptimeTaskState>()
     private val published = linkedSetOf<ComptimeDependency>()
+    val typeUniverse: ComptimeTypeUniverse = ComptimeTypeUniverse()
 
     fun enqueue(task: ExpansionTask) {
         pending.addLast(task)
@@ -257,6 +297,20 @@ class ComptimeScheduler {
     fun publishAll(dependencies: Iterable<ComptimeDependency>) {
         published += dependencies
     }
+
+    /**
+     * Closes structural expansion only after no structural task remains
+     * queued. The published token is the channel a reflective task waits on.
+     */
+    fun closeStructuralPhase(): Boolean {
+        if (pending.any { it.phase == CpxPhase.STRUCTURAL }) return false
+        typeUniverse.freeze()
+        published += ComptimeDependency.StableTypeUniverse
+        return true
+    }
+
+    val isStructuralPhaseClosed: Boolean
+        get() = ComptimeDependency.StableTypeUniverse in published
 
     fun isPublished(dependency: ComptimeDependency): Boolean = dependency in published
 
@@ -311,7 +365,9 @@ class ComptimeScheduler {
         return cycles.sortedBy { cycle -> cycle.joinToString(" -> ") { it.canonical } }
     }
 
-    private fun dependenciesReady(task: ExpansionTask): Boolean = task.dependencies.all(::dependencyReady)
+    private fun dependenciesReady(task: ExpansionTask): Boolean =
+        (task.phase != CpxPhase.REFLECTIVE || isStructuralPhaseClosed) &&
+            task.dependencies.all(::dependencyReady)
 
     private fun dependencyReady(dependency: ComptimeDependency): Boolean = when (dependency) {
         is ComptimeDependency.Expansion -> dependency.key in expanded
@@ -335,8 +391,41 @@ data class CpxExpansionResult(
     val program: SyntaxProgram,
     val diagnostics: List<Diagnostic>,
     val expandedKeys: Set<ExpansionKey>,
-    val specializationKeys: Set<SpecializationKey> = expandedKeys.map { it.specializationKey }.toSet()
+    val specializationKeys: Set<SpecializationKey> = expandedKeys.map { it.specializationKey }.toSet(),
+    val structuralFingerprint: String = structuralFingerprint(program)
 )
+
+/**
+ * Fingerprints the stabilized structural declaration universe without source
+ * ranges, origins, whitespace, or emitted C text.
+ */
+fun structuralFingerprint(program: SyntaxProgram): String = program.declarations
+    .mapNotNull { declaration ->
+        when (declaration) {
+            is SyntaxPackage -> "package:${declaration.name}"
+            is SyntaxAlias -> "alias:${declaration.name}:${structuralType(declaration.target)}:${declaration.arrayDimensions}"
+            is SyntaxUnion -> "union:${declaration.name}:${declaration.fields.joinToString { structuralField(it) }}"
+            is SyntaxEnum -> "enum:${declaration.name}:${declaration.values.joinToString { "${it.name}=${it.value}" }}"
+            is SyntaxStruct -> "struct:${declaration.name}:${declaration.fields.joinToString { structuralField(it) }}:" +
+                declaration.methods.joinToString { structuralFunction(it) }
+            is SyntaxGlobalVariable -> "global:${declaration.name}:${structuralType(declaration.type)}:${declaration.arrayDimensions}"
+            is SyntaxFunction -> "function:${structuralFunction(declaration)}"
+            is SyntaxComptimeFunction,
+            is SyntaxCpxInvocation,
+            is SyntaxImport -> null
+        }
+    }
+    .joinToString("|")
+
+private fun structuralField(field: SyntaxField): String =
+    "${field.name}:${structuralType(field.type)}:${field.arrayDimensions}"
+
+private fun structuralFunction(function: SyntaxFunction): String =
+    "${function.ownerName}:${function.name}:${structuralType(function.returnType)}:" +
+        function.parameters.joinToString(",") { "${it.name}:${structuralType(it.type)}:${it.isReceiver}" }
+
+private fun structuralType(type: TypeSyntax): String =
+    "${type.declarationKind}:${type.name}:${type.isStruct}:${type.pointerDepth}"
 
 data class CpxExpansionLimits(
     val maxExpansionDepth: Int = 64,
@@ -362,10 +451,12 @@ class CpxExpander(
 
     fun expand(source: SourceFile, program: SyntaxProgram): CpxExpansionResult {
         val diagnostics = DiagnosticBag()
-        val definitions = program.declarations
+        val definitions = linkedMapOf<String, SyntaxComptimeFunction>()
+        program.declarations
             .filterIsInstance<SyntaxComptimeFunction>()
-            .associateBy { it.name }
+            .forEach { definitions[it.name] = it }
         val scheduler = ComptimeScheduler()
+        scheduler.typeUniverse.registerAll(program.declarations.mapNotNull(::structuralTypeName))
         program.declarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
             val definition = definitions[invocation.name]
             if (definition == null) {
@@ -481,10 +572,14 @@ class CpxExpander(
             val expansionOrigin = Origin.Expansion(
                 task.definition.origin,
                 task.invocation.origin,
-                task.ancestors.lastOrNull()?.let { Origin.Synthetic(null) },
+                if (task.ancestors.isEmpty()) null else task.invocation.origin,
                 task.key.canonical
             )
             val declarations = parsed.syntax.declarations.map { reorigin(it, expansionOrigin) }
+            scheduler.typeUniverse.registerAll(declarations.mapNotNull(::structuralTypeName))
+            declarations
+                .filterIsInstance<SyntaxComptimeFunction>()
+                .forEach { definitions.putIfAbsent(it.name, it) }
             if (generated.size + declarations.count { it !is SyntaxComptimeFunction && it !is SyntaxCpxInvocation } > limits.maxGeneratedDeclarations) {
                 scheduler.markFailed(task.key)
                 diagnostics.error(
@@ -505,6 +600,7 @@ class CpxExpander(
             }
         }
 
+        if (scheduler.pendingKeys().isEmpty()) scheduler.closeStructuralPhase()
         val retained = program.declarations.filterNot { it is SyntaxComptimeFunction || it is SyntaxCpxInvocation }
         val range = program.range
         return CpxExpansionResult(
@@ -541,6 +637,14 @@ class CpxExpander(
 
     private fun canonicalArgument(argument: String): String = argument
         .trim()
+
+    private fun structuralTypeName(declaration: SyntaxDeclaration): String? = when (declaration) {
+        is SyntaxAlias -> declaration.name
+        is SyntaxEnum -> declaration.name
+        is SyntaxStruct -> declaration.name
+        is SyntaxUnion -> declaration.name
+        else -> null
+    }
         .replace(Regex("\\s+"), " ")
         .removePrefix("struct ")
         .trim()

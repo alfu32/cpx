@@ -167,4 +167,28 @@ class IncrementalCompilerTest {
             parallel.result.generatedUnits.map { it.text }
         )
     }
+
+    @Test
+    fun compilerConfigurationParticipatesInIncrementalCacheIdentity() {
+        val source = Files.createTempFile("cplus-incremental-cache-key", ".cp").also {
+            it.writeText("int main() { return 0; }")
+        }
+        val incremental = IncrementalCompiler()
+        val first = incremental.compile(
+            CompileRequest(listOf(source), options = CompilerOptions(parallelism = 1))
+        )
+        val second = incremental.compile(
+            CompileRequest(listOf(source), options = CompilerOptions(parallelism = 2))
+        )
+
+        assertTrue(first.isSuccessful, first.result.diagnostics.joinToString())
+        assertTrue(second.isSuccessful, second.result.diagnostics.joinToString())
+        assertEquals(
+            setOf(source.toAbsolutePath().normalize()),
+            first.cacheKey!!.sourceFingerprints.keys
+        )
+        assertTrue(second.invalidation.invalidatedSources.contains(source.toAbsolutePath().normalize()))
+        assertTrue(second.invalidation.changedSources.isEmpty())
+        assertTrue(first.result !== second.result)
+    }
 }

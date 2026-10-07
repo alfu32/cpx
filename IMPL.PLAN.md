@@ -3,19 +3,19 @@
 ## Dashboard
 
 ```text
-Overall: 78/113
+Overall: 80/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
-[DOING] [8/20] 3. Compile-time and CPX system
+[DOING] [9/20] 3. Compile-time and CPX system
 [DOING] [28/34] 4. Lowering and C backend
-[DOING] [5/14] 5. Tooling, integration and quality
+[DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-5.2.4 — compiler caches and deterministic concurrency
+3.5.1 — structural fixed-point engine
 
 Current milestone:
-M5 — Advanced runtime lowering
+M4 — Full compile-time model
 ```
 
 All tasks initially have status `TODO`.
@@ -831,7 +831,7 @@ all create correct bindings.
 
 ---
 
-# 3. [DOING] [8/20] Compile-time and CPX system
+# 3. [DOING] [9/20] Compile-time and CPX system
 
 **Purpose:** Implement the compile-time language, readable CPX templates, generics, fixed-point expansion, hygiene and reflection.
 
@@ -1065,7 +1065,7 @@ all create correct bindings.
 
 ---
 
-## 3.4 [DOING] [3/4] Generics and recursive specialization
+## 3.4 [DONE] [4/4] Generics and recursive specialization
 
 ### 3.4.1 [DONE] Generic declaration generation through CPX
 
@@ -1128,7 +1128,7 @@ all create correct bindings.
 - Incremental dependency invalidation explicitly evicts affected specialization keys before recompilation.
 - Cache statistics and tests cover reuse, invalidation boundaries, and diagnostics on cached malformed expansions.
 
-### 3.4.4 [TODO] Recursive/nested CPX expansion
+### 3.4.4 [DONE] Recursive/nested CPX expansion
 
 **Language**
 - LS §10.1–10.2
@@ -1142,11 +1142,17 @@ all create correct bindings.
 - 3.3
 - 3.4.1
 
+**Implementation**
+- Generated CPX invocations are queued and expanded until no pending task remains.
+- Nested `Origin.Expansion` values retain the complete parent expansion chain.
+- Depth, task-count, and generated-output limits prevent unbounded recursive work.
+- Tests cover nested fixed-point expansion, ancestry, cycle diagnostics, and limit failures.
+
 ---
 
-## 3.5 [TODO] [0/4] Structural stabilization and reflection
+## 3.5 [DOING] [0/4] Structural stabilization and reflection
 
-### 3.5.1 [TODO] Structural fixed-point engine
+### 3.5.1 [DOING] Structural fixed-point engine
 
 **Language**
 - LS §17 Structural Compile-time Phase
@@ -1162,6 +1168,11 @@ all create correct bindings.
 **Depends**
 - 3.4.4
 - 2.1.3
+
+**Implementation in progress**
+- Generated CPX declarations are catalogued during expansion and can resolve later queued invocations.
+- Structural output exposes a declaration fingerprint based on semantic shape rather than source text, ranges, or origins.
+- Full type-universe stabilization and resolver feedback between structural waves remain to be completed.
 
 ### 3.5.2 [TODO] Type-universe stabilization barrier
 
@@ -1841,7 +1852,7 @@ all create correct bindings.
 
 ---
 
-# 5. [DOING] [5/14] Tooling, integration and quality
+# 5. [DOING] [6/14] Tooling, integration and quality
 
 **Purpose:** Make the compiler usable as a development platform through LSP, CLI, incremental compilation, test coverage and specification audits.
 
@@ -1932,7 +1943,7 @@ all create correct bindings.
 
 ---
 
-## 5.2 [DOING] [5/6] CLI, build and incremental compiler
+## 5.2 [DONE] [6/6] CLI, build and incremental compiler
 
 ### 5.2.1 [DONE] Public compiler API
 
@@ -2024,7 +2035,7 @@ all create correct bindings.
 - Unchanged requests return the previous immutable `CompileResult` without rerunning the pipeline.
 - Tests cover dependent invalidation, unrelated-module reuse, CPX invalidation, and stable-result reuse.
 
-### 5.2.4 [DOING] Compiler caches and deterministic concurrency
+### 5.2.4 [DONE] Compiler caches and deterministic concurrency
 
 **Language**
 - LS §39 Determinism
@@ -2041,11 +2052,13 @@ all create correct bindings.
 - 5.2.3
 - 3.4.3
 
-**Implementation in progress**
+**Implementation**
 - Incremental front-end preparation accepts a bounded worker count through `CompilerOptions.parallelism`.
 - Sources are registered in request order before workers start, preserving stable source IDs and output ordering.
 - Sequential and parallel front-end preparation are covered by deterministic-output tests.
-- Semantic and specialization cache keys remain to be completed with the corresponding CPX cache work.
+- `IncrementalCacheKey` covers source, foreign-source, target, compiler-option, library, and include-directory inputs.
+- Semantic workspace results, parsed front-end units, CPX expansions, and specializations are reused only under valid keys.
+- Configuration changes invalidate the semantic workspace result even when source bytes are unchanged.
 
 ---
 

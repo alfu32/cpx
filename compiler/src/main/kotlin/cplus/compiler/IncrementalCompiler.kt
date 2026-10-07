@@ -26,11 +26,22 @@ data class InvalidationReport(
 
 data class IncrementalCompileResult(
     val result: CompileResult,
-    val invalidation: InvalidationReport
+    val invalidation: InvalidationReport,
+    val cacheKey: IncrementalCacheKey? = null
 ) {
     val isSuccessful: Boolean
         get() = result.isSuccessful
 }
+
+/** Complete semantic cache identity for one workspace compilation. */
+data class IncrementalCacheKey(
+    val sourceFingerprints: Map<Path, String>,
+    val foreignSourceFingerprints: Map<Path, String>,
+    val target: TargetInfo,
+    val options: CompilerOptions,
+    val cLibraries: List<String>,
+    val cIncludeDirectories: List<Path>
+)
 
 /**
  * Stateful compiler coordinator for one workspace.
@@ -51,6 +62,14 @@ class IncrementalCompiler(
         val canonicalRequest = request.canonicalized()
         val sourceFingerprints = canonicalRequest.sources.associateWith(::fingerprint)
         val foreignFingerprints = canonicalRequest.cSources.associateWith(::fingerprint)
+        val cacheKey = IncrementalCacheKey(
+            sourceFingerprints,
+            foreignFingerprints,
+            canonicalRequest.target,
+            canonicalRequest.options,
+            canonicalRequest.cLibraries,
+            canonicalRequest.cIncludeDirectories
+        )
         val configuration = RequestConfiguration.from(canonicalRequest)
         val previous = state
 
@@ -69,7 +88,7 @@ class IncrementalCompiler(
             changedSources
         }
 
-        if (previous != null && seedSources.isEmpty()) {
+        if (previous != null && seedSources.isEmpty() && previous.cacheKey == cacheKey) {
             val report = InvalidationReport(
                 changedSources = emptySet(),
                 invalidatedSources = emptySet(),
@@ -77,7 +96,7 @@ class IncrementalCompiler(
                 reusedExpansionKeys = previous.expansions.values.flatten().toSet(),
                 reusedSpecializationKeys = previous.specializations.values.flatten().toSet()
             )
-            return IncrementalCompileResult(previous.result, report)
+            return IncrementalCompileResult(previous.result, report, previous.cacheKey)
         }
 
         if (previous != null) {
@@ -155,6 +174,7 @@ class IncrementalCompiler(
         )
 
         state = WorkspaceState(
+            cacheKey = cacheKey,
             configuration = configuration,
             sourceFingerprints = sourceFingerprints,
             foreignFingerprints = foreignFingerprints,
@@ -164,7 +184,7 @@ class IncrementalCompiler(
             specializations = currentSpecializations,
             result = pipeline.result
         )
-        return IncrementalCompileResult(pipeline.result, report)
+        return IncrementalCompileResult(pipeline.result, report, cacheKey)
     }
 
     @Synchronized
@@ -251,6 +271,7 @@ class IncrementalCompiler(
     }
 
     private data class WorkspaceState(
+        val cacheKey: IncrementalCacheKey,
         val configuration: RequestConfiguration,
         val sourceFingerprints: Map<Path, String>,
         val foreignFingerprints: Map<Path, String>,
