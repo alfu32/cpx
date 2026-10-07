@@ -26,6 +26,9 @@ R5 [DOING] 1/5  native std foundations complete; file PAL extensions next
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
+
+TOTAL       22/45 implementation tasks complete; 2/9 phase gates complete,
+            4 active, 3 queued
 ```
 
 The detailed, authoritative R0–R8 work queue is in the
