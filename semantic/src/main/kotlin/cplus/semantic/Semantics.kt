@@ -91,6 +91,7 @@ data class SemanticModel(
     val functions: Map<String, FunctionSymbol>,
     val structs: Map<String, StructType>,
     val methods: Map<String, Map<String, MethodSymbol>>,
+    val scopes: ScopeTable,
     val expressionTypes: Map<AstExpression, CType>
 ) {
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
@@ -116,6 +117,8 @@ class SemanticAnalyzer {
         val functions = linkedMapOf<String, FunctionSymbol>()
         val methods = linkedMapOf<String, Map<String, MethodSymbol>>()
         val globals = linkedMapOf<String, Symbol>()
+        val scopes = ScopeTable()
+        val rootScope = scopes.create(ScopeKind.PACKAGE)
         val primitiveTypes = linkedMapOf<String, PrimitiveType>()
         val expressionTypes = linkedMapOf<AstExpression, CType>()
 
@@ -136,7 +139,9 @@ class SemanticAnalyzer {
                         val type = StructType(TypeId(nextTypeId.next()), declaration.name, emptyList())
                         structs[declaration.name] = type
                         types += type
-                        newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin)
+                        val symbol = newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin)
+                        scopes.define(rootScope, symbol.name, symbol.id)
+                        scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
                     }
                 }
                 is AstFunction -> {
@@ -150,6 +155,9 @@ class SemanticAnalyzer {
                         }
                         val functionSymbol = newSymbol(declaration.name, SymbolKind.FUNCTION, returnType, declaration.origin)
                         functions[declaration.name] = FunctionSymbol(functionSymbol, returnType, parameterSymbols)
+                        val functionScope = scopes.create(ScopeKind.FUNCTION, rootScope, functionSymbol.id)
+                        scopes.define(rootScope, functionSymbol.name, functionSymbol.id)
+                        parameterSymbols.forEach { scopes.define(functionScope, it.name, it.id) }
                     }
                 }
                 is AstGlobalVariable -> {
@@ -157,7 +165,9 @@ class SemanticAnalyzer {
                         diagnostics.error("duplicate global '${declaration.name}'", rangeOf(declaration.origin), "SEM003")
                     } else {
                         val type = resolveType(declaration.type, structs, ::primitive, diagnostics)
-                        globals[declaration.name] = newSymbol(declaration.name, SymbolKind.VARIABLE, type, declaration.origin)
+                        val symbol = newSymbol(declaration.name, SymbolKind.VARIABLE, type, declaration.origin)
+                        globals[declaration.name] = symbol
+                        scopes.define(rootScope, symbol.name, symbol.id)
                     }
                 }
                 is AstComptimeFunction, is AstCpxInvocation -> Unit
@@ -210,7 +220,7 @@ class SemanticAnalyzer {
             }
         }
 
-        val model = SemanticModel(program, symbols, types, functions, structs, methods, expressionTypes)
+        val model = SemanticModel(program, symbols, types, functions, structs, methods, scopes, expressionTypes)
         return SemanticResult(model, diagnostics.diagnostics)
     }
 

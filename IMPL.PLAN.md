@@ -3,13 +3,13 @@
 ## Dashboard
 
 ```text
-Overall: 21/80
+Overall: 22/80
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [2/16] 2. Semantic model and modules
 [DOING] [2/20] 3. Compile-time and CPX system
 [DOING] [3/16] 4. Lowering and C backend
-[TODO] [0/12] 5. Tooling, integration and quality
+[DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
 3.2.1 — CPX categories and template node model
@@ -1372,9 +1372,9 @@ all create correct bindings.
 
 ---
 
-## 5.2 [TODO] [0/4] CLI, build and incremental compiler
+## 5.2 [DOING] [1/4] CLI, build and incremental compiler
 
-### 5.2.1 [TODO] Public compiler API
+### 5.2.1 [DONE] Public compiler API
 
 **Technical**
 - TS §58
