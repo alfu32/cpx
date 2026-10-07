@@ -74,6 +74,143 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun cSourceGlobalsLowerAsExternAssignableLvalues() {
+        val directory = Files.createTempDirectory("cplus-c-source-global")
+        val source = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    int main() {
+                        shared_value = shared_value + 5;
+                        return shared_value;
+                    }
+                """.trimIndent()
+            )
+        }
+        val cSource = directory.resolve("globals.c").also {
+            it.writeText(
+                """
+                    int shared_value = 4;
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(source), cSources = listOf(cSource)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals(SymbolKind.FOREIGN_GLOBAL, result.semanticModel!!.foreignGlobals.getValue("shared_value").kind)
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("extern int shared_value;"))
+
+        val executable = directory.resolve("program")
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), cSource.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(9, execution.waitFor())
+    }
+
+    @Test
+    fun mutuallyReferentialAggregatePointersReceiveForwardDeclarations() {
+        val source = """
+            struct first {
+                struct second* second;
+            };
+
+            struct second {
+                struct first* first;
+            };
+
+            int main() {
+                struct first first;
+                struct second second;
+                first.second = &second;
+                second.first = &first;
+                return first.second->first == &first;
+            }
+        """.trimIndent()
+
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-forward-declarations", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generatedUnit = result.generatedUnits.single()
+        val generated = generatedUnit.text
+        assertTrue(generated.contains("struct second;"))
+        assertTrue(generatedUnit.sourceMap.any { it.generatedEndOffset > it.generatedStartOffset })
+
+        val directory = Files.createTempDirectory("cplus-forward-declarations-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(1, execution.waitFor())
+    }
+
+    @Test
+    fun byValueAggregateDependenciesAreEmittedBeforeTheirUsers() {
+        val source = """
+            struct container {
+                struct value value;
+            };
+
+            struct value {
+                int number;
+            };
+
+            int main() {
+                struct container container;
+                container.value.number = 7;
+                return container.value.number;
+            }
+        """.trimIndent()
+
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-by-value-declarations", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.indexOf("struct value {") < generated.indexOf("struct container {"))
+
+        val directory = Files.createTempDirectory("cplus-by-value-declarations-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(7, execution.waitFor())
+    }
+
+    @Test
+    fun cyclicByValueAggregateDependenciesProduceLoweringDiagnostics() {
+        val source = """
+            struct left {
+                struct right right;
+            };
+
+            struct right {
+                struct left left;
+            };
+
+            int main() {
+                return 0;
+            }
+        """.trimIndent()
+
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-by-value-cycle", ".cp"), source)
+
+        assertTrue(result.diagnostics.any { it.code == "LOW102" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun importedForeignTypesRetainCNamesAndHeaders() {
         val source = """
             import { FILE } from c.stdio;

@@ -24,6 +24,7 @@ enum class SymbolKind {
     FUNCTION,
     METHOD,
     FOREIGN,
+    FOREIGN_GLOBAL,
     VARIABLE,
     PARAMETER
 }
@@ -46,14 +47,14 @@ data class PrimitiveType(
 data class StructType(
     override val id: TypeId,
     override val name: String,
-    val fields: List<FieldSymbol>,
-    val methods: List<MethodSymbol> = emptyList()
+    var fields: List<FieldSymbol>,
+    var methods: List<MethodSymbol> = emptyList()
 ) : CType
 
 data class UnionType(
     override val id: TypeId,
     override val name: String,
-    val fields: List<FieldSymbol>
+    var fields: List<FieldSymbol>
 ) : CType
 
 data class EnumType(
@@ -188,7 +189,12 @@ data class SemanticModel(
         get() = functions.filterValues { it.symbol.kind == SymbolKind.FOREIGN }
 
     val foreignSymbols: List<Symbol>
-        get() = symbols.filter { it.kind == SymbolKind.FOREIGN || it.kind == SymbolKind.FOREIGN_TYPE || it.kind == SymbolKind.FOREIGN_ENUM_VALUE }
+        get() = symbols.filter {
+            it.kind == SymbolKind.FOREIGN ||
+                it.kind == SymbolKind.FOREIGN_GLOBAL ||
+                it.kind == SymbolKind.FOREIGN_TYPE ||
+                it.kind == SymbolKind.FOREIGN_ENUM_VALUE
+        }
 
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
 
@@ -380,7 +386,7 @@ class SemanticAnalyzer(
                     val type = foreignTypeFromName(declaration.typeName ?: "int", moduleName, origin)
                     val symbol = newSymbol(
                         declaration.name,
-                        SymbolKind.FOREIGN,
+                        SymbolKind.FOREIGN_GLOBAL,
                         type,
                         origin,
                         moduleName,
@@ -594,8 +600,8 @@ class SemanticAnalyzer(
                 val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, signature, method.origin, declarationModules[declaration] ?: defaultModule)
                 method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols, signature)
             }
-            val updatedStruct = struct.copy(fields = fields, methods = methodSymbols.values.toList())
-            structs[declaration.name] = updatedStruct
+            struct.fields = fields
+            struct.methods = methodSymbols.values.toList()
             methods[declaration.name] = methodSymbols
         }
 
@@ -606,7 +612,7 @@ class SemanticAnalyzer(
                 val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin, declarationModules[declaration] ?: defaultModule)
                 FieldSymbol(symbol, union)
             }
-            unions[declaration.name] = union.copy(fields = fields)
+            union.fields = fields
         }
 
         program.declarations.filterIsInstance<AstEnum>().forEach { declaration ->
@@ -823,7 +829,7 @@ class SemanticAnalyzer(
                     val actual = validateExpression(returnExpression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                     if (expectedReturn.name == "void") {
                         diagnostics.error("void function cannot return a value", rangeOf(statement.origin), "SEM202")
-                } else if (actual.name != "<unknown>" && !equivalentTypes(expectedReturn, actual)) {
+                } else if (actual.name != "<unknown>" && !argumentCompatible(expectedReturn, actual)) {
                         diagnostics.error(
                             "return type '${actual.name}' does not match '${expectedReturn.name}'",
                             rangeOf(statement.origin),
@@ -911,7 +917,35 @@ class SemanticAnalyzer(
                         UnknownType(TypeId(-1))
                     }
             }
-            is AstUnary -> validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+            is AstUnary -> {
+                val operandType = validateExpression(
+                    expression.operand,
+                    locals,
+                    functions,
+                    globals,
+                    structs,
+                    methods,
+                    expressionTypes,
+                    diagnostics,
+                    primitive
+                )
+                when (expression.operator) {
+                    "&" -> {
+                        if (!isAssignable(expression.operand, locals, globals)) {
+                            diagnostics.error("operand of '&' is not addressable", rangeOf(expression.origin), "SEM312")
+                        }
+                        PointerType(TypeId(-1), operandType)
+                    }
+                    "*" -> when (val canonical = canonicalType(operandType)) {
+                        is PointerType -> canonical.pointee
+                        else -> {
+                            diagnostics.error("cannot dereference non-pointer expression", rangeOf(expression.origin), "SEM313")
+                            UnknownType(TypeId(-1))
+                        }
+                    }
+                    else -> operandType
+                }
+            }
             is AstBinary -> {
                 val left = validateExpression(expression.left, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 val right = validateExpression(expression.right, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
@@ -922,7 +956,10 @@ class SemanticAnalyzer(
                         diagnostics.error("cannot assign '${right.name}' to '${left.name}'", rangeOf(expression.origin), "SEM308")
                     }
                 }
-                left
+                when (expression.operator) {
+                    in comparisonOperators, in logicalOperators -> primitive("bool")
+                    else -> left
+                }
             }
             is AstConditional -> {
                 validateExpression(expression.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
@@ -1091,7 +1128,9 @@ class SemanticAnalyzer(
         locals: Map<String, Symbol>,
         globals: Map<String, Symbol>
     ): Boolean = when (expression) {
-        is AstIdentifier -> locals[expression.name]?.kind == SymbolKind.VARIABLE || globals[expression.name]?.kind == SymbolKind.VARIABLE
+        is AstIdentifier -> locals[expression.name]?.kind == SymbolKind.VARIABLE ||
+            globals[expression.name]?.kind == SymbolKind.VARIABLE ||
+            globals[expression.name]?.kind == SymbolKind.FOREIGN_GLOBAL
         is AstMemberAccess, is AstIndexAccess -> true
         is AstUnary -> expression.operator == "*"
         is AstParenthesized -> isAssignable(expression.expression, locals, globals)
@@ -1099,6 +1138,10 @@ class SemanticAnalyzer(
     }
 
     private val assignmentOperators = setOf("=", "+=", "-=", "*=", "/=", "%=")
+
+    private val comparisonOperators = setOf("==", "!=", "<", "<=", ">", ">=")
+
+    private val logicalOperators = setOf("&&", "||")
 
     private val numericPrimitiveNames = setOf("bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned")
 

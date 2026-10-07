@@ -79,9 +79,10 @@ class CHeaderImportService(
             )
         }
         val globalPattern = Regex(
-            """(?m)^\s*extern\s+([A-Za-z_][A-Za-z0-9_\s\*]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*;"""
+            """(?m)^\s*(?:extern\s+)?([A-Za-z_][A-Za-z0-9_\s\*]*?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=\s*[^;]+)?\s*;"""
         )
-        globalPattern.findAll(text).forEach { match ->
+        val globalText = if (allowFunctionDefinitions) stripBracedBodies(text) else text
+        globalPattern.findAll(globalText).forEach { match ->
             if (match.groupValues[2] !in declarations) {
                 declarations[match.groupValues[2]] = CHeaderDeclaration(
                     match.groupValues[2],
@@ -92,6 +93,25 @@ class CHeaderImportService(
             }
         }
         return declarations
+    }
+
+    private fun stripBracedBodies(text: String): String {
+        val characters = text.toCharArray()
+        var depth = 0
+        text.forEachIndexed { index, character ->
+            when {
+                character == '{' -> {
+                    depth++
+                    characters[index] = ' '
+                }
+                character == '}' && depth > 0 -> {
+                    depth--
+                    characters[index] = ' '
+                }
+                depth > 0 && character != '\n' -> characters[index] = ' '
+            }
+        }
+        return String(characters)
     }
 
     private fun parameterType(parameter: String): String {

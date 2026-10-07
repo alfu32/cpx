@@ -61,7 +61,82 @@ class CLowerer(private val semantic: SemanticModel) {
                 declaration.origin
             )
         }
-        val globals = program.declarations.filterIsInstance<AstGlobalVariable>().map { declaration ->
+        val aggregatesInSourceOrder = buildList<CAggregateDeclaration> {
+            program.declarations.forEach { declaration ->
+                when (declaration) {
+                    is AstStruct -> add(structs.first { it.name == declaration.name })
+                    is AstUnion -> add(unions.first { it.name == declaration.name })
+                    else -> Unit
+                }
+            }
+        }
+        fun aggregateKey(aggregate: CAggregateDeclaration): String = when (aggregate) {
+            is CStructDeclaration -> "struct:${aggregate.name}"
+            is CUnionDeclaration -> "union:${aggregate.name}"
+        }
+        fun byValueDependency(type: CType): String? = when (type) {
+            is CType.Struct -> if (type.pointerDepth == 0) "struct:${type.name}" else null
+            is CType.Union -> if (type.pointerDepth == 0) "union:${type.name}" else null
+            else -> null
+        }
+        val aggregateByKey = aggregatesInSourceOrder.associateBy(::aggregateKey)
+        val aggregateDependencies = aggregatesInSourceOrder.associate { aggregate ->
+            aggregateKey(aggregate) to aggregate.fields.mapNotNull { byValueDependency(it.type) }
+                .filter { it in aggregateByKey }
+                .toSet()
+        }
+        val pendingAggregates = aggregatesInSourceOrder.toMutableList()
+        val emittedAggregateKeys = mutableSetOf<String>()
+        val orderedAggregates = mutableListOf<CAggregateDeclaration>()
+        while (pendingAggregates.isNotEmpty()) {
+            val next = pendingAggregates.firstOrNull { aggregate ->
+                aggregateDependencies.getValue(aggregateKey(aggregate)).all { it in emittedAggregateKeys }
+            }
+            if (next == null) {
+                val cycle = pendingAggregates.first()
+                diagnostics.error(
+                    "cyclic by-value aggregate dependency involving '${cycle.name}'",
+                    cycle.origin.primaryRange,
+                    "LOW102"
+                )
+                orderedAggregates += pendingAggregates
+                break
+            }
+            pendingAggregates.remove(next)
+            orderedAggregates += next
+            emittedAggregateKeys += aggregateKey(next)
+        }
+        val aggregateIndexes = orderedAggregates.mapIndexed { index, aggregate -> aggregateKey(aggregate) to index }.toMap()
+        val aggregateOrigins = orderedAggregates.associate { aggregateKey(it) to it.origin }
+        val forwardNames = linkedSetOf<Pair<CTagKind, String>>()
+
+        fun collectForward(type: CType, ownerIndex: Int) {
+            when (type) {
+                is CType.Struct -> {
+                    val targetIndex = aggregateIndexes["struct:${type.name}"]
+                    if (type.pointerDepth > 0 && targetIndex != null && targetIndex > ownerIndex) {
+                        forwardNames += CTagKind.STRUCT to type.name
+                    }
+                }
+                is CType.Union -> {
+                    val targetIndex = aggregateIndexes["union:${type.name}"]
+                    if (type.pointerDepth > 0 && targetIndex != null && targetIndex > ownerIndex) {
+                        forwardNames += CTagKind.UNION to type.name
+                    }
+                }
+                else -> Unit
+            }
+        }
+
+        orderedAggregates.forEachIndexed { index, declaration ->
+            declaration.fields.forEach { field -> collectForward(field.type, index) }
+        }
+        val forwardDeclarations = forwardNames
+            .sortedWith(compareBy<Pair<CTagKind, String>> { it.first.ordinal }.thenBy { it.second })
+            .map { (kind, name) ->
+                CForwardDeclaration(kind, name, aggregateOrigins.getValue("${kind.name.lowercase()}:$name"))
+            }
+        val programGlobals = program.declarations.filterIsInstance<AstGlobalVariable>().map { declaration ->
             CGlobalDeclaration(
                 type(declaration.type),
                 declaration.name,
@@ -70,6 +145,23 @@ class CLowerer(private val semantic: SemanticModel) {
                 declaration.arrayDimensions
             )
         }
+        val declaredGlobalNames = programGlobals.mapTo(mutableSetOf()) { it.name }
+        val foreignGlobals = semantic.foreignGlobals.values
+            .filter {
+                it.kind == SymbolKind.FOREIGN_GLOBAL &&
+                    it.moduleName?.startsWith("c.source.") == true &&
+                    (it.externalName ?: it.name) !in declaredGlobalNames
+            }
+            .map { symbol ->
+                CGlobalDeclaration(
+                    foreignType(symbol.type),
+                    symbol.externalName ?: symbol.name,
+                    null,
+                    symbol.origin,
+                    isExtern = true
+                )
+            }
+        val globals = programGlobals + foreignGlobals
         val programFunctions = program.declarations.filterIsInstance<AstFunction>().map { declaration ->
             CFunction(
                 type(declaration.returnType),
@@ -102,7 +194,18 @@ class CLowerer(private val semantic: SemanticModel) {
             }
         val functions = programFunctions + foreignFunctions
         return LoweredCResult(
-            CTranslationUnit(includes, structs, unions, enums, aliases, globals, functions, requiresStringTemplateRuntime),
+            CTranslationUnit(
+                includes,
+                structs,
+                unions,
+                enums,
+                aliases,
+                globals,
+                functions,
+                requiresStringTemplateRuntime,
+                forwardDeclarations,
+                orderedAggregates
+            ),
             diagnostics.diagnostics
         )
     }
@@ -543,14 +646,19 @@ class CEmitter {
         val output = StringBuilder()
         val mappings = mutableListOf<SourceMapping>()
         var line = 1
+        var byteOffset = 0
 
         fun append(text: String) {
             output.append(text)
             line += text.count { it == '\n' }
+            byteOffset += text.toByteArray(Charsets.UTF_8).size
         }
 
         fun appendLine(text: String = "", origin: Origin? = null) {
-            if (origin != null) mappings += SourceMapping(line, origin)
+            if (origin != null) {
+                val lineBytes = text.toByteArray(Charsets.UTF_8).size
+                mappings += SourceMapping(line, origin, byteOffset, byteOffset + lineBytes)
+            }
             append(text)
             append("\n")
         }
@@ -561,22 +669,38 @@ class CEmitter {
         unit.includes.sorted().forEach { include -> appendLine("#include <$include>") }
         if (usesBool(unit) || unit.includes.isNotEmpty()) appendLine()
 
-        unit.structs.forEachIndexed { index, structure ->
-            appendLine("struct ${structure.name} {", structure.origin)
-            structure.fields.forEach { field ->
-                appendLine("    ${field.type.render()} ${field.name}${arraySuffix(field.arrayDimensions)};", field.origin)
-            }
-            appendLine("};", structure.origin)
-            if (index != unit.structs.lastIndex || unit.unions.isNotEmpty() || unit.enums.isNotEmpty() || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
+        unit.forwardDeclarations.forEach { declaration ->
+            val keyword = declaration.kind.name.lowercase()
+            appendLine("$keyword ${declaration.name};", declaration.origin)
         }
+        if (unit.forwardDeclarations.isNotEmpty()) appendLine()
 
-        unit.unions.forEachIndexed { index, union ->
-            appendLine("union ${union.name} {", union.origin)
-            union.fields.forEach { field ->
-                appendLine("    ${field.type.render()} ${field.name}${arraySuffix(field.arrayDimensions)};", field.origin)
+        val aggregateDefinitions: List<CAggregateDeclaration> = if (unit.aggregateDeclarations.isNotEmpty()) {
+            unit.aggregateDeclarations
+        } else {
+            buildList {
+                addAll(unit.structs)
+                addAll(unit.unions)
             }
-            appendLine("};", union.origin)
-            if (index != unit.unions.lastIndex || unit.enums.isNotEmpty() || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
+        }
+        aggregateDefinitions.forEachIndexed { index, aggregate ->
+            when (aggregate) {
+                is CStructDeclaration -> {
+                    appendLine("struct ${aggregate.name} {", aggregate.origin)
+                    aggregate.fields.forEach { field ->
+                        appendLine("    ${field.type.render()} ${field.name}${arraySuffix(field.arrayDimensions)};", field.origin)
+                    }
+                    appendLine("};", aggregate.origin)
+                }
+                is CUnionDeclaration -> {
+                    appendLine("union ${aggregate.name} {", aggregate.origin)
+                    aggregate.fields.forEach { field ->
+                        appendLine("    ${field.type.render()} ${field.name}${arraySuffix(field.arrayDimensions)};", field.origin)
+                    }
+                    appendLine("};", aggregate.origin)
+                }
+            }
+            if (index != aggregateDefinitions.lastIndex || unit.enums.isNotEmpty() || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
         }
 
         unit.enums.forEachIndexed { index, enum ->
@@ -608,7 +732,8 @@ class CEmitter {
 
         unit.globals.forEach { global ->
             val initializer = global.initializer?.let { " = ${expression(it)}" } ?: ""
-            appendLine("${global.type.render()} ${global.name}${arraySuffix(global.arrayDimensions)}$initializer;", global.origin)
+            val storage = if (global.isExtern) "extern " else ""
+            appendLine("$storage${global.type.render()} ${global.name}${arraySuffix(global.arrayDimensions)}$initializer;", global.origin)
         }
         if (unit.globals.isNotEmpty() && unit.functions.isNotEmpty()) appendLine()
 

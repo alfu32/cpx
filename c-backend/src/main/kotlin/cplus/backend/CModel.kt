@@ -10,14 +10,33 @@ data class CTranslationUnit(
     val aliases: List<CAliasDeclaration>,
     val globals: List<CGlobalDeclaration>,
     val functions: List<CFunction>,
-    val requiresStringTemplateRuntime: Boolean = false
+    val requiresStringTemplateRuntime: Boolean = false,
+    val forwardDeclarations: List<CForwardDeclaration> = emptyList(),
+    val aggregateDeclarations: List<CAggregateDeclaration> = emptyList()
 )
 
-data class CStructDeclaration(
+enum class CTagKind {
+    STRUCT,
+    UNION
+}
+
+data class CForwardDeclaration(
+    val kind: CTagKind,
     val name: String,
-    val fields: List<CField>,
     val origin: Origin
 )
+
+sealed interface CAggregateDeclaration {
+    val name: String
+    val fields: List<CField>
+    val origin: Origin
+}
+
+data class CStructDeclaration(
+    override val name: String,
+    override val fields: List<CField>,
+    override val origin: Origin
+) : CAggregateDeclaration
 
 data class CField(
     val type: CType,
@@ -27,10 +46,10 @@ data class CField(
 )
 
 data class CUnionDeclaration(
-    val name: String,
-    val fields: List<CField>,
-    val origin: Origin
-)
+    override val name: String,
+    override val fields: List<CField>,
+    override val origin: Origin
+) : CAggregateDeclaration
 
 data class CEnumDeclaration(
     val name: String,
@@ -56,7 +75,8 @@ data class CGlobalDeclaration(
     val name: String,
     val initializer: CExpression?,
     val origin: Origin,
-    val arrayDimensions: List<String> = emptyList()
+    val arrayDimensions: List<String> = emptyList(),
+    val isExtern: Boolean = false
 )
 
 data class CFunction(
@@ -197,7 +217,9 @@ data class CParenthesized(val expression: CExpression, override val origin: Orig
 
 data class SourceMapping(
     val generatedLine: Int,
-    val origin: Origin
+    val origin: Origin,
+    val generatedStartOffset: Int = 0,
+    val generatedEndOffset: Int = 0
 )
 
 data class GeneratedCUnit(
