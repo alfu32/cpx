@@ -3,7 +3,7 @@
 ## Dashboard
 
 ```text
-Overall: 18/80
+Overall: 21/80
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [2/16] 2. Semantic model and modules
@@ -714,9 +714,9 @@ all create correct bindings.
 
 ---
 
-## 3.2 [TODO] [0/4] CPX template representation and interpolation
+## 3.2 [DOING] [3/4] CPX template representation and interpolation
 
-### 3.2.1 [TODO] CPX categories and template node model
+### 3.2.1 [DONE] CPX categories and template node model
 
 **Language**
 - LS §8.5
@@ -733,7 +733,7 @@ all create correct bindings.
 - 1.4
 - 3.1
 
-### 3.2.2 [TODO] Direct compile-time binding interpolation
+### 3.2.2 [DONE] Direct compile-time binding interpolation
 
 **Language**
 - LS §8.2
@@ -748,7 +748,7 @@ all create correct bindings.
 - 3.2.1
 - 2.1.4
 
-### 3.2.3 [TODO] Identifier composition
+### 3.2.3 [DONE] Identifier composition
 
 **Language**
 - LS §8.3

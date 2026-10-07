@@ -9,6 +9,88 @@ enum class CpxPhase {
     REFLECTIVE
 }
 
+enum class CpxCategory {
+    UNIT,
+    DECLARATION,
+    MEMBER,
+    STATEMENT,
+    EXPRESSION,
+    TYPE
+}
+
+sealed interface ComptimeValue {
+    data class CtType(
+        val sourceText: String,
+        val identifierText: String = sourceText.removePrefix("struct ").trim()
+    ) : ComptimeValue
+
+    data class CtIdentifier(val text: String) : ComptimeValue
+    data class CtString(val text: String) : ComptimeValue
+}
+
+sealed interface TemplateNode {
+    data class Literal(val text: String) : TemplateNode
+    data class Binding(val name: String, val explicit: Boolean) : TemplateNode
+}
+
+data class CpxTemplate(
+    val category: CpxCategory,
+    val nodes: List<TemplateNode>,
+    val origin: Origin
+) {
+    fun render(bindings: Map<String, ComptimeValue>): String = buildString {
+        nodes.forEach { node ->
+            when (node) {
+                is TemplateNode.Literal -> append(node.text)
+                is TemplateNode.Binding -> {
+                    val value = bindings[node.name]
+                    when (value) {
+                        is ComptimeValue.CtType -> append(if (node.explicit) value.identifierText else value.sourceText)
+                        is ComptimeValue.CtIdentifier -> append(value.text)
+                        is ComptimeValue.CtString -> append(value.text)
+                        null -> append(node.name)
+                    }
+                }
+            }
+        }
+    }
+}
+
+class CpxTemplateParser {
+    fun parse(
+        text: String,
+        category: CpxCategory,
+        origin: Origin,
+        bindingNames: Set<String>
+    ): CpxTemplate {
+        val nodes = mutableListOf<TemplateNode>()
+        if (bindingNames.isEmpty()) return CpxTemplate(category, listOf(TemplateNode.Literal(text)), origin)
+        val explicitPattern = Regex("\\{\\s*(${bindingNames.joinToString("|") { Regex.escape(it) }})\\s*}")
+        var cursor = 0
+        explicitPattern.findAll(text).forEach { match ->
+            if (match.range.first > cursor) nodes += directBindings(text.substring(cursor, match.range.first), bindingNames)
+            nodes += TemplateNode.Binding(match.groupValues[1], explicit = true)
+            cursor = match.range.last + 1
+        }
+        if (cursor < text.length) nodes += directBindings(text.substring(cursor), bindingNames)
+        return CpxTemplate(category, nodes, origin)
+    }
+
+    private fun directBindings(text: String, bindingNames: Set<String>): List<TemplateNode> {
+        if (text.isEmpty() || bindingNames.isEmpty()) return if (text.isEmpty()) emptyList() else listOf(TemplateNode.Literal(text))
+        val pattern = Regex("(?<![A-Za-z0-9_])(${bindingNames.joinToString("|") { Regex.escape(it) }})(?![A-Za-z0-9_])")
+        val result = mutableListOf<TemplateNode>()
+        var cursor = 0
+        pattern.findAll(text).forEach { match ->
+            if (match.range.first > cursor) result += TemplateNode.Literal(text.substring(cursor, match.range.first))
+            result += TemplateNode.Binding(match.value, explicit = false)
+            cursor = match.range.last + 1
+        }
+        if (cursor < text.length) result += TemplateNode.Literal(text.substring(cursor))
+        return result
+    }
+}
+
 data class ExpansionKey(
     val functionName: String,
     val arguments: List<String>
@@ -63,7 +145,8 @@ data class CpxExpansionResult(
 )
 
 class CpxExpander(
-    private val lexer: Lexer = Lexer()
+    private val lexer: Lexer = Lexer(),
+    private val templateParser: CpxTemplateParser = CpxTemplateParser()
 ) {
     fun expand(source: SourceFile, program: SyntaxProgram): CpxExpansionResult {
         val diagnostics = DiagnosticBag()
@@ -111,7 +194,17 @@ class CpxExpander(
                 continue
             }
 
-            val instantiated = instantiate(task.definition.template, task.definition.parameters, task.invocation.arguments)
+            val category = parseCategory(task.definition.category)
+            val template = templateParser.parse(
+                task.definition.template,
+                category,
+                task.definition.origin,
+                task.definition.parameters.map { it.name }.toSet()
+            )
+            val bindings = task.definition.parameters.zip(task.invocation.arguments).associate { (parameter, argument) ->
+                parameter.name to ComptimeValue.CtType(argument.trim())
+            }
+            val instantiated = template.render(bindings)
             val generatedFile = SourceFile(
                 SourceFileId(-(++generatedFileIndex)),
                 source.path.resolveSibling("<${task.key.canonical}>"),
@@ -158,25 +251,13 @@ class CpxExpander(
         ancestors
     )
 
-    private fun instantiate(
-        template: String,
-        parameters: List<SyntaxComptimeParameter>,
-        arguments: List<String>
-    ): String {
-        var result = template
-        parameters.zip(arguments).forEach { (parameter, argument) ->
-            val raw = argument.trim()
-            val identifier = raw.removePrefix("struct ").trim()
-            result = result.replace(
-                Regex("\\{\\s*${Regex.escape(parameter.name)}\\s*}"),
-                identifier
-            )
-            result = result.replace(
-                Regex("(?<![A-Za-z0-9_])${Regex.escape(parameter.name)}(?![A-Za-z0-9_])"),
-                raw
-            )
-        }
-        return result
+    private fun parseCategory(value: String): CpxCategory = when (value.lowercase()) {
+        "unit" -> CpxCategory.UNIT
+        "member" -> CpxCategory.MEMBER
+        "stmt", "statement" -> CpxCategory.STATEMENT
+        "expr", "expression" -> CpxCategory.EXPRESSION
+        "type" -> CpxCategory.TYPE
+        else -> CpxCategory.DECLARATION
     }
 
     private fun canonicalArgument(argument: String): String = argument

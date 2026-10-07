@@ -8,6 +8,22 @@ import kotlin.test.assertTrue
 
 class CpxExpansionTest {
     @Test
+    fun templateNodesDistinguishDirectBindingFromIdentifierComposition() {
+        val origin = Origin.Direct(SourceRange(SourceFileId(12), 0, 1))
+        val template = CpxTemplateParser().parse(
+            "Temporary T optional_{T}_t",
+            CpxCategory.DECLARATION,
+            origin,
+            setOf("T")
+        )
+
+        val rendered = template.render(mapOf("T" to ComptimeValue.CtType("int")))
+        assertEquals("Temporary int optional_int_t", rendered)
+        assertTrue(template.nodes.any { it == TemplateNode.Binding("T", explicit = false) })
+        assertTrue(template.nodes.any { it == TemplateNode.Binding("T", explicit = true) })
+    }
+
+    @Test
     fun expandsTypedDeclarationAndReusesEquivalentSpecialization() {
         val sourceText = """
             comptime cpx<decl> optional(type T) {
