@@ -48,6 +48,7 @@ class Parser(private val lexed: LexedSource) {
             ?: syntheticToken("anonymous_struct", structKeyword.range)
         expect("{", "expected '{' after structure name")
         val fields = mutableListOf<SyntaxField>()
+        val methods = mutableListOf<SyntaxFunction>()
         while (!atEnd() && !peek().isLexeme("}")) {
             val start = peek()
             val type = parseType()
@@ -62,6 +63,10 @@ class Parser(private val lexed: LexedSource) {
                 match(";")
                 continue
             }
+            if (match("(")) {
+                methods += parseFunction(type, fieldName, isMethod = true, ownerName = name.lexeme)
+                continue
+            }
             if (match("[")) {
                 diagnostics.error("array fields are not supported in the initial vertical slice", previous().range, "PARSE201")
                 recoverTo("]", ";")
@@ -74,16 +79,32 @@ class Parser(private val lexed: LexedSource) {
         val close = expect("}", "expected '}' after structure body") ?: previous()
         expect(";", "expected ';' after structure declaration")
         val structureRange = span(structKeyword.range, previous().range)
-        return SyntaxStruct(name.lexeme, fields, structureRange, direct(structureRange))
+        return SyntaxStruct(name.lexeme, fields, methods, structureRange, direct(structureRange))
     }
 
-    private fun parseFunction(returnType: TypeSyntax, name: Token): SyntaxFunction {
+    private fun parseFunction(
+        returnType: TypeSyntax,
+        name: Token,
+        isMethod: Boolean = false,
+        ownerName: String? = null
+    ): SyntaxFunction {
         val parameters = mutableListOf<SyntaxParameter>()
         if (!peek().isLexeme(")")) {
             if (peek().isLexeme("void") && peek(1).isLexeme(")")) {
                 advance()
             } else {
                 do {
+                    if (isMethod && peek().isLexeme("self")) {
+                        val receiver = advance()
+                        parameters += SyntaxParameter(
+                            TypeSyntax("self", false, 0, receiver.range, direct(receiver.range)),
+                            receiver.lexeme,
+                            true,
+                            receiver.range,
+                            direct(receiver.range)
+                        )
+                        continue
+                    }
                     val type = parseType()
                     if (type == null) {
                         recoverTo(",", ")")
@@ -93,7 +114,7 @@ class Parser(private val lexed: LexedSource) {
                     val parameterName = expectIdentifier("expected parameter name")
                         ?: syntheticToken("parameter", type.range)
                     val parameterRange = span(type.range, parameterName.range)
-                    parameters += SyntaxParameter(type, parameterName.lexeme, parameterRange, direct(parameterRange))
+                    parameters += SyntaxParameter(type, parameterName.lexeme, false, parameterRange, direct(parameterRange))
                 } while (match(","))
             }
         }
@@ -103,7 +124,16 @@ class Parser(private val lexed: LexedSource) {
             null
         }
         val functionRange = span(returnType.range, body?.range ?: previousSyntaxToken().range)
-        return SyntaxFunction(returnType, name.lexeme, parameters, body, functionRange, direct(functionRange))
+        return SyntaxFunction(
+            returnType,
+            name.lexeme,
+            parameters,
+            body,
+            isMethod,
+            ownerName,
+            functionRange,
+            direct(functionRange)
+        )
     }
 
     private fun parseStatement(): SyntaxStatement? {

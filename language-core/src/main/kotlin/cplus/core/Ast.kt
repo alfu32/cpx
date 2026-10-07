@@ -21,6 +21,7 @@ data class AstTypeRef(
 data class AstStruct(
     val name: String,
     val fields: List<AstField>,
+    val methods: List<AstFunction> = emptyList(),
     override val origin: Origin
 ) : AstDeclaration
 
@@ -42,12 +43,15 @@ data class AstFunction(
     val name: String,
     val parameters: List<AstParameter>,
     val body: AstStatement?,
+    val isMethod: Boolean = false,
+    val ownerName: String? = null,
     override val origin: Origin
 ) : AstDeclaration
 
 data class AstParameter(
     val type: AstTypeRef,
     val name: String,
+    val isReceiver: Boolean = false,
     override val origin: Origin
 ) : AstNode
 

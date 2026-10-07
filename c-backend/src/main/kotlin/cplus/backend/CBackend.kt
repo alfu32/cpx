@@ -29,11 +29,30 @@ class CLowerer(private val semantic: SemanticModel) {
                 type(declaration.returnType),
                 declaration.name,
                 declaration.parameters.map { CParameter(type(it.type), it.name, it.origin) },
-                declaration.body?.let(::statement),
+                declaration.body?.let { statement(it, declaration.ownerName, declaration.isMethod) },
                 declaration.origin
             )
+        } + program.declarations.filterIsInstance<AstStruct>().flatMap { structure ->
+            structure.methods.map { method -> lowerMethod(structure.name, method) }
         }
         return LoweredCResult(CTranslationUnit(structs, globals, functions), diagnostics.diagnostics)
+    }
+
+    private fun lowerMethod(ownerName: String, method: AstFunction): CFunction {
+        val instance = method.parameters.any { it.isReceiver }
+        val parameters = buildList {
+            if (instance) add(CParameter(CType.Struct(ownerName, pointerDepth = 1), "self", method.origin))
+            method.parameters.filterNot { it.isReceiver }.forEach {
+                add(CParameter(type(it.type), it.name, it.origin))
+            }
+        }
+        return CFunction(
+            type(method.returnType),
+            "${ownerName}__${method.name}",
+            parameters,
+            method.body?.let { statement(it, ownerName, instance) },
+            method.origin
+        )
     }
 
     private fun type(reference: AstTypeRef): CType {
@@ -48,24 +67,81 @@ class CLowerer(private val semantic: SemanticModel) {
         return result
     }
 
-    private fun statement(node: AstStatement): CStatement = when (node) {
-        is AstBlock -> CBlock(node.statements.map(::statement), node.origin)
-        is AstReturn -> CReturn(node.expression?.let(::expression), node.origin)
-        is AstExpressionStatement -> CExpressionStatement(expression(node.expression), node.origin)
-        is AstVariableDeclaration -> CVariableDeclaration(type(node.type), node.name, node.initializer?.let(::expression), node.origin)
+    private fun statement(node: AstStatement, ownerName: String? = null, instanceMethod: Boolean = false): CStatement = when (node) {
+        is AstBlock -> CBlock(node.statements.map { statement(it, ownerName, instanceMethod) }, node.origin)
+        is AstReturn -> CReturn(node.expression?.let { expression(it, ownerName, instanceMethod) }, node.origin)
+        is AstExpressionStatement -> CExpressionStatement(expression(node.expression, ownerName, instanceMethod), node.origin)
+        is AstVariableDeclaration -> CVariableDeclaration(
+            type(node.type),
+            node.name,
+            node.initializer?.let { expression(it, ownerName, instanceMethod) },
+            node.origin
+        )
     }
 
-    private fun expression(node: AstExpression): CExpression = when (node) {
+    private fun expression(node: AstExpression, ownerName: String? = null, instanceMethod: Boolean = false): CExpression = when (node) {
         is AstIntegerLiteral -> CIntegerLiteral(node.text, node.origin)
         is AstStringLiteral -> CStringLiteral(node.text, node.origin)
         is AstCharacterLiteral -> CCharacterLiteral(node.text, node.origin)
         is AstIdentifier -> CIdentifier(node.name, node.origin)
-        is AstUnary -> CUnary(node.operator, expression(node.operand), node.origin)
-        is AstBinary -> CBinary(expression(node.left), node.operator, expression(node.right), node.origin)
-        is AstCall -> CCall(expression(node.callee), node.arguments.map(::expression), node.origin)
-        is AstMemberAccess -> CMemberAccess(expression(node.receiver), node.member, node.origin)
-        is AstParenthesized -> CParenthesized(expression(node.expression), node.origin)
+        is AstUnary -> CUnary(node.operator, expression(node.operand, ownerName, instanceMethod), node.origin)
+        is AstBinary -> CBinary(
+            expression(node.left, ownerName, instanceMethod),
+            node.operator,
+            expression(node.right, ownerName, instanceMethod),
+            node.origin
+        )
+        is AstCall -> lowerCall(node, ownerName, instanceMethod)
+        is AstMemberAccess -> {
+            val receiver = node.receiver
+            CMemberAccess(
+                expression(receiver, ownerName, instanceMethod),
+                node.member,
+                pointerReceiver = instanceMethod && receiver is AstIdentifier && receiver.name == "self",
+                node.origin
+            )
+        }
+        is AstParenthesized -> CParenthesized(expression(node.expression, ownerName, instanceMethod), node.origin)
         is AstErrorExpression -> CIntegerLiteral("0", node.origin)
+    }
+
+    private fun lowerCall(node: AstCall, ownerName: String?, instanceMethod: Boolean): CExpression {
+        val member = node.callee as? AstMemberAccess
+        if (member == null) {
+            return CCall(
+                expression(node.callee, ownerName, instanceMethod),
+                node.arguments.map { expression(it, ownerName, instanceMethod) },
+                node.origin
+            )
+        }
+
+        val receiverType = semantic.expressionTypes[member.receiver]
+        val owner = when (val receiver = member.receiver) {
+            is AstIdentifier -> semantic.structs[receiver.name] ?: receiverType as? cplus.semantic.StructType
+            else -> receiverType as? cplus.semantic.StructType
+        }
+        val method = owner?.methods?.firstOrNull { it.symbol.name == member.member }
+        if (method == null) {
+            diagnostics.error("cannot lower unknown method '${member.member}'", member.origin.primaryRange, "LOW201")
+            return CCall(
+                expression(node.callee, ownerName, instanceMethod),
+                node.arguments.map { expression(it, ownerName, instanceMethod) },
+                node.origin
+            )
+        }
+        val target = CIdentifier("${owner.name}__${member.member}", node.origin)
+        val arguments = buildList {
+            if (method.receiverKind == cplus.semantic.ReceiverKind.INSTANCE) {
+                val receiver = member.receiver
+                if (instanceMethod && receiver is AstIdentifier && receiver.name == "self") {
+                    add(CIdentifier("self", receiver.origin))
+                } else {
+                    add(CUnary("&", expression(receiver, ownerName, instanceMethod), receiver.origin))
+                }
+            }
+            node.arguments.forEach { add(expression(it, ownerName, instanceMethod)) }
+        }
+        return CCall(target, arguments, node.origin)
     }
 
     companion object {
@@ -162,7 +238,7 @@ class CEmitter {
         is CUnary -> "${expression.operator}${parenthesizeIfBinary(expression.operand)}"
         is CBinary -> "(${expression(expression.left)} ${expression.operator} ${expression(expression.right)})"
         is CCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
-        is CMemberAccess -> "${expression(expression.receiver)}.${expression.member}"
+        is CMemberAccess -> "${expression(expression.receiver)}${if (expression.pointerReceiver) "->" else "."}${expression.member}"
         is CParenthesized -> "(${expression(expression.expression)})"
     }
 

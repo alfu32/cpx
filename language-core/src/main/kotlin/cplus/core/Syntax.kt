@@ -24,6 +24,7 @@ data class TypeSyntax(
 data class SyntaxStruct(
     val name: String,
     val fields: List<SyntaxField>,
+    val methods: List<SyntaxFunction> = emptyList(),
     override val range: SourceRange,
     override val origin: Origin
 ) : SyntaxDeclaration
@@ -48,6 +49,8 @@ data class SyntaxFunction(
     val name: String,
     val parameters: List<SyntaxParameter>,
     val body: SyntaxStatement?,
+    val isMethod: Boolean = false,
+    val ownerName: String? = null,
     override val range: SourceRange,
     override val origin: Origin
 ) : SyntaxDeclaration
@@ -55,6 +58,7 @@ data class SyntaxFunction(
 data class SyntaxParameter(
     val type: TypeSyntax,
     val name: String,
+    val isReceiver: Boolean = false,
     override val range: SourceRange,
     override val origin: Origin
 ) : SyntaxNode

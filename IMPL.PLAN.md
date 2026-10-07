@@ -3,12 +3,12 @@
 ## Dashboard
 
 ```text
-Overall: 14/80
+Overall: 16/80
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [1/16] 2. Semantic model and modules
+[DOING] [2/16] 2. Semantic model and modules
 [TODO] [0/20] 3. Compile-time and CPX system
-[DOING] [2/16] 4. Lowering and C backend
+[DOING] [3/16] 4. Lowering and C backend
 [TODO] [0/12] 5. Tooling, integration and quality
 
 Current task:
@@ -434,7 +434,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.2 [TODO] [0/4] Type and method system
+## 2.2 [DOING] [1/4] Type and method system
 
 ### 2.2.1 [TODO] Canonical type universe representation
 
@@ -462,7 +462,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.2.1
 
-### 2.2.3 [TODO] Method classification and method sets
+### 2.2.3 [DONE] Method classification and method sets
 
 **Language**
 - LS §6.1–6.3
@@ -1069,9 +1069,9 @@ all create correct bindings.
 
 ---
 
-## 4.2 [TODO] [0/4] C+ feature lowering
+## 4.2 [DOING] [1/4] C+ feature lowering
 
-### 4.2.1 [TODO] Method lowering
+### 4.2.1 [DONE] Method lowering
 
 **Language**
 - LS §6

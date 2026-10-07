@@ -47,4 +47,35 @@ class CompilerIntegrationTest {
         val executionOutput = execution.inputStream.bufferedReader().readText()
         assertEquals(3, execution.waitFor(), executionOutput)
     }
+
+    @Test
+    fun instanceAndStaticMethodsLowerToCallableCFunctions() {
+        val source = """
+            struct point_t {
+                int x;
+
+                int get(self) {
+                    return self.x;
+                }
+
+                int default_value() {
+                    return 4;
+                }
+            };
+
+            int main() {
+                point_t point;
+                point.x = 3;
+                return point.get() + point_t.default_value();
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-methods", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("int point_t__get(struct point_t* self);"))
+        assertTrue(generated.contains("int point_t__default_value();"))
+        assertTrue(generated.contains("point_t__get(&point)"))
+        assertTrue(generated.contains("point_t__default_value()"))
+    }
 }

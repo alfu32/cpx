@@ -7,16 +7,25 @@ class AstBuilder {
     )
 
     private fun declaration(node: SyntaxDeclaration): AstDeclaration = when (node) {
-        is SyntaxStruct -> AstStruct(node.name, node.fields.map(::field), node.origin)
-        is SyntaxGlobalVariable -> AstGlobalVariable(type(node.type), node.name, node.initializer?.let(::expression), node.origin)
-        is SyntaxFunction -> AstFunction(
-            type(node.returnType),
+        is SyntaxStruct -> AstStruct(
             node.name,
-            node.parameters.map { AstParameter(type(it.type), it.name, it.origin) },
-            node.body?.let(::statement),
+            node.fields.map(::field),
+            node.methods.map { function(it, node.name) },
             node.origin
         )
+        is SyntaxGlobalVariable -> AstGlobalVariable(type(node.type), node.name, node.initializer?.let(::expression), node.origin)
+        is SyntaxFunction -> function(node, node.ownerName)
     }
+
+    private fun function(node: SyntaxFunction, ownerName: String?): AstFunction = AstFunction(
+        type(node.returnType),
+        node.name,
+        node.parameters.map { AstParameter(type(it.type), it.name, it.isReceiver, it.origin) },
+        node.body?.let(::statement),
+        node.isMethod,
+        ownerName,
+        node.origin
+    )
 
     private fun field(node: SyntaxField): AstField = AstField(type(node.type), node.name, node.origin)
 

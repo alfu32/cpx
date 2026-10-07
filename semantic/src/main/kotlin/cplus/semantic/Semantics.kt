@@ -12,6 +12,7 @@ enum class SymbolKind {
     STRUCT,
     FIELD,
     FUNCTION,
+    METHOD,
     VARIABLE,
     PARAMETER
 }
@@ -34,7 +35,8 @@ data class PrimitiveType(
 data class StructType(
     override val id: TypeId,
     override val name: String,
-    val fields: List<FieldSymbol>
+    val fields: List<FieldSymbol>,
+    val methods: List<MethodSymbol> = emptyList()
 ) : CType
 
 data class PointerType(
@@ -69,12 +71,26 @@ data class FunctionSymbol(
     val parameters: List<Symbol>
 )
 
+enum class ReceiverKind {
+    INSTANCE,
+    STATIC
+}
+
+data class MethodSymbol(
+    val symbol: Symbol,
+    val owner: StructType,
+    val receiverKind: ReceiverKind,
+    val returnType: CType,
+    val parameters: List<Symbol>
+)
+
 data class SemanticModel(
     val program: AstProgram,
     val symbols: List<Symbol>,
     val types: List<CType>,
     val functions: Map<String, FunctionSymbol>,
     val structs: Map<String, StructType>,
+    val methods: Map<String, Map<String, MethodSymbol>>,
     val expressionTypes: Map<AstExpression, CType>
 ) {
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
@@ -98,6 +114,7 @@ class SemanticAnalyzer {
         val types = mutableListOf<CType>()
         val structs = linkedMapOf<String, StructType>()
         val functions = linkedMapOf<String, FunctionSymbol>()
+        val methods = linkedMapOf<String, Map<String, MethodSymbol>>()
         val globals = linkedMapOf<String, Symbol>()
         val primitiveTypes = linkedMapOf<String, PrimitiveType>()
         val expressionTypes = linkedMapOf<AstExpression, CType>()
@@ -153,7 +170,19 @@ class SemanticAnalyzer {
                 val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin)
                 FieldSymbol(symbol, struct)
             }
-            structs[declaration.name] = struct.copy(fields = fields)
+            val methodSymbols = declaration.methods.associate { method ->
+                val returnType = resolveType(method.returnType, structs, ::primitive, diagnostics)
+                val parameterSymbols = method.parameters.filterNot { it.isReceiver }.map { parameter ->
+                    val parameterType = resolveType(parameter.type, structs, ::primitive, diagnostics)
+                    newSymbol(parameter.name, SymbolKind.PARAMETER, parameterType, parameter.origin)
+                }
+                val receiverKind = if (method.parameters.any { it.isReceiver }) ReceiverKind.INSTANCE else ReceiverKind.STATIC
+                val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, returnType, method.origin)
+                method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols)
+            }
+            val updatedStruct = struct.copy(fields = fields, methods = methodSymbols.values.toList())
+            structs[declaration.name] = updatedStruct
+            methods[declaration.name] = methodSymbols
         }
 
         program.declarations.filterIsInstance<AstFunction>().forEach { declaration ->
@@ -161,11 +190,26 @@ class SemanticAnalyzer {
             val locals = linkedMapOf<String, Symbol>()
             function.parameters.forEach { locals[it.name] = it }
             declaration.body?.let { statement ->
-                validateStatement(statement, function.returnType, locals, functions, globals, structs, expressionTypes, diagnostics, ::primitive)
+                validateStatement(statement, function.returnType, locals, functions, globals, structs, methods, expressionTypes, diagnostics, ::primitive)
             }
         }
 
-        val model = SemanticModel(program, symbols, types, functions, structs, expressionTypes)
+        program.declarations.filterIsInstance<AstStruct>().forEach { declaration ->
+            val owner = structs[declaration.name] ?: return@forEach
+            declaration.methods.forEach { method ->
+                val methodSymbol = methods[owner.name]?.get(method.name) ?: return@forEach
+                val locals = linkedMapOf<String, Symbol>()
+                method.parameters.forEach { parameter ->
+                    val type = if (parameter.isReceiver) owner else resolveType(parameter.type, structs, ::primitive, diagnostics)
+                    locals[parameter.name] = newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
+                }
+                method.body?.let { statement ->
+                    validateStatement(statement, methodSymbol.returnType, locals, functions, globals, structs, methods, expressionTypes, diagnostics, ::primitive)
+                }
+            }
+        }
+
+        val model = SemanticModel(program, symbols, types, functions, structs, methods, expressionTypes)
         return SemanticResult(model, diagnostics.diagnostics)
     }
 
@@ -204,13 +248,14 @@ class SemanticAnalyzer {
         functions: Map<String, FunctionSymbol>,
         globals: Map<String, Symbol>,
         structs: Map<String, StructType>,
+        methods: Map<String, Map<String, MethodSymbol>>,
         expressionTypes: MutableMap<AstExpression, CType>,
         diagnostics: DiagnosticBag,
         primitive: (String) -> PrimitiveType
     ) {
         when (statement) {
             is AstBlock -> statement.statements.forEach {
-                validateStatement(it, expectedReturn, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+                validateStatement(it, expectedReturn, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             }
             is AstReturn -> {
                 val returnExpression = statement.expression
@@ -219,7 +264,7 @@ class SemanticAnalyzer {
                         diagnostics.error("non-void function must return a value", rangeOf(statement.origin), "SEM201")
                     }
                 } else {
-                    val actual = validateExpression(returnExpression, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+                    val actual = validateExpression(returnExpression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                     if (expectedReturn.name == "void") {
                         diagnostics.error("void function cannot return a value", rangeOf(statement.origin), "SEM202")
                     } else if (actual.name != "<unknown>" && expectedReturn.name != actual.name) {
@@ -231,7 +276,7 @@ class SemanticAnalyzer {
                     }
                 }
             }
-            is AstExpressionStatement -> validateExpression(statement.expression, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+            is AstExpressionStatement -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstVariableDeclaration -> {
                 val type = resolveType(statement.type, structs, primitive, diagnostics)
                 val symbol = Symbol(SymbolId(-locals.size - 1), statement.name, SymbolKind.VARIABLE, type, statement.origin)
@@ -241,7 +286,7 @@ class SemanticAnalyzer {
                     locals[statement.name] = symbol
                 }
                 statement.initializer?.let {
-                    validateExpression(it, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+                    validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 }
             }
         }
@@ -253,6 +298,7 @@ class SemanticAnalyzer {
         functions: Map<String, FunctionSymbol>,
         globals: Map<String, Symbol>,
         structs: Map<String, StructType>,
+        methods: Map<String, Map<String, MethodSymbol>>,
         expressionTypes: MutableMap<AstExpression, CType>,
         diagnostics: DiagnosticBag,
         primitive: (String) -> PrimitiveType
@@ -265,47 +311,96 @@ class SemanticAnalyzer {
                 locals[expression.name]?.type
                     ?: globals[expression.name]?.type
                     ?: functions[expression.name]?.returnType
+                    ?: structs[expression.name]
                     ?: run {
                         diagnostics.error("unknown identifier '${expression.name}'", rangeOf(expression.origin), "SEM301")
                         UnknownType(TypeId(-1))
                     }
             }
-            is AstUnary -> validateExpression(expression.operand, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+            is AstUnary -> validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstBinary -> {
-                val left = validateExpression(expression.left, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
-                validateExpression(expression.right, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+                val left = validateExpression(expression.left, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                validateExpression(expression.right, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 left
             }
             is AstCall -> {
                 val function = (expression.callee as? AstIdentifier)?.let { functions[it.name] }
-                if (function == null) {
-                    diagnostics.error("call target is not a known function", rangeOf(expression.callee.origin), "SEM302")
-                    expression.arguments.forEach {
-                        validateExpression(it, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+                val methodCall = expression.callee as? AstMemberAccess
+                val resolvedMethod = if (methodCall != null) {
+                    val receiverType = validateExpression(
+                        methodCall.receiver,
+                        locals,
+                        functions,
+                        globals,
+                        structs,
+                        methods,
+                        expressionTypes,
+                        diagnostics,
+                        primitive
+                    )
+                    val owner = when (val receiver = methodCall.receiver) {
+                        is AstIdentifier -> structs[receiver.name] ?: receiverType as? StructType
+                        else -> receiverType as? StructType
                     }
-                    UnknownType(TypeId(-1))
-                } else {
-                    if (function.parameters.size != expression.arguments.size) {
-                        diagnostics.error(
-                            "function '${function.symbol.name}' expects ${function.parameters.size} arguments but received ${expression.arguments.size}",
-                            rangeOf(expression.origin),
-                            "SEM303"
-                        )
+                    owner?.methods?.firstOrNull { it.symbol.name == methodCall.member }
+                } else null
+                when {
+                    function != null -> {
+                        validateCallArguments(function.symbol.name, function.parameters, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                        function.returnType
                     }
-                    expression.arguments.forEach {
-                        validateExpression(it, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+                    resolvedMethod != null -> {
+                        validateCallArguments(resolvedMethod.symbol.name, resolvedMethod.parameters, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                        resolvedMethod.returnType
                     }
-                    function.returnType
+                    else -> {
+                        diagnostics.error("call target is not a known function or method", rangeOf(expression.callee.origin), "SEM302")
+                        expression.arguments.forEach { validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive) }
+                        UnknownType(TypeId(-1))
+                    }
                 }
             }
             is AstMemberAccess -> {
-                validateExpression(expression.receiver, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+                val receiver = validateExpression(expression.receiver, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                val struct = receiver as? StructType
+                val field = struct?.fields?.firstOrNull { it.symbol.name == expression.member }
+                if (field != null) field.symbol.type else {
+                    if (struct == null || struct.methods.none { it.symbol.name == expression.member }) {
+                        diagnostics.error("unknown member '${expression.member}'", rangeOf(expression.origin), "SEM304")
+                    }
+                    UnknownType(TypeId(-1))
+                }
             }
-            is AstParenthesized -> validateExpression(expression.expression, locals, functions, globals, structs, expressionTypes, diagnostics, primitive)
+            is AstParenthesized -> validateExpression(expression.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstErrorExpression -> UnknownType(TypeId(-1))
         }
         expressionTypes[expression] = type
         return type
+    }
+
+    private fun validateCallArguments(
+        name: String,
+        parameters: List<Symbol>,
+        call: AstCall,
+        locals: Map<String, Symbol>,
+        functions: Map<String, FunctionSymbol>,
+        globals: Map<String, Symbol>,
+        structs: Map<String, StructType>,
+        methods: Map<String, Map<String, MethodSymbol>>,
+        expressionTypes: MutableMap<AstExpression, CType>,
+        diagnostics: DiagnosticBag,
+        primitive: (String) -> PrimitiveType
+    ) {
+        if (parameters.size != call.arguments.size) {
+            diagnostics.error(
+                "function '$name' expects ${parameters.size} arguments but received ${call.arguments.size}",
+                rangeOf(call.origin),
+                "SEM303"
+            )
+        }
+        call.arguments.forEach {
+            validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+        }
     }
 
     private fun rangeOf(origin: Origin): SourceRange? = origin.primaryRange

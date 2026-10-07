@@ -142,6 +142,10 @@ private class AstPrinter {
                     indent(depth + 1)
                     appendLine("Field ${it.type.name} ${it.name}")
                 }
+                declaration.methods.forEach {
+                    indent(depth + 1)
+                    appendLine("Method ${it.returnType.name} ${it.name}(${it.parameters.joinToString(", ") { parameter -> parameter.name }})")
+                }
             }
             is AstGlobalVariable -> {
                 appendLine("Global ${declaration.type.name} ${declaration.name}")

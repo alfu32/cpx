@@ -94,7 +94,12 @@ data class CIdentifier(val name: String, override val origin: Origin) : CExpress
 data class CUnary(val operator: String, val operand: CExpression, override val origin: Origin) : CExpression
 data class CBinary(val left: CExpression, val operator: String, val right: CExpression, override val origin: Origin) : CExpression
 data class CCall(val callee: CExpression, val arguments: List<CExpression>, override val origin: Origin) : CExpression
-data class CMemberAccess(val receiver: CExpression, val member: String, override val origin: Origin) : CExpression
+data class CMemberAccess(
+    val receiver: CExpression,
+    val member: String,
+    val pointerReceiver: Boolean = false,
+    override val origin: Origin
+) : CExpression
 data class CParenthesized(val expression: CExpression, override val origin: Origin) : CExpression
 
 data class SourceMapping(
