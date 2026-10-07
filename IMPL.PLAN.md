@@ -11,14 +11,14 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    29/49 evidenced on Linux
+Roadmap leaf tasks:    30/49 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R1.4.5 — verify imports, CLI/LSP parity, and compiled C
+Current task:          R1.2.4 — implement explicit-import std.fixed_width aliases
 Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 12/15 primitive, ABI, type-import, and user-alias conformance open
+R1 [DOING] 13/15 primitive, ABI, type-import, and user-alias conformance open
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
@@ -27,7 +27,7 @@ R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       29/49 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       30/49 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,14 +35,12 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R1.4.1–R1.4.5 — implement and verify module-owned source types, explicit
-   type imports, aliases, visibility boundaries, and qualified module access.
-2. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
+1. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
    and `u8`…`u64`, then define capability-gated `i128`/`u128` support.
-3. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
+2. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
    C and independent ABI fixtures.
-4. R5.1 — complete the reopened target-aware std.core byte/size/index types.
-5. R5.2 onward — resume native std and platform work after the type boundary is
+3. R5.1 — complete the reopened target-aware std.core byte/size/index types.
+4. R5.2 onward — resume native std and platform work after the type boundary is
    reliable, finish R6–R8, and perform the deferred Windows validation and patch
    pass.
 
@@ -55,7 +53,9 @@ Latest completed implementation commits:
 - `c7e6817` — target-neutral native std value foundations;
 - `0fd8835` — executable Linux C17 conformance gate;
 - `a6cc980` — advanced Linux C17 runtime families;
-- `f8be29e` — self-hosted stdio/time/basic C17 families.
+- `f8be29e` — self-hosted stdio/time/basic C17 families;
+- `3578f06` — bind selective source type imports;
+- `3043cdd` — resolve qualified and aliased source types.
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -3484,7 +3484,7 @@ of R1–R8 or deliberately recorded as a post-release extension.
     initializer/lvalue rules across parser, semantic analysis, and lowering.
   - R1.3.3 [DONE] — add stable unsupported-declarator diagnostics and recovery
     fixtures so parser acceptance cannot outrun backend support.
-- R1.4 [DOING] [4/5] — implement kind-aware source type imports and
+- R1.4 [DONE] [5/5] — implement kind-aware source type imports and
   module-scoped visibility. This is a prerequisite for R1.2.4.
   - R1.4.1 [DONE] — catalogue module-owned source type declarations and their
     public/private export status, including aliases, structs, unions, and
@@ -3532,9 +3532,20 @@ of R1–R8 or deliberately recorded as a post-release extension.
       aliases. Tests cover the emitted names and declaration order.
     - `:language-core:test`, `:semantic:test`, `:c-backend:test`,
       `:compiler:test`, and the full `./gradlew build` pass on Linux.
-  - R1.4.5 [TODO] — verify path/package imports, type-only and mixed exports,
+  - R1.4.5 [DONE] — verify path/package imports, type-only and mixed exports,
     function/value import regressions, private/omitted-import failures, CLI/LSP
     parity, and compiled generated-C behavior on Linux.
+    - An end-to-end compiler fixture covers path and package imports, type-only
+      and mixed selective imports, module aliases, renamed and qualified
+      structs/typedefs, pointers, and `sizeof`; emitted C compiles as C17 and
+      executes with the expected result.
+    - The CLI `run` path discovers the imported source through path/package
+      references and executes the same source-type behavior. CLI and LSP report
+      matching SEM406 private-type and SEM410 omitted-import diagnostics.
+    - Existing imported C function/value/type regressions remain green. The
+      complete `:compiler:test` and `:cli:test` suites and `./gradlew build`
+      pass on Linux. Windows execution remains deferred to the final validation
+      pass.
 
 **Deliverables**
 

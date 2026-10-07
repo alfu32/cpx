@@ -303,6 +303,47 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun runResolvesPathAndPackageImportsForSourceTypes() {
+        val directory = Files.createTempDirectory("cplus-cli-run-imported-types")
+        val standardLibrary = Files.createDirectories(directory.resolve("stdlib"))
+        val helper = standardLibrary.resolve("io.cp").also {
+            it.writeText(
+                """
+                    package stdlib;
+                    pub struct Point { int x; };
+                    pub typedef int Coord;
+                    pub int pointValue() {
+                        struct Point point;
+                        point.x = 3;
+                        return point.x;
+                    }
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    import { Coord as LocalCoord } from stdlib/io;
+                    import { Point as LocalPoint, pointValue } from "./stdlib/io.cp";
+                    import stdlib/io as geo;
+
+                    int main() {
+                        LocalPoint* localPoint;
+                        geo.Point* qualifiedPoint;
+                        LocalCoord localCoordinate = 2;
+                        geo.Coord qualifiedCoordinate = 3;
+                        return pointValue() + localCoordinate + qualifiedCoordinate +
+                            sizeof(LocalPoint) + sizeof(geo.Point);
+                    }
+                """.trimIndent()
+            )
+        }
+
+        assertEquals(16, Cli().run(listOf("run", main.toString())))
+        assertTrue(helper.exists())
+    }
+
+    @Test
     fun selfHostedRuntimeProvidesStringTemplateFormatterWithoutHostedStdio() {
         val directory = Files.createTempDirectory("cplus-cli-runtime-format")
         val source = directory.resolve("main.cp").also {
@@ -348,6 +389,59 @@ class CliIntegrationTest {
         assertTrue(lspDiagnostics.contains("\"code\":\"PARSE102\""), lspDiagnostics)
         assertTrue(cliDiagnostics.contains(message), cliDiagnostics)
         assertTrue(lspDiagnostics.contains(message), lspDiagnostics)
+    }
+
+    @Test
+    fun cliAndLspAgreeOnPrivateAndUnimportedSourceTypeDiagnostics() {
+        data class DiagnosticCase(
+            val name: String,
+            val mainText: String,
+            val helperText: String,
+            val code: String,
+            val message: String
+        )
+        val cases = listOf(
+            DiagnosticCase(
+                "private",
+                "import { Hidden } from ./types.cp; int main() { Hidden item; return 0; }",
+                "struct Hidden { int value; };",
+                "SEM406",
+                "imported type 'Hidden' is not public in module './types.cp'"
+            ),
+            DiagnosticCase(
+                "unimported",
+                "import { makeValue } from ./types.cp; int main() { Point item; return makeValue(); }",
+                "pub struct Point { int value; }; pub int makeValue() { return 0; }",
+                "SEM410",
+                "type 'Point' belongs to module 'types' and is not imported into module 'main'"
+            )
+        )
+
+        cases.forEach { testCase ->
+            val directory = Files.createTempDirectory("cplus-type-import-parity-${testCase.name}")
+            val mainText = testCase.mainText
+            val main = directory.resolve("main.cp").also { it.writeText(mainText) }
+            directory.resolve("types.cp").writeText(testCase.helperText)
+            val cliDiagnostics = captureStderr {
+                assertEquals(1, Cli().run(listOf("check", main.toString())))
+            }
+            val uri = main.toUri().toString()
+            val input = listOf(
+                """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+                """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$mainText"}}}""",
+                """{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}""",
+                """{"jsonrpc":"2.0","method":"exit"}"""
+            ).joinToString(separator = "") { message -> frame(message) }
+            val output = ByteArrayOutputStream()
+
+            assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+            val lspDiagnostics = output.toString(Charsets.UTF_8)
+            assertTrue(cliDiagnostics.contains("[${testCase.code}]"), cliDiagnostics)
+            assertTrue(lspDiagnostics.contains("\"code\":\"${testCase.code}\""), lspDiagnostics)
+            assertTrue(cliDiagnostics.contains(testCase.message), cliDiagnostics)
+            assertTrue(lspDiagnostics.contains(testCase.message), lspDiagnostics)
+        }
     }
 
     private fun frame(message: String): String =

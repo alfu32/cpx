@@ -1741,6 +1741,64 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun importedSourceTypesCompileAndRunThroughGeneratedC() {
+        val directory = Files.createTempDirectory("cplus-imported-source-types-e2e")
+        val appDirectory = Files.createDirectories(directory.resolve("app"))
+        val libraryDirectory = Files.createDirectories(appDirectory.resolve("stdlib"))
+        val library = libraryDirectory.resolve("io.cp").also {
+            it.writeText(
+                """
+                    package stdlib;
+                    pub struct Point { int x; };
+                    pub typedef int Coord;
+                    pub int pointValue() {
+                        struct Point point;
+                        point.x = 3;
+                        return point.x;
+                    }
+                """.trimIndent()
+            )
+        }
+        val main = appDirectory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    import { Coord as LocalCoord } from stdlib/io;
+                    import { Point as LocalPoint, pointValue } from "./stdlib/io.cp";
+                    import stdlib/io as geo;
+
+                    int main() {
+                        LocalPoint* localPoint;
+                        geo.Point* qualifiedPoint;
+                        LocalCoord localCoordinate = 2;
+                        geo.Coord qualifiedCoordinate = 3;
+                        return pointValue() + localCoordinate + qualifiedCoordinate +
+                            sizeof(LocalPoint) + sizeof(geo.Point);
+                    }
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, library)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("localPoint"), generated)
+        assertTrue(generated.contains("qualifiedPoint"), generated)
+        assertTrue("typedef int Coord;" in generated, generated)
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(16, execution.waitFor(), executionOutput)
+    }
+
+    @Test
     fun declarationCatalogueAllowsCircularModuleImports() {
         val directory = Files.createTempDirectory("cplus-circular-modules")
         val first = directory.resolve("first.cp")
