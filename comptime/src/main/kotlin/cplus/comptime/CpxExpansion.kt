@@ -243,7 +243,7 @@ sealed interface ComptimeValue {
 }
 
 private fun canonicalSyntax(text: String, references: Map<NodeId, SymbolId> = emptyMap()): String {
-    val fragment = SourceFile(SourceFileId(Int.MIN_VALUE), java.nio.file.Path.of("<canonical-cpx>"), text, 1)
+    val fragment = SourceFile(SourceFileId(Int.MIN_VALUE), Path.of("cpx-canonical.cp"), text, 1)
     val tokens = Lexer().lex(fragment).tokens
         .filterNot { it.kind == TokenKind.END_OF_FILE }
         .joinToString(" ") { token ->
@@ -921,7 +921,7 @@ class CpxExpander(
 
             val category = parseCategory(task.definition.category)
             val definitionFingerprint = buildString {
-                append(source.path.toAbsolutePath().normalize())
+                append(portablePathIdentity(source.path))
                 append('|')
                 append(task.definition.name)
                 append('|')
@@ -964,7 +964,7 @@ class CpxExpander(
             }
             val generatedFile = SourceFile(
                 SourceFileId(-(++generatedFileIndex)),
-                source.path.resolveSibling("<${task.key.canonical}>"),
+                syntheticSibling(source.path, "cpx-expansion-$generatedFileIndex.cp"),
                 instantiated,
                 source.version
             )
@@ -1334,7 +1334,7 @@ class CpxExpander(
         }
         val fragmentSource = source.copy(
             id = SourceFileId(-source.id.value - 1),
-            path = source.path.resolveSibling("<cpx-$kind>"),
+            path = syntheticSibling(source.path, "cpx-$kind.cp"),
             text = fragment
         )
         val parser = Parser(lexer.lex(fragmentSource))
@@ -1385,7 +1385,7 @@ class CpxExpander(
     private fun isExpression(text: String, source: SourceFile): Boolean {
         val fragmentSource = source.copy(
             id = SourceFileId(-source.id.value - 1),
-            path = source.path.resolveSibling("<cpx-expression>"),
+            path = syntheticSibling(source.path, "cpx-expression.cp"),
             text = text
         )
         val parsed = Parser(lexer.lex(fragmentSource)).parseExpressionFragment()
@@ -1397,6 +1397,12 @@ class CpxExpander(
         "void", "bool", "char", "short", "int", "long", "float", "double",
         "signed", "unsigned"
     )
+
+    private fun syntheticSibling(source: Path, name: String): Path =
+        source.resolveSibling(name.replace(Regex("[^A-Za-z0-9_.-]"), "_"))
+
+    private fun portablePathIdentity(path: Path): String =
+        path.toAbsolutePath().normalize().toString().replace('\\', '/')
 
     private fun registerStructuralDeclarations(
         universe: ComptimeTypeUniverse,

@@ -3236,6 +3236,7 @@ all create correct bindings.
 - Added `RuntimeDependencyAuditor` using downstream ELF dependency and unresolved-symbol inspection.
 - Added CLI `audit` output for observed, allowed, unexpected, and unresolved compiler-runtime dependencies.
 - Extended auditing to ELF, PE/COFF, and Mach-O; self-hosted ELF rejects dynamic interpreters and self-hosted PE rejects undeclared or C-runtime DLL imports.
+- Normalized generated CPX source paths to Windows-safe filenames and slash-separated identity strings so expansion caching and diagnostics do not depend on host path syntax.
 
 **Depends**
 - 6.4.2.1
