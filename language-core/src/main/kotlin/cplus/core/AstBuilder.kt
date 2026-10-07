@@ -6,6 +6,12 @@ class AstBuilder {
         syntax.origin
     )
 
+    fun buildDeclaration(syntax: SyntaxDeclaration): AstDeclaration = declaration(syntax)
+
+    fun buildStatement(syntax: SyntaxStatement): AstStatement = statement(syntax)
+
+    fun buildExpression(syntax: SyntaxExpression): AstExpression = expression(syntax)
+
     private fun declaration(node: SyntaxDeclaration): AstDeclaration = when (node) {
         is SyntaxPackage -> AstPackage(node.name, node.origin)
         is SyntaxAlias -> AstAlias(type(node.target), node.name, node.arrayDimensions, node.origin, node.isPublic)

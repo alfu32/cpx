@@ -2,6 +2,7 @@ package cplus.compiler
 
 import cplus.backend.GeneratedCUnit
 import cplus.backend.SourceMapping
+import cplus.comptime.ComptimeValue
 import cplus.core.Origin
 import cplus.core.SourceRange
 import cplus.core.SourceRepository
@@ -961,6 +962,79 @@ class CompilerIntegrationTest {
         val compileOutput = compileProcess.inputStream.bufferedReader().readText()
         assertEquals(0, compileProcess.waitFor(), compileOutput)
         assertEquals(0, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
+    }
+
+    @Test
+    fun cpxTypeArgumentsResolveAliasesAndInterpolateCanonicalSyntax() {
+        val source = """
+            typedef int count_t;
+
+            comptime cpx<decl> make(type T) {
+                return {
+                    int generated_{T}() { return 1; }
+                };
+            }
+
+            make(count_t);
+
+            int main() {
+                return generated_int() == 1 ? 0 : 1;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-cpx-type", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("int generated_int()"), generated)
+        assertTrue(!generated.contains("generated_count_t"), generated)
+    }
+
+    @Test
+    fun expressionCpxArgumentsRetainResolvedSymbolIdentity() {
+        val source = """
+            int value;
+
+            comptime cpx<decl> make(expr E) {
+                return {
+                    int generated() { return E; }
+                };
+            }
+
+            make(value);
+
+            int main() {
+                return generated();
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-cpx-reference", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val expression = result.artifacts.single().expanded!!.argumentValues.values
+            .flatten()
+            .filterIsInstance<ComptimeValue.CtExpression>()
+            .single()
+        val valueSymbol = result.semanticModel!!.symbolNamed("value")!!
+        val nodeId = expression.nodeId
+        assertEquals(valueSymbol.id, expression.references[nodeId])
+        assertTrue(expression.origin is Origin.Generated)
+        assertEquals(expression, result.artifacts.single().expanded!!.argumentValues.values.flatten().single())
+    }
+
+    @Test
+    fun injectedCpxDeclarationNamesUseOrdinaryCollisionDiagnostics() {
+        val source = """
+            comptime cpx<decl> make() {
+                return { int exported() { return 0; } };
+            }
+
+            make();
+            int exported() { return 1; }
+            int main() { return exported(); }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-cpx-collision", ".cp"), source)
+
+        assertTrue(result.diagnostics.any { it.code == "SEM002" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
     }
 
     @Test

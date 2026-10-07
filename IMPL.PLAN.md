@@ -3,19 +3,19 @@
 ## Dashboard
 
 ```text
-Overall: 91/113
+Overall: 113/113
 
-[DOING] [11/16] 1. Language front-end
-[DOING] [26/30] 2. Semantic model and modules
-[DOING] [13/20] 3. Compile-time and CPX system
+[DONE] [16/16] 1. Language front-end
+[DONE] [30/30] 2. Semantic model and modules
+[DONE] [20/20] 3. Compile-time and CPX system
 [DOING] [34/34] 4. Lowering and C backend
-[DOING] [6/14] 5. Tooling, integration and quality
+[DONE] [14/14] 5. Tooling, integration and quality
 
 Current task:
-3.1.2 — semantic type identities for CPX arguments
+5.3.4 — Final architecture/invariant audit
 
 Current milestone:
-M4 — Full compile-time model
+M6 — Development environment
 ```
 
 All tasks initially have status `TODO`.
@@ -24,7 +24,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-# 1. [TODO] [0/16] Language front-end
+# 1. [DONE] [16/16] Language front-end
 
 **Purpose:** Convert C+ source into a provenance-preserving normalized AST suitable for semantic analysis and CPX processing.
 
@@ -138,7 +138,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 1.2 [DOING] [2/4] Lexer
+## 1.2 [DONE] [4/4] Lexer
 
 **Language**
 - LS §8 CPX Source Templates
@@ -177,7 +177,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.2.1
 
-### 1.2.3 [TODO] CPX interpolation lexical rules
+### 1.2.3 [DONE] CPX interpolation lexical rules
 
 **Language**
 - LS §8.2 Direct Binding Interpolation
@@ -195,7 +195,12 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.2.2
 
-### 1.2.4 [TODO] Lexical diagnostics and incremental relexing boundary
+**Implementation**
+- CPX template parsing recognizes explicit `{binding}` interpolation only when the binding is a complete composition fragment.
+- Direct binding interpolation is boundary-checked, so `T` resolves as a standalone binding while `Temporary` remains literal source text.
+- Expansion tests cover direct interpolation, explicit identifier composition, and the `Temporary` conflict case.
+
+### 1.2.4 [DONE] Lexical diagnostics and incremental relexing boundary
 
 **Technical**
 - TS §5
@@ -207,12 +212,17 @@ All tasks initially have status `TODO`.
 - Lexer recovers sufficiently to continue parsing.
 - API supports relexing changed documents without exposing mutable global state.
 
+**Implementation**
+- The lexer reports bounded ranges for unterminated block comments, strings, characters, and unknown characters.
+- `Lexer.relex` expands edits to lexically neutral line boundaries, reuses unaffected tokens/diagnostics with offset shifts, and falls back to a full authoritative lex when lexical state crosses the edit.
+- Relexing is stateless and source-identity based; regression tests compare incremental output with a complete lex.
+
 **Depends**
 - 1.2.3
 
 ---
 
-## 1.3 [DOING] [1/4] Grammar and parser
+## 1.3 [DONE] [4/4] Grammar and parser
 
 **Language**
 - LS §6
@@ -233,7 +243,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.2
 
-### 1.3.2 [TODO] Expression parser and member syntax
+### 1.3.2 [DONE] Expression parser and member syntax
 
 **Language**
 - LS §6.4 Method Invocation Syntax
@@ -254,7 +264,12 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.3.1
 
-### 1.3.3 [TODO] C+ declaration grammar
+**Implementation**
+- Pratt-style precedence parsing covers assignment, arithmetic, logical, bitwise, conditional, calls, member access, updates, and indexing.
+- Member access remains syntactic until semantic resolution, preserving instance/static ambiguity for the semantic phase.
+- AST tests assert structural call/member/index nesting and precedence-sensitive expression shape.
+
+### 1.3.3 [DONE] C+ declaration grammar
 
 **Language**
 - LS §6 Methods
@@ -270,7 +285,11 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.3.2
 
-### 1.3.4 [TODO] Parser recovery and semantic ambiguity preservation
+**Implementation**
+- Struct methods, `comptime cpx` declarations, CPX return templates, packages, aliases, and all supported import forms are parsed into dedicated syntax nodes.
+- Declaration and golden tests preserve method receiver metadata, import aliases/selective names, package boundaries, and template text.
+
+### 1.3.4 [DONE] Parser recovery and semantic ambiguity preservation
 
 **Language**
 - LS §34 Parsing and Semantic Ambiguity
@@ -287,6 +306,11 @@ All tasks initially have status `TODO`.
 
 **Depends**
 - 1.3.3
+
+**Implementation**
+- Missing delimiters and incomplete calls produce error/partial syntax while synchronization continues at declaration and statement boundaries.
+- Expression forms such as `foo * bar` remain binary syntax until semantic type/name resolution; the parser does not force a declaration interpretation.
+- Recovery tests verify that a later declaration remains available after an incomplete member call.
 
 ---
 
@@ -348,7 +372,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-# 2. [DOING] [1/16] Semantic model and modules
+# 2. [DONE] [30/30] Semantic model and modules
 
 **Purpose:** Establish authoritative symbol, scope, type, method, package, import and foreign-C semantics.
 
@@ -365,7 +389,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.1 [DOING] [1/4] Declaration catalogue, symbols and scopes
+## 2.1 [DONE] [4/4] Declaration catalogue, symbols and scopes
 
 ### 2.1.1 [DONE] Stable symbol identity and symbol table
 
@@ -384,7 +408,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.4
 
-### 2.1.2 [TODO] Lexical scope table
+### 2.1.2 [DONE] Lexical scope table
 
 **Language**
 - LS §32 Name Lookup
@@ -400,7 +424,12 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.1.1
 
-### 2.1.3 [TODO] Declaration catalogue construction
+**Implementation**
+- Semantic analysis now creates package, module, type, function, block, comptime, and CPX-template scopes with explicit parent links.
+- Function, method, loop, inner-function, and local bindings are inserted into their lexical scope; `ScopeTable.lookup` retains nearest-scope shadowing and candidate lists.
+- Semantic tests inspect actual function/block ancestry and shadowed local lookup.
+
+### 2.1.3 [DONE] Declaration catalogue construction
 
 **Language**
 - LS §5 Declaration Catalogue
@@ -417,7 +446,12 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.1.2
 
-### 2.1.4 [TODO] Name lookup and conflict resolution
+**Implementation**
+- `DeclarationCatalogue` records declaration name/kind, symbol identity where available, lexical scope, origin, parameters, and compile-time classification.
+- The catalogue is built from the complete AST before reference collection, preserving forward declarations and CPX entities alongside runtime declarations.
+- Duplicate runtime candidates continue to produce stable semantic diagnostics; catalogue tests cover forward function and compile-time entries.
+
+### 2.1.4 [DONE] Name lookup and conflict resolution
 
 **Language**
 - LS §32
@@ -431,6 +465,11 @@ All tasks initially have status `TODO`.
 
 **Depends**
 - 2.1.3
+
+**Implementation**
+- Scope bindings retain all candidates while semantic lookup separates runtime, type, foreign, member, and compile-time catalogue kinds.
+- Import resolution diagnoses unresolved modules, inaccessible names, and unqualified collisions rather than silently selecting a textual candidate.
+- CPX template binding precedence is restricted to valid interpolation positions and explicit composition, with regression coverage for shadowing/conflict boundaries.
 
 ---
 
@@ -567,7 +606,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.3 [DOING] [7/8] Packages and C+ imports
+## 2.3 [DONE] [8/8] Packages and C+ imports
 
 ### 2.3.1 [DONE] [3/3] Package and module representation
 
@@ -686,7 +725,7 @@ all create correct bindings.
 
 ---
 
-## 2.4 [DOING] [7/9] C interoperability model
+## 2.4 [DONE] [9/9] C interoperability model
 
 ### 2.4.1 [DONE] Foreign symbol and type representation
 
@@ -790,7 +829,7 @@ all create correct bindings.
 **Depends**
 - 2.4.3.1
 
-### 2.4.4 [DOING] [1/2] Foreign-symbol semantic tooling integration
+### 2.4.4 [DONE] [2/2] Foreign-symbol semantic tooling integration
 
 **Language**
 - LS §41
@@ -818,7 +857,7 @@ all create correct bindings.
 **Depends**
 - 2.4.3
 
-#### 2.4.4.2 [TODO] Integrate foreign symbols with language-server features
+#### 2.4.4.2 [DONE] Integrate foreign symbols with language-server features
 
 **Acceptance**
 - completion includes imported C symbols.
@@ -829,9 +868,14 @@ all create correct bindings.
 - 2.4.4.1
 - 5.1
 
+**Implementation**
+- Imported C symbols participate in completion, hover, semantic references, and signature help through `SemanticModel` rather than generated C text.
+- Foreign function signatures retain variadic/return type information in LSP responses; retained origins feed navigation locations.
+- CLI integration coverage exercises `printf` completion, hover, and signature help through stdio JSON-RPC.
+
 ---
 
-# 3. [DOING] [11/20] Compile-time and CPX system
+# 3. [DONE] [20/20] Compile-time and CPX system
 
 **Purpose:** Implement the compile-time language, readable CPX templates, generics, fixed-point expansion, hygiene and reflection.
 
@@ -849,9 +893,9 @@ all create correct bindings.
 
 ---
 
-## 3.1 [DOING] [0/4] Compile-time values and arguments
+## 3.1 [DONE] [4/4] Compile-time values and arguments
 
-### 3.1.1 [DOING] Compile-time scalar and entity values
+### 3.1.1 [DONE] Compile-time scalar and entity values
 
 **Language**
 - LS §7.2
@@ -870,15 +914,16 @@ all create correct bindings.
 
 **Implementation**
 - CPX parameters now accept typed `type`, `identifier`, `int`, `float`, `bool`, `string`, `expr`, `stmt`, `decl`, `member`, `unit`, and `cpx` kinds.
+- List parameters now retain independently typed elements, including nested expressions and semantic type values.
 - Scalar arguments validate at expansion time and retain semantic kind, canonical cache text, and deterministic rendering text.
 - Expression arguments are parser-validated before interpolation; nested invocation argument commas are depth-aware.
 - Expansion keys include non-type parameter kinds so typed values cannot alias type specializations.
 - End-to-end coverage compiles and executes a generated function using expression and integer arguments.
 
 **Remaining**
-- compile-time lists, semantic `TypeId` values, and syntax-bearing `NodeId`/origin values remain in 3.1.2–3.1.4.
+- no remaining work in this subsection.
 
-### 3.1.2 [TODO] `CtType` and semantic type arguments
+### 3.1.2 [DONE] `CtType` and semantic type arguments
 
 **Language**
 - LS §8.4
@@ -893,7 +938,15 @@ all create correct bindings.
 - 2.2.1
 - 3.1.1
 
-### 3.1.3 [TODO] Expression, statement and declaration compile-time values
+**Implementation**
+- `CtType` now carries both its declared semantic `TypeId` and canonical target `TypeId`.
+- The semantic model resolves primitive, aggregate, alias, foreign, pointer, and array spellings for CPX type arguments.
+- A provisional front-end semantic pass supplies identities before CPX expansion; the final pass resets deterministic IDs and remains authoritative.
+- Explicit type interpolation uses the canonical semantic spelling while direct interpolation preserves the invocation spelling.
+- Type identity participates in expansion specialization keys without changing the source-facing expansion key text.
+- Tests cover alias/canonical identity and compiler-to-C canonical type interpolation.
+
+### 3.1.3 [DONE] Expression, statement and declaration compile-time values
 
 **Language**
 - LS §7.2
@@ -911,7 +964,14 @@ all create correct bindings.
 - 1.4
 - 3.1.1
 
-### 3.1.4 [TODO] Canonical compile-time value encoding
+**Implementation**
+- Expression, statement, declaration, member, unit, and nested-CPX arguments are parsed into AST entities before interpolation.
+- Syntax-bearing values retain an arena-backed `NodeId`, captured `Origin`, and an optional semantic reference map.
+- The CPX expansion result exposes the syntax arena and captured argument values for downstream lowering and diagnostics.
+- Semantic reference collection can resolve captured nodes against the provisional model, preserving `SymbolId` identity through expansion.
+- Parser and compiler integration tests cover node identity, origin retention, and global symbol reference preservation.
+
+### 3.1.4 [DONE] Canonical compile-time value encoding
 
 **Technical**
 - TS §19
@@ -925,9 +985,16 @@ all create correct bindings.
 **Depends**
 - 3.1.1–3.1.3
 
+**Implementation**
+- Canonical encodings normalize scalar literals and token spacing without replacing the retained syntax nodes.
+- Syntax-value encodings include resolved semantic reference identities, preventing equivalent text in different scopes from aliasing.
+- Specialization keys are derived from parsed compile-time values, so formatting-equivalent syntax shares a key while distinct values remain separate.
+- Canonical type IDs make aliases and their target types share semantic specialization identity while declared IDs remain available on `CtType`.
+- Regression coverage verifies deterministic formatting normalization and distinct-value separation.
+
 ---
 
-## 3.2 [DOING] [3/4] CPX template representation and interpolation
+## 3.2 [DONE] [4/4] CPX template representation and interpolation
 
 ### 3.2.1 [DONE] CPX categories and template node model
 
@@ -975,7 +1042,7 @@ all create correct bindings.
 **Depends**
 - 3.2.2
 
-### 3.2.4 [TODO] CPX hygiene and injected-name rules
+### 3.2.4 [DONE] CPX hygiene and injected-name rules
 
 **Language**
 - LS §12 Hygiene
@@ -990,11 +1057,17 @@ all create correct bindings.
 - 3.2.3
 - 2.1.4
 
+**Implementation**
+- Generated function locals and their references are rewritten structurally with deterministic expansion-key suffixes.
+- Nested generated functions receive separate hygienic local mappings.
+- Injected declaration names remain visible to ordinary semantic collision checking rather than being silently renamed.
+- Regression coverage verifies local/reference pairing and incompatible injected declarations producing `SEM002`.
+
 ---
 
-## 3.3 [DOING] [2/4] Evaluator, scheduler and expansion identity
+## 3.3 [DONE] [4/4] Evaluator, scheduler and expansion identity
 
-### 3.3.1 [TODO] `ComptimeContext` and evaluator API
+### 3.3.1 [DONE] `ComptimeContext` and evaluator API
 
 **Language**
 - LS §13 Scope-sensitive CPX Expansion
@@ -1011,7 +1084,15 @@ all create correct bindings.
 - 3.1
 - 2.3
 
-### 3.3.2 [TODO] Expansion identity and evaluation keys
+**Implementation**
+- Added `ComptimeContext` carrying module, scope, containing entities, phase, target, origin, and expansion identity.
+- Added the `ComptimeEvaluator` boundary and default structured template evaluator.
+- Evaluation results expose rendered syntax, output channels, dependencies, and diagnostics.
+- The expander routes cache misses through the evaluator and publishes returned dependency channels to the scheduler.
+- Compiler target dialects now flow into CPX evaluation context.
+- Tests assert context delivery, expansion identity, and structured dependency channels.
+
+### 3.3.2 [DONE] Expansion identity and evaluation keys
 
 **Language**
 - LS §11 CPX Instance Identity
@@ -1028,6 +1109,13 @@ all create correct bindings.
 **Depends**
 - 3.1.4
 - 3.3.1
+
+**Implementation**
+- Every queued invocation receives a call-site `NodeId` and an `ExpansionId` containing declaration, parent expansion, call site, and evaluation key.
+- Nested generated invocations preserve their parent expansion identity while retaining scheduler dependency keys.
+- Expansion results expose all invocation identities for provenance and incremental consumers.
+- Semantic specialization keys remain separate from invocation identity, allowing cache reuse without collapsing provenance.
+- Tests verify nested parent identity and distinct call-site identities.
 
 ### 3.3.3 [DONE] Dependency-driven compile-time scheduler
 
@@ -1258,7 +1346,7 @@ all create correct bindings.
 
 ---
 
-# 4. [DOING] [28/34] Lowering and C backend
+# 4. [DONE] [34/34] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1294,6 +1382,8 @@ all create correct bindings.
 - `CompilerContext` is an instance-scoped shared service boundary and now carries target information explicitly.
 - Generic `CompilerPass<P>` and `PassResult<P>` contracts support front-end, semantic, and backend representations without global mutable state.
 - Pass results carry their transformed program and diagnostics explicitly, with a success predicate for pipeline control.
+- Lowering, C naming/dependency synthesis, header generation, and C emission now communicate through typed in-process packet channels and node wrappers; the algorithmic work remains in backend library services.
+- CPX and module cycles continue through explicit work-queue/SCC schedulers rather than recursive processing-node calls.
 - Tests verify context identity, target propagation, transformed-program identity, and diagnostic propagation.
 
 ### 4.1.2 [DONE] AST rewrite API
@@ -1410,7 +1500,7 @@ all create correct bindings.
 - `AstClosureLowerer` performs lexical capture analysis before semantic resolution and removes nested functions from the runtime AST.
 - Mutable captures use reference-mode environment fields; immutable captures use value-mode fields.
 - Environment structs, local environment instances, hoisted functions, capture initialization, and closure-call environment arguments are synthesized with generated origins.
-- `ClosurePlanner` rejects explicit escaping mutable-reference captures with `CLOSURE001`; unsupported nested-closure recursion is diagnosed explicitly.
+- `ClosurePlanner` rejects explicit escaping mutable-reference captures with `CLOSURE001`; nested closures are recursively hoisted with parent-environment rewrites.
 - An end-to-end C17 fixture verifies a captured inner function compiles and executes correctly.
 
 ### 4.2.3 [DONE] [3/3] `defer` lowering and control-flow integration
@@ -1959,7 +2049,7 @@ all create correct bindings.
 
 ---
 
-# 5. [DOING] [8/14] Tooling, integration and quality
+# 5. [DONE] [14/14] Tooling, integration and quality
 
 **Purpose:** Make the compiler usable as a development platform through LSP, CLI, incremental compilation, test coverage and specification audits.
 
@@ -1973,9 +2063,9 @@ all create correct bindings.
 
 ---
 
-## 5.1 [TODO] [0/4] Language server and VS Code integration
+## 5.1 [DONE] [4/4] Language server and VS Code integration
 
-### 5.1.1 [TODO] Kotlin LSP workspace/document architecture
+### 5.1.1 [DONE] Kotlin LSP workspace/document architecture
 
 **Language**
 - LS §41
@@ -1992,7 +2082,14 @@ all create correct bindings.
 - 1
 - 2
 
-### 5.1.2 [TODO] Semantic tokens and TextMate integration
+**Implementation**
+- Added a versioned `LspWorkspace` document store shared by open, change, close, and diagnostic operations.
+- Full-text and ranged LSP changes are applied in client order, preserving UTF-16 position semantics and document versions.
+- Invalid ranges leave the current document unchanged instead of publishing diagnostics for corrupted text.
+- Diagnostics continue to use `CPlusCompiler`, keeping the language server on the authoritative compiler front-end.
+- Tests cover ordered ranged edits, version retention, and invalid-range recovery.
+
+### 5.1.2 [DONE] Semantic tokens and TextMate integration
 
 **Language**
 - LS §40
@@ -2012,7 +2109,14 @@ all create correct bindings.
 - 2
 - 3.2
 
-### 5.1.3 [TODO] Completion and hover
+**Implementation**
+- Added an LSP semantic-token legend covering types, functions, methods, properties, parameters, variables, literals, keywords, and operators.
+- Semantic tokens are encoded from the shared lexer output and semantic `SymbolId`/reference index using standard LSP delta encoding.
+- `textDocument/semanticTokens/full` is served from the versioned workspace document text through `CPlusCompiler`.
+- The server advertises the semantic-token capability while retaining normal lexical tokenization for unresolved identifiers.
+- Integration coverage verifies initialization capabilities and non-empty semantic-token output.
+
+### 5.1.3 [DONE] Completion and hover
 
 **Language**
 - LS §41
@@ -2031,7 +2135,14 @@ all create correct bindings.
 - 2.2
 - 3
 
-### 5.1.4 [TODO] Navigation, references and diagnostics
+**Implementation**
+- Added `textDocument/completion` backed by semantic symbols, aggregate fields, methods, and prefix filtering.
+- Instance/member completion uses resolved expression types, while type-qualified completion uses the stabilized aggregate model.
+- Added `textDocument/hover` with semantic kind, type/signature text, and source range.
+- Both services compile the versioned workspace text through `CPlusCompiler` and do not maintain a second parser.
+- Integration coverage verifies completion and hover responses over stdio JSON-RPC.
+
+### 5.1.4 [DONE] Navigation, references and diagnostics
 
 **Technical**
 - TS §30
@@ -2046,6 +2157,13 @@ all create correct bindings.
 
 **Depends**
 - 5.1.1
+
+**Implementation**
+- Diagnostics are published from the authoritative compiler result after every open and change.
+- `textDocument/definition` resolves declaration origins from the semantic symbol table.
+- `textDocument/references` resolves all indexed references through `ReferenceIndex`, with optional declaration inclusion.
+- Navigation responses preserve the source range and document URI expected by LSP clients.
+- Integration coverage verifies capability advertisement and definition/reference responses for a function call.
 - 4.4.3
 
 ---
@@ -2125,6 +2243,7 @@ all create correct bindings.
 - CLI integration tests cover framed requests, compiler diagnostics, executable builds, headers, and failure exit codes.
 - `ast` now prints the parsed pre-CPX AST while `expand` prints the post-CPX/pre-lowering AST.
 - `CompilationArtifacts.expandedSyntax` exposes the phase boundary through language-core types without leaking the comptime implementation type into CLI clients.
+- The Gradle `cli:run` task uses the repository root as its working directory, so documented root-relative source paths resolve consistently.
 
 ### 5.2.3 [DONE] Incremental dependency invalidation
 
@@ -2176,7 +2295,7 @@ all create correct bindings.
 
 ---
 
-## 5.3 [DOING] [2/4] Verification and specification completion
+## 5.3 [DONE] [4/4] Verification and specification completion
 
 ### 5.3.1 [DONE] Layered automated test suites
 
@@ -2221,7 +2340,7 @@ all create correct bindings.
 - Diagnostic fixtures assert stable error-code ordering and reject unexpected C/header publication.
 - Fixture assertion failures identify the exact resource path and expected/actual content.
 
-### 5.3.3 [TODO] Specification coverage audit
+### 5.3.3 [DONE] Specification coverage audit
 
 **Language**
 - LS §1–52
@@ -2237,7 +2356,12 @@ all create correct bindings.
 **Depends**
 - all feature branches
 
-### 5.3.4 [TODO] Final architecture/invariant audit
+**Implementation**
+- Audited LS §§1–52 and TS §§1–78 against the traceability map, implementation-plan leaves, source modules, and layered tests.
+- The coverage artifact records the evidence commands and identifies the explicitly diagnosed non-block closure declaration boundary as a versioned limitation rather than a silent omission.
+- The audit gate is the full Gradle suite plus golden fixture and native C smoke paths.
+
+### 5.3.4 [DONE] Final architecture/invariant audit
 
 **Technical**
 - TS §69–78
@@ -2251,6 +2375,11 @@ all create correct bindings.
 
 **Depends**
 - all tasks
+
+**Implementation**
+- Compiler, CPX, semantic, backend, source-map, and LSP paths use shared AST/origin/symbol/type models and typed packet boundaries.
+- Final C is emitted from the lowered C-subset model; generated declarations and diagnostics retain origins.
+- Full tests and whitespace validation pass, and repository search found no required implementation `TODO`/`FIXME`/mock placeholders.
 
 ---
 

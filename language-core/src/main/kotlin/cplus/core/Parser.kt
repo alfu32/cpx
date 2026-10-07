@@ -18,6 +18,19 @@ class Parser(private val lexed: LexedSource) {
         return ParsedExpression(expression, lexed.diagnostics + diagnostics.diagnostics)
     }
 
+    data class ParsedStatement(
+        val statement: SyntaxStatement?,
+        val diagnostics: List<Diagnostic>
+    )
+
+    fun parseStatementFragment(): ParsedStatement {
+        val statement = parseStatement()
+        if (statement != null && !atEnd()) {
+            diagnostics.error("unexpected token after statement", peek().range, "PARSE404")
+        }
+        return ParsedStatement(statement, lexed.diagnostics + diagnostics.diagnostics)
+    }
+
     fun parse(): ParsedSource {
         val declarations = mutableListOf<SyntaxDeclaration>()
         while (!atEnd()) {
@@ -699,6 +712,8 @@ class Parser(private val lexed: LexedSource) {
 
     private val comptimeParameterKinds = setOf(
         "type",
+        "list",
+        "values",
         "identifier",
         "int",
         "integer",

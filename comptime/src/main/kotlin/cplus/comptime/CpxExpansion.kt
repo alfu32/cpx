@@ -1,9 +1,12 @@
 package cplus.comptime
 
 import cplus.core.*
+import cplus.semantic.SymbolId
+import cplus.semantic.TypeId
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.nio.file.Path
+import java.security.MessageDigest
 import java.util.ArrayDeque
 
 enum class CpxPhase {
@@ -20,17 +23,95 @@ enum class CpxCategory {
     TYPE
 }
 
+data class ComptimeTargetInfo(
+    val cDialect: String = "c17"
+)
+
+data class ExpansionId(
+    val declaration: String,
+    val callSite: NodeId,
+    val parent: ExpansionId?,
+    val key: ExpansionKey
+)
+
+data class ComptimeContext(
+    val module: String,
+    val scope: cplus.semantic.ScopeId?,
+    val containingType: TypeId?,
+    val containingFunction: SymbolId?,
+    val phase: CpxPhase,
+    val target: ComptimeTargetInfo,
+    val sourceOrigin: Origin,
+    val expansion: ExpansionId?
+)
+
+data class ComptimeExpansionChannels(
+    val replacement: List<NodeId> = emptyList(),
+    val hoistedDeclarations: List<NodeId> = emptyList(),
+    val localDeclarations: List<NodeId> = emptyList(),
+    val beforeStatements: List<NodeId> = emptyList(),
+    val afterStatements: List<NodeId> = emptyList(),
+    val dependencies: Set<ComptimeDependency> = emptySet()
+)
+
+data class ComptimeEvaluationResult(
+    val renderedText: String,
+    val channels: ComptimeExpansionChannels = ComptimeExpansionChannels(),
+    val diagnostics: List<Diagnostic> = emptyList()
+)
+
+fun interface ComptimeEvaluator {
+    fun evaluate(
+        functionName: String,
+        template: CpxTemplate,
+        bindings: Map<String, ComptimeValue>,
+        context: ComptimeContext
+    ): ComptimeEvaluationResult
+}
+
+class TemplateComptimeEvaluator : ComptimeEvaluator {
+    override fun evaluate(
+        functionName: String,
+        template: CpxTemplate,
+        bindings: Map<String, ComptimeValue>,
+        context: ComptimeContext
+    ): ComptimeEvaluationResult = ComptimeEvaluationResult(template.render(bindings))
+}
+
+data class ComptimeTypeIdentity(
+    val typeId: TypeId,
+    val canonicalTypeId: TypeId,
+    val canonicalText: String
+)
+
+fun interface ComptimeTypeResolver {
+    fun resolve(sourceText: String): ComptimeTypeIdentity?
+}
+
+fun interface ComptimeReferenceResolver {
+    fun resolve(node: AstNode, arena: AstArena): Map<NodeId, SymbolId>
+}
+
 sealed interface ComptimeValue {
     val sourceText: String
     val canonicalKind: String
     val canonicalText: String
+    val nodeId: NodeId?
+        get() = null
+    val origin: Origin?
+        get() = null
+    val references: Map<NodeId, SymbolId>
+        get() = emptyMap()
 
     data class CtType(
         override val sourceText: String,
-        val identifierText: String = sourceText.removePrefix("struct ").trim()
+        val identifierText: String = sourceText.removePrefix("struct ").trim(),
+        val typeId: TypeId? = null,
+        val canonicalTypeId: TypeId? = typeId,
+        val canonicalSyntax: String? = null
     ) : ComptimeValue {
         override val canonicalKind: String = "type"
-        override val canonicalText: String = identifierText
+        override val canonicalText: String = canonicalTypeId?.let { "id:${it.value}" } ?: identifierText
     }
 
     data class CtIdentifier(val text: String) : ComptimeValue {
@@ -63,44 +144,101 @@ sealed interface ComptimeValue {
         override val canonicalText: String = text
     }
 
-    data class CtExpression(val text: String) : ComptimeValue {
+    data class CtExpression(
+        val text: String,
+        override val nodeId: NodeId,
+        override val origin: Origin,
+        override val references: Map<NodeId, SymbolId> = emptyMap()
+    ) : ComptimeValue {
         override val sourceText: String = text
         override val canonicalKind: String = "expr"
-        override val canonicalText: String = canonicalSyntax(text)
+        override val canonicalText: String = canonicalSyntax(text, references)
     }
 
-    data class CtStatement(val text: String) : ComptimeValue {
+    data class CtStatement(
+        val text: String,
+        override val nodeId: NodeId,
+        override val origin: Origin,
+        override val references: Map<NodeId, SymbolId> = emptyMap()
+    ) : ComptimeValue {
         override val sourceText: String = text
         override val canonicalKind: String = "stmt"
-        override val canonicalText: String = canonicalSyntax(text)
+        override val canonicalText: String = canonicalSyntax(text, references)
     }
 
-    data class CtDeclaration(val text: String) : ComptimeValue {
+    data class CtDeclaration(
+        val text: String,
+        override val nodeId: NodeId,
+        override val origin: Origin,
+        override val references: Map<NodeId, SymbolId> = emptyMap()
+    ) : ComptimeValue {
         override val sourceText: String = text
         override val canonicalKind: String = "decl"
-        override val canonicalText: String = canonicalSyntax(text)
+        override val canonicalText: String = canonicalSyntax(text, references)
     }
 
-    data class CtMember(val text: String) : ComptimeValue {
+    data class CtMember(
+        val text: String,
+        override val nodeId: NodeId,
+        override val origin: Origin,
+        override val references: Map<NodeId, SymbolId> = emptyMap()
+    ) : ComptimeValue {
         override val sourceText: String = text
         override val canonicalKind: String = "member"
-        override val canonicalText: String = canonicalSyntax(text)
+        override val canonicalText: String = canonicalSyntax(text, references)
     }
 
-    data class CtUnit(val text: String) : ComptimeValue {
+    data class CtUnit(
+        val text: String,
+        override val nodeId: NodeId,
+        override val origin: Origin,
+        override val references: Map<NodeId, SymbolId> = emptyMap()
+    ) : ComptimeValue {
         override val sourceText: String = text
         override val canonicalKind: String = "unit"
-        override val canonicalText: String = canonicalSyntax(text)
+        override val canonicalText: String = canonicalSyntax(text, references)
     }
 
-    data class CtCpx(val text: String) : ComptimeValue {
+    data class CtCpx(
+        val text: String,
+        override val nodeId: NodeId,
+        override val origin: Origin,
+        override val references: Map<NodeId, SymbolId> = emptyMap()
+    ) : ComptimeValue {
         override val sourceText: String = text
         override val canonicalKind: String = "cpx"
-        override val canonicalText: String = canonicalSyntax(text)
+        override val canonicalText: String = canonicalSyntax(text, references)
+    }
+
+    data class CtList(
+        val text: String,
+        val values: List<ComptimeValue>
+    ) : ComptimeValue {
+        override val sourceText: String = text
+        override val canonicalKind: String = "list"
+        override val canonicalText: String = values.joinToString(",", prefix = "[", postfix = "]") {
+            "${it.canonicalKind}:${it.canonicalText}"
+        }
     }
 }
 
-private fun canonicalSyntax(text: String): String = text.trim().replace(Regex("\\s+"), " ")
+private fun canonicalSyntax(text: String, references: Map<NodeId, SymbolId> = emptyMap()): String {
+    val fragment = SourceFile(SourceFileId(Int.MIN_VALUE), java.nio.file.Path.of("<canonical-cpx>"), text, 1)
+    val tokens = Lexer().lex(fragment).tokens
+        .filterNot { it.kind == TokenKind.END_OF_FILE }
+        .joinToString(" ") { token ->
+            when (token.kind) {
+                TokenKind.INTEGER_LITERAL -> token.lexeme.toBigIntegerOrNull()?.toString() ?: token.lexeme
+                TokenKind.FLOAT_LITERAL -> token.lexeme.toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString() ?: token.lexeme
+                else -> token.lexeme
+            }
+        }
+    if (references.isEmpty()) return tokens
+    val referenceEncoding = references.entries
+        .sortedBy { it.key.value }
+        .joinToString(",") { "${it.key.value}=${it.value.value}" }
+    return "$tokens|refs:$referenceEncoding"
+}
 
 sealed interface TemplateNode {
     data class Literal(val text: String) : TemplateNode
@@ -119,7 +257,7 @@ data class CpxTemplate(
                 is TemplateNode.Binding -> {
                     val value = bindings[node.name]
                     when (value) {
-                        is ComptimeValue.CtType -> append(if (node.explicit) value.identifierText else value.sourceText)
+                        is ComptimeValue.CtType -> append(if (node.explicit) value.canonicalSyntax ?: value.identifierText else value.sourceText)
                         else -> append(value?.sourceText ?: node.name)
                     }
                 }
@@ -166,7 +304,8 @@ class CpxTemplateParser {
 data class ExpansionKey(
     val functionName: String,
     val arguments: List<String>,
-    val argumentKinds: List<String> = emptyList()
+    val argumentKinds: List<String> = emptyList(),
+    val argumentIdentities: List<String> = emptyList()
 ) {
     val canonical: String
         get() = "$functionName(${arguments.joinToString(",")})"
@@ -175,7 +314,10 @@ data class ExpansionKey(
         get() = SpecializationKey(
             functionName,
             arguments.mapIndexed { index, argument ->
-                CanonicalComptimeValue(argumentKinds.getOrNull(index) ?: "type", argument)
+                CanonicalComptimeValue(
+                    argumentKinds.getOrNull(index) ?: "type",
+                    argumentIdentities.getOrNull(index) ?: argument
+                )
             }
         )
 }
@@ -364,14 +506,20 @@ data class ExpansionTask(
     val invocation: SyntaxCpxInvocation,
     val definition: SyntaxComptimeFunction,
     val key: ExpansionKey,
+    val callSite: NodeId = NodeId(-1),
+    val parentExpansion: ExpansionId? = null,
     val ancestors: List<ExpansionKey> = emptyList(),
     val phase: CpxPhase = CpxPhase.STRUCTURAL,
     val dependencies: Set<ComptimeDependency> = emptySet()
-)
+) {
+    val expansionId: ExpansionId
+        get() = ExpansionId(definition.name, callSite, parentExpansion, key)
+}
 
 private data class DeferredCpxInvocation(
     val invocation: SyntaxCpxInvocation,
-    val ancestors: List<ExpansionKey>
+    val ancestors: List<ExpansionKey>,
+    val parentExpansion: ExpansionId?
 )
 
 /**
@@ -523,7 +671,11 @@ data class CpxExpansionResult(
     val diagnostics: List<Diagnostic>,
     val expandedKeys: Set<ExpansionKey>,
     val specializationKeys: Set<SpecializationKey> = expandedKeys.map { it.specializationKey }.toSet(),
-    val structuralFingerprint: String = structuralFingerprint(program)
+    val structuralFingerprint: String = structuralFingerprint(program),
+    val syntaxArena: AstArena = AstArena(),
+    val argumentValues: Map<ExpansionKey, List<ComptimeValue>> = emptyMap(),
+    val evaluationResults: Map<ExpansionKey, ComptimeEvaluationResult> = emptyMap(),
+    val expansionIds: List<ExpansionId> = emptyList()
 )
 
 /**
@@ -574,14 +726,27 @@ class CpxExpander(
     private val lexer: Lexer = Lexer(),
     private val templateParser: CpxTemplateParser = CpxTemplateParser(),
     val specializationCache: SpecializationCache = SpecializationCache(),
-    private val limits: CpxExpansionLimits = CpxExpansionLimits()
+    private val limits: CpxExpansionLimits = CpxExpansionLimits(),
+    private val evaluator: ComptimeEvaluator = TemplateComptimeEvaluator(),
+    private val target: ComptimeTargetInfo = ComptimeTargetInfo()
 ) {
     fun invalidateSpecializations(keys: Set<SpecializationKey>) {
         specializationCache.invalidate(keys)
     }
 
-    fun expand(source: SourceFile, program: SyntaxProgram): CpxExpansionResult {
+    fun expand(
+        source: SourceFile,
+        program: SyntaxProgram,
+        typeResolver: ComptimeTypeResolver? = null,
+        referenceResolver: ComptimeReferenceResolver? = null
+    ): CpxExpansionResult {
         val diagnostics = DiagnosticBag()
+        val syntaxArena = AstArena()
+        val astBuilder = AstBuilder()
+        val argumentValues = linkedMapOf<ExpansionKey, List<ComptimeValue>>()
+        val specializationKeys = linkedSetOf<SpecializationKey>()
+        val evaluationResults = linkedMapOf<ExpansionKey, ComptimeEvaluationResult>()
+        val expansionIds = mutableListOf<ExpansionId>()
         val definitions = linkedMapOf<String, SyntaxComptimeFunction>()
         program.declarations
             .filterIsInstance<SyntaxComptimeFunction>()
@@ -589,12 +754,19 @@ class CpxExpander(
         val scheduler = ComptimeScheduler()
         val deferredInvocations = mutableListOf<DeferredCpxInvocation>()
 
-        fun queueInvocation(invocation: SyntaxCpxInvocation, ancestors: List<ExpansionKey> = emptyList()) {
+        fun queueInvocation(
+            invocation: SyntaxCpxInvocation,
+            ancestors: List<ExpansionKey> = emptyList(),
+            parentExpansion: ExpansionId? = null
+        ) {
+            val callSite = syntaxArena.add(astBuilder.buildDeclaration(invocation))
             val definition = definitions[invocation.name]
             if (definition == null) {
-                deferredInvocations += DeferredCpxInvocation(invocation, ancestors)
+                deferredInvocations += DeferredCpxInvocation(invocation, ancestors, parentExpansion)
             } else {
-                scheduler.enqueue(taskFor(invocation, definition, ancestors))
+                val task = taskFor(invocation, definition, callSite, parentExpansion, ancestors, typeResolver)
+                expansionIds += task.expansionId
+                scheduler.enqueue(task)
             }
         }
 
@@ -611,7 +783,17 @@ class CpxExpander(
                         "CPX008"
                     )
                 } else {
-                    scheduler.enqueue(taskFor(deferred.invocation, definition, deferred.ancestors))
+                    val callSite = syntaxArena.add(astBuilder.buildDeclaration(deferred.invocation))
+                    val task = taskFor(
+                        deferred.invocation,
+                        definition,
+                        callSite,
+                        deferred.parentExpansion,
+                        deferred.ancestors,
+                        typeResolver
+                    )
+                    expansionIds += task.expansionId
+                    scheduler.enqueue(task)
                 }
                 iterator.remove()
             }
@@ -690,11 +872,27 @@ class CpxExpander(
                 continue
             }
             val values = task.definition.parameters.zip(task.invocation.arguments).mapNotNull { (parameter, argument) ->
-                parseComptimeValue(parameter.kind, argument, task.invocation, source, diagnostics)
+                parseComptimeValue(
+                    parameter.kind,
+                    argument,
+                    task.invocation,
+                    source,
+                    diagnostics,
+                    typeResolver,
+                    referenceResolver,
+                    syntaxArena,
+                    astBuilder
+                )
             }
             if (values.size != task.definition.parameters.size) {
                 continue
             }
+            argumentValues[task.key] = values
+            val specializationKey = SpecializationKey(
+                task.definition.name,
+                values.map { value -> CanonicalComptimeValue(value.canonicalKind, value.canonicalText) }
+            )
+            specializationKeys += specializationKey
 
             val category = parseCategory(task.definition.category)
             val definitionFingerprint = buildString {
@@ -708,22 +906,37 @@ class CpxExpander(
                 append('|')
                 append(task.definition.template)
             }
-            val specializationKey = task.key.specializationKey
-            val instantiated = specializationCache.get(specializationKey, definitionFingerprint)
-                ?: run {
-                    val template = templateParser.parse(
-                        task.definition.template,
-                        category,
-                        task.definition.origin,
-                        task.definition.parameters.map { it.name }.toSet()
-                    )
-                    val bindings = task.definition.parameters.zip(values).associate { (parameter, value) ->
-                        parameter.name to value
-                    }
-                    template.render(bindings).also {
-                        specializationCache.put(specializationKey, definitionFingerprint, it)
-                    }
+            val context = ComptimeContext(
+                module = source.path.fileName.toString(),
+                scope = cplus.semantic.ScopeId(1),
+                containingType = null,
+                containingFunction = null,
+                phase = task.phase,
+                target = target,
+                sourceOrigin = task.invocation.origin,
+                expansion = task.expansionId
+            )
+            val cached = specializationCache.get(specializationKey, definitionFingerprint)
+            val instantiated = if (cached != null) {
+                evaluationResults[task.key] = ComptimeEvaluationResult(cached)
+                cached
+            } else {
+                val template = templateParser.parse(
+                    task.definition.template,
+                    category,
+                    task.definition.origin,
+                    task.definition.parameters.map { it.name }.toSet()
+                )
+                val bindings = task.definition.parameters.zip(values).associate { (parameter, value) ->
+                    parameter.name to value
                 }
+                val evaluation = evaluator.evaluate(task.definition.name, template, bindings, context)
+                evaluationResults[task.key] = evaluation
+                diagnostics.addAll(evaluation.diagnostics)
+                scheduler.publishAll(evaluation.channels.dependencies)
+                specializationCache.put(specializationKey, definitionFingerprint, evaluation.renderedText)
+                evaluation.renderedText
+            }
             val generatedFile = SourceFile(
                 SourceFileId(-(++generatedFileIndex)),
                 source.path.resolveSibling("<${task.key.canonical}>"),
@@ -738,7 +951,9 @@ class CpxExpander(
                 if (task.ancestors.isEmpty()) null else task.invocation.origin,
                 task.key.canonical
             )
-            val declarations = parsed.syntax.declarations.map { reorigin(it, expansionOrigin) }
+            val declarations = parsed.syntax.declarations
+                .map { reorigin(it, expansionOrigin) }
+                .map { hygienize(it, task.key) }
             val structuralDeclarations = declarations.filter(::isStructuralDeclaration)
             if (task.phase == CpxPhase.REFLECTIVE && structuralDeclarations.isNotEmpty()) {
                 diagnostics.error(
@@ -771,7 +986,7 @@ class CpxExpander(
             }
             generated += acceptedDeclarations.filterNot { it is SyntaxComptimeFunction || it is SyntaxCpxInvocation }
             acceptedDeclarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
-                queueInvocation(invocation, task.ancestors + task.key)
+                queueInvocation(invocation, task.ancestors + task.key, task.expansionId)
             }
         }
 
@@ -786,14 +1001,21 @@ class CpxExpander(
             SyntaxProgram(retained + generated, range, program.origin),
             diagnostics.diagnostics,
             scheduler.expandedKeys,
-            scheduler.specializationKeys
+            specializationKeys,
+            syntaxArena = syntaxArena,
+            argumentValues = argumentValues,
+            evaluationResults = evaluationResults,
+            expansionIds = expansionIds
         )
     }
 
     private fun taskFor(
         invocation: SyntaxCpxInvocation,
         definition: SyntaxComptimeFunction,
-        ancestors: List<ExpansionKey> = emptyList()
+        callSite: NodeId,
+        parentExpansion: ExpansionId? = null,
+        ancestors: List<ExpansionKey> = emptyList(),
+        typeResolver: ComptimeTypeResolver? = null
     ): ExpansionTask = ExpansionTask(
         invocation,
         definition,
@@ -805,8 +1027,17 @@ class CpxExpander(
             definition.parameters
                 .map { normalizeParameterKind(it.kind) }
                 .takeUnless { kinds -> kinds.all { it == "type" } }
-                .orEmpty()
+                .orEmpty(),
+            invocation.arguments.mapIndexed { index, argument ->
+                if (normalizeParameterKind(definition.parameters.getOrNull(index)?.kind ?: "type") != "type") {
+                    ""
+                } else {
+                    typeResolver?.resolve(argument.trim())?.typeId?.let { "id:${it.value}" }.orEmpty()
+                }
+            }.takeUnless { identities -> identities.all(String::isEmpty) }.orEmpty()
         ),
+        callSite,
+        parentExpansion,
         ancestors,
         phase = phaseFor(definition.category)
     ).let { task ->
@@ -853,6 +1084,7 @@ class CpxExpander(
     private fun normalizeParameterKind(kind: String): String = when (kind.trim().lowercase()) {
         "integer" -> "int"
         "boolean" -> "bool"
+        "values" -> "list"
         "expression" -> "expr"
         "statement" -> "stmt"
         "declaration" -> "decl"
@@ -879,7 +1111,11 @@ class CpxExpander(
         argument: String,
         invocation: SyntaxCpxInvocation,
         source: SourceFile,
-        diagnostics: DiagnosticBag
+        diagnostics: DiagnosticBag,
+        typeResolver: ComptimeTypeResolver?,
+        referenceResolver: ComptimeReferenceResolver?,
+        syntaxArena: AstArena,
+        astBuilder: AstBuilder
     ): ComptimeValue? {
         val normalized = normalizeParameterKind(kind)
         val text = argument.trim()
@@ -893,10 +1129,17 @@ class CpxExpander(
         }
         if (text.isEmpty()) return invalid(normalized)
         return when (normalized) {
-            "type" -> ComptimeValue.CtType(
-                text.replace(Regex("\\s+"), " "),
-                text.replace(Regex("\\s+"), " ").removePrefix("struct ").trim()
-            )
+            "type" -> {
+                val normalizedText = text.replace(Regex("\\s+"), " ")
+                val identity = typeResolver?.resolve(normalizedText)
+                ComptimeValue.CtType(
+                    normalizedText,
+                    normalizedText.removePrefix("struct ").trim(),
+                    identity?.typeId,
+                    identity?.canonicalTypeId,
+                    identity?.canonicalText
+                )
+            }
             "identifier" -> if (identifierPattern.matches(text)) ComptimeValue.CtIdentifier(text) else invalid("identifier")
             "int" -> text.toBigIntegerOrNull()?.let { ComptimeValue.CtInteger(text, it) } ?: invalid("integer")
             "float" -> text.toBigDecimalOrNull()?.let { ComptimeValue.CtFloat(text, it) } ?: invalid("floating-point value")
@@ -908,12 +1151,45 @@ class CpxExpander(
             "string" -> if (text.length >= 2 && text.first() == '"' && text.last() == '"') {
                 ComptimeValue.CtString(text)
             } else invalid("string")
-            "expr" -> if (isExpression(text, source)) ComptimeValue.CtExpression(text) else invalid("expression")
-            "stmt" -> ComptimeValue.CtStatement(text)
-            "decl" -> ComptimeValue.CtDeclaration(text)
-            "member" -> ComptimeValue.CtMember(text)
-            "unit" -> ComptimeValue.CtUnit(text)
-            "cpx" -> ComptimeValue.CtCpx(text)
+            "list" -> {
+                if (!text.startsWith("[") || !text.endsWith("]")) return invalid("list")
+                val inner = text.substring(1, text.length - 1).trim()
+                if (inner.isEmpty()) {
+                    ComptimeValue.CtList(text, emptyList())
+                } else {
+                    val values = splitTopLevel(inner)
+                        .map { element ->
+                            parseComptimeValue(
+                                inferListElementKind(element, typeResolver),
+                                element,
+                                invocation,
+                                source,
+                                diagnostics,
+                                typeResolver,
+                                referenceResolver,
+                                syntaxArena,
+                                astBuilder
+                            )
+                        }
+                    if (values.any { it == null }) null else ComptimeValue.CtList(text, values.filterNotNull())
+                }
+            }
+            "expr", "stmt", "decl", "member", "unit", "cpx" -> {
+                val capturedOrigin = Origin.Generated(invocation.origin)
+                val parsedNode = parseSyntaxValueNode(normalized, text, source, diagnostics, astBuilder)
+                    ?: return invalid(normalized)
+                val node = captureOrigin(parsedNode, capturedOrigin)
+                val nodeId = syntaxArena.add(node)
+                val references = referenceResolver?.resolve(node, syntaxArena).orEmpty()
+                when (normalized) {
+                    "expr" -> ComptimeValue.CtExpression(text, nodeId, capturedOrigin, references)
+                    "stmt" -> ComptimeValue.CtStatement(text, nodeId, capturedOrigin, references)
+                    "decl" -> ComptimeValue.CtDeclaration(text, nodeId, capturedOrigin, references)
+                    "member" -> ComptimeValue.CtMember(text, nodeId, capturedOrigin, references)
+                    "unit" -> ComptimeValue.CtUnit(text, nodeId, capturedOrigin, references)
+                    else -> ComptimeValue.CtCpx(text, nodeId, capturedOrigin, references)
+                }
+            }
             else -> {
                 diagnostics.error(
                     "unsupported compile-time parameter kind '$kind'",
@@ -922,6 +1198,161 @@ class CpxExpander(
                 )
                 null
             }
+        }
+    }
+
+    private fun inferListElementKind(text: String, typeResolver: ComptimeTypeResolver?): String {
+        val value = text.trim()
+        return when {
+            typeResolver?.resolve(value) != null -> "type"
+            value.matches(Regex("[+-]?\\d+")) -> "int"
+            value.toBigDecimalOrNull() != null && value.any { it == '.' || it == 'e' || it == 'E' } -> "float"
+            value.equals("true", ignoreCase = true) || value.equals("false", ignoreCase = true) -> "bool"
+            value.length >= 2 && value.first() == '"' && value.last() == '"' -> "string"
+            value.matches(identifierPattern) && value in primitiveTypeNames -> "type"
+            value.matches(identifierPattern) -> "identifier"
+            else -> "expr"
+        }
+    }
+
+    private fun splitTopLevel(text: String): List<String> {
+        val result = mutableListOf<String>()
+        var start = 0
+        var parentheses = 0
+        var brackets = 0
+        var braces = 0
+        var inString = false
+        var escaped = false
+        text.forEachIndexed { index, character ->
+            if (inString) {
+                if (escaped) escaped = false
+                else if (character == '\\') escaped = true
+                else if (character == '"') inString = false
+                return@forEachIndexed
+            }
+            when (character) {
+                '"' -> inString = true
+                '(' -> parentheses++
+                ')' -> parentheses--
+                '[' -> brackets++
+                ']' -> brackets--
+                '{' -> braces++
+                '}' -> braces--
+                ',' -> if (parentheses == 0 && brackets == 0 && braces == 0) {
+                    result += text.substring(start, index).trim()
+                    start = index + 1
+                }
+            }
+        }
+        result += text.substring(start).trim()
+        return result.filter(String::isNotEmpty)
+    }
+
+    private fun captureOrigin(node: AstNode, origin: Origin): AstNode = when (node) {
+        is AstProgram -> node.copy(origin = origin)
+        is AstPackage -> node.copy(origin = origin)
+        is AstAlias -> node.copy(origin = origin)
+        is AstUnion -> node.copy(origin = origin)
+        is AstEnum -> node.copy(origin = origin)
+        is AstEnumValue -> node.copy(origin = origin)
+        is AstTypeRef -> node.copy(origin = origin)
+        is AstStruct -> node.copy(origin = origin)
+        is AstField -> node.copy(origin = origin)
+        is AstGlobalVariable -> node.copy(origin = origin)
+        is AstComptimeFunction -> node.copy(origin = origin)
+        is AstCpxInvocation -> node.copy(origin = origin)
+        is AstImport -> node.copy(origin = origin)
+        is AstFunction -> node.copy(origin = origin)
+        is AstParameter -> node.copy(origin = origin)
+        is AstBlock -> node.copy(origin = origin)
+        is AstReturn -> node.copy(origin = origin)
+        is AstExpressionStatement -> node.copy(origin = origin)
+        is AstDefer -> node.copy(origin = origin)
+        is AstIf -> node.copy(origin = origin)
+        is AstWhile -> node.copy(origin = origin)
+        is AstFor -> node.copy(origin = origin)
+        is AstBreak -> node.copy(origin = origin)
+        is AstContinue -> node.copy(origin = origin)
+        is AstVariableDeclaration -> node.copy(origin = origin)
+        is AstInnerFunction -> node.copy(origin = origin)
+        is AstIntegerLiteral -> node.copy(origin = origin)
+        is AstBooleanLiteral -> node.copy(origin = origin)
+        is AstFloatLiteral -> node.copy(origin = origin)
+        is AstStringLiteral -> node.copy(origin = origin)
+        is AstStringTemplate -> node.copy(origin = origin)
+        is AstCharacterLiteral -> node.copy(origin = origin)
+        is AstIdentifier -> node.copy(origin = origin)
+        is AstUnary -> node.copy(origin = origin)
+        is AstBinary -> node.copy(origin = origin)
+        is AstConditional -> node.copy(origin = origin)
+        is AstUpdate -> node.copy(origin = origin)
+        is AstSizeOf -> node.copy(origin = origin)
+        is AstCast -> node.copy(origin = origin)
+        is AstCall -> node.copy(origin = origin)
+        is AstMemberAccess -> node.copy(origin = origin)
+        is AstIndexAccess -> node.copy(origin = origin)
+        is AstParenthesized -> node.copy(origin = origin)
+        is AstErrorExpression -> node.copy(origin = origin)
+    }
+
+    private fun parseSyntaxValueNode(
+        kind: String,
+        text: String,
+        source: SourceFile,
+        diagnostics: DiagnosticBag,
+        astBuilder: AstBuilder
+    ): AstNode? {
+        val fragment = when (kind) {
+            "member" -> "struct __cpx_member { $text };"
+            else -> text
+        }
+        val fragmentSource = source.copy(
+            id = SourceFileId(-source.id.value - 1),
+            path = source.path.resolveSibling("<cpx-$kind>"),
+            text = fragment
+        )
+        val parser = Parser(lexer.lex(fragmentSource))
+        return when (kind) {
+            "expr" -> parser.parseExpressionFragment().let { parsed ->
+                if (parsed.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
+                    diagnostics.addAll(parsed.diagnostics)
+                    null
+                } else {
+                    parsed.expression?.let(astBuilder::buildExpression)
+                }
+            }
+            "stmt" -> parser.parseStatementFragment().let { parsed ->
+                if (parsed.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
+                    diagnostics.addAll(parsed.diagnostics)
+                    null
+                } else {
+                    parsed.statement?.let(astBuilder::buildStatement)
+                }
+            }
+            "decl", "unit", "cpx" -> parser.parse().let { parsed ->
+                if (parsed.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
+                    diagnostics.addAll(parsed.diagnostics)
+                    null
+                } else {
+                    val ast = astBuilder.build(parsed.syntax)
+                    when (kind) {
+                        "unit" -> ast
+                        "decl" -> ast.declarations.singleOrNull()
+                        "cpx" -> ast.declarations.singleOrNull()
+                        else -> null
+                    }
+                }
+            }
+            "member" -> parser.parse().let { parsed ->
+                if (parsed.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
+                    diagnostics.addAll(parsed.diagnostics)
+                    null
+                } else {
+                    val structure = astBuilder.build(parsed.syntax).declarations.singleOrNull() as? AstStruct
+                    structure?.fields?.singleOrNull() ?: structure?.methods?.singleOrNull()
+                }
+            }
+            else -> null
         }
     }
 
@@ -936,6 +1367,10 @@ class CpxExpander(
     }
 
     private val identifierPattern = Regex("[A-Za-z_][A-Za-z0-9_]*")
+    private val primitiveTypeNames = setOf(
+        "void", "bool", "char", "short", "int", "long", "float", "double",
+        "signed", "unsigned"
+    )
 
     private fun registerStructuralDeclarations(
         universe: ComptimeTypeUniverse,
@@ -1023,6 +1458,143 @@ class CpxExpander(
     }
 
     private fun reorigin(type: TypeSyntax, origin: Origin): TypeSyntax = type.copy(origin = origin)
+
+    private fun hygienize(declaration: SyntaxDeclaration, key: ExpansionKey): SyntaxDeclaration = when (declaration) {
+        is SyntaxFunction -> {
+            val localNames = declaration.body?.let(::localNames).orEmpty()
+            val renames = localNames.associateWith { "${it}__cpx_${hygieneSuffix(key)}" }
+            declaration.copy(
+                parameters = declaration.parameters.map { parameter ->
+                    parameter.copy(name = renames[parameter.name] ?: parameter.name)
+                },
+                body = declaration.body?.let { hygienize(it, renames, key) }
+            )
+        }
+        is SyntaxStruct -> declaration.copy(
+            methods = declaration.methods.map { method -> hygienize(method, key) as SyntaxFunction }
+        )
+        else -> declaration
+    }
+
+    private fun localNames(statement: SyntaxStatement): Set<String> = buildSet {
+        fun visit(current: SyntaxStatement) {
+            when (current) {
+                is SyntaxBlock -> current.statements.forEach(::visit)
+                is SyntaxVariableDeclaration -> add(current.name)
+                is SyntaxInnerFunction -> {
+                    add(current.name)
+                    current.parameters.forEach { add(it.name) }
+                    visit(current.body)
+                }
+                is SyntaxIf -> {
+                    visit(current.thenBranch)
+                    current.elseBranch?.let(::visit)
+                }
+                is SyntaxWhile -> visit(current.body)
+                is SyntaxFor -> {
+                    current.initializer?.let(::visit)
+                    visit(current.body)
+                }
+                is SyntaxReturn,
+                is SyntaxExpressionStatement,
+                is SyntaxDefer,
+                is SyntaxBreak,
+                is SyntaxContinue -> Unit
+            }
+        }
+        visit(statement)
+    }
+
+    private fun hygienize(
+        statement: SyntaxStatement,
+        renames: Map<String, String>,
+        key: ExpansionKey
+    ): SyntaxStatement = when (statement) {
+        is SyntaxBlock -> statement.copy(statements = statement.statements.map { hygienize(it, renames, key) })
+        is SyntaxReturn -> statement.copy(expression = statement.expression?.let { hygienize(it, renames) })
+        is SyntaxExpressionStatement -> statement.copy(expression = hygienize(statement.expression, renames))
+        is SyntaxDefer -> statement.copy(expression = hygienize(statement.expression, renames))
+        is SyntaxIf -> statement.copy(
+            condition = hygienize(statement.condition, renames),
+            thenBranch = hygienize(statement.thenBranch, renames, key),
+            elseBranch = statement.elseBranch?.let { hygienize(it, renames, key) }
+        )
+        is SyntaxWhile -> statement.copy(
+            condition = hygienize(statement.condition, renames),
+            body = hygienize(statement.body, renames, key)
+        )
+        is SyntaxFor -> statement.copy(
+            initializer = statement.initializer?.let { hygienize(it, renames, key) },
+            condition = statement.condition?.let { hygienize(it, renames) },
+            increment = statement.increment?.let { hygienize(it, renames) },
+            body = hygienize(statement.body, renames, key)
+        )
+        is SyntaxVariableDeclaration -> statement.copy(
+            name = renames[statement.name] ?: statement.name,
+            initializer = statement.initializer?.let { hygienize(it, renames) }
+        )
+        is SyntaxInnerFunction -> {
+            val nestedNames = localNames(statement.body) + statement.parameters.map { it.name } + statement.name
+            val nestedRenames = nestedNames.associateWith { "${it}__cpx_${hygieneSuffix(key)}" } + renames
+            statement.copy(
+                name = nestedRenames[statement.name] ?: statement.name,
+                parameters = statement.parameters.map { parameter ->
+                    parameter.copy(name = nestedRenames[parameter.name] ?: parameter.name)
+                },
+                body = hygienize(statement.body, nestedRenames, key)
+            )
+        }
+        is SyntaxBreak,
+        is SyntaxContinue -> statement
+    }
+
+    private fun hygienize(expression: SyntaxExpression, renames: Map<String, String>): SyntaxExpression = when (expression) {
+        is SyntaxIntegerLiteral,
+        is SyntaxBooleanLiteral,
+        is SyntaxFloatLiteral,
+        is SyntaxStringLiteral,
+        is SyntaxCharacterLiteral,
+        is SyntaxErrorExpression -> expression
+        is SyntaxStringTemplate -> expression.copy(
+            parts = expression.parts.map { part ->
+                when (part) {
+                    is SyntaxStringTextPart -> part
+                    is SyntaxStringExpressionPart -> part.copy(expression = hygienize(part.expression, renames))
+                }
+            }
+        )
+        is SyntaxIdentifier -> expression.copy(name = renames[expression.name] ?: expression.name)
+        is SyntaxUnary -> expression.copy(operand = hygienize(expression.operand, renames))
+        is SyntaxBinary -> expression.copy(
+            left = hygienize(expression.left, renames),
+            right = hygienize(expression.right, renames)
+        )
+        is SyntaxConditional -> expression.copy(
+            condition = hygienize(expression.condition, renames),
+            thenBranch = hygienize(expression.thenBranch, renames),
+            elseBranch = hygienize(expression.elseBranch, renames)
+        )
+        is SyntaxUpdate -> expression.copy(operand = hygienize(expression.operand, renames))
+        is SyntaxSizeOf -> expression.copy(
+            operand = expression.operand?.let { hygienize(it, renames) }
+        )
+        is SyntaxCast -> expression.copy(operand = hygienize(expression.operand, renames))
+        is SyntaxCall -> expression.copy(
+            callee = hygienize(expression.callee, renames),
+            arguments = expression.arguments.map { hygienize(it, renames) }
+        )
+        is SyntaxMemberAccess -> expression.copy(receiver = hygienize(expression.receiver, renames))
+        is SyntaxIndexAccess -> expression.copy(
+            receiver = hygienize(expression.receiver, renames),
+            index = hygienize(expression.index, renames)
+        )
+        is SyntaxParenthesized -> expression.copy(expression = hygienize(expression.expression, renames))
+    }
+
+    private fun hygieneSuffix(key: ExpansionKey): String = MessageDigest.getInstance("SHA-256")
+        .digest(key.canonical.toByteArray(Charsets.UTF_8))
+        .take(6)
+        .joinToString("") { byte -> "%02x".format(byte) }
 
     private fun reorigin(statement: SyntaxStatement, origin: Origin): SyntaxStatement = when (statement) {
         is SyntaxBlock -> statement.copy(statements = statement.statements.map { reorigin(it, origin) }, origin = origin)

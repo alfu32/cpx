@@ -1,6 +1,7 @@
 package cplus.comptime
 
 import cplus.core.*
+import cplus.semantic.TypeId
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -46,6 +47,145 @@ class CpxExpansionTest {
     }
 
     @Test
+    fun syntaxArgumentsRetainAstNodesIdsOriginsAndReferenceHook() {
+        val sourceText = """
+            comptime cpx<decl> capture(expr E, stmt S, decl D, member M, unit U, cpx C) {
+                return { int generated() { return E; } };
+            }
+            capture(1 + 2, return 3;, int helper() { return 1; }, int field;, int unit_fn() { return 1; }, nested(int););
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(33), Path.of("syntax-values.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val seen = mutableListOf<Pair<AstNode, NodeId>>()
+        val result = CpxExpander().expand(
+            source,
+            parsed.syntax,
+            referenceResolver = ComptimeReferenceResolver { node, arena ->
+                seen += node to arena.add(node)
+                emptyMap()
+            }
+        )
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        assertEquals(6, seen.size)
+        assertEquals((1..6).map(::NodeId), seen.map { it.second })
+        assertEquals(7, result.syntaxArena.size)
+        assertTrue(seen.all { it.first.origin is Origin.Generated })
+        assertEquals(listOf("generated"), result.program.declarations.filterIsInstance<SyntaxFunction>().map { it.name })
+    }
+
+    @Test
+    fun canonicalSyntaxEncodingSeparatesValuesAndIgnoresFormatting() {
+        val sourceText = """
+            comptime cpx<decl> make(expr E) {
+                return { int generated() { return E; } };
+            }
+            make(1+2);
+            make(1 + 2);
+            make(2+1);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(34), Path.of("canonical-values.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        assertEquals(
+            setOf(
+                SpecializationKey("make", listOf(CanonicalComptimeValue("expr", "1 + 2"))),
+                SpecializationKey("make", listOf(CanonicalComptimeValue("expr", "2 + 1")))
+            ),
+            result.specializationKeys
+        )
+    }
+
+    @Test
+    fun listArgumentsRetainTypedElementsAndCanonicalEncoding() {
+        val sourceText = """
+            comptime cpx<decl> collect(list Values) {
+                return { int generated() { return 0; } };
+            }
+            collect([int, 02, 1.50e1, true, "ok", item, 1 + 2]);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(35), Path.of("list-values.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        val list = result.argumentValues.values.flatten().single() as ComptimeValue.CtList
+        assertEquals(
+            listOf("type", "int", "float", "bool", "string", "identifier", "expr"),
+            list.values.map(ComptimeValue::canonicalKind)
+        )
+        assertEquals(
+            "[type:int,int:2,float:15,bool:true,string:\"ok\",identifier:item,expr:1 + 2]",
+            list.canonicalText
+        )
+        assertEquals(
+            setOf(SpecializationKey("collect", listOf(CanonicalComptimeValue("list", list.canonicalText)))),
+            result.specializationKeys
+        )
+    }
+
+    @Test
+    fun generatedFunctionLocalsAreHygienicallyRenamedWithTheirReferences() {
+        val sourceText = """
+            comptime cpx<decl> make() {
+                return {
+                    int generated() {
+                        int tmp = 1;
+                        return tmp;
+                    }
+                };
+            }
+            make();
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(36), Path.of("hygiene.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        val function = result.program.declarations.filterIsInstance<SyntaxFunction>().single()
+        val body = function.body as SyntaxBlock
+        val local = body.statements.filterIsInstance<SyntaxVariableDeclaration>().single()
+        val returned = (body.statements.filterIsInstance<SyntaxReturn>().single().expression as SyntaxIdentifier).name
+        assertTrue(local.name.startsWith("tmp__cpx_"), local.name)
+        assertEquals(local.name, returned)
+    }
+
+    @Test
+    fun evaluatorReceivesStructuredContextAndReturnsExpansionChannels() {
+        val sourceText = """
+            comptime cpx<decl> make() {
+                return { int generated() { return 0; } };
+            }
+            make();
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(37), Path.of("evaluator.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val contexts = mutableListOf<ComptimeContext>()
+        val result = CpxExpander(
+            evaluator = ComptimeEvaluator { functionName, template, bindings, context ->
+                assertEquals("make", functionName)
+                contexts += context
+                ComptimeEvaluationResult(
+                    template.render(bindings),
+                    ComptimeExpansionChannels(dependencies = setOf(ComptimeDependency.Module("runtime")))
+                )
+            }
+        ).expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        val context = contexts.single()
+        assertEquals("evaluator.cp", context.module)
+        assertEquals(CpxPhase.STRUCTURAL, context.phase)
+        assertEquals("c17", context.target.cDialect)
+        assertEquals(ExpansionKey("make", emptyList()), context.expansion!!.key)
+        assertEquals("runtime", (result.evaluationResults.values.single().channels.dependencies.single() as ComptimeDependency.Module).name)
+    }
+
+    @Test
     fun rejectsArgumentsThatDoNotMatchTheirCompileTimeKind() {
         val sourceText = """
             comptime cpx<decl> build(int N) {
@@ -60,6 +200,30 @@ class CpxExpansionTest {
         assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
         assertTrue(result.diagnostics.any { it.code == "CPX010" }, result.diagnostics.joinToString())
         assertTrue(result.program.declarations.none { it is SyntaxStruct })
+    }
+
+    @Test
+    fun typeArgumentsRetainDeclaredIdentityAndRenderCanonicalSyntax() {
+        val sourceText = """
+            comptime cpx<decl> make(type T) {
+                return { int generated_{T}() { return 1; } };
+            }
+            make(alias_t);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(32), Path.of("type-identity.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(
+            source,
+            parsed.syntax,
+            ComptimeTypeResolver { ComptimeTypeIdentity(TypeId(4), TypeId(1), "int") }
+        )
+
+        assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
+        assertEquals(
+            setOf(ExpansionKey("make", listOf("alias_t"), argumentIdentities = listOf("id:4"))),
+            result.expandedKeys
+        )
+        assertEquals(listOf("generated_int"), result.program.declarations.filterIsInstance<SyntaxFunction>().map { it.name })
     }
 
     @Test
@@ -224,6 +388,12 @@ class CpxExpansionTest {
         assertEquals("inner(int)", innerOrigin.key)
         assertEquals("outer(int)", outerOrigin.key)
         assertEquals(source.id, outerOrigin.invocation.primaryRange?.file)
+        val expansionIds = result.expansionIds
+        assertEquals(2, expansionIds.size)
+        val outerId = expansionIds.first { it.declaration == "outer" }
+        val innerId = expansionIds.first { it.declaration == "inner" }
+        assertEquals(outerId, innerId.parent)
+        assertTrue(outerId.callSite != innerId.callSite)
     }
 
     @Test

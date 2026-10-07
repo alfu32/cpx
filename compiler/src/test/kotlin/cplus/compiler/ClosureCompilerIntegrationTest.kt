@@ -55,4 +55,47 @@ class ClosureCompilerIntegrationTest {
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         assertEquals(0, execution.waitFor())
     }
+
+    @Test
+    fun nestedInnerFunctionsCaptureTheirParentEnvironmentAndRunAsC() {
+        val directory = Files.createTempDirectory("cplus-nested-closure")
+        val source = directory.resolve("main.cp")
+        Files.writeString(
+            source,
+            """
+                int outer(int base) {
+                    int inner(int increment) {
+                        int leaf(int value) {
+                            return base + increment + value;
+                        }
+                        return leaf(3);
+                    }
+                    return inner(2);
+                }
+
+                int main() {
+                    return outer(4) == 9 ? 0 : 1;
+                }
+            """.trimIndent()
+        )
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(source)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("struct outer__inner__env_t"))
+        assertTrue(generated.contains("struct outer__inner__leaf__env_t"))
+        assertTrue(generated.contains("outer__inner__leaf(&outer__inner__leaf__env, 3)"))
+
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        Files.writeString(cFile, generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(0, execution.waitFor())
+    }
 }

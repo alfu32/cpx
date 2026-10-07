@@ -1,6 +1,10 @@
 package cplus.compiler
 
 import cplus.backend.*
+import cplus.comptime.ComptimeTypeIdentity
+import cplus.comptime.ComptimeReferenceResolver
+import cplus.comptime.ComptimeTargetInfo
+import cplus.comptime.ComptimeTypeResolver
 import cplus.comptime.CpxExpansionResult
 import cplus.comptime.CpxExpander
 import cplus.comptime.SpecializationKey
@@ -89,11 +93,11 @@ class CompilerContext(
     val lexer: Lexer = Lexer(),
     val astBuilder: AstBuilder = AstBuilder(),
     val semanticAnalyzer: SemanticAnalyzer = SemanticAnalyzer(),
-    val cpxExpander: CpxExpander = CpxExpander(lexer),
+    val target: TargetInfo = TargetInfo(),
+    val cpxExpander: CpxExpander = CpxExpander(lexer, target = ComptimeTargetInfo(target.cDialect)),
     val closureLowerer: AstClosureLowerer = AstClosureLowerer(),
     val cLowererFactory: (SemanticModel) -> CLowerer = ::CLowerer,
-    val cEmitter: CEmitter = CEmitter(),
-    val target: TargetInfo = TargetInfo()
+    val cEmitter: CEmitter = CEmitter()
 )
 
 internal data class FrontendCacheEntry(
@@ -224,13 +228,19 @@ class CPlusCompiler(
             return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
         }
         val model = semantic.model ?: return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
-        val lowered = context.cLowererFactory(model).lower(ast)
-        if (lowered.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
-            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, null, frontend.closureDiagnostics)
-        }
-        val generated = context.cEmitter.emit(lowered.unit)
-        val header = CHeaderGenerator().generate(lowered.unit)
-        return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, lowered, generated, frontend.closureDiagnostics, header)
+        val backend = BackendProcessingPipeline(context.cLowererFactory(model), context.cEmitter).run(ast, model)
+        return CompilationArtifacts(
+            source,
+            lexed,
+            parsed,
+            expanded,
+            ast,
+            semantic,
+            backend.lowered,
+            backend.generated,
+            frontend.closureDiagnostics,
+            backend.header
+        )
     }
 
     private fun compileWorkspace(
@@ -332,8 +342,8 @@ class CPlusCompiler(
                 cLinkDependencies = cLinkDependencies
             )
         }
-        val lowered = context.cLowererFactory(model).lower(mergedAst)
-        if (lowered.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
+        val backend = BackendProcessingPipeline(context.cLowererFactory(model), context.cEmitter).run(mergedAst, model)
+        if (backend.lowered.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
             return resultOf(
                 listOf(
                     CompilationArtifacts(
@@ -343,7 +353,7 @@ class CPlusCompiler(
                         base.expanded,
                         mergedAst,
                         semantic,
-                        lowered,
+                        backend.lowered,
                         null,
                         additionalDiagnostics
                     )
@@ -353,8 +363,6 @@ class CPlusCompiler(
                 cLinkDependencies = cLinkDependencies
             )
         }
-        val generated = context.cEmitter.emit(lowered.unit)
-        val header = CHeaderGenerator().generate(lowered.unit)
         return resultOf(
             listOf(
                 CompilationArtifacts(
@@ -364,10 +372,10 @@ class CPlusCompiler(
                     base.expanded,
                     mergedAst,
                     semantic,
-                    lowered,
-                    generated,
+                    backend.lowered,
+                    backend.generated,
                     additionalDiagnostics,
-                    header
+                    backend.header
                 )
             ),
             moduleGraph,
@@ -559,7 +567,18 @@ class CPlusCompiler(
     private fun frontend(source: SourceFile): FrontendUnit {
         val lexed = context.lexer.lex(source)
         val parsed = Parser(lexed).parse()
-        val expanded = context.cpxExpander.expand(source, parsed.syntax)
+        val provisionalSemantic = SemanticAnalyzer().analyze(context.astBuilder.build(parsed.syntax))
+        val typeResolver = provisionalSemantic.model?.let { model ->
+            ComptimeTypeResolver { typeText ->
+                model.resolveComptimeTypeIdentity(typeText)?.let { identity ->
+                    ComptimeTypeIdentity(identity.typeId, identity.canonicalTypeId, identity.canonicalText)
+                }
+            }
+        }
+        val referenceResolver = provisionalSemantic.model?.let { model ->
+            ComptimeReferenceResolver { node, arena -> model.resolveComptimeReferences(node, arena) }
+        }
+        val expanded = context.cpxExpander.expand(source, parsed.syntax, typeResolver, referenceResolver)
         val ast = context.astBuilder.build(expanded.program)
         val closure = context.closureLowerer.lower(ast)
         return FrontendUnit(source, lexed, parsed, expanded, closure.program, closure.diagnostics)

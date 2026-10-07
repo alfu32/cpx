@@ -62,6 +62,106 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun lspPublishesSemanticTokensFromTheCompilerFrontEnd() {
+        val directory = Files.createTempDirectory("cplus-cli-semantic-tokens")
+        val source = directory.resolve("main.cp")
+        val uri = source.toUri().toString()
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"struct User { int value; }; int main() { User item; return item.value; }"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$uri"}}}""",
+            """{"jsonrpc":"2.0","id":3,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("semanticTokensProvider"))
+        assertTrue(responses.contains("\"id\":2"))
+        assertTrue(responses.contains("\"data\":["))
+    }
+
+    @Test
+    fun lspCompletionAndHoverUseSemanticSymbols() {
+        val directory = Files.createTempDirectory("cplus-cli-language-service")
+        val source = directory.resolve("main.cp")
+        val uri = source.toUri().toString()
+        val text = "int main() { return 0; }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$text"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":6}}}""",
+            """{"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":5}}}""",
+            """{"jsonrpc":"2.0","id":4,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("\"id\":2"))
+        assertTrue(responses.contains("\"label\":\"main\""))
+        assertTrue(responses.contains("\"id\":3"))
+        assertTrue(responses.contains("main"))
+    }
+
+    @Test
+    fun lspNavigationUsesCompilerReferenceIndex() {
+        val directory = Files.createTempDirectory("cplus-cli-navigation")
+        val source = directory.resolve("main.cp")
+        val uri = source.toUri().toString()
+        val text = "int answer() { return 7; } int main() { return answer(); }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$text"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"textDocument/definition","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":52}}}""",
+            """{"jsonrpc":"2.0","id":3,"method":"textDocument/references","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":52},"context":{"includeDeclaration":true}}}""",
+            """{"jsonrpc":"2.0","id":4,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("definitionProvider"))
+        assertTrue(responses.contains("referencesProvider"))
+        assertTrue(responses.contains("\"id\":2"))
+        assertTrue(responses.contains("\"id\":3"))
+        assertTrue(responses.contains("\"uri\":\"$uri\""))
+    }
+
+    @Test
+    fun lspForeignSymbolsParticipateInCompletionHoverAndSignatureHelp() {
+        val directory = Files.createTempDirectory("cplus-cli-foreign-language-service")
+        val source = directory.resolve("main.cp")
+        val uri = source.toUri().toString()
+        val text = "import { printf } from c.stdio; int main() { return printf(0); }"
+        val printfOffset = text.indexOf("printf(0")
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$text"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":${printfOffset + 3}}}}""",
+            """{"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":$printfOffset}}}""",
+            """{"jsonrpc":"2.0","id":4,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":${printfOffset + 7}}}}""",
+            """{"jsonrpc":"2.0","id":5,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("signatureHelpProvider"))
+        assertTrue(responses.contains("\"label\":\"printf\""))
+        assertTrue(responses.contains("printf("))
+        assertTrue(responses.contains("fn(...)->int"))
+    }
+
+    @Test
     fun buildEmitsCHeaderAndExecutableWithExpectedBehavior() {
         val directory = Files.createTempDirectory("cplus-cli-build")
         val source = directory.resolve("main.cp").also {

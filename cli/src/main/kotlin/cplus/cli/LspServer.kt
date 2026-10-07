@@ -14,7 +14,7 @@ import java.nio.file.Path
 internal class LspServer(
     private val compiler: CPlusCompiler = CPlusCompiler()
 ) {
-    private val documents = linkedMapOf<String, OpenDocument>()
+    private val workspace = LspWorkspace()
     private var shutdownRequested = false
 
     fun run(input: InputStream, output: OutputStream): Int {
@@ -45,8 +45,23 @@ internal class LspServer(
                 "textDocument/didClose" -> {
                     didClose(params, outputStream)
                 }
+                "textDocument/semanticTokens/full" -> {
+                    if (id != null) writeMessage(outputStream, response(id, semanticTokens(params)))
+                }
+                "textDocument/completion" -> {
+                    if (id != null) writeMessage(outputStream, response(id, completion(params)))
+                }
                 "textDocument/hover" -> {
-                    if (id != null) writeMessage(outputStream, response(id, null))
+                    if (id != null) writeMessage(outputStream, response(id, hover(params)))
+                }
+                "textDocument/definition" -> {
+                    if (id != null) writeMessage(outputStream, response(id, definition(params)))
+                }
+                "textDocument/references" -> {
+                    if (id != null) writeMessage(outputStream, response(id, references(params)))
+                }
+                "textDocument/signatureHelp" -> {
+                    if (id != null) writeMessage(outputStream, response(id, signatureHelp(params)))
                 }
                 else -> {
                     if (id != null) {
@@ -70,31 +85,30 @@ internal class LspServer(
         val uri = document["uri"] as? String ?: return
         val text = document["text"] as? String ?: return
         val version = (document["version"] as? Number)?.toInt() ?: 0
-        documents[uri] = OpenDocument(uri, version, text)
+        val path = pathForUri(uri) ?: return
+        workspace.open(uri, path, version, text)
     }
 
     private fun didChange(params: Map<*, *>) {
         val document = params["textDocument"] as? Map<*, *> ?: return
         val uri = document["uri"] as? String ?: return
         val changes = params["contentChanges"] as? List<*> ?: return
-        val fullText = changes.asSequence()
-            .mapNotNull { it as? Map<*, *> }
-            .mapNotNull { it["text"] as? String }
-            .lastOrNull() ?: return
-        val version = (document["version"] as? Number)?.toInt() ?: documents[uri]?.version ?: 0
-        documents[uri] = OpenDocument(uri, version, fullText)
+        val parsedChanges = changes.mapNotNull(::parseChange)
+        if (parsedChanges.size != changes.size) return
+        val version = (document["version"] as? Number)?.toInt() ?: workspace.get(uri)?.version ?: 0
+        workspace.change(uri, version, parsedChanges)
     }
 
     private fun didClose(params: Map<*, *>, output: OutputStream) {
         val document = params["textDocument"] as? Map<*, *> ?: return
         val uri = document["uri"] as? String ?: return
-        documents.remove(uri)
+        workspace.close(uri)
         writeMessage(output, publish(uri, emptyList()))
     }
 
     private fun publishDiagnostics(uri: String, output: OutputStream) {
-        val document = documents[uri] ?: return
-        val path = pathForUri(uri) ?: return
+        val document = workspace.get(uri) ?: return
+        val path = document.path
         val result = compiler.compileText(path, document.text)
         val diagnostics = result.diagnostics.map { diagnostic ->
             val range = diagnostic.range?.let { sourceRange -> lspRange(sourceRange, document.text) }
@@ -111,14 +125,124 @@ internal class LspServer(
 
     private fun initializeResult(): Map<String, Any?> = linkedMapOf(
         "capabilities" to linkedMapOf(
-            "textDocumentSync" to 1,
-            "hoverProvider" to false
+                "textDocumentSync" to 1,
+            "semanticTokensProvider" to linkedMapOf(
+                "legend" to linkedMapOf(
+                    "tokenTypes" to SemanticTokenService.tokenTypes,
+                    "tokenModifiers" to emptyList<String>()
+                ),
+                "full" to true
+            ),
+            "hoverProvider" to true,
+            "definitionProvider" to true,
+            "referencesProvider" to true,
+            "completionProvider" to linkedMapOf(
+                "triggerCharacters" to listOf(".", "-")
+            ),
+            "signatureHelpProvider" to linkedMapOf(
+                "triggerCharacters" to listOf("(", ",")
+            )
         ),
         "serverInfo" to linkedMapOf(
             "name" to "cplus",
             "version" to "0.1.0"
         )
     )
+
+    private fun semanticTokens(params: Map<*, *>): Map<String, Any?> {
+        val document = params["textDocument"] as? Map<*, *> ?: return linkedMapOf("data" to emptyList<Int>())
+        val uri = document["uri"] as? String ?: return linkedMapOf("data" to emptyList<Int>())
+        val open = workspace.get(uri) ?: return linkedMapOf("data" to emptyList<Int>())
+        return linkedMapOf(
+            "data" to SemanticTokenService.encode(compiler.compileText(open.path, open.text))
+        )
+    }
+
+    private fun completion(params: Map<*, *>): Map<String, Any?> {
+        val request = requestDocument(params) ?: return linkedMapOf("isIncomplete" to false, "items" to emptyList<Any>())
+        val result = compiler.compileText(request.document.path, request.document.text)
+        val items = LspLanguageService.completion(result, request.document.text, request.position).map { item ->
+            linkedMapOf<String, Any?>(
+                "label" to item.label,
+                "kind" to item.kind,
+                "detail" to item.detail
+            )
+        }
+        return linkedMapOf("isIncomplete" to false, "items" to items)
+    }
+
+    private fun hover(params: Map<*, *>): Map<String, Any?>? {
+        val request = requestDocument(params) ?: return null
+        val result = compiler.compileText(request.document.path, request.document.text)
+        val hover = LspLanguageService.hover(result, request.document.text, request.position) ?: return null
+        return linkedMapOf(
+            "contents" to linkedMapOf(
+                "kind" to "markdown",
+                "value" to hover.markdown
+            ),
+            "range" to lspRange(hover.range, request.document.text)
+        )
+    }
+
+    private fun definition(params: Map<*, *>): Map<String, Any?>? {
+        val request = requestDocument(params) ?: return null
+        val navigation = LspLanguageService.navigation(
+            compiler.compileText(request.document.path, request.document.text),
+            request.document.text,
+            request.position
+        ) ?: return null
+        val definition = navigation.definition ?: return null
+        return location(request.document.uri, definition, request.document.text)
+    }
+
+    private fun references(params: Map<*, *>): List<Map<String, Any?>> {
+        val request = requestDocument(params) ?: return emptyList()
+        val includeDeclaration = ((params["context"] as? Map<*, *>)?.get("includeDeclaration") as? Boolean) ?: true
+        val navigation = LspLanguageService.navigation(
+            compiler.compileText(request.document.path, request.document.text),
+            request.document.text,
+            request.position,
+            includeDeclaration
+        ) ?: return emptyList()
+        return navigation.references.map { range -> location(request.document.uri, range, request.document.text) }
+    }
+
+    private fun signatureHelp(params: Map<*, *>): Map<String, Any?>? {
+        val request = requestDocument(params) ?: return null
+        val signature = LspLanguageService.signatureHelp(
+            compiler.compileText(request.document.path, request.document.text),
+            request.document.text,
+            request.position
+        ) ?: return null
+        return linkedMapOf(
+            "signatures" to listOf(
+                linkedMapOf<String, Any?>(
+                    "label" to signature.label,
+                    "parameters" to signature.parameters.map { parameter ->
+                        linkedMapOf<String, Any?>(
+                            "label" to parameter.label,
+                            "documentation" to parameter.documentation
+                        )
+                    }
+                )
+            ),
+            "activeSignature" to 0,
+            "activeParameter" to signature.activeParameter
+        )
+    }
+
+    private fun location(uri: String, range: SourceRange, text: String): Map<String, Any?> = linkedMapOf(
+        "uri" to uri,
+        "range" to lspRange(range, text)
+    )
+
+    private fun requestDocument(params: Map<*, *>): DocumentRequest? {
+        val document = params["textDocument"] as? Map<*, *> ?: return null
+        val uri = document["uri"] as? String ?: return null
+        val open = workspace.get(uri) ?: return null
+        val position = parsePosition(params["position"] as? Map<*, *>) ?: return null
+        return DocumentRequest(open, position)
+    }
 
     private fun response(id: Any?, result: Any?): Map<String, Any?> = linkedMapOf(
         "jsonrpc" to "2.0",
@@ -166,10 +290,31 @@ internal class LspServer(
         if (uri.startsWith("file:")) Path.of(URI.create(uri)) else Path.of(uri)
     }.getOrNull()
 
-    private data class OpenDocument(
-        val uri: String,
-        val version: Int,
-        val text: String
+    private fun parseChange(value: Any?): LspTextChange? {
+        val change = value as? Map<*, *> ?: return null
+        val text = change["text"] as? String ?: return null
+        val rangeValue = change["range"]
+        val range = (rangeValue as? Map<*, *>)?.let { parseRange(it) }
+        if (rangeValue != null && range == null) return null
+        return LspTextChange(range, text)
+    }
+
+    private fun parseRange(value: Map<*, *>): LspTextRange? {
+        val start = parsePosition(value["start"] as? Map<*, *>) ?: return null
+        val end = parsePosition(value["end"] as? Map<*, *>) ?: return null
+        return LspTextRange(start, end)
+    }
+
+    private fun parsePosition(value: Map<*, *>?): LspPosition? {
+        value ?: return null
+        val line = (value["line"] as? Number)?.toInt() ?: return null
+        val character = (value["character"] as? Number)?.toInt() ?: return null
+        return LspPosition(line, character)
+    }
+
+    private data class DocumentRequest(
+        val document: WorkspaceDocument,
+        val position: LspPosition
     )
 
     companion object {

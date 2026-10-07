@@ -180,7 +180,8 @@ class ClosurePlanner {
                     visit(node.body)
                 }
                 is AstVariableDeclaration -> node.initializer?.let(::expression)
-                is AstBreak, is AstContinue, is AstInnerFunction -> Unit
+                is AstBreak, is AstContinue -> Unit
+                is AstInnerFunction -> node.function.body?.let(::visit)
             }
         }
         visit(statement)
@@ -276,7 +277,7 @@ class AstClosureLowerer {
             if (allowInner) {
                 diagnostics.error("inner function must be declared inside a block", statement.origin.primaryRange, "CLOSURE002")
             } else {
-                diagnostics.error("nested closures are not yet supported", statement.origin.primaryRange, "CLOSURE003")
+                diagnostics.error("inner function declarations must be block statements for closure lowering", statement.origin.primaryRange, "CLOSURE003")
             }
             AstBlock(emptyList(), statement.origin)
         }
@@ -296,11 +297,7 @@ class AstClosureLowerer {
         val lowered = mutableListOf<AstStatement>()
         block.statements.forEach { statement ->
             if (statement is AstInnerFunction) {
-                if (!allowInner) {
-                    diagnostics.error("nested closures are not yet supported", statement.origin.primaryRange, "CLOSURE003")
-                    return@forEach
-                }
-                val callable = planInner(enclosingName, statement.function, bindings)
+                val callable = planInner(enclosingName, statement.function, bindings, callables)
                 callables[statement.function.name] = callable
                 callable.environmentVariable?.let { environmentVariable ->
                     val environmentOrigin = Origin.Generated(statement.origin)
@@ -314,7 +311,11 @@ class AstClosureLowerer {
                     lowered += AstVariableDeclaration(environmentType, environmentVariable, null, environmentOrigin)
                     callable.captures.forEach { capture ->
                         val left = AstMemberAccess(AstIdentifier(environmentVariable, environmentOrigin), capture.name, environmentOrigin)
-                        val source = AstIdentifier(capture.name, capture.origin)
+                        val source = lowerExpression(
+                            AstIdentifier(capture.name, capture.origin),
+                            callables,
+                            incomingRewrites
+                        )
                         val value = if (capture.mode == CaptureMode.REFERENCE) {
                             AstUnary("&", source, capture.origin)
                         } else {
@@ -333,7 +334,8 @@ class AstClosureLowerer {
     private fun planInner(
         enclosingName: String,
         inner: AstFunction,
-        bindings: Map<String, Binding>
+        bindings: Map<String, Binding>,
+        callables: Map<String, Callable> = emptyMap()
     ): Callable {
         val localNames = linkedSetOf<String>().apply {
             addAll(inner.parameters.map { it.name })
@@ -376,7 +378,19 @@ class AstClosureLowerer {
         }
         val innerBindings = linkedMapOf<String, Binding>()
         inner.parameters.forEach { innerBindings[it.name] = Binding(it.type, mutable = true) }
-        val body = inner.body?.let { lowerStatement(it, innerBindings, emptyMap(), rewrites, hoistedName, allowInner = false) }
+        captures.forEach { capture ->
+            bindings[capture.name]?.let { binding -> innerBindings[capture.name] = binding }
+        }
+        val body = inner.body?.let {
+            lowerStatement(
+                it,
+                innerBindings,
+                callables,
+                rewrites,
+                hoistedName,
+                allowInner = true
+            )
+        }
         val origin = Origin.Generated(inner.origin)
         val parameters = buildList {
             if (environmentName != null) add(
@@ -496,7 +510,8 @@ class AstClosureLowerer {
                 is AstWhile -> { expression(node.condition); visit(node.body) }
                 is AstFor -> { node.initializer?.let(::visit); node.condition?.let(::expression); node.increment?.let(::expression); visit(node.body) }
                 is AstVariableDeclaration -> node.initializer?.let(::expression)
-                is AstBreak, is AstContinue, is AstInnerFunction -> Unit
+                is AstBreak, is AstContinue -> Unit
+                is AstInnerFunction -> node.function.body?.let(::visit)
             }
         }
         visit(statement)

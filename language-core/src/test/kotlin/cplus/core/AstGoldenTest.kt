@@ -103,4 +103,38 @@ class AstGoldenTest {
         val packageDeclaration = AstBuilder().build(parsed.syntax).declarations.first() as AstPackage
         assertEquals("collections.core", packageDeclaration.name)
     }
+
+    @Test
+    fun expressionParserRetainsCallsMemberAccessAndIndexingAsStructure() {
+        val source = SourceFile(
+            SourceFileId(6),
+            Path.of("expressions.cp"),
+            "struct vector { int value; int get(self) { return self.value; } }; int main() { return vector.get()[0]; }",
+            1
+        )
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val ast = AstBuilder().build(parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        val structure = ast.declarations.filterIsInstance<AstStruct>().single()
+        assertEquals("get", structure.methods.single().name)
+        val returned = (ast.declarations.filterIsInstance<AstFunction>().single().body as AstBlock)
+            .statements.single() as AstReturn
+        val indexed = returned.expression as AstIndexAccess
+        assertEquals("get", (indexed.receiver as AstCall).callee.let { it as AstMemberAccess }.member)
+    }
+
+    @Test
+    fun parserRecoversFromIncompleteMemberCallAndContinuesWithLaterDeclarations() {
+        val source = SourceFile(
+            SourceFileId(7),
+            Path.of("recovery.cp"),
+            "int main() { return foo.bar( ; } int later() { return 0; }",
+            1
+        )
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        assertTrue(parsed.diagnostics.any { it.code == "PARSE001" })
+        assertEquals(listOf("main", "later"), parsed.syntax.declarations.filterIsInstance<SyntaxFunction>().map { it.name })
+    }
 }

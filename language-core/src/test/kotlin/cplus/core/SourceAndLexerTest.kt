@@ -31,6 +31,36 @@ class SourceAndLexerTest {
     }
 
     @Test
+    fun relexReusesTheSafeBoundaryButMatchesAFullLex() {
+        val repository = SourceRepository()
+        val path = Path.of("incremental.cp")
+        val first = repository.put(path, "int first;\nint second;")
+        val previous = Lexer().lex(first)
+        val updated = repository.put(path, "int first;\nint inserted;\nint second;")
+
+        val incremental = Lexer().relex(updated, previous, 11..21)
+        val complete = Lexer().lex(updated)
+
+        assertEquals(complete.tokens, incremental.tokens)
+        assertEquals(complete.diagnostics, incremental.diagnostics)
+        assertEquals(updated.id, incremental.source.id)
+    }
+
+    @Test
+    fun relexFallsBackToAuthoritativeDiagnosticsForAChangedLiteralContext() {
+        val repository = SourceRepository()
+        val path = Path.of("literal.cp")
+        val first = repository.put(path, "int value = 1;")
+        val previous = Lexer().lex(first)
+        val updated = repository.put(path, "int value = \"unterminated;")
+
+        val incremental = Lexer().relex(updated, previous, 12..24)
+
+        assertTrue(incremental.diagnostics.any { it.code == "LEX002" })
+        assertEquals(Lexer().lex(updated).tokens, incremental.tokens)
+    }
+
+    @Test
     fun lineIndexRoundTripsPositions() {
         val index = LineIndex.from("alpha\nbeta\ngamma")
 

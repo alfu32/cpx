@@ -9,6 +9,12 @@ value class SymbolId(val value: Int)
 @JvmInline
 value class TypeId(val value: Int)
 
+data class SemanticTypeIdentity(
+    val typeId: TypeId,
+    val canonicalTypeId: TypeId,
+    val canonicalText: String
+)
+
 @JvmInline
 value class QualifiedName(val value: String)
 
@@ -138,6 +144,26 @@ data class Symbol(
     val externalName: String? = null
 )
 
+data class DeclarationCatalogueEntry(
+    val name: String,
+    val kind: String,
+    val symbol: SymbolId?,
+    val scope: ScopeId,
+    val origin: Origin,
+    val parameters: List<String> = emptyList(),
+    val compileTime: Boolean = false
+)
+
+data class DeclarationCatalogue(
+    val entries: List<DeclarationCatalogueEntry>
+) {
+    private val byName: Map<String, List<DeclarationCatalogueEntry>> = entries.groupBy { it.name }
+
+    fun named(name: String): List<DeclarationCatalogueEntry> = byName[name].orEmpty()
+
+    fun contains(name: String): Boolean = name in byName
+}
+
 data class FieldSymbol(
     val symbol: Symbol,
     val owner: CType
@@ -185,7 +211,8 @@ data class SemanticModel(
     val packageModules: Map<String, Set<String>> = emptyMap(),
     val foreignGlobals: Map<String, Symbol> = emptyMap(),
     val nodeIds: Map<NodeId, AstNode> = emptyMap(),
-    val referenceIndex: ReferenceIndex = ReferenceIndex()
+    val referenceIndex: ReferenceIndex = ReferenceIndex(),
+    val declarationCatalogue: DeclarationCatalogue = DeclarationCatalogue(emptyList())
 ) {
     val foreignFunctions: Map<String, FunctionSymbol>
         get() = functions.filterValues { it.symbol.kind == SymbolKind.FOREIGN }
@@ -211,6 +238,53 @@ data class SemanticModel(
 
     fun canonicalTypeId(type: CType): TypeId = canonicalTypeIds[canonicalTypeKey(type)] ?: type.id
 
+    fun resolveComptimeReferences(
+        node: AstNode,
+        arena: AstArena,
+        containingFunctionName: String? = null
+    ): Map<NodeId, SymbolId> = ReferenceCollector.collectFragment(this, node, arena, containingFunctionName)
+
+    fun resolveComptimeTypeIdentity(sourceText: String): SemanticTypeIdentity? {
+        val normalized = sourceText.trim().replace(Regex("\\s+"), " ").removePrefix("const ").trim()
+        if (normalized.isEmpty()) return null
+        val declarationKind = when {
+            normalized.startsWith("struct ") -> "struct"
+            normalized.startsWith("union ") -> "union"
+            normalized.startsWith("enum ") -> "enum"
+            else -> ""
+        }
+        val baseText = normalized
+            .removePrefix("struct ")
+            .removePrefix("union ")
+            .removePrefix("enum ")
+            .substringBefore('*')
+            .substringBefore('[')
+            .trim()
+        val base = when (declarationKind) {
+            "struct" -> structs[baseText]
+            "union" -> unions[baseText]
+            "enum" -> enums[baseText]
+            else -> structs[baseText] ?: unions[baseText] ?: enums[baseText] ?: aliases[baseText] ?:
+                foreignTypes[baseText] ?: types.firstOrNull { it is PrimitiveType && it.name == baseText }
+        } ?: return null
+        val pointerDepth = normalized.count { it == '*' }
+        val dimensions = Regex("\\[([^]]*)]").findAll(normalized).map { it.groupValues[1] }.toList()
+        var candidate: CType = base
+        repeat(pointerDepth) { candidate = PointerType(TypeId(Int.MIN_VALUE), candidate) }
+        if (dimensions.isNotEmpty()) candidate = ArrayType(TypeId(Int.MIN_VALUE), candidate, dimensions)
+        val canonicalKey = canonicalTypeKey(candidate)
+        val canonicalId = canonicalTypeIds[canonicalKey]
+            ?: types.firstOrNull { canonicalTypeKey(it) == canonicalKey }?.id
+            ?: return null
+        val canonicalText = types.firstOrNull { it.id == canonicalId }?.name ?: base.name
+        val declaredId = if (pointerDepth == 0 && dimensions.isEmpty()) {
+            base.id
+        } else {
+            types.firstOrNull { canonicalTypeKey(it) == canonicalKey }?.id ?: canonicalId
+        }
+        return SemanticTypeIdentity(declaredId, canonicalId, canonicalText)
+    }
+
     val resolvedAst: ResolvedAst
         get() = ResolvedAst(program, nodeIds, referenceIndex)
 }
@@ -223,17 +297,174 @@ data class SemanticResult(
         get() = model != null && diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
 }
 
+fun buildDeclarationCatalogue(
+    program: AstProgram,
+    model: SemanticModel,
+    declarationModules: Map<AstDeclaration, String>,
+    moduleScopes: Map<String, ScopeId>
+): DeclarationCatalogue {
+    fun moduleScope(declaration: AstDeclaration): ScopeId =
+        moduleScopes[declarationModules[declaration]]
+            ?: moduleScopes.values.firstOrNull()
+            ?: ScopeId(1)
+
+    fun symbolFor(name: String, origin: Origin, kind: SymbolKind? = null): Symbol? = model.symbols.firstOrNull {
+        it.name == name && it.origin == origin && (kind == null || it.kind == kind)
+    }
+
+    fun symbolScope(symbol: Symbol?, fallback: ScopeId, scopeKind: ScopeKind): ScopeId = symbol?.id?.let { owner ->
+        model.scopes.all.firstOrNull { it.owner == owner && it.kind == scopeKind }?.id
+    } ?: fallback
+
+    val entries = mutableListOf<DeclarationCatalogueEntry>()
+    fun add(
+        name: String,
+        kind: String,
+        origin: Origin,
+        scope: ScopeId,
+        symbol: Symbol? = null,
+        parameters: List<String> = emptyList(),
+        compileTime: Boolean = false
+    ) {
+        entries += DeclarationCatalogueEntry(name, kind, symbol?.id, scope, origin, parameters, compileTime)
+    }
+
+    program.declarations.forEach { declaration ->
+        val moduleScope = moduleScope(declaration)
+        when (declaration) {
+            is AstPackage -> add(declaration.name, "package", declaration.origin, moduleScope)
+            is AstAlias -> add(
+                declaration.name,
+                "alias",
+                declaration.origin,
+                moduleScope,
+                symbolFor(declaration.name, declaration.origin, SymbolKind.ALIAS)
+            )
+            is AstUnion -> {
+                val symbol = symbolFor(declaration.name, declaration.origin, SymbolKind.UNION)
+                val typeScope = symbolScope(symbol, moduleScope, ScopeKind.TYPE)
+                add(declaration.name, "union", declaration.origin, moduleScope, symbol)
+                declaration.fields.forEach { field ->
+                    add(
+                        field.name,
+                        "field",
+                        field.origin,
+                        typeScope,
+                        symbolFor(field.name, field.origin, SymbolKind.FIELD)
+                    )
+                }
+            }
+            is AstEnum -> {
+                val symbol = symbolFor(declaration.name, declaration.origin, SymbolKind.ENUM)
+                add(declaration.name, "enum", declaration.origin, moduleScope, symbol)
+                declaration.values.forEach { value ->
+                    add(
+                        value.name,
+                        "enumValue",
+                        value.origin,
+                        moduleScope,
+                        symbolFor(value.name, value.origin, SymbolKind.ENUM_VALUE)
+                    )
+                }
+            }
+            is AstStruct -> {
+                val symbol = symbolFor(declaration.name, declaration.origin, SymbolKind.STRUCT)
+                val typeScope = symbolScope(symbol, moduleScope, ScopeKind.TYPE)
+                add(declaration.name, "struct", declaration.origin, moduleScope, symbol)
+                declaration.fields.forEach { field ->
+                    add(
+                        field.name,
+                        "field",
+                        field.origin,
+                        typeScope,
+                        symbolFor(field.name, field.origin, SymbolKind.FIELD)
+                    )
+                }
+                declaration.methods.forEach { method ->
+                    val methodSymbol = symbolFor(method.name, method.origin, SymbolKind.METHOD)
+                    val methodScope = symbolScope(methodSymbol, typeScope, ScopeKind.FUNCTION)
+                    add(
+                        method.name,
+                        "method",
+                        method.origin,
+                        typeScope,
+                        methodSymbol,
+                        method.parameters.map { it.name }
+                    )
+                    method.parameters.forEach { parameter ->
+                        add(
+                            parameter.name,
+                            "parameter",
+                            parameter.origin,
+                            methodScope,
+                            symbolFor(parameter.name, parameter.origin, SymbolKind.PARAMETER)
+                        )
+                    }
+                }
+            }
+            is AstGlobalVariable -> add(
+                declaration.name,
+                "global",
+                declaration.origin,
+                moduleScope,
+                symbolFor(declaration.name, declaration.origin, SymbolKind.VARIABLE)
+            )
+            is AstFunction -> {
+                val symbol = symbolFor(declaration.name, declaration.origin, if (declaration.isMethod) SymbolKind.METHOD else SymbolKind.FUNCTION)
+                val functionScope = symbolScope(symbol, moduleScope, ScopeKind.FUNCTION)
+                add(
+                    declaration.name,
+                    if (declaration.isMethod) "method" else "function",
+                    declaration.origin,
+                    moduleScope,
+                    symbol,
+                    declaration.parameters.map { it.name }
+                )
+                declaration.parameters.forEach { parameter ->
+                    add(
+                        parameter.name,
+                        "parameter",
+                        parameter.origin,
+                        functionScope,
+                        symbolFor(parameter.name, parameter.origin, SymbolKind.PARAMETER)
+                    )
+                }
+            }
+            is AstComptimeFunction -> add(
+                declaration.name,
+                "comptime",
+                declaration.origin,
+                moduleScope,
+                parameters = declaration.parameters,
+                compileTime = true
+            )
+            is AstCpxInvocation -> add(
+                declaration.name,
+                "cpxInvocation",
+                declaration.origin,
+                moduleScope,
+                parameters = declaration.arguments,
+                compileTime = true
+            )
+            is AstImport -> add(declaration.alias ?: declaration.module, "import", declaration.origin, moduleScope)
+        }
+    }
+    return DeclarationCatalogue(entries)
+}
+
 class SemanticAnalyzer(
     private val headerImportService: CHeaderImportService = CHeaderImportService()
 ) {
-    private val nextSymbolId = generateSequence(1) { it + 1 }.iterator()
-    private val nextTypeId = generateSequence(1) { it + 1 }.iterator()
+    private var nextSymbolId = generateSequence(1) { it + 1 }.iterator()
+    private var nextTypeId = generateSequence(1) { it + 1 }.iterator()
 
     fun analyze(
         program: AstProgram,
         knownModules: Set<String> = emptySet(),
         foreignSources: List<CSourceUnit> = emptyList()
     ): SemanticResult {
+        nextSymbolId = generateSequence(1) { it + 1 }.iterator()
+        nextTypeId = generateSequence(1) { it + 1 }.iterator()
         val diagnostics = DiagnosticBag()
         val symbols = mutableListOf<Symbol>()
         val types = mutableListOf<CType>()
@@ -271,6 +502,20 @@ class SemanticAnalyzer(
         }
         val scopes = ScopeTable()
         val rootScope = scopes.create(ScopeKind.PACKAGE)
+        val moduleScopes = linkedMapOf<String, ScopeId>()
+        val typeScopes = linkedMapOf<SymbolId, ScopeId>()
+        val functionScopes = linkedMapOf<SymbolId, ScopeId>()
+
+        fun moduleScope(name: String): ScopeId = moduleScopes.getOrPut(name) {
+            scopes.create(ScopeKind.MODULE, rootScope)
+        }
+
+        fun defineBinding(moduleName: String?, name: String, symbol: SymbolId) {
+            scopes.define(rootScope, name, symbol)
+            moduleName?.let { scopes.define(moduleScope(it), name, symbol) }
+        }
+
+        (declarationModules.values + defaultModule).distinct().forEach(::moduleScope)
         val primitiveTypes = linkedMapOf<String, PrimitiveType>()
         val expressionTypes = linkedMapOf<AstExpression, CType>()
 
@@ -317,7 +562,7 @@ class SemanticAnalyzer(
             foreignTypes[name] = type
             types += type
             val symbol = newSymbol(name, SymbolKind.FOREIGN_TYPE, type, origin, moduleName, Visibility.PUBLIC)
-            scopes.define(rootScope, name, symbol.id)
+            defineBinding(moduleName, name, symbol.id)
         }
 
         fun registerForeignConstant(name: String, moduleName: String, origin: Origin, kind: SymbolKind) {
@@ -325,7 +570,7 @@ class SemanticAnalyzer(
             val symbol = newSymbol(name, kind, primitive("int"), origin, moduleName, Visibility.PUBLIC, name)
             globals[name] = symbol
             foreignGlobals[name] = symbol
-            scopes.define(rootScope, name, symbol.id)
+            defineBinding(moduleName, name, symbol.id)
         }
 
         fun foreignTypeFromName(typeName: String, moduleName: String, origin: Origin): CType {
@@ -388,7 +633,7 @@ class SemanticAnalyzer(
                     functions[declaration.name] = function
                     moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
                     if (exposeGlobally) foreignSourceFunctions[declaration.name] = function
-                    scopes.define(rootScope, declaration.name, symbol.id)
+                    defineBinding(moduleName, declaration.name, symbol.id)
                 }
                 ForeignDeclarationKind.GLOBAL -> {
                     val type = foreignTypeFromName(declaration.typeName ?: "int", moduleName, origin)
@@ -403,7 +648,7 @@ class SemanticAnalyzer(
                     )
                     globals[declaration.name] = symbol
                     foreignGlobals[declaration.name] = symbol
-                    scopes.define(rootScope, declaration.name, symbol.id)
+                    defineBinding(moduleName, declaration.name, symbol.id)
                 }
                 ForeignDeclarationKind.ENUM_VALUE -> registerForeignConstant(declaration.name, moduleName, origin, SymbolKind.FOREIGN_ENUM_VALUE)
             }
@@ -433,7 +678,7 @@ class SemanticAnalyzer(
                         declarationModules[declaration] ?: defaultModule,
                         if (declaration.isPublic) Visibility.PUBLIC else Visibility.PRIVATE
                     )
-                    scopes.define(rootScope, symbol.name, symbol.id)
+                    defineBinding(declarationModules[declaration] ?: defaultModule, symbol.name, symbol.id)
                 }
             }
         }
@@ -466,8 +711,8 @@ class SemanticAnalyzer(
                         unions[declaration.name] = type
                         types += type
                         val symbol = newSymbol(declaration.name, SymbolKind.UNION, type, declaration.origin, moduleName, declarationVisibility(declaration))
-                        scopes.define(rootScope, symbol.name, symbol.id)
-                        scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
+                        defineBinding(moduleName, symbol.name, symbol.id)
+                        typeScopes[symbol.id] = scopes.create(ScopeKind.TYPE, moduleScope(moduleName), symbol.id)
                     }
                 }
                 is AstEnum -> {
@@ -478,8 +723,8 @@ class SemanticAnalyzer(
                         enums[declaration.name] = type
                         types += type
                         val symbol = newSymbol(declaration.name, SymbolKind.ENUM, type, declaration.origin, moduleName, declarationVisibility(declaration))
-                        scopes.define(rootScope, symbol.name, symbol.id)
-                        scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
+                        defineBinding(moduleName, symbol.name, symbol.id)
+                        typeScopes[symbol.id] = scopes.create(ScopeKind.TYPE, moduleScope(moduleName), symbol.id)
                     }
                 }
                 is AstStruct -> {
@@ -490,8 +735,8 @@ class SemanticAnalyzer(
                         structs[declaration.name] = type
                         types += type
                         val symbol = newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin, moduleName, declarationVisibility(declaration))
-                        scopes.define(rootScope, symbol.name, symbol.id)
-                        scopes.create(ScopeKind.TYPE, rootScope, symbol.id)
+                        defineBinding(moduleName, symbol.name, symbol.id)
+                        typeScopes[symbol.id] = scopes.create(ScopeKind.TYPE, moduleScope(moduleName), symbol.id)
                     }
                 }
                 is AstFunction -> {
@@ -513,8 +758,9 @@ class SemanticAnalyzer(
                         val function = FunctionSymbol(functionSymbol, returnType, parameterSymbols, signature = signature)
                         functions[declaration.name] = function
                         moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
-                        val functionScope = scopes.create(ScopeKind.FUNCTION, rootScope, functionSymbol.id)
-                        scopes.define(rootScope, functionSymbol.name, functionSymbol.id)
+                        val functionScope = scopes.create(ScopeKind.FUNCTION, moduleScope(moduleName), functionSymbol.id)
+                        functionScopes[functionSymbol.id] = functionScope
+                        defineBinding(moduleName, functionSymbol.name, functionSymbol.id)
                         parameterSymbols.forEach { scopes.define(functionScope, it.name, it.id) }
                     }
                 }
@@ -525,7 +771,7 @@ class SemanticAnalyzer(
                         val type = resolve(declaration.type, declaration.arrayDimensions)
                         val symbol = newSymbol(declaration.name, SymbolKind.VARIABLE, type, declaration.origin, moduleName, declarationVisibility(declaration))
                         globals[declaration.name] = symbol
-                        scopes.define(rootScope, symbol.name, symbol.id)
+                        defineBinding(moduleName, symbol.name, symbol.id)
                     }
                 }
                 is AstImport -> {
@@ -554,7 +800,7 @@ class SemanticAnalyzer(
                                     val function = FunctionSymbol(symbol, returnType, emptyList(), isVariadic = true, signature = signature)
                                     functions[name] = function
                                     moduleFunctions.getOrPut(declaration.module) { linkedMapOf() }[name] = function
-                                    scopes.define(rootScope, name, symbol.id)
+                                    defineBinding(declaration.module, name, symbol.id)
                                 }
                                 "FILE" -> registerForeignType(name, declaration.module, declaration.origin)
                                 "EOF" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN)
@@ -588,16 +834,22 @@ class SemanticAnalyzer(
 
         program.declarations.filterIsInstance<AstStruct>().forEach { declaration ->
             val struct = structs[declaration.name] ?: return@forEach
+            val moduleName = declarationModules[declaration] ?: defaultModule
+            val ownerSymbol = symbols.firstOrNull {
+                it.kind == SymbolKind.STRUCT && it.name == declaration.name && it.moduleName == moduleName
+            }
+            val ownerScope = ownerSymbol?.id?.let(typeScopes::get)
             val fields = declaration.fields.map { field ->
                 val type = resolve(field.type, field.arrayDimensions)
-                val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin, declarationModules[declaration] ?: defaultModule)
+                val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin, moduleName)
+                ownerScope?.let { scopes.define(it, field.name, symbol.id) }
                 FieldSymbol(symbol, struct)
             }
             val methodSymbols = declaration.methods.associate { method ->
                 val returnType = resolve(method.returnType)
                 val parameterSymbols = method.parameters.filterNot { it.isReceiver }.map { parameter ->
                     val parameterType = resolve(parameter.type, parameter.arrayDimensions)
-                    newSymbol(parameter.name, SymbolKind.PARAMETER, parameterType, parameter.origin, declarationModules[declaration] ?: defaultModule)
+                    newSymbol(parameter.name, SymbolKind.PARAMETER, parameterType, parameter.origin, moduleName)
                 }
                 val receiverKind = if (method.parameters.any { it.isReceiver }) ReceiverKind.INSTANCE else ReceiverKind.STATIC
                 val signature = FunctionType(
@@ -605,7 +857,15 @@ class SemanticAnalyzer(
                     returnType,
                     parameterSymbols.map { it.type }
                 ).also(types::add)
-                val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, signature, method.origin, declarationModules[declaration] ?: defaultModule)
+                val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, signature, method.origin, moduleName)
+                ownerScope?.let { scopes.define(it, method.name, methodSymbol.id) }
+                val methodScope = scopes.create(
+                    ScopeKind.FUNCTION,
+                    ownerScope ?: moduleScope(moduleName),
+                    methodSymbol.id
+                )
+                functionScopes[methodSymbol.id] = methodScope
+                parameterSymbols.forEach { parameter -> scopes.define(methodScope, parameter.name, parameter.id) }
                 method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols, signature)
             }
             struct.fields = fields
@@ -615,9 +875,15 @@ class SemanticAnalyzer(
 
         program.declarations.filterIsInstance<AstUnion>().forEach { declaration ->
             val union = unions[declaration.name] ?: return@forEach
+            val moduleName = declarationModules[declaration] ?: defaultModule
+            val ownerSymbol = symbols.firstOrNull {
+                it.kind == SymbolKind.UNION && it.name == declaration.name && it.moduleName == moduleName
+            }
+            val ownerScope = ownerSymbol?.id?.let(typeScopes::get)
             val fields = declaration.fields.map { field ->
                 val type = resolve(field.type, field.arrayDimensions)
-                val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin, declarationModules[declaration] ?: defaultModule)
+                val symbol = newSymbol(field.name, SymbolKind.FIELD, type, field.origin, moduleName)
+                ownerScope?.let { scopes.define(it, field.name, symbol.id) }
                 FieldSymbol(symbol, union)
             }
             union.fields = fields
@@ -631,7 +897,7 @@ class SemanticAnalyzer(
                 } else {
                     val symbol = newSymbol(value.name, SymbolKind.ENUM_VALUE, enum, value.origin, declarationModules[declaration] ?: defaultModule)
                     globals[value.name] = symbol
-                    scopes.define(rootScope, value.name, symbol.id)
+                    defineBinding(declarationModules[declaration] ?: defaultModule, value.name, symbol.id)
                 }
             }
         }
@@ -653,7 +919,24 @@ class SemanticAnalyzer(
             val locals = linkedMapOf<String, Symbol>()
             function.parameters.forEach { locals[it.name] = it }
             declaration.body?.let { statement ->
-                validateStatement(statement, function.returnType, locals, availableFunctions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, ::primitive)
+                validateStatement(
+                    statement,
+                    function.returnType,
+                    locals,
+                    availableFunctions,
+                    globals,
+                    structs,
+                    unions,
+                    enums,
+                    aliases,
+                    foreignTypes,
+                    methods,
+                    expressionTypes,
+                    diagnostics,
+                    ::primitive,
+                    functionScopes[function.symbol.id] ?: moduleScope(moduleName),
+                    scopes
+                )
             }
         }
 
@@ -667,10 +950,41 @@ class SemanticAnalyzer(
                     val type = if (parameter.isReceiver) owner else resolve(parameter.type, parameter.arrayDimensions)
                     locals[parameter.name] = newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
                 }
+                functionScopes[methodSymbol.symbol.id]?.let { methodScope ->
+                    locals.values.forEach { parameter -> scopes.define(methodScope, parameter.name, parameter.id) }
+                }
                 method.body?.let { statement ->
-                    validateStatement(statement, methodSymbol.returnType, locals, availableFunctions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, ::primitive)
+                    validateStatement(
+                        statement,
+                        methodSymbol.returnType,
+                        locals,
+                        availableFunctions,
+                        globals,
+                        structs,
+                        unions,
+                        enums,
+                        aliases,
+                        foreignTypes,
+                        methods,
+                        expressionTypes,
+                        diagnostics,
+                        ::primitive,
+                        functionScopes[methodSymbol.symbol.id] ?: moduleScope(declarationModules[declaration] ?: defaultModule),
+                        scopes
+                    )
                 }
             }
+        }
+
+        // Compile-time declarations have their own lexical boundary even
+        // though the expanded AST normally removes them before this phase.
+        program.declarations.filterIsInstance<AstComptimeFunction>().forEach { declaration ->
+            val parent = moduleScope(declarationModules[declaration] ?: defaultModule)
+            val comptimeScope = scopes.create(ScopeKind.COMPTIME, parent)
+            scopes.create(ScopeKind.CPX_TEMPLATE, comptimeScope)
+        }
+        program.declarations.filterIsInstance<AstCpxInvocation>().forEach { declaration ->
+            scopes.create(ScopeKind.CPX_TEMPLATE, moduleScope(declarationModules[declaration] ?: defaultModule))
         }
 
         val initialModel = SemanticModel(
@@ -696,8 +1010,16 @@ class SemanticAnalyzer(
             modulePackages.entries.groupBy({ it.value }, { it.key }).mapValues { (_, modules) -> modules.toSet() },
             foreignGlobals
         )
-        val resolvedAst = ReferenceCollector.collect(initialModel)
-        val model = initialModel.copy(
+        val cataloguedModel = initialModel.copy(
+            declarationCatalogue = buildDeclarationCatalogue(
+                program,
+                initialModel,
+                declarationModules,
+                moduleScopes
+            )
+        )
+        val resolvedAst = ReferenceCollector.collect(cataloguedModel)
+        val model = cataloguedModel.copy(
             nodeIds = resolvedAst.nodes,
             referenceIndex = resolvedAst.referenceIndex
         )
@@ -826,11 +1148,35 @@ class SemanticAnalyzer(
         expressionTypes: MutableMap<AstExpression, CType>,
         diagnostics: DiagnosticBag,
         primitive: (String) -> PrimitiveType,
+        scopeId: ScopeId,
+        scopes: ScopeTable,
         loopDepth: Int = 0
     ) {
         when (statement) {
-            is AstBlock -> statement.statements.forEach {
-                validateStatement(it, expectedReturn, locals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopDepth)
+            is AstBlock -> {
+                val blockScope = scopes.create(ScopeKind.BLOCK, scopeId)
+                val blockLocals = LinkedHashMap(locals)
+                statement.statements.forEach {
+                    validateStatement(
+                        it,
+                        expectedReturn,
+                        blockLocals,
+                        functions,
+                        globals,
+                        structs,
+                        unions,
+                        enums,
+                        aliases,
+                        foreignTypes,
+                        methods,
+                        expressionTypes,
+                        diagnostics,
+                        primitive,
+                        blockScope,
+                        scopes,
+                        loopDepth
+                    )
+                }
             }
             is AstReturn -> {
                 val returnExpression = statement.expression
@@ -855,24 +1201,25 @@ class SemanticAnalyzer(
             is AstDefer -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstIf -> {
                 validateExpression(statement.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                validateStatement(statement.thenBranch, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                validateStatement(statement.thenBranch, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, scopeId, scopes, loopDepth)
                 statement.elseBranch?.let {
-                    validateStatement(it, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                    validateStatement(it, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, scopeId, scopes, loopDepth)
                 }
             }
             is AstWhile -> {
                 validateExpression(statement.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                validateStatement(statement.body, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopDepth + 1)
+                validateStatement(statement.body, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, scopeId, scopes, loopDepth + 1)
             }
             is AstFor -> {
+                val loopScope = scopes.create(ScopeKind.BLOCK, scopeId)
                 val loopLocals = LinkedHashMap(locals)
                 statement.initializer?.let {
-                    validateStatement(it, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                    validateStatement(it, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopScope, scopes, loopDepth)
                 }
                 statement.condition?.let {
                     validateExpression(it, loopLocals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 }
-                validateStatement(statement.body, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopDepth + 1)
+                validateStatement(statement.body, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopScope, scopes, loopDepth + 1)
                 statement.increment?.let {
                     validateExpression(it, loopLocals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 }
@@ -890,6 +1237,7 @@ class SemanticAnalyzer(
                     diagnostics.error("duplicate local '${statement.name}'", rangeOf(statement.origin), "SEM204")
                 } else {
                     locals[statement.name] = symbol
+                    scopes.define(scopeId, statement.name, symbol.id)
                 }
                 statement.initializer?.let {
                     validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
@@ -897,12 +1245,15 @@ class SemanticAnalyzer(
             }
             is AstInnerFunction -> {
                 val nestedLocals = LinkedHashMap(locals)
+                val nestedScope = scopes.create(ScopeKind.FUNCTION, scopeId)
                 statement.function.parameters.forEach { parameter ->
                     val type = resolveType(parameter.type, structs, unions, enums, aliases, foreignTypes, primitive, diagnostics, parameter.arrayDimensions)
-                    nestedLocals[parameter.name] = Symbol(SymbolId(-nestedLocals.size - 1), parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
+                    val symbol = Symbol(SymbolId(-nestedLocals.size - 1), parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
+                    nestedLocals[parameter.name] = symbol
+                    scopes.define(nestedScope, parameter.name, symbol.id)
                 }
                 val returnType = resolveType(statement.function.returnType, structs, unions, enums, aliases, foreignTypes, primitive, diagnostics)
-                validateStatement(statement.function.body ?: AstBlock(emptyList(), statement.origin), returnType, nestedLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                validateStatement(statement.function.body ?: AstBlock(emptyList(), statement.origin), returnType, nestedLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, nestedScope, scopes, loopDepth)
             }
         }
     }
@@ -1151,7 +1502,7 @@ class SemanticAnalyzer(
         locals: Map<String, Symbol>,
         globals: Map<String, Symbol>
     ): Boolean = when (expression) {
-        is AstIdentifier -> locals[expression.name]?.kind == SymbolKind.VARIABLE ||
+        is AstIdentifier -> locals[expression.name]?.kind in setOf(SymbolKind.VARIABLE, SymbolKind.PARAMETER) ||
             globals[expression.name]?.kind == SymbolKind.VARIABLE ||
             globals[expression.name]?.kind == SymbolKind.FOREIGN_GLOBAL
         is AstMemberAccess, is AstIndexAccess -> true

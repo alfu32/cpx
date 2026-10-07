@@ -1,0 +1,41 @@
+# C+ Specification Coverage Audit
+
+This matrix is the completion evidence for implementation-plan task 5.3.3. A
+range is considered covered when the named implementation boundary is exercised
+by a focused test or by an end-to-end compiler/CLI fixture.
+
+| Specification sections | Implementation boundary | Evidence |
+| --- | --- | --- |
+| LS §§1–4, 28–31 | source repository, origins, AST, lowering, source maps | `language-core` tests; compiler source-map and golden fixtures |
+| LS §§5, 23, 32–36, 44 | declaration catalogue, scopes, symbols, lookup, ambiguity diagnostics | semantic scope/catalogue/reference tests; compiler semantic tests |
+| LS §§6, 14, 30, 34 | declarations, Pratt expressions, methods, closures, parser recovery | AST golden tests; method and closure compiler integration tests |
+| LS §§7–13, 17–20, 29, 35–38 | typed CPX values, interpolation, hygiene, fixed point, phase barrier, cycles | `comptime` expansion/scheduler tests; CPX compiler integration tests |
+| LS §§21–22, 43 | packages, imports, C headers, C sources, foreign symbols | semantic and compiler import tests; CLI C dependency tests |
+| LS §§24–27, 39, 47–51 | hoisting, headers, dependencies, incremental compilation, diagnostics | c-backend/compiler/CLI golden and incremental tests |
+| LS §§40–42 | workspace edits, semantic tokens, completion, hover, navigation, references, signature help | CLI LSP integration and workspace tests |
+| LS §52 | end-to-end implementation architecture | full Gradle suite and native C smoke tests |
+| TS §§1–8, 65–70 | module structure, source model, lexer/parser, AST, recovery, hot-path storage | language-core tests and incremental lexer tests |
+| TS §§9–14, 26–30, 56 | symbols, scopes, types, methods, modules, C import adapter, foreign tooling | semantic/compiler tests and foreign-symbol LSP test |
+| TS §§15–25, 47–49 | compile-time values, templates, evaluator, scheduler, expansion cache and invalidation | comptime and incremental compiler tests |
+| TS §§31–44, 58–62 | compiler pipeline, lowering, C AST, hoisting, headers, emitter, source maps | compiler/c-backend golden and execution tests |
+| TS §§45–46, 50–55, 63–64 | diagnostics, CLI, LSP, layered tests, golden fixtures | CLI integration/golden tests and `gradle test` |
+| TS §§69–78 | architectural invariants, milestones, verification and final audit | typed backend channels, full suite, `git diff --check` |
+
+## Explicitly diagnosed limitations
+
+- Escaping mutable-reference captures and inner-function declarations that are
+  not block statements produce stable diagnostics (`CLOSURE001`/`CLOSURE003`)
+  before C emission. They are versioned implementation boundaries, not silent
+  acceptance or mock output; nested block closures are lowered recursively.
+- LSP navigation currently returns the request document URI for locations in
+  the active single-document compilation; a future workspace-wide source URI
+  mapper can expose external C-header paths directly.
+
+## Verification commands
+
+```text
+gradle --no-daemon -Dorg.gradle.native=false test
+git diff --check
+gradle --no-daemon -Dorg.gradle.native=false :cli:run --args='transcode examples/optional.cp --output /tmp/cpx-optional.c --header /tmp/cpx-optional.h'
+cc -std=c17 -fsyntax-only /tmp/cpx-optional.c
+```

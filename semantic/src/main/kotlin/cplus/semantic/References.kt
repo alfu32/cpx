@@ -1,7 +1,6 @@
 package cplus.semantic
 
 import cplus.core.*
-import java.util.IdentityHashMap
 
 enum class ReferenceKind {
     READ,
@@ -52,17 +51,12 @@ data class ResolvedAst(
 }
 
 internal object ReferenceCollector {
-    fun collect(model: SemanticModel): ResolvedAst {
+    fun collect(model: SemanticModel, arena: AstArena = AstArena()): ResolvedAst {
         val nodes = linkedMapOf<NodeId, AstNode>()
-        val identityIds = IdentityHashMap<AstNode, NodeId>()
         val references = mutableListOf<SymbolReference>()
-        var nextNodeId = 0
         var nextLocalId = -1
 
-        fun id(node: AstNode): NodeId = identityIds[node] ?: NodeId(nextNodeId++).also {
-            identityIds[node] = it
-            nodes[it] = node
-        }
+        fun id(node: AstNode): NodeId = arena.add(node).also { nodes[it] = node }
 
         fun symbolFor(name: String, locals: Map<String, SymbolId>): SymbolId? =
             locals[name]
@@ -214,5 +208,52 @@ internal object ReferenceCollector {
         }
 
         return ResolvedAst(model.program, nodes, ReferenceIndex(references))
+    }
+
+    fun collectFragment(
+        model: SemanticModel,
+        node: AstNode,
+        arena: AstArena,
+        containingFunctionName: String? = null
+    ): Map<NodeId, SymbolId> {
+        arena.add(node)
+        val origin = node.origin
+        val functionName = containingFunctionName ?: "__cpx_fragment"
+        val voidType = AstTypeRef("void", false, 0, origin)
+        val wrapped = when (node) {
+            is AstExpression -> AstProgram(
+                listOf(
+                    AstFunction(
+                        voidType,
+                        functionName,
+                        emptyList(),
+                        AstBlock(listOf(AstReturn(node, origin)), origin),
+                        origin = origin
+                    )
+                ),
+                origin
+            )
+            is AstStatement -> AstProgram(
+                listOf(
+                    AstFunction(
+                        voidType,
+                        functionName,
+                        emptyList(),
+                        AstBlock(listOf(node), origin),
+                        origin = origin
+                    )
+                ),
+                origin
+            )
+            is AstField -> AstProgram(
+                listOf(AstStruct("__cpx_fragment", listOf(node), origin = origin)),
+                origin
+            )
+            is AstDeclaration -> AstProgram(listOf(node), origin)
+            is AstProgram -> node
+            else -> AstProgram(emptyList(), origin)
+        }
+        return collect(model.copy(program = wrapped), arena).referenceIndex.all()
+            .associate { it.node to it.symbol }
     }
 }

@@ -8,6 +8,7 @@ import cplus.core.SourceFileId
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -157,6 +158,32 @@ class SemanticTypeTest {
             model.canonicalTypeId(model.functions.getValue("one").signature),
             model.canonicalTypeId(model.functions.getValue("two").signature)
         )
+    }
+
+    @Test
+    fun comptimeTypeIdentityRetainsAliasAndCanonicalIds() {
+        val text = """
+            typedef int count_t;
+            struct item { int value; };
+            count_t count;
+            struct item item_value;
+            int main() { return count + item_value.value; }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(22), Path.of("comptime-type-identity.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        val result = SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = result.model!!
+        val alias = model.resolveComptimeTypeIdentity("count_t")!!
+        val primitive = model.resolveComptimeTypeIdentity("int")!!
+        val structure = model.resolveComptimeTypeIdentity("struct item")!!
+        assertNotEquals(alias.typeId, alias.canonicalTypeId)
+        assertEquals(primitive.canonicalTypeId, alias.canonicalTypeId)
+        assertEquals("int", alias.canonicalText)
+        assertEquals(structure.typeId, structure.canonicalTypeId)
+        assertEquals("item", structure.canonicalText)
     }
 
     @Test
