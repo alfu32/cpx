@@ -1,8 +1,11 @@
 # C+ Specification Coverage Audit
 
-This matrix is the completion evidence for implementation-plan task 5.3.3. A
-range is considered covered when the named implementation boundary is exercised
-by a focused test or by an end-to-end compiler/CLI fixture.
+This matrix is the implementation coverage audit for the foundation tasks. A
+range is considered **implemented** only when the named boundary is exercised
+by focused tests and the claimed runtime behavior is executable-tested. A
+source contract, header, metadata entry, or declaration-only façade is marked
+**contracted** and does not satisfy a release gate by itself. The post-foundation
+completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 
 | Specification sections | Implementation boundary | Evidence |
 | --- | --- | --- |
@@ -20,6 +23,38 @@ by a focused test or by an end-to-end compiler/CLI fixture.
 | TS §§31–44, 58–62 | compiler pipeline, lowering, C AST, hoisting, headers, emitter, source maps | compiler/c-backend golden and execution tests |
 | TS §§45–46, 50–55, 63–64 | diagnostics, CLI, LSP, layered tests, golden fixtures | CLI integration/golden tests and `gradle test` |
 | TS §§69–78 | architectural invariants, milestones, verification and final audit | typed backend channels, full suite, `git diff --check` |
+
+## Current status classification
+
+### Implemented and executable
+
+- front-end, semantic model, methods including pointer receivers, imports,
+  basic CPX expansion, lowering, C emission, source maps, incremental cache
+  behavior, LSP primitives, and the Linux/Windows self-hosted startup path;
+- Linux and Windows self-hosted stdout/process exit;
+- Linux and Windows basic PAL file open/read/write/close/rename with canonical
+  UTF-8 slash paths, including the `std_fs_*` forwarding façade.
+
+### Contracted but incomplete
+
+- `std.alloc` is a fixed bootstrap arena, not the complete page-backed
+  allocator required by the standard-library specification;
+- `std.io`, process, time, thread, synchronization, networking, and math
+  sources are primarily API contracts or declarations;
+- C17 headers are delivered, but broad behavioral libc and independent-C ABI
+  conformance is not complete;
+- Linux/Windows memory, environment, time, thread/synchronization, networking,
+  remaining filesystem services, and Darwin concrete execution are incomplete;
+- CLI workspace/product packaging and workspace-wide LSP source mapping need
+  release-grade evidence.
+
+### Explicitly not claimed
+
+- C23 profile completeness;
+- full POSIX compatibility;
+- complete Darwin self-hosted execution;
+- release completion merely because the historical foundation counter is
+  `146/146`.
 
 ## Explicitly diagnosed limitations
 

@@ -2,7 +2,7 @@
   "name": "cplus-language-support",
   "displayName": "C+ Language Support",
   "description": "Language support for C+ powered by the C+ Kotlin language server.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "cplus",
   "engines": {
     "vscode": "^1.85.0"

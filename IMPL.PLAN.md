@@ -3305,6 +3305,231 @@ all create correct bindings.
 
 ---
 
+# Completion roadmap — post-foundation implementation
+
+The historical sections above record the compiler/SDK foundation tasks that
+have been completed. They do not, by themselves, prove that every normative
+standard-library, runtime, platform, CLI, or release requirement is executable.
+This roadmap is the authoritative work queue for turning that foundation into
+the complete working CLI transcoder and self-hosted SDK described by the
+specifications.
+
+```text
+Foundation tasks: 146/146
+Completion phases: [DOING] [1/9]
+
+[DONE]  R0 — implementation inventory and scope freeze
+[DOING] R1 — language and front-end conformance
+[TODO]  R2 — CPX, generics and reflection conformance
+[TODO]  R3 — C backend and ABI interoperability conformance
+[TODO]  R4 — runtime, allocator and libc behavior
+[TODO]  R5 — complete native std and platform services
+[TODO]  R6 — CLI transcoder and build-product completion
+[TODO]  R7 — LSP and VS Code product completion
+[TODO]  R8 — SDK packaging, target matrix and release conformance
+```
+
+The completion phase counter counts only the nine phase gates above. A phase
+MUST remain `DOING` until every acceptance gate inside it passes on the claimed
+target matrix. Source declarations, headers, platform contracts, or a green
+unit test that does not execute the claimed behavior are not completion
+evidence.
+
+## R0 [DONE] Implementation inventory and scope freeze
+
+The repository currently has executable coverage for the front-end, semantic
+model, methods including pointer receivers, imports, basic CPX expansion,
+lowering, source maps, LSP primitives, self-hosted Linux/Windows startup,
+stdout/exit, and the basic PAL file open/read/write/close/rename path. The
+following are explicitly not yet complete despite existing contracts:
+
+- `std.alloc` still uses a fixed bootstrap arena rather than a complete
+  page-backed allocator with resize, free, and aligned allocation.
+- `std.io`, process, time, thread, synchronization, networking, and math
+  sources are primarily declarations or façade contracts.
+- libc headers are delivered, but broad C17 behavioral and independent-C ABI
+  conformance is not complete; C23 remains intentionally unavailable.
+- PAL memory, process/environment, time, thread/synchronization, networking,
+  remaining filesystem operations, and concrete Darwin execution remain open.
+- the CLI and extension work for the common path, but workspace/project
+  orchestration, product packaging, cross-target release testing, and
+  workspace-wide source mapping still need completion evidence.
+
+The scope is now frozen around the normative requirements in `SPEC.LANG.md`,
+`SPEC.STDLIB.md`, and `SPEC.TECH.md`. New work MUST first be assigned to one
+of R1–R8 or deliberately recorded as a post-release extension.
+
+## R1 [DOING] Language and front-end conformance
+
+**Deliverables**
+
+- complete C-compatible type spellings and declarators, including fixed-width
+  aliases, qualifiers, multi-token primitive forms, function pointers, and
+  target-correct widths;
+- close parser/AST/semantic gaps for initializers, lvalues, casts, pointer
+  arithmetic, arrays, globals, declarations, control flow, and diagnostics;
+- make every normative language example compile or produce the specified
+  diagnostic, including negative cases and recovery behavior;
+- add grammar, semantic, lowering, generated-C, and executable fixtures for
+  each completed language family.
+
+**Gate**
+
+The canonical language examples and the C-compatible declaration matrix pass
+on Linux x86_64 and Windows x86_64, with stable diagnostics for unsupported
+constructs and no parser-only acceptance that later fails at C emission.
+
+## R2 [TODO] CPX, generics and reflection conformance
+
+**Deliverables**
+
+- cover every typed CPX value category and interpolation category in the
+  language specification;
+- verify recursive expansion, structural fixed points, cycle diagnostics,
+  specialization identity, cache invalidation, hygiene, and provenance;
+- complete type-universe stabilization and reflection-driven generation;
+- add deterministic expanded-source and generated-declaration fixtures,
+  including repeated, nested, recursive, and cross-module specializations.
+
+**Gate**
+
+The CPX/generic/reflection matrix produces deterministic C+ and C output,
+reuses equivalent specializations, rejects cycles and post-stabilization
+structural mutations, and preserves source origins through every generated
+declaration.
+
+## R3 [TODO] C backend and ABI interoperability conformance
+
+**Deliverables**
+
+- validate target-specific primitive widths, alignment, layout, calling
+  convention, TLS, varargs, aggregate return, and symbol/export behavior;
+- complete header synthesis, dependency collection, forward declarations,
+  source maps, and external C diagnostic remapping;
+- execute independent C-caller → C+ and C+ → C round trips for scalars,
+  pointers, aggregates, callbacks, variadics, globals, and TLS;
+- identify and satisfy every compiler-generated helper or reject it before
+  self-hosted linking.
+
+**Gate**
+
+Independent C fixtures compile against generated headers and link/run without
+ABI ambiguity on every claimed target; generated products pass syntax, symbol,
+layout, source-map, and dependency audits.
+
+## R4 [TODO] Runtime, allocator and libc behavior
+
+**Deliverables**
+
+- replace the bootstrap-only allocator with page-backed allocate,
+  allocate-zeroed, resize, free, and aligned operations;
+- implement thread-local `errno` conversion at the libc boundary;
+- complete memory, string, conversion, allocation, stdio, time, math, locale,
+  Unicode, signal, atomics, TLS, varargs, and setjmp/longjmp behavior to the
+  claimed C17 profile;
+- keep C+ native APIs distinct from libc compatibility semantics and add
+  independently compiled C conformance fixtures.
+
+**Gate**
+
+The claimed C17 profile has no “planned” behavior in its conformance report,
+all exported headers have executable implementations or explicit supported
+diagnostics, and self-hosted products have no hidden libc/compiler-runtime
+dependencies.
+
+## R5 [TODO] Complete native std and platform services
+
+**Deliverables**
+
+- finish `std.core`, `std.mem`, `std.string`, `std.text`, and collections with
+  real source implementations and target-neutral error/result types;
+- finish filesystem seek, metadata, create/remove, directory iteration, and
+  stream layering above the completed basic file PAL;
+- implement process launch/wait, environment, time, memory/page allocation,
+  threads, synchronization, atomics, networking, and math adapters for the
+  supported Linux and Windows targets;
+- implement or explicitly gate concrete Darwin startup and platform services;
+- expose capability failures uniformly and verify every adapter through
+  executable tests plus dependency audits.
+
+**Gate**
+
+Each native package has at least one executable Linux and Windows test (and a
+Darwin status), every selected adapter is source-isolated, and the conformance
+matrix reports platform services as `pass` rather than merely `planned`.
+
+## R6 [TODO] CLI transcoder and build-product completion
+
+**Deliverables**
+
+- define the supported project/workspace input model and make module/path/
+  standard-library imports work identically for `check`, `transcode`, `build`,
+  and `run`;
+- make output, header, map, diagnostics, target, runtime, libc, compiler,
+  sysroot, source dependency, and library options deterministic and portable;
+- ensure the fat JAR is reproducible and usable on Linux and Windows, with
+  explicit product cleanup and process-failure behavior;
+- make `sdk`, `target`, `abi`, `runtime`, `libc`, and `audit` commands validate
+  the same artifacts that normal builds consume.
+
+**Gate**
+
+Clean checkouts can build the fat JAR and compile/run representative single-
+file, multi-module, C-interoperability, self-hosted Linux, and self-hosted
+Windows products from documented commands.
+
+## R7 [TODO] LSP and VS Code product completion
+
+**Deliverables**
+
+- map diagnostics, definitions, references, symbols, completion, hover,
+  semantic tokens, and edits across a workspace and imported source files;
+- make the extension invoke the configured `java -jar <cli>` entry point for
+  both LSP and Run Main, with portable path/cwd/settings behavior;
+- build, test, and package the extension from a clean checkout, and verify the
+  packaged extension uses the repository's actual CLI settings.
+
+**Gate**
+
+The LSP and Run Main flows work for a multi-module workspace on Linux and
+Windows, with external-source locations preserved and no competing parser or
+hard-coded CLI path.
+
+## R8 [TODO] SDK packaging, target matrix and release conformance
+
+**Deliverables**
+
+- generate/rebuild SDK metadata, C headers, syscall catalogues, package indexes,
+  and optional runtime objects deterministically;
+- replace optimistic coverage claims with machine-checked conformance reports;
+- run the complete matrix for Linux x86_64/AArch64, Windows x86_64 (and
+  AArch64 where a runner exists), and Darwin according to declared support;
+- verify no-host-contamination, no hidden compiler-runtime dependency,
+  reproducible outputs, clean-tree builds, documentation examples, and
+  upgrade/ABI compatibility rules.
+
+**Gate**
+
+The release checklist is reproducible from a clean checkout, every claimed
+target/profile has executable evidence, and all remaining unsupported features
+are explicit capability diagnostics or separately labelled post-release work.
+
+## Execution order and commit policy
+
+The work proceeds vertically in this order:
+
+```text
+R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8
+```
+
+Each phase is split into small implementation commits. A phase may be
+reordered only when a dependency is discovered and recorded here first. Every
+stage ends with focused tests, the relevant full-suite/platform checks, an
+updated coverage/conformance entry, and a Conventional Commit before the next
+stage begins.
+
+---
+
 # Vertical milestones
 
 Milestones are not additional terminal tasks and therefore do not affect terminal-task counters.
