@@ -11,14 +11,14 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 (complete; retained for traceability)
-Roadmap leaf tasks:    22/44 evidenced on Linux
+Roadmap leaf tasks:    22/45 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
 Current task:          R1.1.1 — parse complete C primitive type specifiers
 Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 4/10 primitive parsing, ABI fidelity, and user aliases reopened
+R1 [DOING] 4/11 primitive, ABI, type-import, and user-alias conformance open
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
@@ -36,11 +36,13 @@ below. Its current execution sequence is:
    diagnostics through CLI, LSP, and generated C.
 2. R1.2.1/R1.2.3 — preserve primitive signedness, target widths, and one
    canonical type identity through semantic analysis, ABI layout, and C output.
-3. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
+3. R1.4 — implement kind-aware selective imports for source types and enforce
+   module visibility boundaries.
+4. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
    and `u8`…`u64`, then define capability-gated `i128`/`u128` support.
-4. R3.1.3 — verify parsed spellings and aliases through emitted C and
-   independent ABI fixtures.
-5. R5.2 onward — resume native std and platform work after the type boundary
+5. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
+   C and independent ABI fixtures.
+6. R5.2 onward — resume native std and platform work after the type boundary
    is reliable, then finish R6–R8 and perform the deferred Windows validation
    and patch pass.
 
@@ -709,7 +711,9 @@ contain subtasks.
 - `import foo`
 - `import foo as bar`
 - `import {a,b} from foo`
-all create correct bindings.
+create correct module, function, and value bindings. Selective imports of
+source type declarations were not covered by this foundation-stage completion;
+they are explicitly reopened as R1.4 below.
 
 - collisions require qualification or aliasing.
 
@@ -3438,6 +3442,18 @@ of R1–R8 or deliberately recorded as a post-release extension.
     initializer/lvalue rules across parser, semantic analysis, and lowering.
   - R1.3.3 [DONE] — add stable unsupported-declarator diagnostics and recovery
     fixtures so parser acceptance cannot outrun backend support.
+- R1.4 [TODO] — implement kind-aware imports and module-scoped visibility for
+  public source declarations. Resolve aliases, structs, unions, and enums from
+  a target module's export catalogue; bind imported types (including `as`
+  aliases) into the importing module's type-name environment and support them
+  in all valid type positions. Preserve selective function/value imports and
+  qualified lookup through module aliases, while ensuring that compilation
+  graph membership alone does not expose declarations across modules. Reject
+  private/missing exports and conflicting bindings with stable diagnostics.
+  Test path and package imports, type-only and mixed-export modules, selective
+  and module aliases, aggregate fields, pointers, signatures, casts, omitted-
+  import/private-export failures, function/value import regressions, CLI/LSP
+  resolution, and generated C. This is a prerequisite for R1.2.4.
 
 **Deliverables**
 
@@ -3450,8 +3466,8 @@ of R1–R8 or deliberately recorded as a post-release extension.
   `size_t`, `ptrdiff_t`, and `uintN_t` where appropriate; do not add custom
   `u8`/`i8`-style aliases to `std.core` or native SDK APIs. Provide `i8` through
   `i64` and `u8` through `u64` as ordinary typedefs in the explicitly imported
-  user-level `std.fixed_width` source module; expose 128-bit aliases there
-  only with verified compiler and target support;
+  user-level `std.fixed_width` source module after R1.4 type-import support;
+  expose 128-bit aliases there only with verified compiler and target support;
 - close parser/AST/semantic gaps for initializers, lvalues, casts, pointer
   arithmetic, arrays, globals, declarations, control flow, and diagnostics;
 - make every normative language example compile or produce the specified
@@ -3924,9 +3940,9 @@ dependencies.
 - R5.5 [TODO] — record Darwin as either executablely supported or explicitly
   capability-gated, without claiming a partial adapter as complete.
 
-R5.2 is sequenced after R1.1.1–R1.2.5 and R3.1.3 because it extends public
-SDK function signatures and must use the verified C primitive and alias
-boundary.
+R5.2 is sequenced after R1.1.1–R1.2.5, R1.4, and R3.1.3 because it extends
+public SDK function signatures and must use the verified C primitive, type
+import, and alias boundaries.
 
 ### R5.1 completion record
 
@@ -4441,7 +4457,7 @@ LS §17        → 3.5.1
 LS §18        → 3.5.2
 LS §19        → 3.5.3
 LS §20        → 3.5.4
-LS §21        → 2.3
+LS §21        → 2.3, R1.4
 LS §22        → 2.4
 LS §23        → 2.1.1, 4.3.4
 LS §24        → 4.3.2

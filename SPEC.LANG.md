@@ -1079,6 +1079,9 @@ import { a, b, c } from foo;
 import { add } from ./module_helpers.cp;
 import { fs } from stdlib/io;
 import { fs as fs1 } from "some/ref.cp";
+import { Point } from ./geometry.cp;
+import { Point as Position } from "some/lib/ref.cp";
+import geometry as geo;
 ```
 
 An import target without a leading relative-path marker is a logical module or
@@ -1093,6 +1096,23 @@ module identity when resolving its declarations.
 ## 21.2 Import semantics
 
 An import introduces bindings from another compilation unit or package into the current semantic environment.
+
+Selective imports SHALL support every public top-level declaration kind that
+may be named by an import, including type aliases (`typedef`), structures,
+unions, and enumerations as well as functions and values. Importing a type
+creates a type-name binding usable under the imported name in every language
+context that accepts that type, including declarations, fields, function
+parameters and results, pointers, arrays, casts, and type queries. An `as`
+alias SHALL rename the type binding in those contexts just as it renames a
+value binding.
+
+For distinct modules, placing a source file in the same compilation graph or
+package SHALL NOT by itself make its declarations available by unqualified
+name in another module. A declaration is visible across module boundaries only
+through a selective import or a module import and qualified name. A module
+import alias SHALL permit qualified access to the target module's public type
+and value declarations. Private declarations SHALL NOT be importable. These
+rules apply equally to source-path imports and logical package imports.
 
 Imports SHALL participate in:
 
@@ -1121,6 +1141,30 @@ import { fs as fs1 } from "some/ref.cp";
 introduces only the selected public entities into the destination scope.
 Each selective name MAY be followed by `as localName`; references in the
 destination scope then use `localName`.
+
+Type import example:
+
+```c
+import { Point as Position } from "./geometry.cp";
+
+Position origin;
+Position *cursor;
+```
+
+An aliased module import may qualify the same public type:
+
+```c
+import geometry as geo;
+
+geo.Point origin;
+```
+
+The imported declaration's kind SHALL be resolved from the target module's
+public declaration catalogue; a type name SHALL NOT be treated as a failed
+function import. The compiler SHALL diagnose missing or non-public names and
+conflicting local bindings. Source type imports SHALL behave consistently
+whether the target module exports only types or also exports functions and
+values.
 
 Name collisions are compile-time errors unless explicitly resolved through qualification or aliasing.
 

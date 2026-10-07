@@ -1122,7 +1122,16 @@ import { fs as fs1 } from "some/ref.cp";
 
 It SHALL distinguish logical package/module targets from relative source-path
 targets, resolve source paths relative to the importing source file, and
-produce explicit scope bindings for selective aliases.
+produce explicit, kind-aware scope bindings for selective aliases. The
+resolver SHALL catalog public declarations by kind, including aliases,
+structures, unions, enumerations, functions, and values; bind imported types
+into the type-name environment; and bind imported values into the value
+environment. A selected type SHALL remain usable through its local alias in
+all supported type positions. A module import alias SHALL support qualified
+lookup of public types and values. Merely loading a module into the compilation
+graph SHALL NOT make its declarations implicitly visible in another module.
+Missing, private, ambiguous, or conflicting exports SHALL produce diagnostics
+without misclassifying a type as a missing function.
 
 ```kotlin
 class ImportResolver
