@@ -1,14 +1,12 @@
-import { std_alloc, std_calloc, std_free } from ../../std/src/alloc.cp;
-
 /// C allocation façade. errno conversion is kept at the libc boundary.
-void* malloc(long size) {
-    return std_alloc(size);
-}
+extern void* __cplus_alloc(long long size);
+extern void* __cplus_calloc(long long count, long long size);
+extern void* __cplus_realloc(void* value, long long size);
+extern void* __cplus_alloc_aligned(long long alignment, long long size);
+extern void __cplus_free(void* value);
 
-void* calloc(long count, long size) {
-    return std_calloc(count, size);
-}
-
-void free(void* value) {
-    std_free(value);
-}
+void* malloc(long long size) { return __cplus_alloc(size); }
+void* calloc(long long count, long long size) { return __cplus_calloc(count, size); }
+void* realloc(void* value, long long size) { return __cplus_realloc(value, size); }
+void* aligned_alloc(long long alignment, long long size) { return __cplus_alloc_aligned(alignment, size); }
+void free(void* value) { __cplus_free(value); }

@@ -2194,6 +2194,12 @@ The latter MAY delegate to the former.
 
 The native API SHALL not be forced to reproduce historical libc design limitations.
 
+The C compatibility layer SHALL define `errno` as thread-local storage and
+shall translate PAL failures to the documented C error constants at the libc
+boundary. Native `std` operations SHOULD return structured errors instead of
+mutating `errno`; a PAL result SHALL never expose a raw syscall number or
+`GetLastError` value to either layer.
+
 ---
 
 # 76. Binary exports

@@ -1,7 +1,7 @@
-void* memcpy(void* destination, void* source, long size) {
+void* memcpy(void* destination, const void* source, long long size) {
     long index = 0;
-    char* target = (char*) destination;
-    char* origin = (char*) source;
+    unsigned char* target = (unsigned char*) destination;
+    const unsigned char* origin = (const unsigned char*) source;
     while (index < size) {
         target[index] = origin[index];
         index = index + 1;
@@ -9,20 +9,29 @@ void* memcpy(void* destination, void* source, long size) {
     return destination;
 }
 
-void* memmove(void* destination, void* source, long size) {
-    long index = size;
-    char* target = (char*) destination;
-    char* origin = (char*) source;
-    while (index > 0) {
-        index = index - 1;
-        target[index] = origin[index];
+void* memmove(void* destination, const void* source, long long size) {
+    long long index;
+    unsigned char* target = (unsigned char*) destination;
+    const unsigned char* origin = (const unsigned char*) source;
+    if (target < origin) {
+        index = 0;
+        while (index < size) {
+            target[index] = origin[index];
+            index = index + 1;
+        }
+    } else if (target > origin) {
+        index = size;
+        while (index > 0) {
+            index = index - 1;
+            target[index] = origin[index];
+        }
     }
     return destination;
 }
 
-void* memset(void* destination, int value, long size) {
-    long index = 0;
-    char* target = (char*) destination;
+void* memset(void* destination, int value, long long size) {
+    long long index = 0;
+    unsigned char* target = (unsigned char*) destination;
     while (index < size) {
         target[index] = (char) value;
         index = index + 1;
@@ -30,10 +39,10 @@ void* memset(void* destination, int value, long size) {
     return destination;
 }
 
-int memcmp(void* left, void* right, long size) {
-    long index = 0;
-    char* a = (char*) left;
-    char* b = (char*) right;
+int memcmp(const void* left, const void* right, long long size) {
+    long long index = 0;
+    const unsigned char* a = (const unsigned char*) left;
+    const unsigned char* b = (const unsigned char*) right;
     while (index < size) {
         if (a[index] < b[index]) return -1;
         if (a[index] > b[index]) return 1;

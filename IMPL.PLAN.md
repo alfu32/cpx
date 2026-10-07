@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R4.3 — native memory/string/conversion behavior and errno boundary
+R4.4 — C17 stdio/varargs, time/math, and advanced libc families
 
 Current milestone:
 R4 — runtime, allocator and libc behavior
@@ -3702,7 +3702,7 @@ layout, source-map, and dependency audits.
   allocator contract;
 - R4.2 [DONE] — implement allocate, allocate-zeroed, resize, free, and aligned
   operations with overflow, double-free, and invalid-range diagnostics;
-- R4.3 [TODO] — implement the C+ memory/string/conversion core and thread-local
+- R4.3 [DONE] — implement the C+ memory/string/conversion core and thread-local
   errno boundary without importing host libc behavior into native APIs;
 - R4.4 [TODO] — implement the claimed C17 compatibility families in dependency
   order: stdio/varargs, time/math/locale, Unicode, signal, atomics, TLS, and
@@ -3726,9 +3726,24 @@ Implemented and executed on Linux:
 - a Linux C fixture executes alignment, zeroing, data-preserving resize, and
   release behavior.
 
-R4.3 is the next active stage: native memory/string/conversion behavior and the
-thread-local errno boundary. Windows execution remains deferred by project
+R4.3 is complete on Linux. Windows execution remains deferred by project
 policy.
+
+### R4.3 completion record
+
+Implemented and executed on Linux:
+
+- the self-hosted runtime exports unsigned-byte-correct `memcpy`, `memmove`,
+  `memset`, `memcmp`, `strlen`, `strcmp`, `strncmp`, `strcpy`, `strncpy`,
+  `strcat`, and `strchr` behavior;
+- allocator-backed libc `malloc`, `calloc`, `realloc`, `aligned_alloc`, and
+  `free` are available without host allocation symbols;
+- integer base conversion, decimal `strtod`, `atoi`, and end-pointer handling
+  are implemented in the SDK runtime;
+- PAL failures can be converted to the thread-local C compatibility `errno`
+  without leaking raw OS error values;
+- an executable Linux fixture validates overlap-safe memory movement, byte
+  comparison, strings, conversions, allocator integration, and errno mapping.
 
 **Deliverables**
 

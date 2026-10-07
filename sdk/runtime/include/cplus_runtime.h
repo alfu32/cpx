@@ -22,5 +22,6 @@ void* __cplus_calloc(unsigned long long count, unsigned long long size);
 void* __cplus_realloc(void* value, unsigned long long size);
 void* __cplus_alloc_aligned(unsigned long long alignment, unsigned long long size);
 void __cplus_free(void* value);
+int __cplus_set_errno_from_pal(long result);
 
 #endif
