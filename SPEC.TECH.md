@@ -575,7 +575,8 @@ data class MethodSymbol(
     val symbol: SymbolId,
     val owner: TypeId,
     val receiver: ReceiverKind,
-    val functionType: TypeId
+    val functionType: TypeId,
+    val receiverType: TypeId
 )
 ```
 
@@ -589,6 +590,12 @@ enum class ReceiverKind {
 A method containing `self` in receiver position is `INSTANCE`.
 
 Otherwise it is `STATIC`.
+
+The parser preserves whether the receiver spelling is `self` or `self*`.
+`self*` remains an `INSTANCE` method, but its semantic `receiverType` is a
+pointer to the owning structure. The method-body scope binds `self` to that
+pointer type, so member access resolves through the pointee aggregate and the
+backend can emit `self->field`.
 
 ---
 
@@ -633,6 +640,19 @@ The C lowering phase later generates:
 
 ```c
 vector_t__length(&v)
+```
+
+For an explicit pointer receiver, lowering passes an already-pointer receiver
+without adding another address operation:
+
+```c
+counter_t__increment(pointer)
+```
+
+The C function receives the owner pointer as its first parameter:
+
+```c
+void counter_t__increment(struct counter_t* self);
 ```
 
 ---
@@ -1287,6 +1307,32 @@ self->value
 ```
 
 The method symbol SHALL retain its original semantic identity even if represented as a top-level C function.
+
+For:
+
+```c
+struct counter_t {
+    int value;
+
+    void increment(self*) {
+        self->value = self->value + 1;
+    }
+};
+```
+
+the semantic method descriptor records `receiver = INSTANCE` and
+`receiverType = PointerType(counter_t)`. The lowering pass emits a pointer
+receiver parameter and retains pointer-member access:
+
+```c
+void counter_t__increment(struct counter_t* self) {
+    self->value = self->value + 1;
+}
+```
+
+Parser lookahead must also keep expressions such as `pointer.increment();`
+in the expression-statement path; they must not be misclassified as local
+function declarations.
 
 ---
 

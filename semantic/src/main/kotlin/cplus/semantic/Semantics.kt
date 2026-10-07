@@ -188,7 +188,8 @@ data class MethodSymbol(
     val receiverKind: ReceiverKind,
     val returnType: CType,
     val parameters: List<Symbol>,
-    val signature: FunctionType
+    val signature: FunctionType,
+    val receiverType: CType
 )
 
 data class SemanticModel(
@@ -877,7 +878,13 @@ class SemanticAnalyzer(
                 )
                 functionScopes[methodSymbol.id] = methodScope
                 parameterSymbols.forEach { parameter -> scopes.define(methodScope, parameter.name, parameter.id) }
-                method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols, signature)
+                val receiver = method.parameters.firstOrNull { it.isReceiver }
+                val receiverType = if (receiver?.isPointerReceiver == true) {
+                    PointerType(TypeId(nextTypeId.next()), struct).also(types::add)
+                } else {
+                    struct
+                }
+                method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols, signature, receiverType)
             }
             struct.fields = fields
             struct.methods = methodSymbols.values.toList()
@@ -958,7 +965,11 @@ class SemanticAnalyzer(
                 val methodSymbol = methods[owner.name]?.get(method.name) ?: return@forEach
                 val locals = linkedMapOf<String, Symbol>()
                 method.parameters.forEach { parameter ->
-                    val type = if (parameter.isReceiver) owner else resolve(parameter.type, parameter.arrayDimensions)
+                    val type = if (parameter.isReceiver) {
+                        methods[owner.name]?.get(method.name)?.receiverType ?: owner
+                    } else {
+                        resolve(parameter.type, parameter.arrayDimensions)
+                    }
                     locals[parameter.name] = newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
                 }
                 functionScopes[methodSymbol.symbol.id]?.let { methodScope ->

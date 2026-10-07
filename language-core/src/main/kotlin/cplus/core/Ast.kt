@@ -126,7 +126,8 @@ data class AstParameter(
     val name: String,
     val isReceiver: Boolean = false,
     override val origin: Origin,
-    val arrayDimensions: List<String> = emptyList()
+    val arrayDimensions: List<String> = emptyList(),
+    val isPointerReceiver: Boolean = false
 ) : AstNode
 
 sealed interface AstStatement : AstNode

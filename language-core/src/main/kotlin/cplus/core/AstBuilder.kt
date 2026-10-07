@@ -39,7 +39,9 @@ class AstBuilder {
     private fun function(node: SyntaxFunction, ownerName: String?): AstFunction = AstFunction(
         type(node.returnType),
         node.name,
-        node.parameters.map { AstParameter(type(it.type), it.name, it.isReceiver, it.origin, it.arrayDimensions) },
+        node.parameters.map {
+            AstParameter(type(it.type), it.name, it.isReceiver, it.origin, it.arrayDimensions, it.isPointerReceiver)
+        },
         node.body?.let(::statement),
         node.isMethod,
         ownerName,

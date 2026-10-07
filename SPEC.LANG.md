@@ -284,6 +284,50 @@ vector_t__length(&v);
 
 The precise emitted C name is implementation-defined.
 
+### 6.2.1 Pointer receivers
+
+An instance method MAY declare its receiver as `self*`. This is an explicit
+pointer receiver declaration. The receiver type is a pointer to the enclosing
+structure, and the receiver remains associated with that structure's method
+set.
+
+Within a pointer-receiver body, member access through the receiver uses pointer
+member syntax:
+
+```c
+struct counter_t {
+    int value;
+
+    void increment(self*) {
+        self->value = self->value + 1;
+    }
+
+    int read(self*) {
+        return self->value;
+    }
+};
+```
+
+Pointer receivers are invoked with the same member-call syntax as other
+instance methods. A pointer expression is passed directly to the lowered
+method; an addressable structure value MAY be lowered by taking its address.
+
+```c
+int main() {
+    counter_t counter;
+    counter.value = 41;
+    counter_t* pointer = &counter;
+    pointer.increment();
+    return pointer.read();
+}
+```
+
+The declaration `self*` is valid only in the receiver position of a method
+parameter list. Both `self` and `self*` classify the method as `INSTANCE`; the
+pointer form additionally determines the receiver type exposed to semantic
+analysis and the body. The spelling of the source member operator does not
+select the receiver representation; semantic receiver type does.
+
 ## 6.3 Static method
 
 A method declared inside a structure that has no `self` receiver is a **static method**.
@@ -1355,6 +1399,20 @@ type__method(&obj, x)
 
 Similarly, a structure method may first be extracted from its containing structure while other C+ features remain.
 
+For a pointer receiver, method lowering preserves the pointer representation:
+
+```c
+counter_t__increment(pointer);
+```
+
+and the lowered method body may use native C pointer-member access:
+
+```c
+void counter_t__increment(counter_t* self) {
+    self->value = self->value + 1;
+}
+```
+
 Each lowering phase SHALL establish documented invariants.
 
 Typical invariants include:
@@ -1637,6 +1695,9 @@ Identifier substring interpolation requires explicit `{...}` syntax.
 ### 44.2 Static versus instance method
 
 A method with `self` is an instance method.
+
+A method with `self*` is also an instance method and has a pointer to the
+enclosing structure as its receiver.
 
 A method without `self` is static.
 

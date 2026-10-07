@@ -143,7 +143,8 @@ data class SyntaxParameter(
     val isReceiver: Boolean = false,
     override val range: SourceRange,
     override val origin: Origin,
-    val arrayDimensions: List<String> = emptyList()
+    val arrayDimensions: List<String> = emptyList(),
+    val isPointerReceiver: Boolean = false
 ) : SyntaxNode
 
 sealed interface SyntaxStatement : SyntaxNode

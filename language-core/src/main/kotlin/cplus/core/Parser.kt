@@ -336,12 +336,16 @@ class Parser(private val lexed: LexedSource) {
                 do {
                     if (isMethod && peek().isLexeme("self")) {
                         val receiver = advance()
+                        val pointerReceiver = match("*")
+                        val receiverEnd = if (pointerReceiver) previous().range else receiver.range
+                        val receiverRange = span(receiver.range, receiverEnd)
                         parameters += SyntaxParameter(
-                            TypeSyntax("self", false, 0, receiver.range, direct(receiver.range)),
+                            TypeSyntax("self", false, if (pointerReceiver) 1 else 0, receiverRange, direct(receiverRange)),
                             receiver.lexeme,
                             true,
-                            receiver.range,
-                            direct(receiver.range)
+                            receiverRange,
+                            direct(receiverRange),
+                            isPointerReceiver = pointerReceiver
                         )
                         continue
                     }
@@ -687,10 +691,14 @@ class Parser(private val lexed: LexedSource) {
     private fun looksLikeVariableDeclaration(): Boolean {
         if (peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum")) return true
         if (peek().lexeme in primitiveTypes) return true
-        return peek().kind == TokenKind.IDENTIFIER && peek(1).kind == TokenKind.IDENTIFIER
+        if (peek().kind != TokenKind.IDENTIFIER) return false
+        var nameOffset = 1
+        while (peek(nameOffset).isLexeme("*")) nameOffset++
+        return peek(nameOffset).kind == TokenKind.IDENTIFIER
     }
 
     private fun looksLikeInnerFunction(): Boolean {
+        if (peek(1).isLexeme(".") || peek(1).isLexeme("->")) return false
         val typeEnd = when {
             peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum") -> 2
             peek().lexeme in primitiveTypes -> 1

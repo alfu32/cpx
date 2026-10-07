@@ -920,6 +920,48 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun pointerReceiversCanReadAndMutateTheUnderlyingObject() {
+        val source = """
+            struct counter_t {
+                int value;
+
+                void increment(self*) {
+                    self->value = self->value + 1;
+                }
+
+                int read(self*) {
+                    return self->value;
+                }
+            };
+
+            int main() {
+                counter_t counter;
+                counter.value = 41;
+                counter_t* pointer = &counter;
+                pointer.increment();
+                return pointer.read();
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-pointer-receiver", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("self->value = (self->value + 1)"))
+        assertTrue(generated.contains("counter_t__increment(pointer)"))
+        assertTrue(generated.contains("counter_t__read(pointer)"))
+
+        val directory = Files.createTempDirectory("cplus-pointer-receiver-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        assertEquals(42, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
+    }
+
+    @Test
     fun structuralCpxGeneratesTypedSpecializationBeforeLowering() {
         val source = """
             comptime cpx<decl> optional(type T) {

@@ -3,17 +3,17 @@
 ## Dashboard
 
 ```text
-Overall: 113/145
+Overall: 114/145
 
 [DONE] [16/16] 1. Language front-end
 [DONE] [30/30] 2. Semantic model and modules
 [DONE] [20/20] 3. Compile-time and CPX system
 [DONE] [34/34] 4. Lowering and C backend
 [DONE] [14/14] 5. Tooling, integration and quality
-[TODO] [0/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
+[TODO] [1/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-6.1.1.1 — Define SDK manifest and ABI/runtime version contract
+6.1.1.2 — Implement runtime and libc profile selection
 
 Current milestone:
 M7 — Self-hosted C+ SDK/runtime foundation
@@ -581,8 +581,10 @@ All tasks initially have status `TODO`.
 
 **Acceptance**
 - method with receiver `self` is `INSTANCE`.
+- method with receiver `self*` is `INSTANCE` with a pointer receiver type.
 - method without `self` is `STATIC`.
 - methods remain associated with their containing semantic type.
+- pointer-receiver bodies bind `self` as a pointer and resolve `self->field`.
 
 **Depends**
 - 2.2.2
@@ -1473,8 +1475,11 @@ all create correct bindings.
 **Acceptance**
 - struct methods become top-level callable representations.
 - instance calls inject receiver.
+- pointer receivers pass pointer expressions directly and preserve pointer-member access.
+- addressable value receivers use the existing address-taking lowering path.
 - static calls do not inject receiver.
 - source method identity is retained.
+- an integration fixture parses `self*`, compiles generated C, and executes a mutating pointer-receiver method.
 
 **Depends**
 - 2.2
@@ -2420,7 +2425,7 @@ all create correct bindings.
 
 ---
 
-## 6.1 [TODO] [0/8] SDK packaging and runtime foundation
+## 6.1 [TODO] [1/8] SDK packaging and runtime foundation
 
 **SDK**
 - SDK §2–6
@@ -2430,9 +2435,9 @@ all create correct bindings.
 - SDK §78–81
 - SDK §93–101
 
-### 6.1.1 [TODO] [0/4] SDK distribution, profiles and resolver
+### 6.1.1 [TODO] [1/4] SDK distribution, profiles and resolver
 
-#### 6.1.1.1 [TODO] Define SDK manifest and ABI/runtime version contract
+#### 6.1.1.1 [DONE] [4/4] Define SDK manifest and ABI/runtime version contract
 
 **SDK**
 - SDK §4 Distribution Model
@@ -2452,6 +2457,12 @@ all create correct bindings.
 - incompatible runtime ABI versions are rejected deterministically.
 - SDK identity participates in compiler/incremental cache keys.
 - tests cover compatible, missing and incompatible manifests.
+
+**Implementation**
+- Added the repository SDK manifest at `sdk/manifest/sdk.toml`.
+- Added strict manifest loading, required-key validation, runtime ABI checks, content identity hashing, and deterministic `SDK001`–`SDK004` diagnostics.
+- Added the CLI `--sdk` / `--sdk-manifest` option and included SDK identity in incremental cache configuration.
+- Added compatible, missing-key, and incompatible-runtime manifest tests.
 
 **Depends**
 - 5.2.1
