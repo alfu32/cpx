@@ -148,6 +148,41 @@ long platform_write_stdout(const char* buffer, unsigned long length);
 int platform_process_exit(int status);
 ```
 
+The version-2 file-service extension SHALL expose the following additional
+operations. The explicit-width handle and size types are required because
+Linux uses LP64 while Windows uses LLP64:
+
+```c
+typedef long long cplus_file_handle_t;
+typedef long long cplus_file_result_t;
+typedef unsigned long long cplus_file_size_t;
+typedef unsigned long long cplus_file_mode_t;
+
+#define CPLUS_FILE_READ     0x0001ULL
+#define CPLUS_FILE_WRITE    0x0002ULL
+#define CPLUS_FILE_CREATE   0x0004ULL
+#define CPLUS_FILE_TRUNCATE 0x0008ULL
+
+cplus_file_result_t platform_file_open(
+    const char* path, cplus_file_mode_t mode);
+cplus_file_result_t platform_file_read(
+    cplus_file_handle_t handle, void* buffer, cplus_file_size_t length);
+cplus_file_result_t platform_file_write(
+    cplus_file_handle_t handle, const void* buffer, cplus_file_size_t length);
+int platform_file_close(cplus_file_handle_t handle);
+int platform_file_rename(const char* source, const char* target);
+```
+
+File paths entering this ABI SHALL be canonical UTF-8 strings with `/`
+separators. Successful `open` returns a non-negative opaque handle; successful
+`read` and `write` return the number of bytes transferred and MAY be partial;
+successful `close` and `rename` return zero. Every target adapter SHALL map
+its native failure space to the shared negative values
+`CPLUS_PAL_INVALID_ARGUMENT`, `CPLUS_PAL_NOT_FOUND`,
+`CPLUS_PAL_ACCESS_DENIED`, `CPLUS_PAL_IO_ERROR`, or
+`CPLUS_PAL_UNSUPPORTED`. Native `errno`, `GetLastError`, and raw syscall
+numbers SHALL NOT cross this boundary.
+
 Portable runtime and standard-library code SHALL call these PAL operations and
 SHALL NOT contain Linux syscall instructions, Windows DLL declarations, host
 libc includes, or host libc symbol references. Those details belong only to
@@ -520,6 +555,11 @@ long platform_write_stdout(const char* buffer, unsigned long length);
 int platform_process_exit(int status);
 ```
 
+File streams use the version-2 PAL file operations. `std.io` may layer
+buffering and formatting over `platform_file_read`, `platform_file_write`, and
+`platform_file_close`; it SHALL not expose target-specific descriptor or
+HANDLE types.
+
 The implementation of buffering, formatting, stream state and textual conversion SHALL reside above this PAL interface.
 
 The libc layer SHALL expose `FILE` and C stdio functions.
@@ -545,6 +585,23 @@ rename
 directory iteration
 path manipulation
 ```
+
+The first concrete native façade operations are:
+
+```c
+cplus_file_result_t std_fs_open(const char* path, cplus_file_mode_t mode);
+cplus_file_result_t std_fs_read(
+    cplus_file_handle_t handle, void* buffer, cplus_file_size_t size);
+cplus_file_result_t std_fs_write(
+    cplus_file_handle_t handle, const void* buffer, cplus_file_size_t size);
+int std_fs_close(cplus_file_handle_t handle);
+int std_fs_rename(const char* source, const char* target);
+```
+
+These functions are target-independent forwarding entry points. Their current
+implementation intentionally covers only open, read, write, close, and rename;
+seek, metadata, directory iteration, remove, and stream buffering remain
+separate standard-library stages.
 
 Native C+ path semantics SHALL be independent from libc `char*` filename semantics.
 
@@ -1228,6 +1285,11 @@ The source of truth SHOULD be generated from official kernel UAPI definitions wh
 
 Generated data SHALL be committed or packaged so cross-compilation does not require a local Linux kernel source tree.
 
+The concrete Linux file adapter uses `openat`, `read`, `write`, `close`, and
+`renameat` with `AT_FDCWD`. The x86_64 and AArch64 syscall numbers are kept in
+the SDK catalogue files, and raw negative kernel results are normalized before
+being returned to `std.fs`.
+
 ---
 
 # 34. Linux syscall result normalization
@@ -1281,6 +1343,12 @@ bcrypt
 ```
 
 Dependencies SHALL be included only when used.
+
+The concrete Windows file adapter uses documented `kernel32` APIs: UTF-8 paths
+are converted with `MultiByteToWideChar`, `/` separators are translated to
+native `\\` separators, and file operations use `CreateFileW`, `ReadFile`,
+`WriteFile`, `CloseHandle`, and `MoveFileExW`. Temporary UTF-16 path storage is
+obtained from the process heap. This adapter does not require UCRT or MSVCRT.
 
 ---
 

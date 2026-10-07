@@ -2708,6 +2708,20 @@ conversion belongs inside the target adapter. Compiler/tooling filesystem
 access remains native `java.nio.file.Path` and only serialized/logical path
 identities use slash normalization.
 
+The current concrete file-service implementation is split as follows:
+
+```text
+sdk/runtime/include/cplus_platform.h  versioned PAL C ABI and error/mode constants
+sdk/runtime/src/fs.c                   target-independent std.fs forwarding
+sdk/platform/linux/runtime.c           openat/read/write/close/renameat adapters
+sdk/platform/windows/runtime.c         UTF-8/UTF-16 kernel32 file adapters
+```
+
+The file ABI uses explicit-width C types for handles and byte counts so the
+same generated contract is valid under Linux LP64 and Windows LLP64. The
+linker includes `fs.c` and exactly one target platform runtime unit in a
+self-hosted product.
+
 The CLI exposes these boundaries through `sdk doctor|verify|package`,
 `target list|show`, `abi verify`, `runtime inspect`, `libc test`, and `audit`.
 All package indexes and generated metadata are deterministic and versioned.

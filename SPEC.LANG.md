@@ -1724,6 +1724,13 @@ headers are generated/delivered views over the same semantic declarations;
 unsupported target facilities MUST be reported through a capability or error
 result and MUST NOT silently fall back to host headers or libraries.
 
+The native filesystem API MUST accept UTF-8 paths whose separators are `/`.
+Portable C+ source MUST NOT select Windows separators, drive spelling, or a
+host character encoding. The selected PAL adapter owns conversion to the
+target OS path representation and encoding API; Java/Kotlin compiler tooling
+may use native host paths internally, but serialized and logical path
+identities MUST remain slash-normalized.
+
 # 44. Conflict rules summary
 
 The following rules are normative.

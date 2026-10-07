@@ -3,14 +3,14 @@
 ## Dashboard
 
 ```text
-Overall: 145/145
+Overall: 146/146
 
 [DONE] [16/16] 1. Language front-end
 [DONE] [30/30] 2. Semantic model and modules
 [DONE] [20/20] 3. Compile-time and CPX system
 [DONE] [34/34] 4. Lowering and C backend
 [DONE] [14/14] 5. Tooling, integration and quality
-[DONE] [32/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
+[DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
 none — milestone 6 implementation plan is complete
@@ -2396,7 +2396,7 @@ all create correct bindings.
 
 ---
 
-# 6. [DONE] [32/32] C+ Standard Library, Runtime, SDK and Platform ABI
+# 6. [DONE] [33/33] C+ Standard Library, Runtime, SDK and Platform ABI
 
 **Purpose:** Make the C+ SDK self-hosting at the runtime/library level: source-delivered standard library and libc compatibility, explicit target/ABI metadata, platform abstraction layers, compiler/runtime intrinsics, target startup/link orchestration, and conformance tooling.
 
@@ -3064,7 +3064,7 @@ all create correct bindings.
 
 ---
 
-## 6.4 [DONE] [8/8] Platform adapters, link/toolchain integration and conformance
+## 6.4 [DONE] [9/9] Platform adapters, link/toolchain integration and conformance
 
 **SDK**
 - SDK §31–38
@@ -3072,7 +3072,7 @@ all create correct bindings.
 - SDK §82–89
 - SDK §95–97
 
-### 6.4.1 [DONE] [4/4] Platform ABI adapters
+### 6.4.1 [DONE] [5/5] Platform ABI adapters
 
 #### 6.4.1.1 [DONE] Implement Linux PAL and generated syscall catalogues
 
@@ -3158,6 +3158,35 @@ all create correct bindings.
 
 **Depends**
 - 6.4.1.1–6.4.1.3
+- 6.1.2.1
+
+---
+
+#### 6.4.1.5 [DONE] Implement concrete cross-platform file PAL services
+
+**SDK**
+- SDK §2.5 Platform Abstraction Layer
+- SDK §11 `std.io`
+- SDK §12 `std.fs`
+- SDK §32–36 Linux and Windows ABI profiles
+
+**Acceptance**
+- the uniform PAL ABI provides open, read, write, close, and rename with explicit-width handles and byte counts.
+- canonical UTF-8 `/` paths remain unchanged above the PAL boundary.
+- Linux x86_64 and AArch64 adapters use catalogue-backed `openat`, `read`, `write`, `close`, and `renameat` operations with normalized failures.
+- Windows adapters convert UTF-8 paths to native wide paths and use supported kernel32 APIs without UCRT/MSVCRT.
+- an executable self-hosted test proves write/read/rename behavior on Linux and Windows.
+
+**Implementation**
+- Added version-2 `cplus_platform.h` file mode, result, and explicit-width handle/size contracts.
+- Added target-independent `sdk/runtime/src/fs.c` forwarding entry points and included it in `RuntimeLinker` plans.
+- Implemented Linux syscall adapters and added `openat`/`renameat` to both architecture catalogues.
+- Implemented Windows UTF-8-to-UTF-16 path conversion, slash conversion, heap-owned temporary buffers, kernel32 file calls, and error normalization.
+- Added `RuntimeFilePalTest`, passing on the Linux host and the Windows VM.
+
+**Depends**
+- 6.4.1.1
+- 6.4.1.2
 - 6.1.2.1
 
 ---
