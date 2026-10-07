@@ -3,12 +3,12 @@
 ## Dashboard
 
 ```text
-Overall: 84/113
+Overall: 85/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [13/20] 3. Compile-time and CPX system
-[DOING] [28/34] 4. Lowering and C backend
+[DOING] [29/34] 4. Lowering and C backend
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
@@ -1264,9 +1264,9 @@ all create correct bindings.
 
 ---
 
-## 4.1 [TODO] [0/4] Compiler pass and rewrite framework
+## 4.1 [DOING] [1/4] Compiler pass and rewrite framework
 
-### 4.1.1 [TODO] Compiler context and pass API
+### 4.1.1 [DONE] Compiler context and pass API
 
 **Technical**
 - TS §31
@@ -1279,6 +1279,12 @@ all create correct bindings.
 
 **Depends**
 - 1–3 foundational models
+
+**Implementation**
+- `CompilerContext` is an instance-scoped shared service boundary and now carries target information explicitly.
+- Generic `CompilerPass<P>` and `PassResult<P>` contracts support front-end, semantic, and backend representations without global mutable state.
+- Pass results carry their transformed program and diagnostics explicitly, with a success predicate for pipeline control.
+- Tests verify context identity, target propagation, transformed-program identity, and diagnostic propagation.
 
 ### 4.1.2 [TODO] AST rewrite API
 

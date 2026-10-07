@@ -87,7 +87,8 @@ class CompilerContext(
     val semanticAnalyzer: SemanticAnalyzer = SemanticAnalyzer(),
     val cpxExpander: CpxExpander = CpxExpander(lexer),
     val cLowererFactory: (SemanticModel) -> CLowerer = ::CLowerer,
-    val cEmitter: CEmitter = CEmitter()
+    val cEmitter: CEmitter = CEmitter(),
+    val target: TargetInfo = TargetInfo()
 )
 
 internal data class FrontendCacheEntry(
