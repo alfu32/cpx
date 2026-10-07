@@ -11,14 +11,14 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    25/45 evidenced on Linux
+Roadmap leaf tasks:    25/49 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R1.4 — implement explicit source-type imports and visibility
+Current task:          R1.4.1 — catalogue module-owned source types and exports
 Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 8/11 primitive, ABI, type-import, and user-alias conformance open
+R1 [DOING] 8/15 primitive, ABI, type-import, and user-alias conformance open
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
@@ -27,7 +27,7 @@ R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       25/45 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       25/49 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,8 +35,8 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R1.4 — implement kind-aware selective imports for source types and enforce
-   module visibility boundaries.
+1. R1.4.1–R1.4.5 — implement and verify module-owned source types, explicit
+   type imports, aliases, visibility boundaries, and qualified module access.
 2. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
    and `u8`…`u64`, then define capability-gated `i128`/`u128` support.
 3. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
@@ -3484,18 +3484,23 @@ of R1–R8 or deliberately recorded as a post-release extension.
     initializer/lvalue rules across parser, semantic analysis, and lowering.
   - R1.3.3 [DONE] — add stable unsupported-declarator diagnostics and recovery
     fixtures so parser acceptance cannot outrun backend support.
-- R1.4 [TODO] — implement kind-aware imports and module-scoped visibility for
-  public source declarations. Resolve aliases, structs, unions, and enums from
-  a target module's export catalogue; bind imported types (including `as`
-  aliases) into the importing module's type-name environment and support them
-  in all valid type positions. Preserve selective function/value imports and
-  qualified lookup through module aliases, while ensuring that compilation
-  graph membership alone does not expose declarations across modules. Reject
-  private/missing exports and conflicting bindings with stable diagnostics.
-  Test path and package imports, type-only and mixed-export modules, selective
-  and module aliases, aggregate fields, pointers, signatures, casts, omitted-
-  import/private-export failures, function/value import regressions, CLI/LSP
-  resolution, and generated C. This is a prerequisite for R1.2.4.
+- R1.4 [DOING] [0/5] — implement kind-aware source type imports and
+  module-scoped visibility. This is a prerequisite for R1.2.4.
+  - R1.4.1 [TODO] — catalogue module-owned source type declarations and their
+    public/private export status, including aliases, structs, unions, and
+    enums, without exposing declarations merely because they share a build.
+  - R1.4.2 [TODO] — resolve locally declared types in their owning module and
+    reject unimported cross-module references while preserving forward type
+    references and existing C-header imports.
+  - R1.4.3 [TODO] — bind selective type imports and `as` renames into the
+    importing module; validate missing/private exports, mixed symbol kinds,
+    and collisions with stable diagnostics.
+  - R1.4.4 [TODO] — resolve exported types through module aliases and support
+    qualified and selectively imported types in fields, pointers, signatures,
+    casts, aliases, and generated C declarations.
+  - R1.4.5 [TODO] — verify path/package imports, type-only and mixed exports,
+    function/value import regressions, private/omitted-import failures, CLI/LSP
+    parity, and compiled generated-C behavior on Linux.
 
 **Deliverables**
 
