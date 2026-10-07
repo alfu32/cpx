@@ -3239,6 +3239,7 @@ all create correct bindings.
 - Added CLI `audit` output for observed, allowed, unexpected, and unresolved compiler-runtime dependencies.
 - Extended auditing to ELF, PE/COFF, and Mach-O; self-hosted ELF rejects dynamic interpreters and self-hosted PE rejects undeclared or C-runtime DLL imports.
 - Normalized generated CPX source paths to Windows-safe filenames and slash-separated identity strings so expansion caching and diagnostics do not depend on host path syntax.
+- Normalized source line endings at the shared source/LSP boundary so source-map offsets and golden artifacts remain stable when Windows stores files as CRLF.
 
 **Depends**
 - 6.4.2.1

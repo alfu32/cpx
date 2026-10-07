@@ -13,6 +13,9 @@ data class SourceFile(
     val version: Long
 )
 
+fun normalizeSourceText(text: String): String =
+    text.replace("\r\n", "\n").replace('\r', '\n')
+
 data class SourcePosition(
     val line: Int,
     val column: Int
@@ -75,7 +78,7 @@ class SourceRepository {
         val normalized = path.toAbsolutePath().normalize()
         val id = idsByPath.getOrPut(normalized) { SourceFileId(nextId.getAndIncrement()) }
         val previous = filesById[id]
-        val file = SourceFile(id, normalized, text, (previous?.version ?: 0L) + 1L)
+        val file = SourceFile(id, normalized, normalizeSourceText(text), (previous?.version ?: 0L) + 1L)
         filesById[id] = file
         return file
     }

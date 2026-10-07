@@ -1,6 +1,7 @@
 package cplus.cli
 
 import cplus.core.LineIndex
+import cplus.core.normalizeSourceText
 import cplus.core.SourcePosition
 import java.nio.file.Path
 
@@ -39,7 +40,7 @@ internal class LspWorkspace {
     private val documents = linkedMapOf<String, WorkspaceDocument>()
 
     fun open(uri: String, path: Path, version: Int, text: String): WorkspaceDocument {
-        val document = WorkspaceDocument(uri, path, version, text)
+        val document = WorkspaceDocument(uri, path, version, normalizeSourceText(text))
         documents[uri] = document
         return document
     }

@@ -20,6 +20,13 @@ class SourceAndLexerTest {
     }
 
     @Test
+    fun sourceTextUsesPortableLineEndings() {
+        val source = SourceRepository().put(Path.of("line-endings.cp"), "first\r\nsecond\rthird")
+
+        assertEquals("first\nsecond\nthird", source.text)
+    }
+
+    @Test
     fun lexerRecognizesCPlusTokensAndSkipsComments() {
         val source = SourceFile(SourceFileId(1), Path.of("fixture.cp"), "// comment\ncomptime int value = 42;", 1)
         val result = Lexer().lex(source)

@@ -582,7 +582,7 @@ internal class Cli {
 
     private fun printDiagnostics(diagnostics: List<Diagnostic>, source: Path) {
         if (diagnostics.isEmpty()) return
-        val text = if (Files.exists(source)) source.readText() else ""
+        val text = if (Files.exists(source)) normalizeSourceText(source.readText()) else ""
         val lineIndex = LineIndex.from(text)
         diagnostics.forEach { diagnostic ->
             val position = diagnostic.range?.let { lineIndex.positionAt(it.startOffset) }
