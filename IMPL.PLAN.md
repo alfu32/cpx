@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 83/113
+Overall: 84/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
-[DOING] [12/20] 3. Compile-time and CPX system
+[DOING] [13/20] 3. Compile-time and CPX system
 [DOING] [28/34] 4. Lowering and C backend
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-3.5.1 — structural fixed-point engine
+4.1.1 — compiler context and pass API
 
 Current milestone:
 M4 — Full compile-time model
@@ -1150,9 +1150,9 @@ all create correct bindings.
 
 ---
 
-## 3.5 [DOING] [3/4] Structural stabilization and reflection
+## 3.5 [DONE] [4/4] Structural stabilization and reflection
 
-### 3.5.1 [DOING] Structural fixed-point engine
+### 3.5.1 [DONE] Structural fixed-point engine
 
 **Language**
 - LS §17 Structural Compile-time Phase
@@ -1169,11 +1169,12 @@ all create correct bindings.
 - 3.4.4
 - 2.1.3
 
-**Implementation in progress**
+**Implementation**
 - Generated CPX declarations are catalogued during expansion and can resolve later queued invocations.
 - Unresolved CPX invocations are deferred while structural waves run, then diagnosed only after no later structural declaration can satisfy them.
 - Structural output exposes a declaration fingerprint based on semantic shape rather than source text, ranges, or origins.
-- Explicit structural-wave accounting and resolver integration beyond CPX-generated invocations remain to be completed.
+- The scheduler closes the structural phase only after all currently eligible structural tasks have been processed, then freezes the type universe before reflective work begins.
+- Tests cover generated declarations, deferred resolution, semantic fingerprints, nested ancestry, and structural/reflective phase ordering.
 
 ### 3.5.2 [DONE] Type-universe stabilization barrier
 
