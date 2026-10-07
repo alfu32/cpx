@@ -3,12 +3,12 @@
 ## Dashboard
 
 ```text
-Overall: 85/113
+Overall: 86/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [13/20] 3. Compile-time and CPX system
-[DOING] [29/34] 4. Lowering and C backend
+[DOING] [30/34] 4. Lowering and C backend
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
@@ -1264,7 +1264,7 @@ all create correct bindings.
 
 ---
 
-## 4.1 [DOING] [1/4] Compiler pass and rewrite framework
+## 4.1 [DOING] [2/4] Compiler pass and rewrite framework
 
 ### 4.1.1 [DONE] Compiler context and pass API
 
@@ -1286,7 +1286,7 @@ all create correct bindings.
 - Pass results carry their transformed program and diagnostics explicitly, with a success predicate for pipeline control.
 - Tests verify context identity, target propagation, transformed-program identity, and diagnostic propagation.
 
-### 4.1.2 [TODO] AST rewrite API
+### 4.1.2 [DONE] AST rewrite API
 
 **Technical**
 - TS §32
@@ -1299,6 +1299,13 @@ all create correct bindings.
 **Depends**
 - 4.1.1
 - 1.4.2
+
+**Implementation**
+- `AstRewriter` exposes replace, insert-before, insert-after, and scoped hoist operations over stable `NodeId` values.
+- `ArenaAstRewriter` preserves ordered roots while using `AstArena` for identity-stable replacement.
+- `addGenerated` requires an explicit origin that exactly matches the generated node's embedded provenance.
+- `SemanticIndexInvalidator` receives the changed node set after each controlled rewrite mutation.
+- Tests cover all rewrite operations, stable IDs, origin enforcement, scoped hoisting, and invalidation notifications.
 
 ### 4.1.3 [TODO] Pass precondition/postcondition invariant framework
 
