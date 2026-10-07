@@ -493,6 +493,23 @@ free
 aligned allocation
 ```
 
+The page allocator SHALL receive an explicit unsigned page count and return a
+page-aligned region or null on failure. The PAL SHALL normalize operating
+system allocation failures to the C+ allocation failure contract and SHALL not
+expose host `errno` or OS error numbers through the native API.
+
+An allocation request of zero bytes MAY produce a unique minimum allocation,
+but it SHALL remain safe to pass to `free`. Alignment requests SHALL be powers
+of two and at least pointer alignment; invalid alignment and arithmetic
+overflow SHALL fail without allocating. `resize` SHALL preserve the prefix of
+the old allocation up to the smaller old/new size and SHALL release the old
+region only after a replacement region has been obtained. `free(null)` SHALL
+be a no-op, and a successful release SHALL return the pages to the PAL.
+
+The initial SDK runtime implements these operations in `allocator.c` over the
+uniform PAL page ABI. The native C+ façade delegates to those runtime symbols;
+it SHALL NOT use a fixed-size bootstrap arena in a claimed production profile.
+
 The libc façade SHALL provide:
 
 ```text

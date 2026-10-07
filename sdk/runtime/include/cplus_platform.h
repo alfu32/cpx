@@ -24,6 +24,11 @@ typedef long long cplus_file_result_t;
 typedef unsigned long long cplus_file_size_t;
 typedef unsigned long long cplus_file_mode_t;
 
+#define CPLUS_PAL_PAGE_SIZE 4096ULL
+
+void* platform_page_allocate(unsigned long long page_count);
+int platform_page_release(void* address, unsigned long long page_count);
+
 cplus_file_result_t platform_file_open(const char* path, cplus_file_mode_t mode);
 cplus_file_result_t platform_file_read(cplus_file_handle_t handle, void* buffer, cplus_file_size_t length);
 cplus_file_result_t platform_file_write(cplus_file_handle_t handle, const void* buffer, cplus_file_size_t length);

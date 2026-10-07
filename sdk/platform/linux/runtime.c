@@ -18,6 +18,12 @@ static long cplus_linux_syscall1(long number, long first) {
     return result;
 }
 
+static long cplus_linux_syscall2(long number, long first, long second) {
+    register long result __asm__("rax") = number;
+    __asm__ volatile("syscall" : "+a"(result) : "D"(first), "S"(second) : "rcx", "r11", "memory");
+    return result;
+}
+
 static long cplus_linux_syscall3(long number, long first, long second, long third) {
     register long result __asm__("rax") = number;
     __asm__ volatile("syscall" : "+a"(result) : "D"(first), "S"(second), "d"(third) : "rcx", "r11", "memory");
@@ -30,11 +36,28 @@ static long cplus_linux_syscall4(long number, long first, long second, long thir
     __asm__ volatile("syscall" : "+a"(result) : "D"(first), "S"(second), "d"(third), "r"(fourth_register) : "rcx", "r11", "memory");
     return result;
 }
+
+static long cplus_linux_syscall6(long number, long first, long second, long third, long fourth, long fifth, long sixth) {
+    register long result __asm__("rax") = number;
+    register long fourth_register __asm__("r10") = fourth;
+    register long fifth_register __asm__("r8") = fifth;
+    register long sixth_register __asm__("r9") = sixth;
+    __asm__ volatile("syscall" : "+a"(result) : "D"(first), "S"(second), "d"(third), "r"(fourth_register), "r"(fifth_register), "r"(sixth_register) : "rcx", "r11", "memory");
+    return result;
+}
 #elif defined(__aarch64__)
 static long cplus_linux_syscall1(long number, long first) {
     register long result __asm__("x0") = first;
     register long syscall_number __asm__("x8") = number;
     __asm__ volatile("svc 0" : "+r"(result) : "r"(syscall_number) : "memory");
+    return result;
+}
+
+static long cplus_linux_syscall2(long number, long first, long second) {
+    register long result __asm__("x0") = first;
+    register long second_register __asm__("x1") = second;
+    register long syscall_number __asm__("x8") = number;
+    __asm__ volatile("svc 0" : "+r"(result) : "r"(second_register), "r"(syscall_number) : "memory");
     return result;
 }
 
@@ -56,7 +79,53 @@ static long cplus_linux_syscall4(long number, long first, long second, long thir
     __asm__ volatile("svc 0" : "+r"(result) : "r"(second_register), "r"(third_register), "r"(fourth_register), "r"(syscall_number) : "memory");
     return result;
 }
+
+static long cplus_linux_syscall6(long number, long first, long second, long third, long fourth, long fifth, long sixth) {
+    register long result __asm__("x0") = first;
+    register long second_register __asm__("x1") = second;
+    register long third_register __asm__("x2") = third;
+    register long fourth_register __asm__("x3") = fourth;
+    register long fifth_register __asm__("x4") = fifth;
+    register long sixth_register __asm__("x5") = sixth;
+    register long syscall_number __asm__("x8") = number;
+    __asm__ volatile("svc 0" : "+r"(result) : "r"(second_register), "r"(third_register), "r"(fourth_register), "r"(fifth_register), "r"(sixth_register), "r"(syscall_number) : "memory");
+    return result;
+}
 #endif
+
+void* platform_page_allocate(unsigned long long page_count) {
+    unsigned long long bytes;
+    if (page_count == 0 || page_count > 0x7fffffffffffffffULL / CPLUS_PAL_PAGE_SIZE) return (void*)0;
+    bytes = page_count * CPLUS_PAL_PAGE_SIZE;
+#if defined(__x86_64__)
+    {
+        long result = cplus_linux_syscall6(9, 0, (long)bytes, 3, 0x22, -1, 0);
+        return result < 0 ? (void*)0 : (void*)result;
+    }
+#elif defined(__aarch64__)
+    {
+        long result = cplus_linux_syscall6(222, 0, (long)bytes, 3, 0x22, -1, 0);
+        return result < 0 ? (void*)0 : (void*)result;
+    }
+#else
+    (void)bytes;
+    return (void*)0;
+#endif
+}
+
+int platform_page_release(void* address, unsigned long long page_count) {
+    unsigned long long bytes;
+    if (!address || page_count == 0 || page_count > 0x7fffffffffffffffULL / CPLUS_PAL_PAGE_SIZE) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    bytes = page_count * CPLUS_PAL_PAGE_SIZE;
+#if defined(__x86_64__)
+    return (int)cplus_normalize_linux_result(cplus_linux_syscall2(11, (long)address, (long)bytes));
+#elif defined(__aarch64__)
+    return (int)cplus_normalize_linux_result(cplus_linux_syscall2(215, (long)address, (long)bytes));
+#else
+    (void)bytes;
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+}
 
 long platform_write_stdout(const char* buffer, unsigned long length) {
 #if defined(__x86_64__)

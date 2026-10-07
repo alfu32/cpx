@@ -1,26 +1,14 @@
-import { std_mem_set } from ./mem.cp;
+/// Native allocation delegates to the compiler/runtime allocator. The C+
+/// surface remains independent of host malloc and obtains its pages through
+/// the selected PAL.
+extern void* __cplus_alloc(long long size);
+extern void* __cplus_calloc(long long count, long long size);
+extern void* __cplus_realloc(void* value, long long size);
+extern void* __cplus_alloc_aligned(long long alignment, long long size);
+extern void __cplus_free(void* value);
 
-/// Bootstrap allocator for profiles that provide a page allocator later.
-/// The fixed arena is deliberately deterministic and is replaced by the PAL
-/// implementation in hosted/production SDK packages.
-static char std_bootstrap_heap[65536];
-static long std_bootstrap_offset;
-
-pub void* std_alloc(long size) {
-    long start = std_bootstrap_offset;
-    if (size == 0) size = 1;
-    if (start + size > 65536) return (void*) 0;
-    std_bootstrap_offset = start + size;
-    return (void*) &std_bootstrap_heap[start];
-}
-
-pub void* std_calloc(long count, long size) {
-    void* result = std_alloc(count * size);
-    if (result != (void*) 0) std_mem_set(result, 0, count * size);
-    return result;
-}
-
-pub void std_free(void* value) {
-    /* The bootstrap arena is reclaimed with the process. */
-    return;
-}
+pub void* std_alloc(long long size) { return __cplus_alloc(size); }
+pub void* std_calloc(long long count, long long size) { return __cplus_calloc(count, size); }
+pub void* std_realloc(void* value, long long size) { return __cplus_realloc(value, size); }
+pub void* std_aligned_alloc(long long alignment, long long size) { return __cplus_alloc_aligned(alignment, size); }
+pub void std_free(void* value) { __cplus_free(value); }

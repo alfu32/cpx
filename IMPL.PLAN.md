@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R4.1 — runtime contract inventory and page-backed allocator
+R4.3 — native memory/string/conversion behavior and errno boundary
 
 Current milestone:
 R4 — runtime, allocator and libc behavior
@@ -3316,13 +3316,13 @@ specifications.
 
 ```text
 Foundation tasks: 146/146
-Completion phases: [DOING] [3/9]
+Completion phases: [DOING] [4/9]
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance
 [DONE]  R2 — CPX, generics and reflection conformance
 [DOING] R3 — C backend and ABI interoperability conformance
-[TODO]  R4 — runtime, allocator and libc behavior
+[DOING] R4 — runtime, allocator and libc behavior
 [TODO]  R5 — complete native std and platform services
 [TODO]  R6 — CLI transcoder and build-product completion
 [TODO]  R7 — LSP and VS Code product completion
@@ -3343,8 +3343,8 @@ lowering, source maps, LSP primitives, self-hosted Linux/Windows startup,
 stdout/exit, and the basic PAL file open/read/write/close/rename path. The
 following are explicitly not yet complete despite existing contracts:
 
-- `std.alloc` still uses a fixed bootstrap arena rather than a complete
-  page-backed allocator with resize, free, and aligned allocation.
+- `std.alloc` now uses the page-backed allocator; errno, native string/
+  conversion behavior, and the broader C17 compatibility families remain open.
 - `std.io`, process, time, thread, synchronization, networking, and math
   sources are primarily declarations or façade contracts.
 - libc headers are delivered, but broad C17 behavioral and independent-C ABI
@@ -3697,10 +3697,10 @@ layout, source-map, and dependency audits.
 
 **Dependency-ordered work queue**
 
-- R4.1 [DOING] — inventory runtime symbols, define target-neutral runtime
+- R4.1 [DONE] — inventory runtime symbols, define target-neutral runtime
   result/errno rules, and replace the fixed bootstrap arena with a page-backed
   allocator contract;
-- R4.2 [TODO] — implement allocate, allocate-zeroed, resize, free, and aligned
+- R4.2 [DONE] — implement allocate, allocate-zeroed, resize, free, and aligned
   operations with overflow, double-free, and invalid-range diagnostics;
 - R4.3 [TODO] — implement the C+ memory/string/conversion core and thread-local
   errno boundary without importing host libc behavior into native APIs;
@@ -3709,6 +3709,26 @@ layout, source-map, and dependency audits.
   setjmp/longjmp;
 - R4.5 [TODO] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and update the machine-checked conformance report.
+
+### R4.1/R4.2 completion record
+
+Implemented and executed on Linux:
+
+- the PAL now exposes explicit-width page allocation and release operations;
+- Linux x86_64 and AArch64 syscall paths are catalogued in the platform
+  adapter, while Windows has the corresponding VirtualAlloc/VirtualFree ABI
+  implementation ready for final validation;
+- the runtime allocator obtains whole pages, stores allocation metadata outside
+  the user span, validates overflow and alignment requests, and releases the
+  original page range on free;
+- allocate, allocate-zeroed, resize, free, and aligned allocation are exposed
+  through the runtime header and the native `std.alloc` façade;
+- a Linux C fixture executes alignment, zeroing, data-preserving resize, and
+  release behavior.
+
+R4.3 is the next active stage: native memory/string/conversion behavior and the
+thread-local errno boundary. Windows execution remains deferred by project
+policy.
 
 **Deliverables**
 

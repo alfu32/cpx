@@ -8,6 +8,8 @@ __declspec(dllimport) __cplus_handle __stdcall GetStdHandle(__cplus_dword kind);
 __declspec(dllimport) __cplus_handle __stdcall GetProcessHeap(void);
 __declspec(dllimport) void* __stdcall HeapAlloc(__cplus_handle heap, __cplus_dword flags, unsigned long long bytes);
 __declspec(dllimport) __cplus_bool __stdcall HeapFree(__cplus_handle heap, __cplus_dword flags, void* memory);
+__declspec(dllimport) void* __stdcall VirtualAlloc(void* address, unsigned long long size, __cplus_dword allocation_type, __cplus_dword protection);
+__declspec(dllimport) __cplus_bool __stdcall VirtualFree(void* address, unsigned long long size, __cplus_dword free_type);
 __declspec(dllimport) int __stdcall MultiByteToWideChar(
     __cplus_dword code_page,
     __cplus_dword flags,
@@ -59,6 +61,10 @@ __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(__cplus_dw
 #define __CPLUS_TRUNCATE_EXISTING 5UL
 #define __CPLUS_FILE_ATTRIBUTE_NORMAL 0x80UL
 #define __CPLUS_MOVEFILE_REPLACE_EXISTING 1UL
+#define __CPLUS_MEM_COMMIT 0x1000UL
+#define __CPLUS_MEM_RESERVE 0x2000UL
+#define __CPLUS_MEM_RELEASE 0x8000UL
+#define __CPLUS_PAGE_READWRITE 4UL
 #define __CPLUS_INVALID_HANDLE ((void*)(-1))
 
 static long cplus_normalize_windows_error(void) {
@@ -95,6 +101,19 @@ static unsigned short* cplus_windows_path(const char* path) {
 
 static void cplus_windows_free_path(unsigned short* path) {
     if (path) HeapFree(GetProcessHeap(), 0, path);
+}
+
+void* platform_page_allocate(unsigned long long page_count) {
+    unsigned long long bytes;
+    if (page_count == 0 || page_count > 0xffffffffffffffffULL / CPLUS_PAL_PAGE_SIZE) return (void*)0;
+    bytes = page_count * CPLUS_PAL_PAGE_SIZE;
+    return VirtualAlloc((void*)0, bytes, __CPLUS_MEM_COMMIT | __CPLUS_MEM_RESERVE, __CPLUS_PAGE_READWRITE);
+}
+
+int platform_page_release(void* address, unsigned long long page_count) {
+    (void)page_count;
+    if (!address) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    return VirtualFree(address, 0, __CPLUS_MEM_RELEASE) ? 0 : (int)cplus_normalize_windows_error();
 }
 
 long platform_write_stdout(const char* buffer, unsigned long length) {

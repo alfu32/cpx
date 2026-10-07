@@ -40,13 +40,16 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
   aggregate, callback, variadic, export/link-name, aggregate-return, and
   public TLS declarations through the generated header;
 - Linux and Windows self-hosted stdout/process exit;
+- Linux page-backed runtime allocation, zeroing, alignment, resize, and release
+  through the uniform PAL page ABI;
 - Linux and Windows basic PAL file open/read/write/close/rename with canonical
   UTF-8 slash paths, including the `std_fs_*` forwarding façade.
 
 ### Contracted but incomplete
 
-- `std.alloc` is a fixed bootstrap arena, not the complete page-backed
-  allocator required by the standard-library specification;
+- `std.alloc` now delegates to the page-backed runtime allocator; allocator
+  behavior is executable-tested on Linux and Windows execution remains in the
+  final cross-platform pass;
 - `std.io`, process, time, thread, synchronization, networking, and math
   sources are primarily API contracts or declarations;
 - C17 headers are delivered, but broad behavioral libc and independent-C ABI

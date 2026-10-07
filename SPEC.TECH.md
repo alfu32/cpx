@@ -2753,6 +2753,14 @@ MSVC-style drivers; users do not choose a host libc profile.
 forbidden host libc, undeclared OS imports, dynamic interpreters, and
 unresolved compiler-runtime dependencies.
 
+Runtime memory is layered as `std.alloc` → compiler-owned allocator →
+`platform_page_allocate/release`. The allocator is page-backed and exposes
+explicit-width size/alignment operations; its implementation MUST remain free
+of host `malloc`, `free`, and libc error-number assumptions. The selected
+runtime link plan MUST include the allocator source and exactly one target PAL
+implementation, and Linux page allocation MUST use the target syscall ABI
+rather than a host libc wrapper.
+
 When the CLI does not receive `--target`, it derives the host target triple
 from the host OS and architecture. An explicit target remains authoritative and
 is required for cross-compilation; host inference SHALL never select a libc
