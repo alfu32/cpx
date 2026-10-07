@@ -46,6 +46,8 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
   thread-local-`errno` conversion without host allocation symbols;
 - Linux self-hosted formatted stdio/varargs, clock/time, math, ctype, locale,
   and basic signal behavior through the SDK runtime;
+- Linux x86_64 atomics, UTF-8/wide conversion, wide classification, and
+  setjmp/longjmp context switching;
 - Linux and Windows basic PAL file open/read/write/close/rename with canonical
   UTF-8 slash paths, including the `std_fs_*` forwarding façade.
 
@@ -54,9 +56,9 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 - `std.alloc` now delegates to the page-backed runtime allocator; allocator
   behavior is executable-tested on Linux and Windows execution remains in the
   final cross-platform pass;
-- libc stdio, time, math, locale, Unicode, signal, atomics, TLS, and
-  setjmp/longjmp families remain staged work beyond the executable core; the
-  first five have basic Linux coverage but are not yet the complete C17 profile.
+- broad C17 conformance, target-specific context adapters, and final Windows
+  execution remain incomplete even though the named Linux families have
+  executable coverage.
 - `std.io`, process, time, thread, synchronization, networking, and math
   sources are primarily API contracts or declarations;
 - C17 headers are delivered, but broad behavioral libc and independent-C ABI

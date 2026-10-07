@@ -2,23 +2,49 @@
 
 ## Dashboard
 
+The historical foundation counter and the release-roadmap counter measure
+different things. The first records the original 146 planning items; the
+second is the authoritative queue for completing the working CLI transcoder,
+runtime, SDK, LSP, and release products.
+
+### Release roadmap dashboard
+
 ```text
-Overall: 146/146
+Historical foundation: 146/146 (complete; retained for traceability)
+Roadmap leaf work:     28/45 evidenced on Linux
+Phase gates:           3/9 complete; 2 active; 4 queued
+Current task:          R4.5 — independent C17 conformance and runtime audit
+Current milestone:     R4 — runtime, allocator and libc behavior
+Windows execution:     deferred until the final validation pass by request
 
-[DONE] [16/16] 1. Language front-end
-[DONE] [30/30] 2. Semantic model and modules
-[DONE] [20/20] 3. Compile-time and CPX system
-[DONE] [34/34] 4. Lowering and C backend
-[DONE] [14/14] 5. Tooling, integration and quality
-[DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
-
-Current task:
-R4.4.2 — atomics, TLS details, Unicode, and setjmp/longjmp capability gate
-
-Current milestone:
-R4 — runtime, allocator and libc behavior
+R0 [DONE]  1/1  implementation inventory and scope freeze
+R1 [DONE]  8/8  language and front-end conformance
+R2 [DONE]  9/9  CPX, generics and reflection conformance
+R3 [DOING] 6/6  C backend and ABI evidence on Linux; Windows gate pending
+R4 [DOING] 4/5  runtime, allocator and libc; R4.5 audit pending
+R5 [TODO]  0/5  native standard library and platform services
+R6 [TODO]  0/4  CLI transcoder and build-product completion
+R7 [TODO]  0/3  LSP and VS Code product completion
+R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 ```
 
+The detailed, authoritative R0–R8 work queue is in the
+[completion roadmap](#completion-roadmap--post-foundation-implementation)
+below. Its current execution sequence is:
+
+1. R4.5 — aggregate independent C17 fixtures, audit runtime symbols, and
+   replace optimistic conformance statuses with evidence.
+2. R5.1–R5.4 — complete native std and the remaining Linux PAL services.
+3. R6–R8 — finish CLI/product, LSP/extension, SDK packaging, then perform the
+   deferred Windows validation and patch pass.
+
+Latest completed implementation commits:
+
+- `8d71ad3` — independent C caller ABI round trips;
+- `5b105ca` — ABI products, diagnostics, and runtime-helper audit;
+- `f95f788` — page-backed PAL allocator;
+- `68e077f` — self-hosted memory/string/conversion core;
+- `f8be29e` — self-hosted stdio/time/basic C17 families.
 All tasks initially have status `TODO`.
 
 `completed/total` counts terminal tasks in the complete subtree.
@@ -3316,7 +3342,7 @@ specifications.
 
 ```text
 Foundation tasks: 146/146
-Completion phases: [DOING] [4/9]
+Completion phases: [DOING] [3/9 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance
@@ -3704,7 +3730,7 @@ layout, source-map, and dependency audits.
   operations with overflow, double-free, and invalid-range diagnostics;
 - R4.3 [DONE] — implement the C+ memory/string/conversion core and thread-local
   errno boundary without importing host libc behavior into native APIs;
-- R4.4 [DOING] — implement the claimed C17 compatibility families in dependency
+- R4.4 [DONE] — implement the claimed Linux C17 compatibility families in dependency
   order: stdio/varargs, time/math/locale, Unicode, signal, atomics, TLS, and
   setjmp/longjmp;
 - R4.5 [TODO] — execute independent C17 conformance fixtures, audit compiler
@@ -3758,8 +3784,27 @@ Implemented and executed on Linux:
 - `sqrt`, `fabs`, character classification/case conversion, the C locale, and
   basic signal registration/raise behavior have executable Linux coverage.
 
-R4.4 remains open for Unicode/wide-character semantics, atomics and detailed
-TLS behavior, and a target-specific decision for `setjmp`/`longjmp`.
+R4.4 is complete for the claimed Linux x86_64 profile. AArch64 and Windows
+`setjmp`/`longjmp` assembly, plus final cross-platform execution, remain
+explicitly outside this Linux-only stage.
+
+### R4.4.2 completion record
+
+Implemented and executed on Linux x86_64:
+
+- the SDK supplies C11 atomic types and operations through compiler-owned
+  atomic intrinsics, including initialization, load/store, exchange, fetch,
+  fences, flags, and compare-exchange;
+- UTF-8 to wide-character and wide-character to UTF-8 conversion, wide
+  length/comparison, and basic wide classification are executable;
+- `setjmp`/`longjmp` uses a real x86_64 Linux assembly context layout and
+  preserves callee-saved registers, stack, return address, and zero-to-one
+  long-jump return normalization;
+- TLS is used for `errno` and public C+ TLS globals, with unsupported
+  target-specific context facilities left as capability-gated work.
+
+R4.5 is now active for independent C17 fixture aggregation, symbol/runtime
+dependency audits, and explicit unsupported-feature diagnostics.
 
 **Deliverables**
 

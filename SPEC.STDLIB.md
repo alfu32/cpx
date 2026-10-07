@@ -554,6 +554,13 @@ registration. Stream operations that require filesystem-backed `FILE` state
 remain layered on the native filesystem/stream stage and SHALL report an
 explicit capability failure until that stage is selected.
 
+The claimed Linux C17 profile also supplies UTF-8/wide conversion and
+comparison, basic wide classification, compiler-intrinsic atomic operations,
+thread-local `errno`, and an x86_64 context-switch implementation for
+`setjmp`/`longjmp`. Targets without a corresponding context-switch adapter
+SHALL report the facility as unavailable rather than link an unresolved
+declaration.
+
 ---
 
 # 11. `std.io`

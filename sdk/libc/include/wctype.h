@@ -2,4 +2,5 @@
 #define CPLUS_SDK_WCTYPE_H
 int iswalpha(long value);
 int iswdigit(long value);
+int iswspace(long value);
 #endif

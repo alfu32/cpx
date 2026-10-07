@@ -75,9 +75,12 @@ object RuntimeLinker {
                 val ctype = resolution.layout.runtimeSource.resolve("ctype.c")
                 val locale = resolution.layout.runtimeSource.resolve("locale.c")
                 val signal = resolution.layout.runtimeSource.resolve("signal.c")
+                val wide = resolution.layout.runtimeSource.resolve("wide.c")
+                val wctype = resolution.layout.runtimeSource.resolve("wctype.c")
                 val filesystem = resolution.layout.runtimeSource.resolve("fs.c")
                 val platformRuntime = resolution.layout.platformSource.resolve("runtime.c")
-                val missing = listOf(startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, filesystem, platformRuntime).filterNot(Files::isRegularFile)
+                val setjmp = if (descriptor.os == "linux" && descriptor.architecture == "x86_64") listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S")) else emptyList()
+                val missing = (listOf(startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, platformRuntime) + setjmp).filterNot(Files::isRegularFile)
                 if (missing.isNotEmpty()) {
                     RuntimeLinkPlanResult(
                         null,
@@ -95,7 +98,7 @@ object RuntimeLinker {
                         RuntimeLinkPlan(
                             target.buildProfile.runtime,
                             listOf(startup),
-                            listOf(runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, filesystem, platformRuntime),
+                            listOf(runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, platformRuntime) + setjmp,
                             buildList {
                                 addAll(
                                     listOf(
