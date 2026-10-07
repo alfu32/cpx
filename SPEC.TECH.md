@@ -1993,6 +1993,20 @@ state hooks, dispatches either supported application `main` form, and runs
 normal termination handlers. `runtime=system` deliberately leaves startup and
 default-library selection to the downstream toolchain.
 
+Termination is represented as separate runtime operations: normal termination
+drains the normal handler stack, quick termination drains only the quick stack,
+immediate termination skips cleanup, and abort produces the platform abort
+status. Stream flushing is attached by the libc/stdio layer rather than being
+silently performed by the startup adapter.
+
+`TargetRegistry` loads the target ABI descriptor selected by the SDK layout.
+The descriptor is data containing target triple, OS, architecture, vendor,
+ABI, object format, endianness, widths, integer model, alignment, symbol and
+TLS rules, linker/startup identity, system libraries, features, intrinsics,
+and supported ABI classes. `ComptimeTargetInfo` exposes these values through
+structured capability predicates; compiler logic does not duplicate target
+facts in platform-specific branches.
+
 ---
 
 # 59. Pipeline orchestration
@@ -2639,7 +2653,50 @@ C import awareness
 
 ---
 
-# 78. Core architectural invariant
+# 78. SDK, ABI, runtime and platform architecture
+
+The SDK is a source-first target package. Its manifest, target descriptors,
+intrinsic catalogue, C+ sources, C compatibility headers, runtime sources,
+startup adapters, and platform contracts are resolved as one immutable build
+input. Metadata caches accelerate lookup but remain reproducible projections of
+the source tree and are invalidated by source, manifest, target, or schema
+identity changes.
+
+`TargetRegistry` is the sole target-fact boundary. A descriptor supplies the
+triple, OS, architecture, vendor, ABI, object format, endianness, pointer and
+word widths, integer model, alignment, symbol/TLS rules, linker/startup entry,
+system libraries, features, intrinsic availability, and supported ABI classes.
+`ComptimeTargetInfo` and the ABI layout engine consume this data; portable SDK
+source does not duplicate target facts in preprocessor branches.
+
+ABI declarations carry semantic identity independently of their spelling. The
+compiler model stores ABI kind, source/linker name, export/library metadata,
+weak/no-return/storage attributes, and rejects combinations unsupported by the
+selected target. Layout queries are preserved through syntax, semantic
+validation, C AST, dependency collection, and emission. `offsetof` therefore
+adds `<stddef.h>` structurally rather than relying on textual include rules.
+
+The runtime link plan is explicit. Self-hosted profiles select target startup,
+runtime initialization, compiler support helpers, and the platform termination
+primitive with `-nostdlib`, `-nodefaultlibs`, and `-nostartfiles` as required;
+the system profile delegates startup/default libraries to the downstream C
+compiler. `LinkDriver` consumes this plan, while `RuntimeDependencyAuditor`
+checks produced binaries for forbidden host libc and unresolved compiler-runtime
+dependencies.
+
+The intrinsic catalogue is data-driven and target-checked. Syscall, atomic,
+varargs, context, and other compiler-owned operations are not ordinary library
+functions: availability, arity, feature requirements, and lowering identity
+are verified before emission. Platform adapters expose narrow memory, file,
+process, time, thread, and synchronization services; Linux uses architecture
+catalogued syscalls, Windows uses declared DLL imports, and Darwin uses the
+supported System/libSystem userspace ABI.
+
+The CLI exposes these boundaries through `sdk doctor|verify|package`,
+`target list|show`, `abi verify`, `runtime inspect`, `libc test`, and `audit`.
+All package indexes and generated metadata are deterministic and versioned.
+
+# 79. Core architectural invariant
 
 The central invariant of the implementation is:
 

@@ -26,8 +26,26 @@ enum class CpxCategory {
 data class ComptimeTargetInfo(
     val cDialect: String = "c17",
     val runtimeProfile: String = "cplus",
-    val libcProfile: String = "c17"
-)
+    val libcProfile: String = "c17",
+    val os: String = "unknown",
+    val architecture: String = "unknown",
+    val vendor: String = "unknown",
+    val abi: String = "unknown",
+    val objectFormat: String = "unknown",
+    val endianness: String = "unknown",
+    val pointerBits: Int = 0,
+    val wordBits: Int = 0,
+    val cIntegerModel: String = "unknown",
+    val features: Set<String> = emptySet(),
+    val intrinsics: Set<String> = emptySet(),
+    val supportedAbis: Set<String> = emptySet(),
+    val libcProfiles: Set<String> = emptySet()
+) {
+    fun hasFeature(name: String): Boolean = name in features
+    fun hasIntrinsic(name: String): Boolean = name in intrinsics
+    fun hasLibcProfile(name: String): Boolean = name in libcProfiles || libcProfile == name
+    fun supportsAbi(name: String): Boolean = name in supportedAbis || abi == name
+}
 
 data class ExpansionId(
     val declaration: String,
@@ -1294,6 +1312,7 @@ class CpxExpander(
         is AstConditional -> node.copy(origin = origin)
         is AstUpdate -> node.copy(origin = origin)
         is AstSizeOf -> node.copy(origin = origin)
+        is AstAbiQuery -> node.copy(origin = origin)
         is AstCast -> node.copy(origin = origin)
         is AstCall -> node.copy(origin = origin)
         is AstMemberAccess -> node.copy(origin = origin)
@@ -1585,6 +1604,9 @@ class CpxExpander(
         is SyntaxSizeOf -> expression.copy(
             operand = expression.operand?.let { hygienize(it, renames) }
         )
+        is SyntaxAbiQuery -> expression.copy(
+            operand = expression.operand?.let { hygienize(it, renames) }
+        )
         is SyntaxCast -> expression.copy(operand = hygienize(expression.operand, renames))
         is SyntaxCall -> expression.copy(
             callee = hygienize(expression.callee, renames),
@@ -1667,6 +1689,11 @@ class CpxExpander(
         )
         is SyntaxUpdate -> expression.copy(operand = reorigin(expression.operand, origin), origin = origin)
         is SyntaxSizeOf -> expression.copy(
+            operand = expression.operand?.let { reorigin(it, origin) },
+            targetType = expression.targetType?.let { reorigin(it, origin) },
+            origin = origin
+        )
+        is SyntaxAbiQuery -> expression.copy(
             operand = expression.operand?.let { reorigin(it, origin) },
             targetType = expression.targetType?.let { reorigin(it, origin) },
             origin = origin

@@ -184,6 +184,16 @@ class CSubsetValidator {
                     diagnostics.error("sizeof requires an operand or type", expression.origin.primaryRange, "LOW405")
                 }
             }
+            is CAbiQuery -> {
+                expression.targetType?.let { validateType(it, expression.origin, diagnostics) }
+                expression.operand?.let { validateExpression(it, diagnostics) }
+                if (expression.query !in setOf("alignof", "offsetof", "layoutof")) {
+                    diagnostics.error("unsupported ABI query '${expression.query}'", expression.origin.primaryRange, "LOW409")
+                }
+                if (expression.query == "offsetof") {
+                    validateIdentifier(expression.fieldName ?: "__invalid_field", expression.origin, diagnostics)
+                }
+            }
             is CCast -> {
                 validateType(expression.target, expression.origin, diagnostics)
                 validateExpression(expression.operand, diagnostics)

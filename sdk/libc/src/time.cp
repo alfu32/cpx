@@ -1,0 +1,1 @@
+long time(long* result);

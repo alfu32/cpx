@@ -1,0 +1,130 @@
+# Compiler-owned operations available to the SDK.
+[[intrinsic]]
+name = "syscall0"
+family = "syscall"
+arity = 1
+lowering = "target.syscall0"
+targets = ["x86_64", "aarch64"]
+features = ["syscalls"]
+
+[[intrinsic]]
+name = "syscall1"
+family = "syscall"
+arity = 2
+lowering = "target.syscall1"
+targets = ["x86_64", "aarch64"]
+features = ["syscalls"]
+
+[[intrinsic]]
+name = "syscall2"
+family = "syscall"
+arity = 3
+lowering = "target.syscall2"
+targets = ["x86_64", "aarch64"]
+features = ["syscalls"]
+
+[[intrinsic]]
+name = "syscall3"
+family = "syscall"
+arity = 4
+lowering = "target.syscall3"
+targets = ["x86_64", "aarch64"]
+features = ["syscalls"]
+
+[[intrinsic]]
+name = "syscall4"
+family = "syscall"
+arity = 5
+lowering = "target.syscall4"
+targets = ["x86_64", "aarch64"]
+features = ["syscalls"]
+
+[[intrinsic]]
+name = "syscall5"
+family = "syscall"
+arity = 6
+lowering = "target.syscall5"
+targets = ["x86_64", "aarch64"]
+features = ["syscalls"]
+
+[[intrinsic]]
+name = "syscall6"
+family = "syscall"
+arity = 7
+lowering = "target.syscall6"
+targets = ["x86_64", "aarch64"]
+features = ["syscalls"]
+
+[[intrinsic]]
+name = "atomic_fence"
+family = "atomic"
+arity = 1
+lowering = "__atomic_thread_fence"
+targets = ["x86_64", "aarch64"]
+features = ["atomics"]
+
+[[intrinsic]]
+name = "context_save"
+family = "context"
+arity = 1
+lowering = "runtime.context_save"
+targets = ["x86_64", "aarch64"]
+
+[[intrinsic]]
+name = "atomic_load"
+family = "atomic"
+arity = 2
+lowering = "__atomic_load"
+targets = ["x86_64", "aarch64"]
+features = ["atomics"]
+
+[[intrinsic]]
+name = "atomic_store"
+family = "atomic"
+arity = 3
+lowering = "__atomic_store"
+targets = ["x86_64", "aarch64"]
+features = ["atomics"]
+
+[[intrinsic]]
+name = "atomic_compare_exchange"
+family = "atomic"
+arity = 5
+lowering = "__atomic_compare_exchange"
+targets = ["x86_64", "aarch64"]
+features = ["atomics"]
+
+[[intrinsic]]
+name = "va_start"
+family = "varargs"
+arity = 2
+lowering = "__builtin_va_start"
+targets = ["x86_64", "aarch64"]
+
+[[intrinsic]]
+name = "va_arg"
+family = "varargs"
+arity = 2
+lowering = "__builtin_va_arg"
+targets = ["x86_64", "aarch64"]
+
+[[intrinsic]]
+name = "va_copy"
+family = "varargs"
+arity = 2
+lowering = "__builtin_va_copy"
+targets = ["x86_64", "aarch64"]
+
+[[intrinsic]]
+name = "va_end"
+family = "varargs"
+arity = 1
+lowering = "__builtin_va_end"
+targets = ["x86_64", "aarch64"]
+
+[[intrinsic]]
+name = "context_restore"
+family = "context"
+arity = 2
+lowering = "runtime.context_restore"
+targets = ["x86_64", "aarch64"]

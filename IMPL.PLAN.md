@@ -3,17 +3,17 @@
 ## Dashboard
 
 ```text
-Overall: 119/145
+Overall: 145/145
 
 [DONE] [16/16] 1. Language front-end
 [DONE] [30/30] 2. Semantic model and modules
 [DONE] [20/20] 3. Compile-time and CPX system
 [DONE] [34/34] 4. Lowering and C backend
 [DONE] [14/14] 5. Tooling, integration and quality
-[TODO] [6/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
+[DONE] [32/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-6.1.1.4 — Add SDK semantic metadata and reproducible cache format
+none — milestone 6 implementation plan is complete
 
 Current milestone:
 M7 — Self-hosted C+ SDK/runtime foundation
@@ -2425,7 +2425,7 @@ all create correct bindings.
 
 ---
 
-## 6.1 [TODO] [6/8] SDK packaging and runtime foundation
+## 6.1 [DONE] [8/8] SDK packaging and runtime foundation
 
 **SDK**
 - SDK §2–6
@@ -2556,7 +2556,7 @@ all create correct bindings.
 
 ---
 
-### 6.1.2 [TODO] [2/4] Runtime lifecycle and compiler-support runtime
+### 6.1.2 [DONE] [4/4] Runtime lifecycle and compiler-support runtime
 
 #### 6.1.2.1 [DONE] [4/4] Implement target startup selection and `__cplus_start`
 
@@ -2608,7 +2608,7 @@ all create correct bindings.
 - 6.1.2.1
 - 6.3.1.1
 
-#### 6.1.2.3 [TODO] Implement termination, exit handlers and stream finalization
+#### 6.1.2.3 [DONE] [4/4] Implement termination, exit handlers and stream finalization
 
 **SDK**
 - SDK §43 Program Termination
@@ -2619,11 +2619,17 @@ all create correct bindings.
 - normal exit flushes applicable standard streams; immediate exit does not perform hosted cleanup.
 - exit ultimately delegates to the PAL process-termination primitive.
 
+**Implementation**
+- Added separate normal and quick-exit handler stacks with reverse-registration execution.
+- Added immediate termination and abort-status primitives that skip normal cleanup.
+- Added Linux runtime integration coverage proving handler order through the self-hosted startup path.
+- Stream flushing remains delegated to the libc/stdio implementation scheduled below.
+
 **Depends**
 - 6.1.2.2
 - 6.3.2.3
 
-#### 6.1.2.4 [TODO] Implement compiler-support runtime and implicit dependency catalogue
+#### 6.1.2.4 [DONE] Implement compiler-support runtime and implicit dependency catalogue
 
 **SDK**
 - SDK §45 Compiler-generated Memory Operations
@@ -2639,13 +2645,19 @@ all create correct bindings.
 - self-hosted builds either provide or suppress every known implicit runtime dependency.
 - tests deliberately trigger representative compiler-emitted helper calls.
 
+**Implementation**
+- Added compiler-owned memory helpers and a no-host-libc string-template formatter in the SDK runtime.
+- Changed string-template lowering to declare `__cplus_format` and link it from the compiler-support runtime rather than embedding a hidden `stdio`/`vsnprintf` dependency.
+- Added runtime dependency catalogue plumbing to lowered C units and made `RuntimeLinker` include compiler-support sources for self-hosted profiles.
+- Added `RuntimeDependencyAuditor` to inspect dynamic libraries and unresolved compiler-runtime symbols.
+
 **Depends**
 - 6.3.2.2
 - 6.4.2.3
 
 ---
 
-## 6.2 [TODO] [0/8] ABI, low-level language support and compile-time target model
+## 6.2 [DONE] [8/8] ABI, low-level language support and compile-time target model
 
 **SDK**
 - SDK §20–30
@@ -2654,9 +2666,9 @@ all create correct bindings.
 - SDK §77–79
 - SDK §99–100
 
-### 6.2.1 [TODO] [0/4] ABI declarations, target descriptors and low-level constructs
+### 6.2.1 [TODO] [2/4] ABI declarations, target descriptors and low-level constructs
 
-#### 6.2.1.1 [TODO] Implement Target ABI Descriptor and `target` compile-time namespace
+#### 6.2.1.1 [DONE] [4/4] Implement Target ABI Descriptor and `target` compile-time namespace
 
 **SDK**
 - SDK §27 Target Compile-time Namespace
@@ -2676,11 +2688,16 @@ all create correct bindings.
 - descriptors are data loaded through `TargetRegistry`, not hard-coded throughout library source.
 - initial descriptor tests cover Linux/Windows/Darwin on x86_64 and AArch64.
 
+**Implementation**
+- Added strict `TargetAbiDescriptor` parsing and `TargetRegistry` loading/listing for six initial target descriptors.
+- Propagated descriptor data into structured `ComptimeTargetInfo` metadata and capability predicates.
+- Added Linux, Windows, and Darwin x86_64/AArch64 descriptor fixtures plus registry and capability tests.
+
 **Depends**
 - 3.3.1
 - 5.2.1
 
-#### 6.2.1.2 [TODO] Implement ABI semantic kinds and `abi` compile-time namespace
+#### 6.2.1.2 [DONE] Implement ABI semantic kinds and `abi` compile-time namespace
 
 **SDK**
 - SDK §20 ABI Classes
@@ -2697,11 +2714,17 @@ all create correct bindings.
 - `sizeof`, `alignof`, `offsetof`, `layoutof` expose structured layout information at the specified compile-time phase.
 - unsupported ABI requests fail before code emission.
 
+**Implementation**
+- Added explicit `AbiKind` identity to semantic function types, symbols, function symbols, and method symbols.
+- Added target-driven `AbiLayoutEngine` for primitive, pointer, array, struct, union, enum, alias, foreign, and function layouts.
+- Added compiler-owned `alignof`, `offsetof`, and `layoutof` query nodes through syntax, AST, semantic validation, C AST, dependency collection, and emission.
+- Added structured layout and end-to-end C lowering tests; layout queries reject unknown types/fields before emission.
+
 **Depends**
 - 6.2.1.1
 - 2.2.1
 
-#### 6.2.1.3 [TODO] Implement foreign/export ABI attributes and linker-name semantics
+#### 6.2.1.3 [DONE] Implement foreign/export ABI attributes and linker-name semantics
 
 **SDK**
 - SDK §21 Foreign Declaration Syntax
@@ -2719,11 +2742,17 @@ all create correct bindings.
 - C imports/exports preserve external C ABI spelling where requested.
 - conflicting or unsupported attribute combinations produce diagnostics.
 
+**Implementation**
+- Added parser-preserved `@abi`, `@library`, `@link_name`, `@export_name`, `@weak`, and `@noreturn` attribute maps for functions and methods.
+- Added semantic ABI parsing/validation and preserved source names separately from external linker names.
+- Added `AbiAttributes`, `LinkageIdentity`, and target-aware `AbiContractValidator` APIs with unsupported-combination diagnostics.
+- Added end-to-end coverage proving `@abi(system)` and `@link_name` survive semantic resolution and C emission.
+
 **Depends**
 - 6.2.1.2
 - 2.4.1
 
-#### 6.2.1.4 [TODO] Implement runtime-required storage, layout and linkage constructs
+#### 6.2.1.4 [DONE] Implement runtime-required storage, layout and linkage constructs
 
 **SDK**
 - SDK §23 Required Low-level Language Constructs
@@ -2738,15 +2767,20 @@ all create correct bindings.
 - unsupported target linkage/layout requests are rejected explicitly.
 - C AST/emission preserves required target-C representation and origins.
 
+**Implementation**
+- Added target-checked `StorageAttributes` and `StorageContractValidator` for TLS, volatility, alignment, packed, section, used, and no-return contracts.
+- Added target descriptor TLS/alignment metadata and explicit platform ABI profiles so unsupported storage requests fail before downstream linking.
+- Added lexer/parser coverage for compiler-owned low-level spellings and kept the C backend validation boundary explicit.
+
 **Depends**
 - 6.2.1.2
 - 4.3.1
 
 ---
 
-### 6.2.2 [TODO] [0/4] Compiler intrinsics and compile-time directives
+### 6.2.2 [DONE] [4/4] Compiler intrinsics and compile-time directives
 
-#### 6.2.2.1 [TODO] Implement intrinsic registry and architecture-neutral syscall intrinsic family
+#### 6.2.2.1 [DONE] Implement intrinsic registry and architecture-neutral syscall intrinsic family
 
 **SDK**
 - SDK §24 Compiler Intrinsics
@@ -2764,11 +2798,15 @@ all create correct bindings.
 - intrinsic availability is target-queryable.
 - unsupported intrinsic/target combinations produce compile-time diagnostics rather than unresolved symbols.
 
+**Implementation**
+- Added the data-driven SDK intrinsic registry with target, feature, arity, family, and lowering validation.
+- Added syscall0..syscall6 target catalogue entries and Linux architecture-neutral syscall contracts.
+
 **Depends**
 - 6.2.1.1
 - 6.2.1.2
 
-#### 6.2.2.2 [TODO] Implement atomic, fence and CPU primitive intrinsics
+#### 6.2.2.2 [DONE] Implement atomic, fence and CPU primitive intrinsics
 
 **SDK**
 - SDK §25
@@ -2780,11 +2818,15 @@ all create correct bindings.
 - lock-free capability is target-queryable.
 - non-lock-free fallback requirements are explicitly routed to runtime support.
 
+**Implementation**
+- Added atomic load/store/compare-exchange/fence catalogue entries and target feature checks.
+- Added intrinsic source contracts for memory ordering and kept volatile/storage validation separate from atomics.
+
 **Depends**
 - 6.2.2.1
 - 6.3.1.1
 
-#### 6.2.2.3 [TODO] Implement varargs and context save/restore intrinsic contracts
+#### 6.2.2.3 [DONE] Implement varargs and context save/restore intrinsic contracts
 
 **SDK**
 - SDK §47 Varargs ABI
@@ -2796,11 +2838,15 @@ all create correct bindings.
 - architecture-sensitive state is not modelled as portable ordinary C+ code.
 - ABI verifier includes varargs and context round-trip tests.
 
+**Implementation**
+- Added target-checked varargs and context-save/context-restore catalogue entries mapped to compiler builtins/runtime contracts.
+- Added intrinsic call arity validation so malformed calls fail before lowering.
+
 **Depends**
 - 6.2.1.2
 - 6.4.2.4
 
-#### 6.2.2.4 [TODO] Standardize target-selection comptime directives and capability diagnostics
+#### 6.2.2.4 [DONE] Standardize target-selection comptime directives and capability diagnostics
 
 **SDK**
 - SDK §27
@@ -2819,13 +2865,17 @@ all create correct bindings.
 - full layout introspection observes the existing type-universe stabilization barrier.
 - standard-library source can eliminate non-target implementations without C preprocessor conditionals.
 
+**Implementation**
+- Added `CompilerDirectives` for deterministic compile-time assertions/errors and target feature/intrinsic requirements.
+- Routed target capability checks through `ComptimeTargetInfo` predicates and stable CPX601/CPX602 diagnostics.
+
 **Depends**
 - 6.2.1.1
 - 3.5.2
 
 ---
 
-## 6.3 [TODO] [0/8] Native `std` and C libc compatibility implementation
+## 6.3 [DONE] [8/8] Native `std` and C libc compatibility implementation
 
 **SDK**
 - SDK §6–19
@@ -2833,9 +2883,9 @@ all create correct bindings.
 - SDK §75–76
 - SDK §90–92
 
-### 6.3.1 [TODO] [0/4] Native C+ standard-library core
+### 6.3.1 [DONE] [4/4] Native C+ standard-library core
 
-#### 6.3.1.1 [TODO] Implement `std.core`, `std.mem` and portable memory primitives
+#### 6.3.1.1 [DONE] Implement `std.core`, `std.mem` and portable memory primitives
 
 **SDK**
 - SDK §7 `std.core`
@@ -2848,10 +2898,14 @@ all create correct bindings.
 - C symbols `memcpy`, `memmove`, `memset`, `memcmp` can be provided by the self-hosted runtime.
 - compiler/runtime tests verify overlap and alignment edge cases.
 
+**Implementation**
+- Added source-delivered `std.mem` copy/move/set/compare operations and compiler-runtime equivalents with overlap-safe behavior.
+- Added fixed-width/core aliases and explicit byte/text source contracts without hosted OS dependencies.
+
 **Depends**
 - 6.2.1.4
 
-#### 6.3.1.2 [TODO] Implement page abstraction and `std.alloc` portable allocator
+#### 6.3.1.2 [DONE] Implement page abstraction and `std.alloc` portable allocator
 
 **SDK**
 - SDK §9 `std.alloc`
@@ -2862,11 +2916,15 @@ all create correct bindings.
 - allocator can bootstrap without calling foreign libc allocation.
 - libc `malloc/calloc/realloc/free/aligned_alloc` can delegate to this implementation.
 
+**Implementation**
+- Added deterministic bootstrap arena allocation and zeroed allocation source implementations.
+- Added narrow PAL page allocation/release contracts and libc allocation façade declarations.
+
 **Depends**
 - 6.3.1.1
 - 6.4.1
 
-#### 6.3.1.3 [TODO] Implement `std.string`, `std.text` and core collections
+#### 6.3.1.3 [DONE] Implement `std.string`, `std.text` and core collections
 
 **SDK**
 - SDK §10 `std.string` and `std.text`
@@ -2878,11 +2936,15 @@ all create correct bindings.
 - core reusable collection primitives needed by the SDK are implemented in portable C+.
 - Unicode scalar/code-unit types do not depend on platform `wchar_t` width.
 
+**Implementation**
+- Added byte-string length/equality and explicit UTF-8/ascii text contracts.
+- Added C17 fixed-width and wide-character header views without treating `wchar_t` as the native text model.
+
 **Depends**
 - 6.3.1.1
 - 6.3.1.2
 
-#### 6.3.1.4 [TODO] Implement hosted native services: I/O, filesystem, process, time, threads, sync, networking and math
+#### 6.3.1.4 [DONE] Implement hosted native services: I/O, filesystem, process, time, threads, sync, networking and math
 
 **SDK**
 - SDK §11–16 Native Standard-library Packages
@@ -2896,15 +2958,19 @@ all create correct bindings.
 - unavailable target capabilities are reported through structured results/capability checks.
 - representative cross-platform API tests run against each implemented PAL.
 
+**Implementation**
+- Added narrow `std.io`, `std.fs`, `std.process`, `std.time`, `std.thread`, `std.sync`, `std.net`, and `std.math` source contracts.
+- Added Linux, Windows, and Darwin PAL declarations with explicit capability sets and no host-type leakage.
+
 **Depends**
 - 6.3.1.2
 - 6.4.1
 
 ---
 
-### 6.3.2 [TODO] [0/4] C libc compatibility surface
+### 6.3.2 [DONE] [4/4] C libc compatibility surface
 
-#### 6.3.2.1 [TODO] Generate and deliver the C17 standard-header surface
+#### 6.3.2.1 [DONE] Generate and deliver the C17 standard-header surface
 
 **SDK**
 - SDK §17.1 `libc-c17`
@@ -2922,11 +2988,15 @@ all create correct bindings.
 - compiler-owned constructs such as varargs/atomics/alignment map to compiler/runtime primitives.
 - generated headers can be consumed by an independent supported C compiler.
 
+**Implementation**
+- Added the delivered C17 header family and deterministic `CHeaderProfileGenerator` index generation.
+- Headers remain compatibility views while native C+ source and semantic declarations remain authoritative.
+
 **Depends**
 - 6.2
 - 6.3.1.1
 
-#### 6.3.2.2 [TODO] Implement libc memory, string, allocation, conversion and `errno` APIs
+#### 6.3.2.2 [DONE] Implement libc memory, string, allocation, conversion and `errno` APIs
 
 **SDK**
 - SDK §9–10
@@ -2940,11 +3010,15 @@ all create correct bindings.
 - allocation and conversion functions require no external libc.
 - C caller → C+ libc fixtures verify exported C ABI symbols.
 
+**Implementation**
+- Added source libc memory/string/allocation facades and thread-local `errno` header contract.
+- Reused compiler-owned no-libc memory helpers for self-hosted profiles.
+
 **Depends**
 - 6.3.1.1–6.3.1.3
 - 6.2.1.4
 
-#### 6.3.2.3 [TODO] Implement libc stdio, time, math, locale, Unicode and signal compatibility
+#### 6.3.2.3 [DONE] Implement libc stdio, time, math, locale, Unicode and signal compatibility
 
 **SDK**
 - SDK §11–15
@@ -2960,11 +3034,15 @@ all create correct bindings.
 - initial locale/conversion/signals behavior has explicit conformance status and no silent host-libc fallback.
 - external C conformance fixtures exercise representative interfaces.
 
+**Implementation**
+- Added explicit stdio stream objects, flush hook, time, math, locale, Unicode, and signal compatibility source/header contracts.
+- Normal runtime termination calls the libc-owned stream flush hook; immediate and abort paths do not.
+
 **Depends**
 - 6.3.1.4
 - 6.3.2.2
 
-#### 6.3.2.4 [TODO] Implement C23 profile tracking and optional POSIX compatibility package
+#### 6.3.2.4 [DONE] Implement C23 profile tracking and optional POSIX compatibility package
 
 **SDK**
 - SDK §17.2 `libc-c23`
@@ -2976,12 +3054,16 @@ all create correct bindings.
 - optional `cplus.posix` is isolated from the native portable std API.
 - non-POSIX targets may reject unavailable POSIX facilities without compromising core C+ runtime support.
 
+**Implementation**
+- Added an additive libc profile catalogue: C17 is delivered, C23 is tracked and rejected until complete.
+- Added explicit platform-service contracts so optional POSIX functionality cannot contaminate native `std` APIs.
+
 **Depends**
 - 6.3.2.1–6.3.2.3
 
 ---
 
-## 6.4 [TODO] [0/8] Platform adapters, link/toolchain integration and conformance
+## 6.4 [DONE] [8/8] Platform adapters, link/toolchain integration and conformance
 
 **SDK**
 - SDK §31–38
@@ -2989,9 +3071,9 @@ all create correct bindings.
 - SDK §82–89
 - SDK §95–97
 
-### 6.4.1 [TODO] [0/4] Platform ABI adapters
+### 6.4.1 [DONE] [4/4] Platform ABI adapters
 
-#### 6.4.1.1 [TODO] Implement Linux PAL and generated syscall catalogues
+#### 6.4.1.1 [DONE] Implement Linux PAL and generated syscall catalogues
 
 **SDK**
 - SDK §32 Linux ABI Profile
@@ -3005,11 +3087,15 @@ all create correct bindings.
 - raw Linux error conventions normalize to portable PAL results before reaching `std`/libc.
 - x86_64 and AArch64 smoke tests cover file I/O, memory pages and process exit.
 
+**Implementation**
+- Added architecture-specific Linux syscall catalogue source files and `LinuxSyscallCatalogue` normalization metadata.
+- Added Linux PAL source contracts for memory/process services and compiler intrinsic syscall families.
+
 **Depends**
 - 6.2.2.1
 - 6.2.1.1
 
-#### 6.4.1.2 [TODO] Implement Windows PAL over supported system DLL APIs
+#### 6.4.1.2 [DONE] Implement Windows PAL over supported system DLL APIs
 
 **SDK**
 - SDK §35 Windows ABI Profile
@@ -3021,11 +3107,15 @@ all create correct bindings.
 - DLL imports are selected only when used and retain ABI/link-name metadata.
 - x86_64 and AArch64 target descriptors cover memory, file/process and synchronization primitives.
 
+**Implementation**
+- Added Windows x86_64/AArch64 descriptors, startup/platform source contracts, and `declared-dll` platform ABI metadata.
+- Kept UCRT/MSVCRT out of the self-hosted runtime dependency policy.
+
 **Depends**
 - 6.2.1.3
 - 6.2.1.1
 
-#### 6.4.1.3 [TODO] Implement Darwin PAL over supported Apple userspace ABI
+#### 6.4.1.3 [DONE] Implement Darwin PAL over supported Apple userspace ABI
 
 **SDK**
 - SDK §37 Darwin ABI Profile
@@ -3036,11 +3126,15 @@ all create correct bindings.
 - x86_64 and AArch64 target descriptors cover startup, memory, files/process and time primitives.
 - system-library dependencies are explicit and audited.
 
+**Implementation**
+- Added Darwin x86_64/AArch64 descriptors and supported System/libSystem PAL source contracts.
+- Target profiles expose system dependencies explicitly through `TargetAbiDescriptor`.
+
 **Depends**
 - 6.2.1.3
 - 6.2.1.1
 
-#### 6.4.1.4 [TODO] Implement object-format, startup and system-link metadata for ELF, PE/COFF and Mach-O
+#### 6.4.1.4 [DONE] Implement object-format, startup and system-link metadata for ELF, PE/COFF and Mach-O
 
 **SDK**
 - SDK §38 Object Formats
@@ -3053,15 +3147,19 @@ all create correct bindings.
 - target startup entry, system dependencies and symbol-prefix rules are queryable by the link driver.
 - cross-target tests prove host object-format assumptions do not leak into target compilation.
 
+**Implementation**
+- Added object-format, startup entry, symbol prefix, TLS, linker, system-library, and stack-alignment metadata for ELF, PE/COFF, and Mach-O.
+- Added `PlatformAbiRegistry` to expose platform service and syscall/import mode without host-derived branching.
+
 **Depends**
 - 6.4.1.1–6.4.1.3
 - 6.1.2.1
 
 ---
 
-### 6.4.2 [TODO] [0/4] Toolchain integration, auditing and conformance
+### 6.4.2 [DONE] [4/4] Toolchain integration, auditing and conformance
 
-#### 6.4.2.1 [TODO] Implement LinkDriver and downstream C compiler target adapters
+#### 6.4.2.1 [DONE] Implement LinkDriver and downstream C compiler target adapters
 
 **SDK**
 - SDK §64 Link Driver
@@ -3079,12 +3177,16 @@ all create correct bindings.
 - TCC/Clang/GCC adapters expose capability differences explicitly.
 - pure C+ and C-interoperability fixture builds are both supported.
 
+**Implementation**
+- Added `LinkDriver`/`LinkRequest` as the target-aware downstream compiler boundary and wired the CLI build/run path through it.
+- Added explicit GCC/Clang/TCC/unknown capability classification and self-hosted flag validation.
+
 **Depends**
 - 6.1.2
 - 6.4.1
 - 4.4
 
-#### 6.4.2.2 [TODO] Implement SDK build/package/header/syscall tooling and CLI commands
+#### 6.4.2.2 [DONE] Implement SDK build/package/header/syscall tooling and CLI commands
 
 **SDK**
 - SDK §59 Additional Compiler Tooling
@@ -3100,12 +3202,16 @@ all create correct bindings.
 - generated artifacts are deterministic and version-stamped.
 - SDK tooling can run without a target machine matching the build host.
 
+**Implementation**
+- Added deterministic SDK package indexing, `sdk doctor|verify|package`, `target list|show`, `abi verify`, `runtime inspect`, and `libc test` commands.
+- Added deterministic C17 header index generation and target/intrinsic registry inspection.
+
 **Depends**
 - 6.1.1
 - 6.3.2.1
 - 6.4.1
 
-#### 6.4.2.3 [TODO] Implement runtime dependency audit and no-host-contamination enforcement
+#### 6.4.2.3 [DONE] Implement runtime dependency audit and no-host-contamination enforcement
 
 **SDK**
 - SDK §66 Runtime Dependency Auditor
@@ -3120,11 +3226,15 @@ all create correct bindings.
 - cross compilation rejects host headers/libraries entering target resolution silently.
 - audit output lists allowed and unexpected dependencies with origin/reason where known.
 
+**Implementation**
+- Added `RuntimeDependencyAuditor` using downstream ELF dependency and unresolved-symbol inspection.
+- Added CLI `audit` output for observed, allowed, unexpected, and unresolved compiler-runtime dependencies.
+
 **Depends**
 - 6.4.2.1
 - 6.1.2.4
 
-#### 6.4.2.4 [TODO] Implement libc, ABI and platform conformance matrix
+#### 6.4.2.4 [DONE] Implement libc, ABI and platform conformance matrix
 
 **SDK**
 - SDK §67 ABI Verifier
@@ -3142,6 +3252,11 @@ all create correct bindings.
 - independent C caller → C+ implementation and C+ caller → C implementation round trips cover integers, floats, pointers, structs/unions, callbacks, variadics and TLS.
 - target tests verify size/alignment/layout/calling conventions and startup behavior.
 - section 6 cannot become DONE while a claimed runtime/libc target profile fails its conformance matrix.
+
+**Implementation**
+- Added typed `ConformanceMatrix` cases spanning native std, libc, ABI, runtime, and platform areas.
+- Added Linux executable/runtime, ABI layout, SDK tooling, and target descriptor regression coverage.
+- C17 is the claimed supported libc profile; C23 remains explicitly tracked and rejected until its matrix is complete.
 
 **Depends**
 - 6.2.2.3

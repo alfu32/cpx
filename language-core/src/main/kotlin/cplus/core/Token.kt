@@ -32,7 +32,7 @@ class Lexer {
         "do", "double", "else", "enum", "extern", "float", "for", "if", "inline",
         "int", "long", "package", "return", "short", "signed", "sizeof", "static",
         "struct", "switch", "typedef", "union", "enum", "unsigned", "void", "volatile", "while",
-        "comptime", "import", "pub", "defer", "as", "true", "false"
+        "comptime", "import", "pub", "defer", "as", "true", "false", "alignof", "offsetof", "layoutof", "thread_local", "noreturn"
     )
 
     private val multiCharacterSymbols = listOf(
@@ -149,7 +149,7 @@ class Lexer {
                     if (symbol != null) {
                         offset += symbol.length
                         add(TokenKind.SYMBOL, start, offset)
-                    } else if (character in "{}()[];,.?:+-*/%<>=!&|^~") {
+                    } else if (character in "{}()[];,.?:+-*/%<>=!&|^~@") {
                         offset++
                         add(TokenKind.SYMBOL, start, offset)
                     } else {

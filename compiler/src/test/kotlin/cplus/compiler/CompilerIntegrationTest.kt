@@ -580,16 +580,18 @@ class CompilerIntegrationTest {
         val result = CPlusCompiler().compileText(Files.createTempFile("cplus-string-template", ".cp"), source)
 
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals(listOf("__cplus_format"), result.artifacts.single().lowered!!.unit.runtimeDependencies)
         val generated = result.generatedUnits.single().text
-        assertTrue(generated.contains("#include <stdarg.h>"))
-        assertTrue(generated.contains("static const char* __cplus_format"))
+        assertTrue(!generated.contains("#include <stdarg.h>"))
+        assertTrue(generated.contains("const char* __cplus_format"))
         assertTrue(!generated.contains("${'$'}{value}"))
 
         val directory = Files.createTempDirectory("cplus-string-template-e2e")
         val cFile = directory.resolve("program.c")
         val executable = directory.resolve("program")
         cFile.writeText(generated)
-        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+        val runtime = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!.resolve("runtime/src/format.c")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), runtime.toString(), "-o", executable.toString())
             .redirectErrorStream(true)
             .start()
         val compileOutput = compileProcess.inputStream.bufferedReader().readText()

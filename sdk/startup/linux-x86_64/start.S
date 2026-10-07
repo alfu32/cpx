@@ -11,3 +11,4 @@ _start:
     syscall
     hlt
 .size _start, .-_start
+.section .note.GNU-stack,"",@progbits

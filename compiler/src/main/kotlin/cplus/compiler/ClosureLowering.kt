@@ -152,6 +152,7 @@ class ClosurePlanner {
                 is AstConditional -> { expression(node.condition); expression(node.thenBranch); expression(node.elseBranch) }
                 is AstUpdate -> expression(node.operand)
                 is AstSizeOf -> node.operand?.let(::expression)
+                is AstAbiQuery -> node.operand?.let(::expression)
                 is AstCast -> expression(node.operand)
                 is AstCall -> { expression(node.callee); node.arguments.forEach(::expression) }
                 is AstMemberAccess -> expression(node.receiver)
@@ -441,6 +442,7 @@ class AstClosureLowerer {
         )
         is AstUpdate -> expression.copy(operand = lowerExpression(expression.operand, callables, rewrites))
         is AstSizeOf -> expression.copy(operand = expression.operand?.let { lowerExpression(it, callables, rewrites) })
+        is AstAbiQuery -> expression.copy(operand = expression.operand?.let { lowerExpression(it, callables, rewrites) })
         is AstCast -> expression.copy(operand = lowerExpression(expression.operand, callables, rewrites))
         is AstCall -> {
             val callee = lowerExpression(expression.callee, callables, rewrites)
@@ -492,6 +494,7 @@ class AstClosureLowerer {
                 is AstConditional -> { expression(node.condition); expression(node.thenBranch); expression(node.elseBranch) }
                 is AstUpdate -> expression(node.operand)
                 is AstSizeOf -> node.operand?.let(::expression)
+                is AstAbiQuery -> node.operand?.let(::expression)
                 is AstCast -> expression(node.operand)
                 is AstCall -> { expression(node.callee); node.arguments.forEach(::expression) }
                 is AstMemberAccess -> expression(node.receiver)

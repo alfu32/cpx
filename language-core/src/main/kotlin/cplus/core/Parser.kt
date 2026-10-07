@@ -49,6 +49,7 @@ class Parser(private val lexed: LexedSource) {
     }
 
     private fun parseDeclaration(): SyntaxDeclaration? {
+        val attributes = parseAttributes()
         var isPublic = false
         while (peek().lexeme in setOf("pub", "static", "extern", "inline")) {
             if (match("pub")) isPublic = true else advance()
@@ -77,7 +78,7 @@ class Parser(private val lexed: LexedSource) {
         val type = parseType() ?: return recoverDeclaration()
         val name = expectIdentifier("expected declaration name") ?: return recoverDeclaration()
         return if (match("(")) {
-            parseFunction(type, name, isPublic = isPublic)
+            parseFunction(type, name, isPublic = isPublic, attributes = attributes)
         } else {
             val arrayDimensions = parseArrayDimensions()
             val initializer = if (match("=")) parseExpression() else null
@@ -234,6 +235,7 @@ class Parser(private val lexed: LexedSource) {
         val fields = mutableListOf<SyntaxField>()
         val methods = mutableListOf<SyntaxFunction>()
         while (!atEnd() && !peek().isLexeme("}")) {
+            val attributes = parseAttributes()
             val start = peek()
             val type = parseType()
             if (type == null) {
@@ -248,7 +250,7 @@ class Parser(private val lexed: LexedSource) {
                 continue
             }
             if (match("(")) {
-                methods += parseFunction(type, fieldName, isMethod = true, ownerName = name.lexeme)
+                methods += parseFunction(type, fieldName, isMethod = true, ownerName = name.lexeme, attributes = attributes)
                 continue
             }
             val arrayDimensions = parseArrayDimensions()
@@ -326,7 +328,8 @@ class Parser(private val lexed: LexedSource) {
         name: Token,
         isMethod: Boolean = false,
         ownerName: String? = null,
-        isPublic: Boolean = false
+        isPublic: Boolean = false,
+        attributes: Map<String, String> = emptyMap()
     ): SyntaxFunction {
         val parameters = mutableListOf<SyntaxParameter>()
         if (!peek().isLexeme(")")) {
@@ -378,8 +381,26 @@ class Parser(private val lexed: LexedSource) {
             ownerName,
             functionRange,
             direct(functionRange),
-            isPublic
+            isPublic,
+            attributes
         )
+    }
+
+    private fun parseAttributes(): Map<String, String> {
+        if (!peek().isLexeme("@")) return emptyMap()
+        val attributes = linkedMapOf<String, String>()
+        while (match("@")) {
+            val name = expectIdentifier("expected attribute name after '@'") ?: break
+            val value = if (match("(")) {
+                val token = advance()
+                expect(")", "expected ')' after attribute '${name.lexeme}'")
+                token.lexeme.removeSurrounding("\"")
+            } else "true"
+            if (attributes.put(name.lexeme, value) != null) {
+                diagnostics.error("duplicate attribute '${name.lexeme}'", name.range, "PARSE503")
+            }
+        }
+        return attributes
     }
 
     private fun parseStatement(): SyntaxStatement? {
@@ -546,10 +567,10 @@ class Parser(private val lexed: LexedSource) {
     private fun parsePrefix(): SyntaxExpression? {
         val token = peek()
         var expression = when {
-            match("sizeof") -> {
-                val keyword = previous()
+            peek().lexeme in setOf("sizeof", "alignof") -> {
+                val keyword = advance()
                 val (operand, targetType) = if (match("(")) {
-                    if (looksLikeTypeName()) {
+                    if (looksLikeTypeName() || (peek().kind == TokenKind.IDENTIFIER && peek().lexeme.firstOrNull()?.isUpperCase() == true && peek(1).isLexeme(")"))) {
                         val type = parseType()
                         expect(")", "expected ')' after sizeof type")
                         null to type
@@ -562,7 +583,33 @@ class Parser(private val lexed: LexedSource) {
                     (parsePrefix() ?: SyntaxErrorExpression(keyword.range, direct(keyword.range))) to null
                 }
                 val end = targetType?.range ?: operand?.range ?: keyword.range
-                SyntaxSizeOf(operand, targetType, span(keyword.range, end), direct(span(keyword.range, end)))
+                if (keyword.lexeme == "sizeof") {
+                    SyntaxSizeOf(operand, targetType, span(keyword.range, end), direct(span(keyword.range, end)))
+                } else {
+                    SyntaxAbiQuery("alignof", operand, targetType, null, span(keyword.range, end), direct(span(keyword.range, end)))
+                }
+            }
+            match("offsetof") || match("layoutof") -> {
+                val keyword = previous()
+                expect("(", "expected '(' after ${keyword.lexeme}")
+                val target = parseType()
+                if (target == null) {
+                    diagnostics.error("expected type in ${keyword.lexeme} query", peek().range, "PARSE408")
+                    return null
+                }
+                val field = if (keyword.lexeme == "offsetof") {
+                    expect(",", "expected ',' after offsetof type")
+                    expectIdentifier("expected field name in offsetof")?.lexeme
+                } else null
+                val close = expect(")", "expected ')' after ${keyword.lexeme}") ?: previous()
+                val range = span(keyword.range, close.range)
+                SyntaxAbiQuery(
+                    query = keyword.lexeme,
+                    targetType = target,
+                    fieldName = field,
+                    range = range,
+                    origin = direct(range)
+                )
             }
             looksLikeCast() -> {
                 val open = expect("(", "expected '(' before cast type") ?: token

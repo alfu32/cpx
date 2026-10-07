@@ -1682,6 +1682,48 @@ Foreign function calling semantics SHALL follow the selected C ABI.
 
 ---
 
+## 43.1 ABI and layout queries
+
+C+ provides compiler-owned layout queries whose result type is `size_t`:
+
+```cplus
+sizeof(T)
+alignof(T)
+offsetof(T, field)
+layoutof(T)
+```
+
+`sizeof` and `alignof` accept either a type or an expression. `offsetof` accepts
+an aggregate type and a declared field. `layoutof` is the scalar source-level
+view of the target's structured ABI layout; compiler APIs expose the complete
+field offsets, sizes, and alignment. The compiler MUST validate the type and
+field against the selected target before C emission and MUST diagnose unknown
+or unsupported layout requests rather than guessing.
+
+## 43.2 ABI identity and platform contracts
+
+Every callable declaration has an ABI identity. The supported identities are
+`abi.c`, `abi.system`, `abi.cplus`, `abi.intrinsic`, and `abi.runtime`.
+Equivalent machine calling conventions do not erase this semantic distinction.
+Foreign and exported declarations retain their source name separately from
+their linker name and library. Target-specific storage requests such as
+thread-local storage, explicit alignment, packed layout, and no-return are
+validated against the target descriptor.
+
+## 43.3 Runtime and standard-library profiles
+
+The selected runtime profile is one of `freestanding`, `cplus`, or `system`;
+the selected libc profile is one of `none`, `c17`, or `c23`. A self-hosted C+
+profile owns startup, compiler support, memory primitives, and termination
+semantics. Normal termination runs registered normal handlers in reverse
+registration order and flushes streams through the libc layer. Quick exit runs
+only quick handlers, while immediate exit and abort skip normal cleanup.
+
+The SDK's native `std` API is independent of host libc types. C compatibility
+headers are generated/delivered views over the same semantic declarations;
+unsupported target facilities MUST be reported through a capability or error
+result and MUST NOT silently fall back to host headers or libraries.
+
 # 44. Conflict rules summary
 
 The following rules are normative.

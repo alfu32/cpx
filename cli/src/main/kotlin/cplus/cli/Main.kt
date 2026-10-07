@@ -6,6 +6,13 @@ import cplus.compiler.BuildProfile
 import cplus.compiler.LibcProfile
 import cplus.compiler.RuntimeProfile
 import cplus.compiler.RuntimeLinker
+import cplus.compiler.RuntimeDependencyAuditor
+import cplus.compiler.SdkDoctor
+import cplus.compiler.SdkPackageIndex
+import cplus.compiler.TargetRegistry
+import cplus.compiler.IntrinsicRegistry
+import cplus.compiler.LinkDriver
+import cplus.compiler.LinkRequest
 import cplus.compiler.SdkManifestLocator
 import cplus.compiler.TargetInfo
 import cplus.core.*
@@ -36,6 +43,12 @@ internal class Cli {
             "expand" -> expand(args.drop(1))
             "build" -> build(args.drop(1))
             "run" -> runProgram(args.drop(1))
+            "sdk" -> sdk(args.drop(1))
+            "target" -> target(args.drop(1))
+            "abi" -> abi(args.drop(1))
+            "runtime" -> runtime(args.drop(1))
+            "libc" -> libc(args.drop(1))
+            "audit" -> audit(args.drop(1))
             "lsp" -> lsp(args.drop(1))
             else -> {
                 System.err.println("unknown command '$command'")
@@ -175,6 +188,87 @@ internal class Cli {
         return LspServer().run(System.`in`, System.out)
     }
 
+    private fun sdk(arguments: List<String>): Int {
+        return when (arguments.firstOrNull() ?: "doctor") {
+            "doctor", "verify" -> {
+                val report = SdkDoctor.inspect(SdkManifestLocator.defaultManifestPath())
+                report.checks.forEach { println("ok: $it") }
+                report.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+                if (report.isSuccessful) 0 else 1
+            }
+            "package" -> {
+                val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+                val output = arguments.drop(1).firstOrNull()?.let(Path::of)
+                    ?: root.resolve("sdk-package.index")
+                output.parent?.let(Files::createDirectories)
+                output.writeText(SdkPackageIndex.serialize(SdkPackageIndex.build(root)))
+                println("wrote ${output.toAbsolutePath()}")
+                0
+            }
+            else -> {
+                System.err.println("sdk expects doctor, verify, or package")
+                2
+            }
+        }
+    }
+
+    private fun target(arguments: List<String>): Int {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val name = arguments.firstOrNull()
+        val paths = if (name == null || name == "list") TargetRegistry.list(root.resolve("abi")) else listOf(root.resolve("abi/$name.toml"))
+        paths.forEach { path ->
+            val result = TargetRegistry.load(path)
+            val descriptor = result.descriptor
+            if (descriptor == null) result.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            else println("${descriptor.targetTriple}: ${descriptor.os}/${descriptor.architecture} ${descriptor.objectFormat} ${descriptor.abi}")
+        }
+        return if (paths.all { TargetRegistry.load(it).isSuccessful }) 0 else 1
+    }
+
+    private fun abi(arguments: List<String>): Int {
+        if (arguments.firstOrNull() !in setOf("verify", "show")) {
+            System.err.println("abi expects verify or show")
+            return 2
+        }
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val failures = TargetRegistry.list(root.resolve("abi")).map { TargetRegistry.load(it) }.filterNot { it.isSuccessful }
+        failures.flatMap { it.diagnostics }.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+        if (failures.isEmpty()) println("verified ${TargetRegistry.list(root.resolve("abi")).size} target ABI descriptors")
+        return if (failures.isEmpty()) 0 else 1
+    }
+
+    private fun runtime(arguments: List<String>): Int {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val runtimeRoot = root.resolve("runtime")
+        val files = Files.walk(runtimeRoot).use { stream -> stream.filter(Files::isRegularFile).sorted().toList() }
+        files.forEach { println(it) }
+        return if (files.isNotEmpty()) 0 else 1
+    }
+
+    private fun libc(arguments: List<String>): Int {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val include = root.resolve("libc/include")
+        val files = if (Files.isDirectory(include)) Files.list(include).use { it.filter(Files::isRegularFile).sorted().toList() } else emptyList()
+        println("C17 headers: ${files.size}")
+        files.forEach { println(it.fileName) }
+        return if (files.isNotEmpty()) 0 else 1
+    }
+
+    private fun audit(arguments: List<String>): Int {
+        val binary = arguments.firstOrNull()?.let(Path::of)
+        if (binary == null) {
+            System.err.println("audit requires a binary path")
+            return 2
+        }
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val descriptor = TargetRegistry.load(root.resolve("abi/linux-x86_64.toml")).descriptor
+            ?: return 1
+        val report = RuntimeDependencyAuditor.inspect(binary, descriptor, BuildProfile())
+        println("observed: ${report.observed.sorted().joinToString(", ")}")
+        report.diagnostics.forEach { System.err.println("error: $it") }
+        return if (report.isSuccessful) 0 else 1
+    }
+
     private fun buildExecutable(
         sources: List<Path>,
         cSources: List<Path>,
@@ -215,38 +309,25 @@ internal class Cli {
             headerPath.parent?.let { Files.createDirectories(it) }
             headerPath.writeText(header)
         }
-        val process = try {
-            val dependencySources = result.cSourceDependencies.map { it.path.toString() }
-            val includeFlags = includeDirectories
-                .map { it.toAbsolutePath().normalize().toString() }
-                .distinct()
-                .flatMap { listOf("-I", it) }
-            val libraryFlags = result.cLinkDependencies.map { dependency ->
-                when (dependency.kind) {
-                    cplus.compiler.CLinkDependencyKind.LOCAL -> dependency.value
-                    cplus.compiler.CLinkDependencyKind.FOREIGN -> "-l${dependency.value}"
-                }
-            }
-            ProcessBuilder(
-                listOf("cc", "-std=${target.cDialect}") +
-                    runtime.compilerFlags +
-                    includeFlags +
-                    listOf(cFile.toString()) +
-                    runtime.runtimeSources.map(Path::toString) +
-                    runtime.startupSources.map(Path::toString) +
-                    dependencySources +
-                    libraryFlags +
-                    runtime.linkerFlags +
-                    listOf("-o", executable.toString())
+        val linkResult = try {
+            LinkDriver.link(
+                LinkRequest(
+                    generatedSource = cFile,
+                    output = executable,
+                    target = target,
+                    sdk = sdkResolution,
+                    includeDirectories = includeDirectories,
+                    sourceDependencies = result.cSourceDependencies.map { it.path },
+                    libraries = result.cLinkDependencies
+                ),
+                runtime
             )
-                .redirectErrorStream(true)
-                .start()
         } catch (error: java.io.IOException) {
             System.err.println("unable to start C compiler 'cc': ${error.message}")
             return 2
         }
-        val output = process.inputStream.bufferedReader().readText()
-        val exitCode = process.waitFor()
+        val output = linkResult.output
+        val exitCode = linkResult.exitCode
         if (output.isNotBlank()) {
             val remapped = compiler.remapCCompilerDiagnostics(result, cFile, output)
             if (remapped.isEmpty()) {
@@ -493,6 +574,12 @@ internal class Cli {
         stream.println("  expand      print the post-CPX normalized AST")
         stream.println("  build       transcode and compile one source file with cc")
         stream.println("  run         build and execute one source file")
+        stream.println("  sdk         verify, inspect, or index the source SDK")
+        stream.println("  target      list or inspect target ABI descriptors")
+        stream.println("  abi         verify target ABI descriptors")
+        stream.println("  runtime     inspect runtime sources")
+        stream.println("  libc        list delivered libc headers")
+        stream.println("  audit       inspect binary runtime dependencies")
         stream.println("  lsp         serve compiler diagnostics over stdio JSON-RPC")
     }
 
@@ -639,6 +726,10 @@ internal class AstPrinter {
         }
         is AstSizeOf -> expression.targetType?.let { "sizeof(${it.name})" }
             ?: "sizeof(${expression(expression.operand!!)})"
+        is AstAbiQuery -> when (expression.query) {
+            "offsetof" -> "offsetof(${expression.targetType?.name}, ${expression.fieldName})"
+            else -> "${expression.query}(${expression.targetType?.name ?: expression(expression.operand!!)})"
+        }
         is AstCast -> "(${expression.target.name})${expression(expression.operand)}"
         is AstCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
         is AstMemberAccess -> "${expression(expression.receiver)}.${expression.member}"

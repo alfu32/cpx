@@ -1,0 +1,8 @@
+# Generated Linux x86_64 syscall catalogue (source form).
+target = "linux-x86_64"
+read = 0
+write = 1
+close = 3
+mmap = 9
+munmap = 11
+exit = 60

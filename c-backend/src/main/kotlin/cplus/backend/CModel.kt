@@ -13,7 +13,8 @@ data class CTranslationUnit(
     val requiresStringTemplateRuntime: Boolean = false,
     val forwardDeclarations: List<CForwardDeclaration> = emptyList(),
     val aggregateDeclarations: List<CAggregateDeclaration> = emptyList(),
-    val publicIncludes: List<String> = emptyList()
+    val publicIncludes: List<String> = emptyList(),
+    val runtimeDependencies: List<String> = emptyList()
 )
 
 enum class CTagKind {
@@ -208,6 +209,13 @@ data class CUpdate(
     override val origin: Origin
 ) : CExpression
 data class CSizeOf(val operand: CExpression?, val targetType: CType? = null, override val origin: Origin) : CExpression
+data class CAbiQuery(
+    val query: String,
+    val operand: CExpression? = null,
+    val targetType: CType? = null,
+    val fieldName: String? = null,
+    override val origin: Origin
+) : CExpression
 data class CCast(val target: CType, val operand: CExpression, override val origin: Origin) : CExpression
 data class CCall(val callee: CExpression, val arguments: List<CExpression>, override val origin: Origin) : CExpression
 data class CMemberAccess(

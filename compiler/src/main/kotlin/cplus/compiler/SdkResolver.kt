@@ -16,14 +16,17 @@ data class SdkLayout(
     val platformSource: Path,
     val abiDescriptor: Path,
     val intrinsicsSource: Path,
-    val startupSource: Path
+    val startupSource: Path,
+    val intrinsicCatalogue: Path = root.resolve("intrinsics/intrinsics.toml")
 )
 
 data class SdkResolution(
     val manifest: SdkManifest,
     val layout: SdkLayout,
     val externalSysroot: Path?,
-    val metadata: SdkSemanticMetadata? = null
+    val metadata: SdkSemanticMetadata? = null,
+    val targetDescriptor: TargetAbiDescriptor? = null,
+    val intrinsics: List<IntrinsicDefinition> = emptyList()
 )
 
 data class SdkResolutionResult(
@@ -50,7 +53,8 @@ object SdkResolver {
             platformSource = root.resolve("platform/${targetName.substringBefore('-')}"),
             abiDescriptor = root.resolve("abi/$targetName.toml"),
             intrinsicsSource = root.resolve("intrinsics/intrinsics.cp"),
-            startupSource = root.resolve("startup/$targetName")
+            startupSource = root.resolve("startup/$targetName"),
+            intrinsicCatalogue = root.resolve("intrinsics/intrinsics.toml")
         )
         val diagnostics = mutableListOf<Diagnostic>()
         listOf(
@@ -63,6 +67,7 @@ object SdkResolver {
             "platform source" to layout.platformSource,
             "ABI descriptor" to layout.abiDescriptor,
             "intrinsics source" to layout.intrinsicsSource,
+            "intrinsic catalogue" to layout.intrinsicCatalogue,
             "startup source" to layout.startupSource
         ).forEach { (label, path) ->
             val directoryComponent = label in setOf(

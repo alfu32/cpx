@@ -31,7 +31,10 @@ object RuntimeLinker {
             RuntimeProfile.CPLUS, RuntimeProfile.FREESTANDING -> {
                 val startup = resolution.layout.startupSource.resolve("start.S")
                 val runtime = resolution.layout.runtimeSource.resolve("startup.c")
-                val missing = listOf(startup, runtime).filterNot(Files::isRegularFile)
+                val compilerRuntime = resolution.layout.runtimeSource.resolve("memory.c")
+                val formatter = resolution.layout.runtimeSource.resolve("format.c")
+                val stdio = resolution.layout.runtimeSource.resolve("stdio.c")
+                val missing = listOf(startup, runtime, compilerRuntime, formatter, stdio).filterNot(Files::isRegularFile)
                 if (missing.isNotEmpty()) {
                     RuntimeLinkPlanResult(
                         null,
@@ -49,7 +52,7 @@ object RuntimeLinker {
                         RuntimeLinkPlan(
                             target.buildProfile.runtime,
                             listOf(startup),
-                            listOf(runtime),
+                            listOf(runtime, compilerRuntime, formatter, stdio),
                             listOf("-nostdlib", "-nodefaultlibs", "-nostartfiles"),
                             emptyList()
                         ),

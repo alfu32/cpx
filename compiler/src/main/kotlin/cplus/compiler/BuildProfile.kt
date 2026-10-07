@@ -41,11 +41,13 @@ object BuildProfileValidator {
         }
     }
 
-    fun toComptimeTarget(target: TargetInfo): ComptimeTargetInfo = ComptimeTargetInfo(
-        cDialect = target.cDialect,
-        runtimeProfile = target.buildProfile.runtime.cliName,
-        libcProfile = target.buildProfile.libc.cliName
-    )
+    fun toComptimeTarget(target: TargetInfo, descriptor: TargetAbiDescriptor? = null): ComptimeTargetInfo =
+        descriptor?.toComptimeTarget(target) ?: ComptimeTargetInfo(
+            cDialect = target.cDialect,
+            runtimeProfile = target.buildProfile.runtime.cliName,
+            libcProfile = target.buildProfile.libc.cliName,
+            libcProfiles = setOf(target.buildProfile.libc.cliName)
+        )
 
     private fun error(message: String, code: String): Diagnostic = Diagnostic(
         DiagnosticSeverity.ERROR,

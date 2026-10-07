@@ -11,6 +11,8 @@ static int __cplus_global_state_initialized;
 static int __cplus_argc;
 static char** __cplus_argv;
 
+void __cplus_flush_streams(void);
+
 int __cplus_runtime_init(int argc, char** argv) {
     __cplus_exit_handler_count = 0;
     __cplus_quick_exit_handler_count = 0;
@@ -58,6 +60,7 @@ void __cplus_run_quick_exit_handlers(void) {
 
 int __cplus_terminate_normal(int status) {
     __cplus_run_exit_handlers();
+    __cplus_flush_streams();
     return status;
 }
 
@@ -73,6 +76,9 @@ int __cplus_terminate_immediate(int status) {
 int __cplus_abort_status(void) {
     return 134;
 }
+
+/* libc/stdio may replace this hook in a hosted SDK profile. */
+void __cplus_flush_streams(void) { }
 
 extern int main(int argc, char** argv);
 

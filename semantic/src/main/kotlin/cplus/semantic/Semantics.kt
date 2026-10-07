@@ -88,7 +88,8 @@ data class FunctionType(
     override val id: TypeId,
     val returnType: CType,
     val parameterTypes: List<CType>,
-    val isVariadic: Boolean = false
+    val isVariadic: Boolean = false,
+    val abi: AbiKind = AbiKind.C
 ) : CType {
     override val name: String = buildString {
         append("fn(")
@@ -121,7 +122,7 @@ private fun canonicalTypeKey(type: CType): String = when (type) {
     is EnumType -> "enum:${type.name}"
     is PointerType -> "pointer:${canonicalTypeKey(type.pointee)}"
     is ArrayType -> "array:${canonicalTypeKey(type.element)}:${type.dimensions.joinToString(",")}" 
-    is FunctionType -> "function:${canonicalTypeKey(type.returnType)}:${type.parameterTypes.joinToString(",") { canonicalTypeKey(it) }}:${type.isVariadic}"
+    is FunctionType -> "function:${type.abi}:${canonicalTypeKey(type.returnType)}:${type.parameterTypes.joinToString(",") { canonicalTypeKey(it) }}:${type.isVariadic}"
     is AliasType -> canonicalTypeKey(type.target)
     is ForeignType -> "foreign:${type.externalName}"
     is UnknownType -> "unknown:${type.id.value}"
@@ -141,7 +142,8 @@ data class Symbol(
     val visibility: Visibility = Visibility.PRIVATE,
     val moduleName: String? = null,
     val qualifiedName: QualifiedName = QualifiedName(name),
-    val externalName: String? = null
+    val externalName: String? = null,
+    val abi: AbiKind = AbiKind.C
 )
 
 data class DeclarationCatalogueEntry(
@@ -174,7 +176,8 @@ data class FunctionSymbol(
     val returnType: CType,
     val parameters: List<Symbol>,
     val isVariadic: Boolean = false,
-    val signature: FunctionType
+    val signature: FunctionType,
+    val abi: AbiKind = AbiKind.C
 )
 
 enum class ReceiverKind {
@@ -189,7 +192,8 @@ data class MethodSymbol(
     val returnType: CType,
     val parameters: List<Symbol>,
     val signature: FunctionType,
-    val receiverType: CType
+    val receiverType: CType,
+    val abi: AbiKind = AbiKind.C
 )
 
 data class SemanticModel(
@@ -524,6 +528,25 @@ class SemanticAnalyzer(
             PrimitiveType(TypeId(nextTypeId.next()), name).also(types::add)
         }
 
+        fun abiOf(attributes: Map<String, String>, origin: Origin): AbiKind {
+            val value = attributes["abi"]?.lowercase() ?: return AbiKind.C
+            val abi = when (value) {
+                "c" -> AbiKind.C
+                "system" -> AbiKind.SYSTEM
+                "cplus" -> AbiKind.CPLUS
+                "intrinsic" -> AbiKind.INTRINSIC
+                "runtime" -> AbiKind.RUNTIME
+                else -> {
+                    diagnostics.error("unsupported ABI '$value'", rangeOf(origin), "SEM314")
+                    AbiKind.C
+                }
+            }
+            if (attributes.keys.any { it !in setOf("abi", "library", "link_name", "export_name", "noreturn", "weak") }) {
+                diagnostics.error("unsupported function attribute", rangeOf(origin), "SEM315")
+            }
+            return abi
+        }
+
         lateinit var resolveAlias: (String) -> AliasType?
 
         fun resolve(reference: AstTypeRef, dimensions: List<String> = emptyList()): CType {
@@ -542,7 +565,8 @@ class SemanticAnalyzer(
             origin: Origin,
             moduleName: String? = null,
             visibility: Visibility = Visibility.PRIVATE,
-            externalName: String? = null
+            externalName: String? = null,
+            abi: AbiKind = AbiKind.C
         ): Symbol = Symbol(
             SymbolId(nextSymbolId.next()),
             name,
@@ -552,6 +576,7 @@ class SemanticAnalyzer(
             moduleName = moduleName,
             visibility = visibility,
             externalName = externalName,
+            abi = abi,
             qualifiedName = QualifiedName(
                 listOfNotNull(moduleName?.let { modulePackages[it] }, moduleName, name).joinToString("::")
             )
@@ -756,6 +781,7 @@ class SemanticAnalyzer(
                     if (existing != null && !(existing.symbol.kind == SymbolKind.FOREIGN && declaration.body == null)) {
                         diagnostics.error("duplicate function '${declaration.name}'", rangeOf(declaration.origin), "SEM002")
                     } else if (existing == null) {
+                        val abi = abiOf(declaration.attributes, declaration.origin)
                         val returnType = resolve(declaration.returnType)
                         val parameterSymbols = declaration.parameters.map { parameter ->
                             val type = resolve(parameter.type, parameter.arrayDimensions)
@@ -764,10 +790,20 @@ class SemanticAnalyzer(
                         val signature = FunctionType(
                             TypeId(nextTypeId.next()),
                             returnType,
-                            parameterSymbols.map { it.type }
+                            parameterSymbols.map { it.type },
+                            abi = abi
                         ).also(types::add)
-                        val functionSymbol = newSymbol(declaration.name, SymbolKind.FUNCTION, signature, declaration.origin, moduleName, declarationVisibility(declaration))
-                        val function = FunctionSymbol(functionSymbol, returnType, parameterSymbols, signature = signature)
+                        val functionSymbol = newSymbol(
+                            declaration.name,
+                            SymbolKind.FUNCTION,
+                            signature,
+                            declaration.origin,
+                            moduleName,
+                            if (declaration.attributes.containsKey("export_name")) Visibility.PUBLIC else declarationVisibility(declaration),
+                            declaration.attributes["link_name"] ?: declaration.attributes["export_name"],
+                            abi
+                        )
+                        val function = FunctionSymbol(functionSymbol, returnType, parameterSymbols, signature = signature, abi = abi)
                         functions[declaration.name] = function
                         moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
                         val functionScope = scopes.create(ScopeKind.FUNCTION, moduleScope(moduleName), functionSymbol.id)
@@ -858,6 +894,7 @@ class SemanticAnalyzer(
                 FieldSymbol(symbol, struct)
             }
             val methodSymbols = declaration.methods.associate { method ->
+                val abi = abiOf(method.attributes, method.origin)
                 val returnType = resolve(method.returnType)
                 val parameterSymbols = method.parameters.filterNot { it.isReceiver }.map { parameter ->
                     val parameterType = resolve(parameter.type, parameter.arrayDimensions)
@@ -867,9 +904,10 @@ class SemanticAnalyzer(
                 val signature = FunctionType(
                     TypeId(nextTypeId.next()),
                     returnType,
-                    parameterSymbols.map { it.type }
+                    parameterSymbols.map { it.type },
+                    abi = abi
                 ).also(types::add)
-                val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, signature, method.origin, moduleName)
+                val methodSymbol = newSymbol(method.name, SymbolKind.METHOD, signature, method.origin, moduleName, externalName = method.attributes["link_name"] ?: method.attributes["export_name"], abi = abi)
                 ownerScope?.let { scopes.define(it, method.name, methodSymbol.id) }
                 val methodScope = scopes.create(
                     ScopeKind.FUNCTION,
@@ -884,7 +922,7 @@ class SemanticAnalyzer(
                 } else {
                     struct
                 }
-                method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols, signature, receiverType)
+                method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols, signature, receiverType, abi)
             }
             struct.fields = fields
             struct.methods = methodSymbols.values.toList()
@@ -1401,6 +1439,28 @@ class SemanticAnalyzer(
                 }
                 primitive("size_t")
             }
+            is AstAbiQuery -> {
+                expression.operand?.let {
+                    validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                }
+                val target = expression.targetType
+                if (target == null) {
+                    diagnostics.error("${expression.query} requires a target type", rangeOf(expression.origin), "SEM312")
+                } else if (
+                    target.name !in knownPrimitiveNames &&
+                    target.declarationKind == "named" &&
+                    target.name !in structs
+                ) {
+                    diagnostics.error("unsupported ${expression.query} type '${target.name}'", rangeOf(target.origin), "SEM312")
+                }
+                if (expression.query == "offsetof") {
+                    val aggregate = target?.name?.let { structs[it] }
+                    if (aggregate != null && expression.fieldName !in aggregate.fields.map { it.symbol.name }) {
+                        diagnostics.error("unknown field '${expression.fieldName}' in offsetof", rangeOf(expression.origin), "SEM313")
+                    }
+                }
+                primitive("size_t")
+            }
             is AstCast -> {
                 validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 if (expression.target.name !in knownPrimitiveNames) {
@@ -1588,7 +1648,8 @@ class SemanticAnalyzer(
         private val knownPrimitiveNames = setOf(
             "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
             "signed char", "unsigned char", "signed short", "unsigned short",
-            "signed int", "unsigned int", "long long", "unsigned long", "unsigned long long"
+            "signed int", "unsigned int", "long long", "unsigned long", "unsigned long long",
+            "size_t", "ptrdiff_t", "max_align_t"
         )
     }
 }

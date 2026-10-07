@@ -134,7 +134,8 @@ data class SyntaxFunction(
     val ownerName: String? = null,
     override val range: SourceRange,
     override val origin: Origin,
-    override val isPublic: Boolean = false
+    override val isPublic: Boolean = false,
+    val attributes: Map<String, String> = emptyMap()
 ) : SyntaxDeclaration
 
 data class SyntaxParameter(
@@ -309,6 +310,16 @@ data class SyntaxUpdate(
 data class SyntaxSizeOf(
     val operand: SyntaxExpression?,
     val targetType: TypeSyntax? = null,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxExpression
+
+/** Compiler-owned ABI/layout query kept explicit until semantic validation. */
+data class SyntaxAbiQuery(
+    val query: String,
+    val operand: SyntaxExpression? = null,
+    val targetType: TypeSyntax? = null,
+    val fieldName: String? = null,
     override val range: SourceRange,
     override val origin: Origin
 ) : SyntaxExpression

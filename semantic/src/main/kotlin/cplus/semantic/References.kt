@@ -99,6 +99,10 @@ internal object ReferenceCollector {
                     expression.operand?.let { collectExpression(it, locals) }
                     expression.targetType?.let(::collectType)
                 }
+                is AstAbiQuery -> {
+                    expression.operand?.let { collectExpression(it, locals) }
+                    expression.targetType?.let(::collectType)
+                }
                 is AstCast -> {
                     collectType(expression.target)
                     collectExpression(expression.operand, locals)

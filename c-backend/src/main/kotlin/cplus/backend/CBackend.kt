@@ -157,7 +157,7 @@ class CLowerer(
         val programFunctions = program.declarations.filterIsInstance<AstFunction>().map { declaration ->
             CFunction(
                 type(declaration.returnType),
-                semantic.functions[declaration.name]?.symbol?.let(names::nameOf) ?: declaration.name,
+                semantic.functions[declaration.name]?.symbol?.let { it.externalName ?: names.nameOf(it) } ?: declaration.name,
                 declaration.parameters.map { CParameter(type(it.type), it.name, it.origin, it.arrayDimensions) },
                 declaration.body?.let { lowerBody(it, declaration.ownerName, declaration.isMethod) },
                 declaration.origin,
@@ -208,7 +208,8 @@ class CLowerer(
                 orderedAggregates
             )
         val unitWithDependencies = unit.copy(
-            publicIncludes = CDependencyCollector().collectPublic(program, unit)
+            publicIncludes = CDependencyCollector().collectPublic(program, unit),
+            runtimeDependencies = CRuntimeDependencyCatalogue.collect(unit)
         )
         diagnostics.addAll(CSubsetValidator().validate(unitWithDependencies))
         return LoweredCResult(
@@ -250,6 +251,7 @@ class CLowerer(
             containsStringTemplate(expression.elseBranch)
         is AstUpdate -> containsStringTemplate(expression.operand)
         is AstSizeOf -> expression.operand?.let(::containsStringTemplate) == true
+        is AstAbiQuery -> expression.operand?.let(::containsStringTemplate) == true
         is AstCast -> containsStringTemplate(expression.operand)
         is AstCall -> containsStringTemplate(expression.callee) || expression.arguments.any(::containsStringTemplate)
         is AstMemberAccess -> containsStringTemplate(expression.receiver)
@@ -519,6 +521,13 @@ class CLowerer(
             node.targetType?.let(::type),
             node.origin
         )
+        is AstAbiQuery -> CAbiQuery(
+            node.query,
+            node.operand?.let { expression(it, ownerName, instanceMethod) },
+            node.targetType?.let(::type),
+            node.fieldName,
+            node.origin
+        )
         is AstCast -> CCast(type(node.target), expression(node.operand, ownerName, instanceMethod), node.origin)
         is AstCall -> lowerCall(node, ownerName, instanceMethod)
         is AstMemberAccess -> {
@@ -669,7 +678,8 @@ class CLowerer(
         private val primitiveNames = setOf(
             "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
             "signed char", "unsigned char", "signed short", "unsigned short",
-            "signed int", "unsigned int", "long long", "unsigned long", "unsigned long long"
+            "signed int", "unsigned int", "long long", "unsigned long", "unsigned long long",
+            "size_t", "ptrdiff_t", "max_align_t"
         )
     }
 }
@@ -752,14 +762,7 @@ class CEmitter {
         if (unit.aliases.isNotEmpty() && (unit.globals.isNotEmpty() || unit.functions.isNotEmpty())) appendLine()
 
         if (unit.requiresStringTemplateRuntime) {
-            appendLine("static const char* __cplus_format(const char* format, ...) {")
-            appendLine("    static char buffer[1024];")
-            appendLine("    va_list arguments;")
-            appendLine("    va_start(arguments, format);")
-            appendLine("    vsnprintf(buffer, sizeof(buffer), format, arguments);")
-            appendLine("    va_end(arguments);")
-            appendLine("    return buffer;")
-            appendLine("}")
+            appendLine("const char* __cplus_format(const char* format, ...);")
             if (unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
         }
 
@@ -891,6 +894,15 @@ class CEmitter {
         }
         is CSizeOf -> expression.targetType?.let { "sizeof(${it.render()})" }
             ?: "sizeof(${expression(expression.operand!!)})"
+        is CAbiQuery -> when (expression.query) {
+            "alignof" -> expression.targetType?.let { "_Alignof(${it.render()})" }
+                ?: "_Alignof(${expression(expression.operand!!)})"
+            "offsetof" -> "offsetof(${expression.targetType?.render() ?: "int"}, ${expression.fieldName ?: "__invalid_field"})"
+            // The compiler API exposes the complete AbiLayout; this scalar
+            // view keeps layoutof usable in ordinary C expressions.
+            "layoutof" -> "sizeof(${expression.targetType?.render() ?: "int"})"
+            else -> "sizeof(${expression.targetType?.render() ?: "int"})"
+        }
         is CCast -> "(${expression.target.render()})${expression(expression.operand)}"
         is CCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
         is CMemberAccess -> "${expression(expression.receiver)}${if (expression.pointerReceiver) "->" else "."}${expression.member}"

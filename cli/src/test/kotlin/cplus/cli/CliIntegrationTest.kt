@@ -303,6 +303,16 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun selfHostedRuntimeProvidesStringTemplateFormatterWithoutHostedStdio() {
+        val directory = Files.createTempDirectory("cplus-cli-runtime-format")
+        val source = directory.resolve("main.cp").also {
+            it.writeText("import { printf } from c.stdio; int main() { printf(\"value=${'$'}{7}\\n\"); return 0; }")
+        }
+
+        assertEquals(0, Cli().run(listOf("build", source.toString(), "--output", directory.resolve("program").toString())))
+    }
+
+    @Test
     fun checkReportsFailureWithNonzeroExitCode() {
         val directory = Files.createTempDirectory("cplus-cli-check")
         val source = directory.resolve("invalid.cp").also {

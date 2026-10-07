@@ -12,5 +12,10 @@ int __cplus_terminate_normal(int status);
 int __cplus_terminate_quick(int status);
 int __cplus_terminate_immediate(int status);
 int __cplus_abort_status(void);
+void __cplus_flush_streams(void);
+void* __cplus_memcpy(void* destination, const void* source, unsigned long size);
+void* __cplus_memmove(void* destination, const void* source, unsigned long size);
+void* __cplus_memset(void* destination, int value, unsigned long size);
+int __cplus_memcmp(const void* left, const void* right, unsigned long size);
 
 #endif

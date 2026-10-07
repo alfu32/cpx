@@ -118,7 +118,8 @@ data class AstFunction(
     val isMethod: Boolean = false,
     val ownerName: String? = null,
     override val origin: Origin,
-    override val isPublic: Boolean = false
+    override val isPublic: Boolean = false,
+    val attributes: Map<String, String> = emptyMap()
 ) : AstDeclaration
 
 data class AstParameter(
@@ -225,6 +226,13 @@ data class AstUpdate(
     override val origin: Origin
 ) : AstExpression
 data class AstSizeOf(val operand: AstExpression?, val targetType: AstTypeRef? = null, override val origin: Origin) : AstExpression
+data class AstAbiQuery(
+    val query: String,
+    val operand: AstExpression? = null,
+    val targetType: AstTypeRef? = null,
+    val fieldName: String? = null,
+    override val origin: Origin
+) : AstExpression
 data class AstCast(val target: AstTypeRef, val operand: AstExpression, override val origin: Origin) : AstExpression
 data class AstCall(val callee: AstExpression, val arguments: List<AstExpression>, override val origin: Origin) : AstExpression
 data class AstMemberAccess(val receiver: AstExpression, val member: String, override val origin: Origin) : AstExpression

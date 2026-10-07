@@ -1,0 +1,8 @@
+# Generated Linux AArch64 syscall catalogue (source form).
+target = "linux-aarch64"
+read = 63
+write = 64
+close = 57
+mmap = 222
+munmap = 215
+exit = 93

@@ -46,7 +46,8 @@ class AstBuilder {
         node.isMethod,
         ownerName,
         node.origin,
-        node.isPublic
+        node.isPublic,
+        node.attributes
     )
 
     private fun field(node: SyntaxField): AstField = AstField(type(node.type), node.name, node.origin, node.arrayDimensions)
@@ -117,6 +118,13 @@ class AstBuilder {
         )
         is SyntaxUpdate -> AstUpdate(expression(node.operand), node.operator, node.prefix, node.origin)
         is SyntaxSizeOf -> AstSizeOf(node.operand?.let(::expression), node.targetType?.let(::type), node.origin)
+        is SyntaxAbiQuery -> AstAbiQuery(
+            node.query,
+            node.operand?.let(::expression),
+            node.targetType?.let(::type),
+            node.fieldName,
+            node.origin
+        )
         is SyntaxCast -> AstCast(type(node.target), expression(node.operand), node.origin)
         is SyntaxCall -> AstCall(expression(node.callee), node.arguments.map(::expression), node.origin)
         is SyntaxMemberAccess -> AstMemberAccess(expression(node.receiver), node.member, node.origin)
