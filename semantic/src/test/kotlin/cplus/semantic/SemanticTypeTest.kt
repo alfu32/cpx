@@ -13,6 +13,29 @@ import kotlin.test.assertTrue
 
 class SemanticTypeTest {
     @Test
+    fun cSourceSymbolsExposeForeignToolingInformation() {
+        val cText = "int helper_value(void) { return 12; }"
+        val cSource = SourceFile(SourceFileId(18), Path.of("helper.c"), cText, 1)
+        val cplusText = "int main() { return helper_value(); }"
+        val source = SourceFile(SourceFileId(19), Path.of("main.cp"), cplusText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        val result = SemanticAnalyzer().analyze(
+            AstBuilder().build(parsed.syntax),
+            foreignSources = listOf(CSourceUnit(cSource, "c.source.helper"))
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = result.model!!
+        val helper = model.foreignFunctions.getValue("helper_value")
+        assertEquals(SymbolKind.FOREIGN, helper.symbol.kind)
+        assertEquals("int", model.functionSignature("helper_value")!!.returnType.name)
+        assertEquals(helper.symbol, model.lookup("helper_value"))
+        assertEquals(cSource.id, helper.symbol.origin.primaryRange!!.file)
+        assertEquals(cText.indexOf("int helper_value"), helper.symbol.origin.primaryRange!!.startOffset)
+    }
+
+    @Test
     fun unsupportedHeaderPreprocessorContentRemainsDiagnostic() {
         val service = CHeaderImportService(mapOf("c.test" to "#define MAGIC 1\n"))
         val text = "import { MAGIC } from c.test; int main() { return 0; }"

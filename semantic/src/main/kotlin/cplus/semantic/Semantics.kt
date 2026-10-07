@@ -184,7 +184,19 @@ data class SemanticModel(
     val packageModules: Map<String, Set<String>> = emptyMap(),
     val foreignGlobals: Map<String, Symbol> = emptyMap()
 ) {
+    val foreignFunctions: Map<String, FunctionSymbol>
+        get() = functions.filterValues { it.symbol.kind == SymbolKind.FOREIGN }
+
+    val foreignSymbols: List<Symbol>
+        get() = symbols.filter { it.kind == SymbolKind.FOREIGN || it.kind == SymbolKind.FOREIGN_TYPE || it.kind == SymbolKind.FOREIGN_ENUM_VALUE }
+
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
+
+    fun lookup(name: String): Symbol? = symbols.firstOrNull {
+        it.name == name || it.qualifiedName.value == name
+    }
+
+    fun functionSignature(name: String): FunctionType? = functions[name]?.signature
 
     fun canonicalTypeId(type: CType): TypeId = canonicalTypeIds[canonicalTypeKey(type)] ?: type.id
 }

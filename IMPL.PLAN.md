@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 50/97
+Overall: 50/98
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [25/29] 2. Semantic model and modules
+[DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [7/20] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.4.4 — foreign-symbol semantic tooling integration
+2.4.4.2 — language-server foreign-symbol integration
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -686,7 +686,7 @@ all create correct bindings.
 
 ---
 
-## 2.4 [DOING] [6/8] C interoperability model
+## 2.4 [DOING] [7/9] C interoperability model
 
 ### 2.4.1 [DONE] Foreign symbol and type representation
 
@@ -790,7 +790,7 @@ all create correct bindings.
 **Depends**
 - 2.4.3.1
 
-### 2.4.4 [TODO] Foreign-symbol semantic tooling integration
+### 2.4.4 [DOING] [1/2] Foreign-symbol semantic tooling integration
 
 **Language**
 - LS §41
@@ -807,6 +807,27 @@ all create correct bindings.
 **Depends**
 - 2.4.3
 - 5.1 later exposes this through LSP.
+
+#### 2.4.4.1 [DONE] Expose foreign symbols through semantic tooling APIs
+
+**Acceptance**
+- foreign declarations participate in semantic lookup.
+- imported function signatures and foreign types remain queryable.
+- source/header origins are retained on foreign symbols when available.
+
+**Depends**
+- 2.4.3
+
+#### 2.4.4.2 [TODO] Integrate foreign symbols with language-server features
+
+**Acceptance**
+- completion includes imported C symbols.
+- hover and signature help expose foreign type/signature information.
+- go-to-definition uses retained source/header origins when available.
+
+**Depends**
+- 2.4.4.1
+- 5.1
 
 ---
 
