@@ -7,8 +7,7 @@ _start:
     lea 8(%rsp), %rsi
     call __cplus_start
     mov %eax, %edi
-    mov $60, %eax
-    syscall
+    call platform_process_exit
     hlt
 .size _start, .-_start
 .section .note.GNU-stack,"",@progbits

@@ -156,7 +156,8 @@ internal class Cli {
             parsed.includeDirectories,
             parsed.sdkManifest,
             parsed.externalSysroot,
-            parsed.target
+            parsed.target,
+            parsed.cCompiler
         )
     }
 
@@ -173,7 +174,8 @@ internal class Cli {
             parsed.includeDirectories,
             parsed.sdkManifest,
             parsed.externalSysroot,
-            parsed.target
+            parsed.target,
+            parsed.cCompiler
         )
         if (buildExitCode != 0) return buildExitCode
         val process = ProcessBuilder(executable.toString()).inheritIO().start()
@@ -255,13 +257,14 @@ internal class Cli {
     }
 
     private fun audit(arguments: List<String>): Int {
-        val binary = arguments.firstOrNull()?.let(Path::of)
+        val binary = arguments.firstOrNull { !it.startsWith("--") }?.let(Path::of)
         if (binary == null) {
             System.err.println("audit requires a binary path")
             return 2
         }
+        val targetName = arguments.windowed(2).firstOrNull { it[0] == "--target" }?.get(1) ?: "linux-x86_64"
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
-        val descriptor = TargetRegistry.load(root.resolve("abi/linux-x86_64.toml")).descriptor
+        val descriptor = TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor
             ?: return 1
         val report = RuntimeDependencyAuditor.inspect(binary, descriptor, BuildProfile())
         println("observed: ${report.observed.sorted().joinToString(", ")}")
@@ -278,7 +281,8 @@ internal class Cli {
         includeDirectories: List<Path> = emptyList(),
         sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
         externalSysroot: Path? = null,
-        target: TargetInfo = TargetInfo()
+        target: TargetInfo = TargetInfo(),
+        cCompiler: String? = null
     ): Int {
         val compiler = CPlusCompiler()
         val result = compiler.compile(
@@ -318,12 +322,13 @@ internal class Cli {
                     sdk = sdkResolution,
                     includeDirectories = includeDirectories,
                     sourceDependencies = result.cSourceDependencies.map { it.path },
-                    libraries = result.cLinkDependencies
+                    libraries = result.cLinkDependencies,
+                    cCompiler = cCompiler
                 ),
                 runtime
             )
         } catch (error: java.io.IOException) {
-            System.err.println("unable to start C compiler 'cc': ${error.message}")
+            System.err.println("unable to start target C compiler: ${error.message}")
             return 2
         }
         val output = linkResult.output
@@ -335,6 +340,9 @@ internal class Cli {
             } else {
                 printCCompilerDiagnostics(remapped)
             }
+        }
+        if (exitCode != 0) {
+            System.err.println("target C link command: ${linkResult.command.joinToString(" ")}")
         }
         if (exitCode == 0) println("built ${executable.toAbsolutePath()}")
         return exitCode
@@ -365,6 +373,8 @@ internal class Cli {
         var externalSysroot: Path? = null
         var runtime: RuntimeProfile? = null
         var libc: LibcProfile? = null
+        var targetTriple = "linux-x86_64"
+        var cCompiler: String? = null
         var output: Path? = null
         var headerOutput: Path? = null
         var index = 0
@@ -443,6 +453,24 @@ internal class Cli {
                     libc = parseLibc(value, argument) ?: return null
                     index += 2
                 }
+                "--target" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    if (value.isNullOrBlank()) {
+                        System.err.println("missing target triple after $argument")
+                        return null
+                    }
+                    targetTriple = value
+                    index += 2
+                }
+                "--c-compiler" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    if (value.isNullOrBlank()) {
+                        System.err.println("missing compiler path after $argument")
+                        return null
+                    }
+                    cCompiler = value
+                    index += 2
+                }
                 else -> {
                     if (argument.startsWith("-l") && argument.length > 2) {
                         libraries += argument.removePrefix("-l")
@@ -473,7 +501,8 @@ internal class Cli {
             includeDirectories,
             sdkManifest ?: SdkManifestLocator.defaultManifestPath(),
             externalSysroot,
-            TargetInfo(buildProfile = BuildProfile(selectedRuntime, selectedLibc))
+            TargetInfo(buildProfile = BuildProfile(selectedRuntime, selectedLibc), targetTriple = targetTriple),
+            cCompiler
         )
     }
 
@@ -564,7 +593,7 @@ internal class Cli {
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
         stream.println("C+ CLI transcoder")
-        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--runtime <profile>] [--libc <profile>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
+        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--target <triple>] [--runtime <profile>] [--libc <profile>] [--c-compiler <path>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
         stream.println()
         stream.println("commands:")
         stream.println("  transcode   translate one C+ source file to C")
@@ -572,14 +601,14 @@ internal class Cli {
         stream.println("  check       parse and semantically validate one source file")
         stream.println("  ast         print the normalized AST")
         stream.println("  expand      print the post-CPX normalized AST")
-        stream.println("  build       transcode and compile one source file with cc")
+        stream.println("  build       transcode and compile one source file with the target C driver")
         stream.println("  run         build and execute one source file")
         stream.println("  sdk         verify, inspect, or index the source SDK")
         stream.println("  target      list or inspect target ABI descriptors")
         stream.println("  abi         verify target ABI descriptors")
         stream.println("  runtime     inspect runtime sources")
         stream.println("  libc        list delivered libc headers")
-        stream.println("  audit       inspect binary runtime dependencies")
+        stream.println("  audit       inspect binary runtime dependencies [--target <triple>]")
         stream.println("  lsp         serve compiler diagnostics over stdio JSON-RPC")
     }
 
@@ -592,7 +621,8 @@ internal class Cli {
         val includeDirectories: List<Path>,
         val sdkManifest: Path,
         val externalSysroot: Path?,
-        val target: TargetInfo
+        val target: TargetInfo,
+        val cCompiler: String?
     )
 
     private companion object {

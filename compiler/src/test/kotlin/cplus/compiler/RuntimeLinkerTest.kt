@@ -16,7 +16,25 @@ class RuntimeLinkerTest {
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         assertEquals(RuntimeProfile.CPLUS, result.plan!!.profile)
         assertTrue(result.plan.compilerFlags.contains("-nostdlib"))
+        assertTrue(result.plan.compilerFlags.contains("-fno-pie"))
+        assertTrue(result.plan.linkerFlags.contains("-no-pie"))
         assertTrue(result.plan.startupSources.single().fileName.toString() == "start.S")
+        assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "runtime.c" })
+    }
+
+    @Test
+    fun selectsWindowsStartupAndPlatformAdapterWithoutCrt() {
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+
+        val result = RuntimeLinker.plan(resolution, target)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("start.c", result.plan!!.startupSources.single().fileName.toString())
+        assertTrue(result.plan.runtimeSources.any { it.toString().contains("platform/windows/runtime.c") })
+        assertTrue(result.plan.linkerFlags.contains("-lkernel32"))
+        assertTrue(result.plan.compilerFlags.contains("-nostdlib"))
     }
 
     @Test
@@ -57,12 +75,19 @@ class RuntimeLinkerTest {
         val executable = directory.resolve("termination")
         val process = ProcessBuilder(
             listOf("cc", "-std=c17") + plan.compilerFlags +
+                listOf("-I", resolution.layout.runtimeInclude.toString()) +
                 listOf(source.toString()) + plan.runtimeSources.map { it.toString() } +
-                plan.startupSources.map { it.toString() } + listOf("-o", executable.toString())
+                plan.startupSources.map { it.toString() } + plan.linkerFlags + listOf("-o", executable.toString())
         ).redirectErrorStream(true).start()
         val output = process.inputStream.bufferedReader().readText()
 
         assertEquals(0, process.waitFor(), output)
         assertEquals(21, ProcessBuilder(executable.toString()).start().waitFor())
+
+        val descriptor = requireNotNull(TargetRegistry.load(
+            SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!.resolve("abi/linux-x86_64.toml")
+        ).descriptor)
+        val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, BuildProfile())
+        assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
     }
 }

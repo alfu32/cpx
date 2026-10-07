@@ -11,7 +11,13 @@ static int __cplus_global_state_initialized;
 static int __cplus_argc;
 static char** __cplus_argv;
 
+/* GCC-family Windows drivers emit this constructor hook even for C-only units.
+   The C+ runtime has no global-constructor table at this layer, so the hook is
+   intentionally a no-op and does not pull in a compiler runtime library. */
+void __main(void) { }
+
 void __cplus_flush_streams(void);
+void platform_process_exit(int status);
 
 int __cplus_runtime_init(int argc, char** argv) {
     __cplus_exit_handler_count = 0;
@@ -78,7 +84,11 @@ int __cplus_abort_status(void) {
 }
 
 /* libc/stdio may replace this hook in a hosted SDK profile. */
+#if !defined(CPLUS_RUNTIME_NO_WEAK) && defined(__GNUC__)
 __attribute__((weak)) void __cplus_flush_streams(void) { }
+#elif !defined(CPLUS_RUNTIME_NO_WEAK)
+void __cplus_flush_streams(void) { }
+#endif
 
 extern int main(int argc, char** argv);
 

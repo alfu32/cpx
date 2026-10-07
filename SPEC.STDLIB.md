@@ -140,6 +140,21 @@ The **Platform Abstraction Layer**, or PAL, is the narrow interface between port
 
 The PAL SHALL be kept substantially smaller than the standard library.
 
+The baseline PAL SHALL expose a uniform, versioned C ABI to both the C+
+runtime and native SDK services. The baseline operations are:
+
+```c
+long platform_write_stdout(const char* buffer, unsigned long length);
+int platform_process_exit(int status);
+```
+
+Portable runtime and standard-library code SHALL call these PAL operations and
+SHALL NOT contain Linux syscall instructions, Windows DLL declarations, host
+libc includes, or host libc symbol references. Those details belong only to
+the selected target adapter. New OS-dependent facilities SHALL be added as
+PAL operations or versioned shims so that `std` and the runtime retain one
+source-level API across targets.
+
 ## 2.6 Platform ABI Adapter
 
 A **Platform ABI Adapter** implements the PAL for one target family.
@@ -151,6 +166,10 @@ Linux syscall adapter
 Windows Win32/NT user-mode adapter
 Darwin system adapter
 ```
+
+An adapter MAY implement an operation with direct kernel syscalls, documented
+system-DLL imports, or another supported OS primitive. The choice SHALL be
+invisible to its PAL callers and SHALL be recorded in target ABI metadata.
 
 ## 2.7 Target ABI Descriptor
 
@@ -492,6 +511,13 @@ struct os_handle_t {
 isize os_read(os_handle_t handle, mut void* dst, usize count);
 isize os_write(os_handle_t handle, borrowed void* src, usize count);
 void os_close(os_handle_t handle);
+```
+
+The process/runtime baseline additionally uses the uniform PAL ABI:
+
+```c
+long platform_write_stdout(const char* buffer, unsigned long length);
+int platform_process_exit(int status);
 ```
 
 The implementation of buffering, formatting, stream state and textual conversion SHALL reside above this PAL interface.

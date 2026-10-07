@@ -1974,8 +1974,10 @@ falls back to host headers or libraries.
 
 The selected runtime/libc profile is part of `TargetInfo`, is included in
 incremental cache identity, and is copied into `ComptimeTargetInfo` for target
-selection. The current repository SDK provides the initial Linux x86_64
-layout and C17 profile.
+selection. The repository SDK provides source layouts for Linux and Windows
+on x86_64 and AArch64, with C17 as the claimed hosted profile. A target build
+resolves its SDK sources and target descriptor directly; it does not select
+glibc, musl, MSVCRT, UCRT, or MinGW as a C+ standard-library implementation.
 
 The SDK metadata cache is a deterministic, versioned artifact under the SDK
 cache root. It stores source-relative paths, content hashes, declarations,
@@ -1985,13 +1987,14 @@ otherwise it rebuilds the metadata from source. Metadata accelerates tooling
 and inspection but never replaces source as the authority for compilation.
 
 For `runtime=cplus` and `runtime=freestanding`, `RuntimeLinker` resolves the
-target startup adapter and compiler-support runtime from the SDK. On Linux
-x86_64 the adapter supplies `_start`, which acquires `argc`/`argv`, calls
-`__cplus_start`, and exits through the Linux process-exit syscall. The runtime
-initialization sequence records arguments, initializes runtime/TLS/allocator
-state hooks, dispatches either supported application `main` form, and runs
-normal termination handlers. `runtime=system` deliberately leaves startup and
-default-library selection to the downstream toolchain.
+target startup adapter, uniform PAL adapter, and compiler-support runtime from
+the SDK. Linux startup enters `_start` and reaches the kernel only through the
+Linux PAL; Windows startup enters `mainCRTStartup` and reaches documented
+system DLL imports only through the Windows PAL. Both paths call
+`__cplus_start`, initialize runtime/TLS/allocator state hooks, dispatch the
+supported application `main` form, and terminate through the same PAL ABI.
+`runtime=system` deliberately leaves startup and default-library selection to
+the downstream toolchain.
 
 Termination is represented as separate runtime operations: normal termination
 drains the normal handler stack, quick termination drains only the quick stack,
@@ -2677,12 +2680,16 @@ validation, C AST, dependency collection, and emission. `offsetof` therefore
 adds `<stddef.h>` structurally rather than relying on textual include rules.
 
 The runtime link plan is explicit. Self-hosted profiles select target startup,
-runtime initialization, compiler support helpers, and the platform termination
-primitive with `-nostdlib`, `-nodefaultlibs`, and `-nostartfiles` as required;
-the system profile delegates startup/default libraries to the downstream C
-compiler. `LinkDriver` consumes this plan, while `RuntimeDependencyAuditor`
-checks produced binaries for forbidden host libc and unresolved compiler-runtime
-dependencies.
+the uniform PAL adapter, runtime initialization, compiler support helpers, and
+the platform termination primitive with `-nostdlib`, `-nodefaultlibs`, and
+`-nostartfiles` as required. Linux self-hosted links also disable PIE so no
+host dynamic loader is inherited. The system profile delegates
+startup/default libraries to the downstream C compiler. `LinkDriver` selects a
+target-capable C driver automatically and translates the plan for GNU/Clang or
+MSVC-style drivers; users do not choose a host libc profile.
+`RuntimeDependencyAuditor` checks ELF, PE/COFF, and Mach-O products for
+forbidden host libc, undeclared OS imports, dynamic interpreters, and
+unresolved compiler-runtime dependencies.
 
 The intrinsic catalogue is data-driven and target-checked. Syscall, atomic,
 varargs, context, and other compiler-owned operations are not ordinary library

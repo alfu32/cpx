@@ -3111,6 +3111,8 @@ all create correct bindings.
 **Implementation**
 - Added Windows x86_64/AArch64 descriptors, startup/platform source contracts, and `declared-dll` platform ABI metadata.
 - Kept UCRT/MSVCRT out of the self-hosted runtime dependency policy.
+- Added the uniform `platform_write_stdout`/`platform_process_exit` PAL ABI and isolated Linux syscall and Windows DLL implementations behind it.
+- Added target startup adapters for Linux x86_64/AArch64 and Windows x86_64/AArch64 without host libc startup objects.
 
 **Depends**
 - 6.2.1.3
@@ -3151,6 +3153,7 @@ all create correct bindings.
 **Implementation**
 - Added object-format, startup entry, symbol prefix, TLS, linker, system-library, and stack-alignment metadata for ELF, PE/COFF, and Mach-O.
 - Added `PlatformAbiRegistry` to expose platform service and syscall/import mode without host-derived branching.
+- Added target-aware runtime source selection and target-specific PAL runtime units; portable runtime stdio now calls only the uniform PAL ABI.
 
 **Depends**
 - 6.4.1.1–6.4.1.3
@@ -3181,6 +3184,7 @@ all create correct bindings.
 **Implementation**
 - Added `LinkDriver`/`LinkRequest` as the target-aware downstream compiler boundary and wired the CLI build/run path through it.
 - Added explicit GCC/Clang/TCC/unknown capability classification and self-hosted flag validation.
+- Added automatic target compiler selection, `--target`/`--c-compiler` CLI controls, GNU/Clang and MSVC-style invocation adapters, compiler-provided C17 headers, no-PIE Linux linking, and explicit Windows OS-import linking.
 
 **Depends**
 - 6.1.2
@@ -3230,6 +3234,7 @@ all create correct bindings.
 **Implementation**
 - Added `RuntimeDependencyAuditor` using downstream ELF dependency and unresolved-symbol inspection.
 - Added CLI `audit` output for observed, allowed, unexpected, and unresolved compiler-runtime dependencies.
+- Extended auditing to ELF, PE/COFF, and Mach-O; self-hosted ELF rejects dynamic interpreters and self-hosted PE rejects undeclared or C-runtime DLL imports.
 
 **Depends**
 - 6.4.2.1

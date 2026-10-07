@@ -11,7 +11,7 @@ data class LinkRequest(
     val includeDirectories: List<Path> = emptyList(),
     val sourceDependencies: List<Path> = emptyList(),
     val libraries: List<CLinkDependency> = emptyList(),
-    val cCompiler: String = "cc"
+    val cCompiler: String? = null
 )
 
 data class LinkResult(
@@ -28,20 +28,12 @@ data class LinkResult(
  */
 object LinkDriver {
     fun command(request: LinkRequest, plan: RuntimeLinkPlan): List<String> {
-        val includes = request.includeDirectories.distinct().flatMap { listOf("-I", it.toAbsolutePath().normalize().toString()) }
-        val libraries = request.libraries.map { dependency ->
-            when (dependency.kind) {
-                CLinkDependencyKind.LOCAL -> dependency.value
-                CLinkDependencyKind.FOREIGN -> "-l${dependency.value}"
-            }
+        val compiler = CCompilerToolchains.resolve(request.target, request.cCompiler)
+        return if (CCompilerToolchains.isMsvcStyle(compiler)) {
+            msvcCommand(request, plan, compiler)
+        } else {
+            gccLikeCommand(request, plan, compiler)
         }
-        return listOf(request.cCompiler, "-std=${request.target.cDialect}") +
-            plan.compilerFlags + includes +
-            listOf(request.generatedSource.toString()) +
-            plan.runtimeSources.map(Path::toString) +
-            plan.startupSources.map(Path::toString) +
-            request.sourceDependencies.map(Path::toString) +
-            libraries + plan.linkerFlags + listOf("-o", request.output.toString())
     }
 
     fun link(request: LinkRequest, plan: RuntimeLinkPlan): LinkResult {
@@ -51,5 +43,53 @@ object LinkDriver {
         val process = ProcessBuilder(command).redirectErrorStream(true).start()
         val output = process.inputStream.bufferedReader().readText()
         return LinkResult(command, process.waitFor(), output)
+    }
+
+    private fun gccLikeCommand(request: LinkRequest, plan: RuntimeLinkPlan, compiler: String): List<String> {
+        val includes = (listOf(request.sdk.layout.runtimeInclude) + request.includeDirectories).distinct().flatMap {
+            listOf("-I", it.toAbsolutePath().normalize().toString())
+        }
+        val libraries = request.libraries.map(::gnuLibrary)
+        return listOf(compiler, "-std=${request.target.cDialect}") +
+            CCompilerToolchains.targetFlags(request.target, compiler) +
+            plan.compilerFlags + includes +
+            listOf(request.generatedSource.toString()) +
+            plan.runtimeSources.map(Path::toString) +
+            plan.startupSources.map(Path::toString) +
+            request.sourceDependencies.map(Path::toString) +
+            libraries + plan.linkerFlags + listOf("-o", request.output.toString())
+    }
+
+    private fun msvcCommand(request: LinkRequest, plan: RuntimeLinkPlan, compiler: String): List<String> {
+        val includes = (listOf(request.sdk.layout.runtimeInclude) + request.includeDirectories).distinct().flatMap {
+            listOf("/I${it.toAbsolutePath().normalize()}")
+        }
+        val sources = listOf(request.generatedSource) + plan.runtimeSources + plan.startupSources + request.sourceDependencies
+        val libraries = request.libraries.map(::msvcLibrary)
+        val runtimeLibraries = plan.linkerFlags.mapNotNull { flag ->
+            when {
+                flag == "-lkernel32" -> "kernel32.lib"
+                else -> null
+            }
+        }
+        val clangFlags = if (CCompilerToolchains.classify(compiler).kind == CCompilerKind.CLANG_CL) {
+            listOf("/clang:-ffreestanding", "/clang:-fno-builtin", "/clang:-fno-stack-protector", "/clang:-nostdlib")
+        } else {
+            emptyList()
+        }
+        return listOf(compiler, "/nologo", "/std:c17", "/GS-", "/Oi-", "/DCPLUS_RUNTIME_NO_WEAK") +
+            clangFlags + includes + sources.map(Path::toString) +
+            listOf("/link", "/NODEFAULTLIB", "/ENTRY:mainCRTStartup", "/SUBSYSTEM:CONSOLE", "/OUT:${request.output}") +
+            runtimeLibraries + libraries
+    }
+
+    private fun gnuLibrary(dependency: CLinkDependency): String = when (dependency.kind) {
+        CLinkDependencyKind.LOCAL -> dependency.value
+        CLinkDependencyKind.FOREIGN -> "-l${dependency.value}"
+    }
+
+    private fun msvcLibrary(dependency: CLinkDependency): String = when (dependency.kind) {
+        CLinkDependencyKind.LOCAL -> dependency.value
+        CLinkDependencyKind.FOREIGN -> if (dependency.value.endsWith(".lib", ignoreCase = true)) dependency.value else "${dependency.value}.lib"
     }
 }
