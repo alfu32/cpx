@@ -1042,6 +1042,111 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun stdFixedWidthAliasesAreExplicitSourceTypedefsAcrossTargets() {
+        val sdkRoot = SdkManifestLocator.defaultManifestPath()
+            .toAbsolutePath().normalize().parent!!.parent!!
+        val fixedWidthModule = sdkRoot.resolve("std/src/fixed_width.cp")
+        val directory = Files.createTempDirectory("cplus-std-fixed-width")
+        val main = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    import {
+                        i8, i16, i32, i64,
+                        u8, u16, u32, u64
+                    } from std.fixed_width;
+
+                    struct fixed_width_record {
+                        i8 signed8;
+                        i16 signed16;
+                        i32 signed32;
+                        i64 signed64;
+                        u8 unsigned8;
+                        u16 unsigned16;
+                        u32 unsigned32;
+                        u64 unsigned64;
+                    };
+
+                    i32 add_wide(i32 left, u64 right) {
+                        return left + (i32)right;
+                    }
+
+                    int main() {
+                        struct fixed_width_record record;
+                        i8* signed_pointer;
+                        u64* unsigned_pointer;
+                        return add_wide(1, 2);
+                    }
+                """.trimIndent()
+            )
+        }
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, fixedWidthModule)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = requireNotNull(result.semanticModel)
+        val expectedSizes = mapOf(
+            "i8" to 1, "i16" to 2, "i32" to 4, "i64" to 8,
+            "u8" to 1, "u16" to 2, "u32" to 4, "u64" to 8
+        )
+        listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { targetName ->
+            val descriptor = requireNotNull(TargetRegistry.load(sdkRoot.resolve("abi/$targetName.toml")).descriptor)
+            val layouts = AbiLayoutEngine(descriptor)
+            expectedSizes.forEach { (aliasName, expectedSize) ->
+                assertEquals(expectedSize, layouts.layout(model.aliases.getValue(aliasName)).size, "$targetName $aliasName")
+            }
+        }
+
+        val generated = result.generatedUnits.single().text
+        val cTypes = mapOf(
+            "i8" to "int8_t", "i16" to "int16_t", "i32" to "int32_t", "i64" to "int64_t",
+            "u8" to "uint8_t", "u16" to "uint16_t", "u32" to "uint32_t", "u64" to "uint64_t"
+        )
+        cTypes.forEach { (alias, cType) -> assertTrue("typedef $cType $alias;" in generated, generated) }
+        assertTrue("i32 add_wide(i32 left, u64 right)" in generated, generated)
+        assertTrue("struct fixed_width_record" in generated, generated)
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder(
+            "cc", "-std=c17", "-I", sdkRoot.resolve("libc/include").toString(),
+            cFile.toString(), "-o", executable.toString()
+        ).redirectErrorStream(true).start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        assertEquals(3, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
+    }
+
+    @Test
+    fun stdFixedWidthAliasesAreNotImplicitlyVisible() {
+        val sdkRoot = SdkManifestLocator.defaultManifestPath()
+            .toAbsolutePath().normalize().parent!!.parent!!
+        val fixedWidthModule = sdkRoot.resolve("std/src/fixed_width.cp")
+        val main = Files.createTempFile("cplus-fixed-width-no-import", ".cp").also {
+            it.writeText("int main() { i8 value; return 0; }")
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, fixedWidthModule)))
+
+        assertTrue(result.diagnostics.any { it.code == "SEM410" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
+    fun fixedWidthAliasesDoNotFallBackOnTargetsWithoutAnSdkAbi() {
+        val sdkRoot = SdkManifestLocator.defaultManifestPath()
+            .toAbsolutePath().normalize().parent!!.parent!!
+        val fixedWidthModule = sdkRoot.resolve("std/src/fixed_width.cp")
+        val main = Files.createTempFile("cplus-fixed-width-unsupported-target", ".cp").also {
+            it.writeText("import { i64 } from std.fixed_width; int main() { return 0; }")
+        }
+
+        val result = CPlusCompiler().compile(
+            CompileRequest(listOf(main, fixedWidthModule), target = TargetInfo(targetTriple = "linux-riscv64"))
+        )
+
+        assertTrue(result.diagnostics.any { it.code == "SDK008" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun integerSpecifierVariantsWorkAcrossDeclarationsAndGeneratedC() {
         val result = CPlusCompiler().compileText(
             Files.createTempFile("cplus-integer-specifiers", ".cp"),

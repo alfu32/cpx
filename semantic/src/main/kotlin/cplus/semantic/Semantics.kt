@@ -961,6 +961,67 @@ class SemanticAnalyzer(
             }
         }
 
+        // Register foreign header imports before source aliases, function
+        // signatures, and aggregate fields are resolved. A consumer module can
+        // appear before the provider module that imports the C types underlying
+        // its exported source aliases.
+        program.declarations.filterIsInstance<AstImport>().forEach { declaration ->
+            headerImportService.unsupportedPreprocessorLines(declaration.module).forEach { line ->
+                diagnostics.error(
+                    "unsupported preprocessor construct in ${declaration.module}: $line",
+                    rangeOf(declaration.origin),
+                    "SEM409"
+                )
+            }
+            if (declaration.module == "c.stdio") {
+                declaration.names.forEach { name ->
+                    when (name) {
+                        "printf" -> {
+                            val returnType = primitive("int")
+                            val signature = FunctionType(TypeId(nextTypeId.next()), returnType, emptyList(), isVariadic = true).also(types::add)
+                            val symbol = newSymbol(
+                                name,
+                                SymbolKind.FOREIGN,
+                                signature,
+                                declaration.origin,
+                                declaration.module,
+                                Visibility.PUBLIC,
+                                name
+                            )
+                            val function = FunctionSymbol(symbol, returnType, emptyList(), isVariadic = true, signature = signature)
+                            functions[name] = function
+                            moduleFunctions.getOrPut(declaration.module) { linkedMapOf() }[name] = function
+                            defineBinding(declaration.module, name, symbol.id)
+                        }
+                        "FILE" -> registerForeignType(name, declaration.module, declaration.origin)
+                        "EOF" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN)
+                        "SEEK_SET", "SEEK_CUR", "SEEK_END" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN_ENUM_VALUE)
+                        else -> headerImportService.declarations(declaration.module)[name]?.let {
+                            registerHeaderDeclaration(it, declaration.module, declaration.origin)
+                        } ?: diagnostics.error("unsupported imported C symbol '$name' from c.stdio", rangeOf(declaration.origin), "SEM401")
+                    }
+                }
+            } else if (declaration.module == "c.stddef") {
+                declaration.names.forEach { name ->
+                    if (name == "size_t") {
+                        headerImportService.declarations(declaration.module)[name]?.let {
+                            registerHeaderDeclaration(it, declaration.module, declaration.origin)
+                        } ?: registerForeignType(name, declaration.module, declaration.origin)
+                    } else {
+                        headerImportService.declarations(declaration.module)[name]?.let {
+                            registerHeaderDeclaration(it, declaration.module, declaration.origin)
+                        } ?: diagnostics.error("unsupported imported C symbol '$name' from c.stddef", rangeOf(declaration.origin), "SEM402")
+                    }
+                }
+            } else if (declaration.module.startsWith("c.")) {
+                val declarations = headerImportService.declarations(declaration.module)
+                declaration.names.forEach { name ->
+                    declarations[name]?.let { registerHeaderDeclaration(it, declaration.module, declaration.origin) }
+                        ?: diagnostics.error("unsupported imported C symbol '$name' from ${declaration.module}", rangeOf(declaration.origin), "SEM408")
+                }
+            }
+        }
+
         // Catalogue aggregate shells before resolving aliases, signatures, or fields so
         // references are independent of source-file declaration order.
         program.declarations.forEach { declaration ->
@@ -1058,62 +1119,7 @@ class SemanticAnalyzer(
                         defineBinding(moduleName, symbol.name, symbol.id)
                     }
                 }
-                is AstImport -> {
-                    headerImportService.unsupportedPreprocessorLines(declaration.module).forEach { line ->
-                        diagnostics.error(
-                            "unsupported preprocessor construct in ${declaration.module}: $line",
-                            rangeOf(declaration.origin),
-                            "SEM409"
-                        )
-                    }
-                    if (declaration.module == "c.stdio") {
-                        declaration.names.forEach { name ->
-                            when (name) {
-                                "printf" -> {
-                                    val returnType = primitive("int")
-                                    val signature = FunctionType(TypeId(nextTypeId.next()), returnType, emptyList(), isVariadic = true).also(types::add)
-                                    val symbol = newSymbol(
-                                        name,
-                                        SymbolKind.FOREIGN,
-                                        signature,
-                                        declaration.origin,
-                                        declaration.module,
-                                        Visibility.PUBLIC,
-                                        name
-                                    )
-                                    val function = FunctionSymbol(symbol, returnType, emptyList(), isVariadic = true, signature = signature)
-                                    functions[name] = function
-                                    moduleFunctions.getOrPut(declaration.module) { linkedMapOf() }[name] = function
-                                    defineBinding(declaration.module, name, symbol.id)
-                                }
-                                "FILE" -> registerForeignType(name, declaration.module, declaration.origin)
-                                "EOF" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN)
-                                "SEEK_SET", "SEEK_CUR", "SEEK_END" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN_ENUM_VALUE)
-                                else -> headerImportService.declarations(declaration.module)[name]?.let {
-                                    registerHeaderDeclaration(it, declaration.module, declaration.origin)
-                                } ?: diagnostics.error("unsupported imported C symbol '$name' from c.stdio", rangeOf(declaration.origin), "SEM401")
-                            }
-                        }
-                    } else if (declaration.module == "c.stddef") {
-                        declaration.names.forEach { name ->
-                            if (name == "size_t") {
-                                headerImportService.declarations(declaration.module)[name]?.let {
-                                    registerHeaderDeclaration(it, declaration.module, declaration.origin)
-                                } ?: registerForeignType(name, declaration.module, declaration.origin)
-                            } else {
-                                headerImportService.declarations(declaration.module)[name]?.let {
-                                    registerHeaderDeclaration(it, declaration.module, declaration.origin)
-                                } ?: diagnostics.error("unsupported imported C symbol '$name' from c.stddef", rangeOf(declaration.origin), "SEM402")
-                            }
-                        }
-                    } else if (declaration.module.startsWith("c.")) {
-                        val declarations = headerImportService.declarations(declaration.module)
-                        declaration.names.forEach { name ->
-                            declarations[name]?.let { registerHeaderDeclaration(it, declaration.module, declaration.origin) }
-                                ?: diagnostics.error("unsupported imported C symbol '$name' from ${declaration.module}", rangeOf(declaration.origin), "SEM408")
-                        }
-                    }
-                }
+                is AstImport -> Unit
                 is AstComptimeFunction, is AstCpxInvocation -> Unit
             }
         }

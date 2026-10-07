@@ -74,6 +74,8 @@ The **C+ Standard Library**, hereafter `std`, is the preferred native C+ program
 Examples include:
 
 ```text
+std.fixed_width
+std.core
 std.mem
 std.string
 std.io
@@ -392,6 +394,7 @@ It SHALL NOT be the default for pure C+ applications.
 The following packages form the initial native C+ standard library.
 
 ```text
+std.fixed_width
 std.core
 std.mem
 std.alloc
@@ -413,6 +416,13 @@ std.collections
 This package API is the preferred interface for C+ applications.
 
 The C compatibility library is a compatibility façade over the same runtime where practical.
+
+`std.fixed_width` is an optional source module for application-level naming
+convenience. It exports `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, and
+`u64` as ordinary typedef aliases of the corresponding exact-width C integer
+types. Programs MUST import these names explicitly; they are not compiler
+built-ins and are not injected into `std.core` or native SDK signatures.
+128-bit aliases are governed separately by target capability and ABI support.
 
 ---
 

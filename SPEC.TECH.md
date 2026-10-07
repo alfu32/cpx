@@ -593,6 +593,11 @@ active ABI descriptor. C standard typedefs such as `size_t` and `ptrdiff_t`
 remain distinct from built-in primitives and SHALL resolve through target C
 header metadata or the compiler's explicit target model.
 
+The SDK's `std.fixed_width` module SHALL define `i8` through `i64` and `u8`
+through `u64` as ordinary source typedefs over the corresponding `intN_t` and
+`uintN_t` declarations. These aliases SHALL NOT be added to the primitive
+catalog or implicitly injected into another module's type environment.
+
 ---
 
 # 13. Method model

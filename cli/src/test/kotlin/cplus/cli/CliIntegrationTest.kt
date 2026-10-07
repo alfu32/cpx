@@ -1,5 +1,6 @@
 package cplus.cli
 
+import cplus.compiler.SdkManifestLocator
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -341,6 +342,25 @@ class CliIntegrationTest {
 
         assertEquals(16, Cli().run(listOf("run", main.toString())))
         assertTrue(helper.exists())
+    }
+
+    @Test
+    fun runSupportsExplicitFixedWidthSdkModuleImport() {
+        val sdkRoot = SdkManifestLocator.defaultManifestPath()
+            .toAbsolutePath().normalize().parent!!.parent!!
+        val fixedWidthModule = sdkRoot.resolve("std/src/fixed_width.cp")
+        val directory = Files.createTempDirectory("cplus-cli-fixed-width-import")
+        val main = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    import { i8, i32, u64 } from std.fixed_width;
+                    i32 add_wide(i32 left, u64 right) { return left + (i32)right; }
+                    int main() { i8 small; return add_wide(1, 2); }
+                """.trimIndent()
+            )
+        }
+
+        assertEquals(3, Cli().run(listOf("run", main.toString(), fixedWidthModule.toString())))
     }
 
     @Test

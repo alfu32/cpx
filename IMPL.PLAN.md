@@ -11,14 +11,14 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    30/49 evidenced on Linux
+Roadmap leaf tasks:    31/49 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R1.2.4 — implement explicit-import std.fixed_width aliases
+Current task:          R1.2.5 — verify capability-gated i128/u128 support
 Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 13/15 primitive, ABI, type-import, and user-alias conformance open
+R1 [DOING] 14/15 primitive, ABI, type-import, and user-alias conformance open
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
@@ -27,7 +27,7 @@ R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       30/49 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       31/49 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,8 +35,9 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
-   and `u8`…`u64`, then define capability-gated `i128`/`u128` support.
+1. R1.2.5 — establish capability-gated `i128`/`u128` support in
+   `std.fixed_width` without weakening the already verified `i8`…`i64` and
+   `u8`…`u64` aliases.
 2. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
    C and independent ABI fixtures.
 3. R5.1 — complete the reopened target-aware std.core byte/size/index types.
@@ -55,7 +56,8 @@ Latest completed implementation commits:
 - `a6cc980` — advanced Linux C17 runtime families;
 - `f8be29e` — self-hosted stdio/time/basic C17 families;
 - `3578f06` — bind selective source type imports;
-- `3043cdd` — resolve qualified and aliased source types.
+- `3043cdd` — resolve qualified and aliased source types;
+- `21c7979` — verify source-type import workflows and generated-C execution.
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -3463,14 +3465,29 @@ of R1–R8 or deliberately recorded as a post-release extension.
       Windows x86_64/AArch64 target descriptors; no Windows execution was
       performed. Compiler integration verifies reflected `unsigned long long`
       identity/layout and generated C execution.
-  - R1.2.4 [TODO] — provide `std.fixed_width` as an explicit-import user-level
+  - R1.2.4 [DONE] — provide `std.fixed_width` as an explicit-import user-level
     source module defining ordinary typedef aliases `i8`, `i16`, `i32`, `i64`,
     `u8`, `u16`, `u32`, and `u64` over the target's corresponding C
     `intN_t`/`uintN_t` types. Keep these names out of compiler built-ins,
     `std.core`, and native SDK API signatures; do not inject them implicitly.
-    Require the aliases on supported Linux/Windows x86_64 targets, diagnose
-    unavailable exact widths on other targets, and test imports, aggregates,
-    pointers, function signatures, and generated C.
+    - Added `sdk/std/src/fixed_width.cp` with eight public source typedefs over
+      explicitly imported `c.stdint` exact-width types. The aliases remain
+      outside compiler primitives, `std.core`, and native SDK declarations.
+    - Fixed semantic ordering so all C-header imports are registered before
+      source aliases, signatures, and aggregate fields resolve. A consumer-first
+      workspace now resolves aliases whose provider module imports `c.stdint`;
+      this avoids caching unknown targets based on source order.
+    - Tests verify explicit-only visibility, C typedef spellings, use in
+      aggregate fields, pointers, and function signatures, 1/2/4/8-byte layouts
+      across Linux/Windows x86_64 and AArch64 descriptors, and generated C17
+      compilation/execution using the SDK `stdint.h`. Unsupported target triples
+      fail SDK descriptor resolution (`SDK008`) rather than falling back to a
+      different width.
+    - The CLI test compiles and runs with the SDK source module passed as an
+      explicit source dependency. Automatic SDK-rooted `std.*` import discovery
+      remains in R6.1; this task does not claim that CLI integration is complete.
+    - `:language-core:test`, `:semantic:test`, `:c-backend:test`,
+      `:compiler:test`, `:cli:test`, and `./gradlew build` pass on Linux.
   - R1.2.5 [TODO] — establish target/compiler capability and exact ABI support
     for signed and unsigned 128-bit integers; because standard C does not
     provide `int128_t`/`uint128_t`, expose `i128`/`u128` in `std.fixed_width`
@@ -4085,7 +4102,8 @@ matrix reports platform services as `pass` rather than merely `planned`.
 **Dependency-ordered work queue**
 
 - R6.1 [TODO] — define project/workspace manifests and one source/import model
-  shared by `check`, `transcode`, `build`, and `run`;
+  shared by `check`, `transcode`, `build`, and `run`, including SDK-rooted
+  resolution of explicitly imported `std.*` source modules;
 - R6.2 [TODO] — normalize output, header, map, target, runtime, libc, SDK,
   compiler, sysroot, C-source, and library options with deterministic paths;
 - R6.3 [TODO] — make fat-JAR assembly reproducible, clean temporary products,
