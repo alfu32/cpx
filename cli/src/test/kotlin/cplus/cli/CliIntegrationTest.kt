@@ -322,6 +322,34 @@ class CliIntegrationTest {
         assertEquals(1, Cli().run(listOf("check", source.toString())))
     }
 
+    @Test
+    fun cliAndLspPublishTheSameInvalidIntegerSpecifierDiagnostic() {
+        val directory = Files.createTempDirectory("cplus-integer-diagnostic-parity")
+        val source = directory.resolve("invalid.cp").also {
+            it.writeText("unsigned signed int invalid; int main() { return 0; }")
+        }
+        val uri = source.toUri().toString()
+        val cliDiagnostics = captureStderr {
+            assertEquals(1, Cli().run(listOf("check", source.toString())))
+        }
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"unsigned signed int invalid; int main() { return 0; }"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val lspDiagnostics = output.toString(Charsets.UTF_8)
+        val message = "invalid primitive type specifier sequence 'unsigned signed int'"
+        assertTrue(cliDiagnostics.contains("[PARSE102]"), cliDiagnostics)
+        assertTrue(lspDiagnostics.contains("\"code\":\"PARSE102\""), lspDiagnostics)
+        assertTrue(cliDiagnostics.contains(message), cliDiagnostics)
+        assertTrue(lspDiagnostics.contains(message), lspDiagnostics)
+    }
+
     private fun frame(message: String): String =
         "Content-Length: ${message.toByteArray(Charsets.UTF_8).size}\r\n\r\n$message"
 
@@ -334,6 +362,18 @@ class CliIntegrationTest {
             captured.toString(Charsets.UTF_8)
         } finally {
             System.setOut(original)
+        }
+    }
+
+    private fun captureStderr(action: () -> Unit): String {
+        val original = System.err
+        val captured = ByteArrayOutputStream()
+        System.setErr(PrintStream(captured, true, Charsets.UTF_8))
+        return try {
+            action()
+            captured.toString(Charsets.UTF_8)
+        } finally {
+            System.setErr(original)
         }
     }
 }

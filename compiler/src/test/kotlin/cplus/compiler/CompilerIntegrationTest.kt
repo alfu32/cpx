@@ -1042,6 +1042,54 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun integerSpecifierVariantsWorkAcrossDeclarationsAndGeneratedC() {
+        val result = CPlusCompiler().compileText(
+            Files.createTempFile("cplus-integer-specifiers", ".cp"),
+            """
+                typedef unsigned long long int count_t;
+
+                struct sample_t {
+                    signed char tag;
+                    unsigned long long int count;
+                };
+
+                long int accumulate(int long base, long unsigned long int count) {
+                    return base + (long int)count;
+                }
+
+                int main() {
+                    struct sample_t sample;
+                    sample.tag = (char signed)40;
+                    sample.count = (int unsigned long long)2;
+                    count_t copied = sample.count;
+                    return (int)accumulate((long signed int)sample.tag, (unsigned long long int)copied);
+                }
+            """.trimIndent()
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("typedef unsigned long long count_t;"), generated)
+        assertTrue(generated.contains("signed char tag;"), generated)
+        assertTrue(generated.contains("unsigned long long count;"), generated)
+        assertTrue(generated.contains("long accumulate(long base, unsigned long long count)"), generated)
+        assertTrue(generated.contains("(signed char)40"), generated)
+
+        val directory = Files.createTempDirectory("cplus-integer-specifiers-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(42, execution.waitFor(), executionOutput)
+    }
+
+    @Test
     fun instanceAndStaticMethodsLowerToCallableCFunctions() {
         val source = """
             struct point_t {
