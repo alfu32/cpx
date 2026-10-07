@@ -385,6 +385,39 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun pointerMemberAssignmentsLowerThroughArrowSyntax() {
+        val source = """
+            struct item {
+                int value;
+            };
+
+            int main() {
+                struct item item;
+                struct item* pointer = &item;
+                pointer->value = 9;
+                return item.value;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-arrow", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("pointer->value"))
+
+        val directory = Files.createTempDirectory("cplus-arrow-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(9, execution.waitFor())
+    }
+
+    @Test
     fun minimalProgramTranscodesAndExecutes() {
         val source = """
             struct point_t {

@@ -556,8 +556,8 @@ class Parser(private val lexed: LexedSource) {
                     val close = expect(")", "expected ')' after call arguments") ?: previous()
                     SyntaxCall(expression, arguments, span(expression.range, close.range), direct(span(expression.range, close.range)))
                 }
-                match(".") -> {
-                    val member = expectIdentifier("expected member name after '.'") ?: return expression
+                match(".") || match("->") -> {
+                    val member = expectIdentifier("expected member name after member operator") ?: return expression
                     SyntaxMemberAccess(expression, member.lexeme, span(expression.range, member.range), direct(span(expression.range, member.range)))
                 }
                 match("[") -> {

@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 58/105
+Overall: 59/106
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
-[DOING] [13/25] 4. Lowering and C backend
+[DOING] [14/26] 4. Lowering and C backend
 [DOING] [3/14] 5. Tooling, integration and quality
 
 Current task:
-4.2.4.3.2.2.2.2.2 — remaining expression and lvalue lowering
+4.2.4.3.2.2.2.2.2.2 — remaining expression and lvalue lowering
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1193,7 +1193,7 @@ all create correct bindings.
 
 ---
 
-# 4. [DOING] [13/25] Lowering and C backend
+# 4. [DOING] [14/26] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1272,7 +1272,7 @@ all create correct bindings.
 
 ---
 
-## 4.2 [DOING] [10/13] C+ feature lowering
+## 4.2 [DOING] [11/14] C+ feature lowering
 
 ### 4.2.1 [DONE] Method lowering
 
@@ -1358,7 +1358,7 @@ all create correct bindings.
 **Depends**
 - 4.2.3.2
 
-### 4.2.4 [DOING] [7/8] String-template and remaining expression lowering
+### 4.2.4 [DOING] [8/9] String-template and remaining expression lowering
 
 **Language**
 - LS §16
@@ -1494,7 +1494,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.2.2.1
 
-######## 4.2.4.3.2.2.2.2.2 [TODO] Complete remaining expression and lvalue lowering
+######## 4.2.4.3.2.2.2.2.2 [DOING] [1/2] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1502,6 +1502,25 @@ all create correct bindings.
 
 **Depends**
 - 4.2.4.3.2.2.2.2.1
+
+######### 4.2.4.3.2.2.2.2.2.1 [DONE] Lower pointer-member lvalues
+
+**Acceptance**
+- pointer-member syntax using `->` parses and resolves through pointee aggregate types.
+- pointer-member assignments lower to native C arrow access.
+- runtime coverage verifies the assigned pointee field.
+
+**Depends**
+- 4.2.4.3.2.2.2.2.1
+
+######### 4.2.4.3.2.2.2.2.2.2 [TODO] Complete remaining expression and lvalue lowering
+
+**Acceptance**
+- supported C+ expression and lvalue forms have explicit C AST nodes.
+- unsupported forms produce diagnostics before emission.
+
+**Depends**
+- 4.2.4.3.2.2.2.2.2.1
 
 ---
 
