@@ -1,0 +1,87 @@
+{
+  "name": "cplus-language-support",
+  "displayName": "C+ Language Support",
+  "description": "Language support for C+ powered by the C+ Kotlin language server.",
+  "version": "0.1.0",
+  "publisher": "cplus",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "cplus",
+    "c+",
+    "language server"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:cplus",
+    "onCommand:cplus.restartServer"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "cplus",
+        "aliases": [
+          "C+",
+          "cplus"
+        ],
+        "extensions": [
+          ".cp"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cplus",
+        "scopeName": "source.cplus",
+        "path": "./syntaxes/cplus.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "cplus.restartServer",
+        "title": "C+: Restart Language Server"
+      }
+    ],
+    "configuration": {
+      "title": "C+",
+      "properties": {
+        "cplus.server.command": {
+          "type": "string",
+          "default": "cplus",
+          "description": "Executable used to start the C+ language server."
+        },
+        "cplus.server.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "lsp"
+          ],
+          "description": "Arguments passed to the C+ language-server executable."
+        },
+        "cplus.server.cwd": {
+          "type": "string",
+          "default": "",
+          "description": "Working directory for the language server. Empty uses the first workspace folder."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild extension.js --bundle --platform=node --external:vscode --outfile=dist/extension.js",
+    "test": "npm run build && node --test",
+    "check": "node --check extension.js",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.2.2",
+    "esbuild": "^0.25.0",
+    "vscode-languageclient": "^9.0.1"
+  }
+}

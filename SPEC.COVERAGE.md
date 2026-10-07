@@ -12,7 +12,7 @@ by a focused test or by an end-to-end compiler/CLI fixture.
 | LS §§7–13, 17–20, 29, 35–38 | typed CPX values, interpolation, hygiene, fixed point, phase barrier, cycles | `comptime` expansion/scheduler tests; CPX compiler integration tests |
 | LS §§21–22, 43 | packages, imports, C headers, C sources, foreign symbols | semantic and compiler import tests; CLI C dependency tests |
 | LS §§24–27, 39, 47–51 | hoisting, headers, dependencies, incremental compilation, diagnostics | c-backend/compiler/CLI golden and incremental tests |
-| LS §§40–42 | workspace edits, semantic tokens, completion, hover, navigation, references, signature help | CLI LSP integration and workspace tests |
+| LS §§40–42 | workspace edits, semantic tokens, completion, hover, navigation, references, signature help, VS Code client and TextMate grammar | CLI LSP integration/workspace tests; `vscode-extension` package tests and `.vsix` build |
 | LS §52 | end-to-end implementation architecture | full Gradle suite and native C smoke tests |
 | TS §§1–8, 65–70 | module structure, source model, lexer/parser, AST, recovery, hot-path storage | language-core tests and incremental lexer tests |
 | TS §§9–14, 26–30, 56 | symbols, scopes, types, methods, modules, C import adapter, foreign tooling | semantic/compiler tests and foreign-symbol LSP test |
@@ -38,4 +38,5 @@ gradle --no-daemon -Dorg.gradle.native=false test
 git diff --check
 gradle --no-daemon -Dorg.gradle.native=false :cli:run --args='transcode examples/optional.cp --output /tmp/cpx-optional.c --header /tmp/cpx-optional.h'
 cc -std=c17 -fsyntax-only /tmp/cpx-optional.c
+cd vscode-extension && npm test && npm run package
 ```

@@ -1,0 +1,174 @@
+{
+  "name": "C+",
+  "scopeName": "source.cplus",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#cpx"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#punctuation"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.cplus",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.cplus",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.cplus",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cplus",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.cplus",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cplus",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "cpx": {
+      "patterns": [
+        {
+          "name": "keyword.control.comptime.cplus",
+          "match": "\\b(?:comptime|cpx)\\b"
+        },
+        {
+          "name": "meta.interpolation.cplus",
+          "begin": "\\{(?=[_$a-zA-Z])",
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "#constants"
+            },
+            {
+              "include": "#operators"
+            }
+          ]
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.cplus",
+          "match": "\\b(?:if|else|for|while|do|switch|case|default|break|continue|return|defer|match)\\b"
+        },
+        {
+          "name": "storage.type.cplus",
+          "match": "\\b(?:struct|type|fn|function|package|import|from|as|foreign|static|const|mut|let|var|void)\\b"
+        },
+        {
+          "name": "storage.modifier.cplus",
+          "match": "\\b(?:public|private|extern|inline|comptime|cpx)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.primitive.cplus",
+          "match": "\\b(?:bool|char|short|int|long|float|double|string|size_t|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64)\\b"
+        },
+        {
+          "name": "entity.name.type.cplus",
+          "match": "\\b[A-Z][_$a-zA-Z0-9]*\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.cplus",
+          "match": "\\b[_$a-zA-Z][_$a-zA-Z0-9]*(?=\\s*\\()"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.cplus",
+          "match": "\\b(?:true|false|null|nil)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.cplus",
+          "match": "\\b(?:0[xX][0-9a-fA-F]+|0[bB][01]+|(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?)[uUlLfF]*\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.cplus",
+          "match": "===|!==|==|!=|<=|>=|&&|\\|\\||\\+\\+|--|->|=>|\\+=|-=|\\*=|/=|%=|[+*/%<>=!&|^~-]"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.parameters.cplus",
+          "match": "[(),]"
+        },
+        {
+          "name": "punctuation.accessor.cplus",
+          "match": "[.:;]"
+        },
+        {
+          "name": "punctuation.bracket.cplus",
+          "match": "[{}\\[\\]]"
+        }
+      ]
+    }
+  }
+}
