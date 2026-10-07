@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 0/80
+Overall: 14/80
 
-[TODO] [0/16] 1. Language front-end
-[TODO] [0/16] 2. Semantic model and modules
+[DOING] [11/16] 1. Language front-end
+[DOING] [1/16] 2. Semantic model and modules
 [TODO] [0/20] 3. Compile-time and CPX system
-[TODO] [0/16] 4. Lowering and C backend
+[DOING] [2/16] 4. Lowering and C backend
 [TODO] [0/12] 5. Tooling, integration and quality
 
 Current task:
-1.1.1 — Source repository and stable source identities
+1.2.3 — CPX interpolation lexical rules
 
 Current milestone:
 M1 — Minimal C+ → C vertical compiler
@@ -41,7 +41,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 1.1 [TODO] [0/4] Source and provenance infrastructure
+## 1.1 [DONE] [4/4] Source and provenance infrastructure
 
 **Language**
 - LS §28 Source Provenance
@@ -52,7 +52,7 @@ All tasks initially have status `TODO`.
 - TS §43 Source-Map Builder
 - TS §66 Internal Immutability Strategy
 
-### 1.1.1 [TODO] Source repository and stable source identities
+### 1.1.1 [DONE] Source repository and stable source identities
 
 **Technical**
 - TS §4.1 SourceFile
@@ -72,7 +72,7 @@ All tasks initially have status `TODO`.
 
 **Depends:** none
 
-### 1.1.2 [TODO] Source ranges and line index
+### 1.1.2 [DONE] Source ranges and line index
 
 **Language**
 - LS §28.1 Source Span
@@ -93,7 +93,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.1.1
 
-### 1.1.3 [TODO] Origin and expansion provenance model
+### 1.1.3 [DONE] Origin and expansion provenance model
 
 **Language**
 - LS §28.2–28.4
@@ -117,7 +117,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.1.2
 
-### 1.1.4 [TODO] Provenance test harness
+### 1.1.4 [DONE] Provenance test harness
 
 **Language**
 - LS §28
@@ -138,7 +138,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 1.2 [TODO] [0/4] Lexer
+## 1.2 [DOING] [2/4] Lexer
 
 **Language**
 - LS §8 CPX Source Templates
@@ -147,7 +147,7 @@ All tasks initially have status `TODO`.
 **Technical**
 - TS §5 Lexer
 
-### 1.2.1 [TODO] Core C/C+ token model
+### 1.2.1 [DONE] Core C/C+ token model
 
 **Deliverable**
 - `Token`
@@ -162,7 +162,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.1.2
 
-### 1.2.2 [TODO] C+ keywords and modifiers
+### 1.2.2 [DONE] C+ keywords and modifiers
 
 **Language**
 - LS §6
@@ -212,7 +212,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 1.3 [TODO] [0/4] Grammar and parser
+## 1.3 [DOING] [1/4] Grammar and parser
 
 **Language**
 - LS §6
@@ -223,7 +223,7 @@ All tasks initially have status `TODO`.
 **Technical**
 - TS §6 Parser
 
-### 1.3.1 [TODO] Baseline C declaration and statement grammar
+### 1.3.1 [DONE] Baseline C declaration and statement grammar
 
 **Acceptance**
 - structs, unions, enums, variables, functions and blocks parse.
@@ -290,14 +290,14 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 1.4 [TODO] [0/4] Syntax tree and normalized AST
+## 1.4 [DONE] [4/4] Syntax tree and normalized AST
 
 **Technical**
 - TS §7 Syntax Tree versus AST
 - TS §8 AST Architecture
 - TS §68 Hot-path Representation
 
-### 1.4.1 [TODO] Syntax node hierarchy
+### 1.4.1 [DONE] Syntax node hierarchy
 
 **Acceptance**
 - parsed syntax retains punctuation and source ranges where required.
@@ -307,7 +307,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.3
 
-### 1.4.2 [TODO] `NodeId` and AST arena
+### 1.4.2 [DONE] `NodeId` and AST arena
 
 **Technical**
 - TS §8
@@ -322,7 +322,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.4.1
 
-### 1.4.3 [TODO] Syntax-to-AST normalization
+### 1.4.3 [DONE] Syntax-to-AST normalization
 
 **Acceptance**
 - irrelevant punctuation disappears from AST.
@@ -332,7 +332,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 1.4.2
 
-### 1.4.4 [TODO] Front-end golden tests
+### 1.4.4 [DONE] Front-end golden tests
 
 **Technical**
 - TS §63 Grammar/AST tests
@@ -348,7 +348,7 @@ All tasks initially have status `TODO`.
 
 ---
 
-# 2. [TODO] [0/16] Semantic model and modules
+# 2. [DOING] [1/16] Semantic model and modules
 
 **Purpose:** Establish authoritative symbol, scope, type, method, package, import and foreign-C semantics.
 
@@ -365,9 +365,9 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.1 [TODO] [0/4] Declaration catalogue, symbols and scopes
+## 2.1 [DOING] [1/4] Declaration catalogue, symbols and scopes
 
-### 2.1.1 [TODO] Stable symbol identity and symbol table
+### 2.1.1 [DONE] Stable symbol identity and symbol table
 
 **Language**
 - LS §23 Symbol Identity
@@ -990,7 +990,7 @@ all create correct bindings.
 
 ---
 
-# 4. [TODO] [0/16] Lowering and C backend
+# 4. [DOING] [2/16] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1142,9 +1142,9 @@ all create correct bindings.
 
 ---
 
-## 4.3 [TODO] [0/4] C representation and declaration synthesis
+## 4.3 [DOING] [1/4] C representation and declaration synthesis
 
-### 4.3.1 [TODO] C AST model
+### 4.3.1 [DONE] C AST model
 
 **Language**
 - LS §31 Final C-subset Validation
@@ -1217,9 +1217,9 @@ all create correct bindings.
 
 ---
 
-## 4.4 [TODO] [0/4] C emission and source mapping
+## 4.4 [DOING] [1/4] C emission and source mapping
 
-### 4.4.1 [TODO] Deterministic C emitter
+### 4.4.1 [DONE] Deterministic C emitter
 
 **Technical**
 - TS §42

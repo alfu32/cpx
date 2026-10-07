@@ -1,0 +1,10 @@
+.gradle/
+build/
+out/
+*.class
+*.jar
+*.c
+*.h
+*.o
+*.exe
+*.log

@@ -12,12 +12,12 @@ There is no implementation, test suite, asset directory, or build configuration 
 
 ## Build, Test, and Development Commands
 
-No build or test commands are configured at present. Do not invent a required local command until the Kotlin/Gradle project is added. Once available, document the canonical commands here and keep CI invocations aligned with them. Typical examples may be:
+The Kotlin/Gradle project is now configured. Canonical commands are:
 
 ```text
-./gradlew build       # compile all modules and run checks
-./gradlew test        # run the test suite
-./gradlew :cli:run    # run the compiler CLI locally
+gradle build          # compile all modules and run checks
+gradle test           # run the test suite
+gradle :cli:run --args='transcode input.cp --output output.c'
 ```
 
 ## Coding Style & Naming Conventions

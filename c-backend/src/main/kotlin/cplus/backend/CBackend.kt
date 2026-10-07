@@ -1,0 +1,173 @@
+package cplus.backend
+
+import cplus.core.*
+import cplus.semantic.SemanticModel
+
+data class LoweredCResult(
+    val unit: CTranslationUnit,
+    val diagnostics: List<Diagnostic>
+)
+
+class CLowerer(private val semantic: SemanticModel) {
+    private val diagnostics = DiagnosticBag()
+
+    fun lower(program: AstProgram): LoweredCResult {
+        val structs = program.declarations.filterIsInstance<AstStruct>().map { declaration ->
+            CStructDeclaration(
+                declaration.name,
+                declaration.fields.map { field ->
+                    CField(type(field.type), field.name, field.origin)
+                },
+                declaration.origin
+            )
+        }
+        val globals = program.declarations.filterIsInstance<AstGlobalVariable>().map { declaration ->
+            CGlobalDeclaration(type(declaration.type), declaration.name, declaration.initializer?.let(::expression), declaration.origin)
+        }
+        val functions = program.declarations.filterIsInstance<AstFunction>().map { declaration ->
+            CFunction(
+                type(declaration.returnType),
+                declaration.name,
+                declaration.parameters.map { CParameter(type(it.type), it.name, it.origin) },
+                declaration.body?.let(::statement),
+                declaration.origin
+            )
+        }
+        return LoweredCResult(CTranslationUnit(structs, globals, functions), diagnostics.diagnostics)
+    }
+
+    private fun type(reference: AstTypeRef): CType {
+        val result = if (reference.isStruct || semantic.structs.containsKey(reference.name)) {
+            CType.Struct(reference.name, reference.pointerDepth)
+        } else if (reference.name in primitiveNames) {
+            CType.Primitive(reference.name, reference.pointerDepth)
+        } else {
+            diagnostics.error("cannot lower unknown type '${reference.name}'", reference.origin.primaryRange, "LOW101")
+            CType.Unknown
+        }
+        return result
+    }
+
+    private fun statement(node: AstStatement): CStatement = when (node) {
+        is AstBlock -> CBlock(node.statements.map(::statement), node.origin)
+        is AstReturn -> CReturn(node.expression?.let(::expression), node.origin)
+        is AstExpressionStatement -> CExpressionStatement(expression(node.expression), node.origin)
+        is AstVariableDeclaration -> CVariableDeclaration(type(node.type), node.name, node.initializer?.let(::expression), node.origin)
+    }
+
+    private fun expression(node: AstExpression): CExpression = when (node) {
+        is AstIntegerLiteral -> CIntegerLiteral(node.text, node.origin)
+        is AstStringLiteral -> CStringLiteral(node.text, node.origin)
+        is AstCharacterLiteral -> CCharacterLiteral(node.text, node.origin)
+        is AstIdentifier -> CIdentifier(node.name, node.origin)
+        is AstUnary -> CUnary(node.operator, expression(node.operand), node.origin)
+        is AstBinary -> CBinary(expression(node.left), node.operator, expression(node.right), node.origin)
+        is AstCall -> CCall(expression(node.callee), node.arguments.map(::expression), node.origin)
+        is AstMemberAccess -> CMemberAccess(expression(node.receiver), node.member, node.origin)
+        is AstParenthesized -> CParenthesized(expression(node.expression), node.origin)
+        is AstErrorExpression -> CIntegerLiteral("0", node.origin)
+    }
+
+    companion object {
+        private val primitiveNames = setOf(
+            "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned"
+        )
+    }
+}
+
+class CEmitter {
+    fun emit(unit: CTranslationUnit): GeneratedCUnit {
+        val output = StringBuilder()
+        val mappings = mutableListOf<SourceMapping>()
+        var line = 1
+
+        fun append(text: String) {
+            output.append(text)
+            line += text.count { it == '\n' }
+        }
+
+        fun appendLine(text: String = "", origin: Origin? = null) {
+            if (origin != null) mappings += SourceMapping(line, origin)
+            append(text)
+            append("\n")
+        }
+
+        unit.structs.forEachIndexed { index, structure ->
+            appendLine("struct ${structure.name} {", structure.origin)
+            structure.fields.forEach { field ->
+                appendLine("    ${field.type.render()} ${field.name};", field.origin)
+            }
+            appendLine("};", structure.origin)
+            if (index != unit.structs.lastIndex || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
+        }
+
+        unit.globals.forEach { global ->
+            val initializer = global.initializer?.let { " = ${expression(it)}" } ?: ""
+            appendLine("${global.type.render()} ${global.name}$initializer;", global.origin)
+        }
+        if (unit.globals.isNotEmpty() && unit.functions.isNotEmpty()) appendLine()
+
+        unit.functions.forEach { function ->
+            appendLine("${function.returnType.render()} ${function.name}(${parameters(function.parameters)});", function.origin)
+        }
+        if (unit.functions.isNotEmpty()) appendLine()
+        unit.functions.forEachIndexed { index, function ->
+            emitFunction(function, ::appendLine, ::append)
+            if (index != unit.functions.lastIndex) appendLine()
+        }
+
+        return GeneratedCUnit(output.toString(), mappings)
+    }
+
+    private fun emitFunction(
+        function: CFunction,
+        appendLine: (String, Origin?) -> Unit,
+        append: (String) -> Unit
+    ) {
+        appendLine("${function.returnType.render()} ${function.name}(${parameters(function.parameters)}) {", function.origin)
+        when (val body = function.body) {
+            null -> Unit
+            is CBlock -> body.statements.forEach { emitStatement(it, 1, appendLine) }
+            else -> emitStatement(body, 1, appendLine)
+        }
+        appendLine("}", function.origin)
+    }
+
+    private fun emitStatement(statement: CStatement, indentation: Int, appendLine: (String, Origin?) -> Unit) {
+        val prefix = "    ".repeat(indentation)
+        when (statement) {
+            is CBlock -> {
+                appendLine("${prefix}{", statement.origin)
+                statement.statements.forEach { emitStatement(it, indentation + 1, appendLine) }
+                appendLine("$prefix}", statement.origin)
+            }
+            is CReturn -> appendLine("$prefix${if (statement.expression == null) "return" else "return ${expression(statement.expression)}"};", statement.origin)
+            is CExpressionStatement -> appendLine("$prefix${expression(statement.expression)};", statement.origin)
+            is CVariableDeclaration -> {
+                val initializer = statement.initializer?.let { " = ${expression(it)}" } ?: ""
+                appendLine("$prefix${statement.type.render()} ${statement.name}$initializer;", statement.origin)
+            }
+        }
+    }
+
+    private fun parameters(parameters: List<CParameter>): String = parameters.joinToString(", ") {
+        "${it.type.render()} ${it.name}"
+    }
+
+    private fun expression(expression: CExpression): String = when (expression) {
+        is CIntegerLiteral -> expression.text
+        is CStringLiteral -> expression.text
+        is CCharacterLiteral -> expression.text
+        is CIdentifier -> expression.name
+        is CUnary -> "${expression.operator}${parenthesizeIfBinary(expression.operand)}"
+        is CBinary -> "(${expression(expression.left)} ${expression.operator} ${expression(expression.right)})"
+        is CCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
+        is CMemberAccess -> "${expression(expression.receiver)}.${expression.member}"
+        is CParenthesized -> "(${expression(expression.expression)})"
+    }
+
+    private fun parenthesizeIfBinary(expression: CExpression): String = when (expression) {
+        is CBinary -> "(${expression(expression)})"
+        else -> expression(expression)
+    }
+}
