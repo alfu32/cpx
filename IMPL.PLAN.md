@@ -3,12 +3,12 @@
 ## Dashboard
 
 ```text
-Overall: 86/113
+Overall: 87/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [13/20] 3. Compile-time and CPX system
-[DOING] [30/34] 4. Lowering and C backend
+[DOING] [31/34] 4. Lowering and C backend
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
@@ -1264,7 +1264,7 @@ all create correct bindings.
 
 ---
 
-## 4.1 [DOING] [2/4] Compiler pass and rewrite framework
+## 4.1 [DOING] [3/4] Compiler pass and rewrite framework
 
 ### 4.1.1 [DONE] Compiler context and pass API
 
@@ -1307,7 +1307,7 @@ all create correct bindings.
 - `SemanticIndexInvalidator` receives the changed node set after each controlled rewrite mutation.
 - Tests cover all rewrite operations, stable IDs, origin enforcement, scoped hoisting, and invalidation notifications.
 
-### 4.1.3 [TODO] Pass precondition/postcondition invariant framework
+### 4.1.3 [DONE] Pass precondition/postcondition invariant framework
 
 **Language**
 - LS §30
@@ -1323,6 +1323,13 @@ all create correct bindings.
 
 **Depends**
 - 4.1.1
+
+**Implementation**
+- `CompilerPass` declares typed preconditions and postconditions without forcing representations into a shared mutable model.
+- `CompilerPassRunner` can validate invariants in debug/test configurations while preserving the production fast path.
+- `PassInvariantViolation` records a message and optional offending `NodeId`.
+- `PASSINV001` diagnostics identify the pass, invariant kind/name, offending node, and failure message.
+- Tests cover precondition short-circuiting and postcondition diagnostics appended to pass output.
 
 ### 4.1.4 [TODO] Resolved-AST and reference index integration
 
