@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 89/113
+Overall: 90/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [13/20] 3. Compile-time and CPX system
-[DOING] [33/34] 4. Lowering and C backend
+[DOING] [34/34] 4. Lowering and C backend
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-4.3.2.2 — hoist inner and generated declarations
+4.3.2.4 — preserve hoisting provenance through generated declarations
 
 Current milestone:
 M4 — Full compile-time model
@@ -1644,7 +1644,7 @@ all create correct bindings.
 **Depends**
 - 4.1
 
-### 4.3.2 [DOING] [2/4] Hoisting and forward-declaration synthesis
+### 4.3.2 [DOING] [3/4] Hoisting and forward-declaration synthesis
 
 **Language**
 - LS §24–25
@@ -1672,7 +1672,12 @@ all create correct bindings.
 **Depends**
 - 4.3.1
 
-#### 4.3.2.2 [TODO] Hoist inner and generated declarations
+#### 4.3.2.2 [DONE] Hoist inner and generated declarations
+
+**Implementation**
+- Closure lowering hoists generated environment structs and inner functions into the program declaration stream before semantic analysis and C emission.
+- Generated CPX declarations are already collected into the top-level expansion result and participate in aggregate/function ordering.
+- Runtime coverage verifies that a hoisted closure declaration and environment compile as ordinary C declarations.
 
 #### 4.3.2.3 [DONE] Resolve by-value aggregate declaration dependencies
 
