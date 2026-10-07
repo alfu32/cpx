@@ -284,6 +284,28 @@ data class CpxTemplate(
             }
         }
     }
+
+    /**
+     * Explicit interpolation is identifier composition.  Syntax-bearing
+     * values must be inserted at a complete syntax boundary instead; allowing
+     * them into an identifier would turn a valid CPX into token soup and move
+     * the error to a later parser/backend phase.
+     */
+    fun interpolationErrors(bindings: Map<String, ComptimeValue>): List<String> = buildList {
+        nodes.filterIsInstance<TemplateNode.Binding>()
+            .filter { it.explicit }
+            .forEach { binding ->
+                val value = bindings[binding.name] ?: return@forEach
+                if (value !is ComptimeValue.CtType &&
+                    value !is ComptimeValue.CtIdentifier &&
+                    value !is ComptimeValue.CtInteger &&
+                    value !is ComptimeValue.CtFloat &&
+                    value !is ComptimeValue.CtBoolean
+                ) {
+                    add("compile-time value '${binding.name}' of kind '${value.canonicalKind}' cannot be composed into an identifier")
+                }
+            }
+    }
 }
 
 class CpxTemplateParser {
@@ -293,32 +315,152 @@ class CpxTemplateParser {
         origin: Origin,
         bindingNames: Set<String>
     ): CpxTemplate {
-        val nodes = mutableListOf<TemplateNode>()
         if (bindingNames.isEmpty()) return CpxTemplate(category, listOf(TemplateNode.Literal(text)), origin)
-        val explicitPattern = Regex("\\{\\s*(${bindingNames.joinToString("|") { Regex.escape(it) }})\\s*}")
+
+        // Scan the template instead of applying a regular expression over the
+        // complete source.  A binding-looking token in a string or comment is
+        // literal C+ text; only explicit braces can opt into interpolation
+        // there in a future template-string extension.
+        val nodes = mutableListOf<TemplateNode>()
+        var literalStart = 0
         var cursor = 0
-        explicitPattern.findAll(text).forEach { match ->
-            if (match.range.first > cursor) nodes += directBindings(text.substring(cursor, match.range.first), bindingNames)
-            nodes += TemplateNode.Binding(match.groupValues[1], explicit = true)
-            cursor = match.range.last + 1
+        var state = TemplateLexState.CODE
+        while (cursor < text.length) {
+            when (state) {
+                TemplateLexState.CODE -> when {
+                    text[cursor] == '/' && text.getOrNull(cursor + 1) == '/' -> {
+                        cursor += 2
+                        state = TemplateLexState.LINE_COMMENT
+                    }
+                    text[cursor] == '/' && text.getOrNull(cursor + 1) == '*' -> {
+                        cursor += 2
+                        state = TemplateLexState.BLOCK_COMMENT
+                    }
+                    text[cursor] == '"' -> {
+                        cursor++
+                        state = TemplateLexState.STRING
+                    }
+                    text[cursor] == '\'' -> {
+                        cursor++
+                        state = TemplateLexState.CHARACTER
+                    }
+                    text[cursor] == '{' -> {
+                        val explicit = explicitBindingAt(text, cursor, bindingNames)
+                        if (explicit != null) {
+                            if (cursor > literalStart) nodes += directBindings(text.substring(literalStart, cursor), bindingNames)
+                            nodes += TemplateNode.Binding(explicit.first, explicit = true)
+                            cursor = explicit.second
+                            literalStart = cursor
+                        } else {
+                            cursor++
+                        }
+                    }
+                    else -> cursor++
+                }
+                TemplateLexState.STRING,
+                TemplateLexState.CHARACTER -> {
+                    if (text[cursor] == '\\') cursor += 2 else {
+                        if ((state == TemplateLexState.STRING && text[cursor] == '"') ||
+                            (state == TemplateLexState.CHARACTER && text[cursor] == '\'')) {
+                            state = TemplateLexState.CODE
+                        }
+                        cursor++
+                    }
+                }
+                TemplateLexState.LINE_COMMENT -> {
+                    cursor++
+                    if (text[cursor - 1] == '\n') state = TemplateLexState.CODE
+                }
+                TemplateLexState.BLOCK_COMMENT -> {
+                    if (text[cursor] == '*' && text.getOrNull(cursor + 1) == '/') {
+                        cursor += 2
+                        state = TemplateLexState.CODE
+                    } else cursor++
+                }
+            }
         }
-        if (cursor < text.length) nodes += directBindings(text.substring(cursor), bindingNames)
+        if (literalStart < text.length) nodes += directBindings(text.substring(literalStart), bindingNames)
         return CpxTemplate(category, nodes, origin)
     }
 
     private fun directBindings(text: String, bindingNames: Set<String>): List<TemplateNode> {
         if (text.isEmpty() || bindingNames.isEmpty()) return if (text.isEmpty()) emptyList() else listOf(TemplateNode.Literal(text))
-        val pattern = Regex("(?<![A-Za-z0-9_])(${bindingNames.joinToString("|") { Regex.escape(it) }})(?![A-Za-z0-9_])")
         val result = mutableListOf<TemplateNode>()
+        var literalStart = 0
         var cursor = 0
-        pattern.findAll(text).forEach { match ->
-            if (match.range.first > cursor) result += TemplateNode.Literal(text.substring(cursor, match.range.first))
-            result += TemplateNode.Binding(match.value, explicit = false)
-            cursor = match.range.last + 1
+        var state = TemplateLexState.CODE
+        while (cursor < text.length) {
+            when (state) {
+                TemplateLexState.CODE -> when {
+                    text[cursor] == '/' && text.getOrNull(cursor + 1) == '/' -> {
+                        cursor += 2
+                        state = TemplateLexState.LINE_COMMENT
+                    }
+                    text[cursor] == '/' && text.getOrNull(cursor + 1) == '*' -> {
+                        cursor += 2
+                        state = TemplateLexState.BLOCK_COMMENT
+                    }
+                    text[cursor] == '"' -> {
+                        cursor++
+                        state = TemplateLexState.STRING
+                    }
+                    text[cursor] == '\'' -> {
+                        cursor++
+                        state = TemplateLexState.CHARACTER
+                    }
+                    text[cursor].isLetter() || text[cursor] == '_' -> {
+                        val start = cursor++
+                        while (cursor < text.length && (text[cursor].isLetterOrDigit() || text[cursor] == '_')) cursor++
+                        val token = text.substring(start, cursor)
+                        if (token in bindingNames) {
+                            if (start > literalStart) result += TemplateNode.Literal(text.substring(literalStart, start))
+                            result += TemplateNode.Binding(token, explicit = false)
+                            literalStart = cursor
+                        }
+                    }
+                    else -> cursor++
+                }
+                TemplateLexState.STRING,
+                TemplateLexState.CHARACTER -> {
+                    if (text[cursor] == '\\') cursor += 2 else {
+                        if ((state == TemplateLexState.STRING && text[cursor] == '"') ||
+                            (state == TemplateLexState.CHARACTER && text[cursor] == '\'')) {
+                            state = TemplateLexState.CODE
+                        }
+                        cursor++
+                    }
+                }
+                TemplateLexState.LINE_COMMENT -> {
+                    cursor++
+                    if (text[cursor - 1] == '\n') state = TemplateLexState.CODE
+                }
+                TemplateLexState.BLOCK_COMMENT -> {
+                    if (text[cursor] == '*' && text.getOrNull(cursor + 1) == '/') {
+                        cursor += 2
+                        state = TemplateLexState.CODE
+                    } else cursor++
+                }
+            }
         }
-        if (cursor < text.length) result += TemplateNode.Literal(text.substring(cursor))
+        if (literalStart < text.length) result += TemplateNode.Literal(text.substring(literalStart))
         return result
     }
+
+    private fun explicitBindingAt(text: String, start: Int, bindingNames: Set<String>): Pair<String, Int>? {
+        if (text[start] != '{') return null
+        var cursor = start + 1
+        while (cursor < text.length && text[cursor].isWhitespace()) cursor++
+        val nameStart = cursor
+        if (cursor >= text.length || !(text[cursor].isLetter() || text[cursor] == '_')) return null
+        cursor++
+        while (cursor < text.length && (text[cursor].isLetterOrDigit() || text[cursor] == '_')) cursor++
+        val name = text.substring(nameStart, cursor)
+        if (name !in bindingNames) return null
+        while (cursor < text.length && text[cursor].isWhitespace()) cursor++
+        return if (cursor < text.length && text[cursor] == '}') name to (cursor + 1) else null
+    }
+
+    private enum class TemplateLexState { CODE, STRING, CHARACTER, LINE_COMMENT, BLOCK_COMMENT }
 }
 
 data class ExpansionKey(
@@ -941,20 +1083,28 @@ class CpxExpander(
                 sourceOrigin = task.invocation.origin,
                 expansion = task.expansionId
             )
+            val template = templateParser.parse(
+                task.definition.template,
+                category,
+                task.definition.origin,
+                task.definition.parameters.map { it.name }.toSet()
+            )
+            val bindings = task.definition.parameters.zip(values).associate { (parameter, value) ->
+                parameter.name to value
+            }
+            val interpolationErrors = template.interpolationErrors(bindings)
+            interpolationErrors.forEach { message ->
+                diagnostics.error(message, task.invocation.origin.primaryRange, "CPX011")
+            }
+            if (interpolationErrors.isNotEmpty()) {
+                scheduler.markFailed(task.key)
+                continue
+            }
             val cached = specializationCache.get(specializationKey, definitionFingerprint)
             val instantiated = if (cached != null) {
                 evaluationResults[task.key] = ComptimeEvaluationResult(cached)
                 cached
             } else {
-                val template = templateParser.parse(
-                    task.definition.template,
-                    category,
-                    task.definition.origin,
-                    task.definition.parameters.map { it.name }.toSet()
-                )
-                val bindings = task.definition.parameters.zip(values).associate { (parameter, value) ->
-                    parameter.name to value
-                }
                 val evaluation = evaluator.evaluate(task.definition.name, template, bindings, context)
                 evaluationResults[task.key] = evaluation
                 diagnostics.addAll(evaluation.diagnostics)
@@ -1086,7 +1236,7 @@ class CpxExpander(
     }
 
     private fun isAllowedCategory(task: ExpansionTask): Boolean = when (task.phase) {
-        CpxPhase.STRUCTURAL -> task.definition.category.lowercase() in setOf("decl", "unit")
+        CpxPhase.STRUCTURAL -> task.definition.category.lowercase() in setOf("decl", "unit", "member", "type")
         CpxPhase.REFLECTIVE -> task.definition.category.lowercase() in setOf("stmt", "statement", "expr", "expression")
     }
 
@@ -1156,6 +1306,7 @@ class CpxExpander(
         return when (normalized) {
             "type" -> {
                 val normalizedText = text.replace(Regex("\\s+"), " ")
+                if (!isTypeSyntax(normalizedText, source)) return invalid("type")
                 val identity = typeResolver?.resolve(normalizedText)
                 ComptimeValue.CtType(
                     normalizedText,
@@ -1166,8 +1317,8 @@ class CpxExpander(
                 )
             }
             "identifier" -> if (identifierPattern.matches(text)) ComptimeValue.CtIdentifier(text) else invalid("identifier")
-            "int" -> text.toBigIntegerOrNull()?.let { ComptimeValue.CtInteger(text, it) } ?: invalid("integer")
-            "float" -> text.toBigDecimalOrNull()?.let { ComptimeValue.CtFloat(text, it) } ?: invalid("floating-point value")
+            "int" -> parseIntegerLiteral(text)?.let { ComptimeValue.CtInteger(text, it) } ?: invalid("integer")
+            "float" -> parseFloatingLiteral(text)?.let { ComptimeValue.CtFloat(text, it) } ?: invalid("floating-point value")
             "bool" -> when (text.lowercase()) {
                 "true" -> ComptimeValue.CtBoolean(true, text)
                 "false" -> ComptimeValue.CtBoolean(false, text)
@@ -1229,9 +1380,10 @@ class CpxExpander(
     private fun inferListElementKind(text: String, typeResolver: ComptimeTypeResolver?): String {
         val value = text.trim()
         return when {
+            value.startsWith("[") && value.endsWith("]") -> "list"
             typeResolver?.resolve(value) != null -> "type"
-            value.matches(Regex("[+-]?\\d+")) -> "int"
-            value.toBigDecimalOrNull() != null && value.any { it == '.' || it == 'e' || it == 'E' } -> "float"
+            parseIntegerLiteral(value) != null -> "int"
+            parseFloatingLiteral(value) != null -> "float"
             value.equals("true", ignoreCase = true) || value.equals("false", ignoreCase = true) -> "bool"
             value.length >= 2 && value.first() == '"' && value.last() == '"' -> "string"
             value.matches(identifierPattern) && value in primitiveTypeNames -> "type"
@@ -1239,6 +1391,41 @@ class CpxExpander(
             else -> "expr"
         }
     }
+
+    private fun isTypeSyntax(text: String, source: SourceFile): Boolean {
+        val fragment = source.copy(
+            id = SourceFileId(-source.id.value - 2),
+            path = syntheticSibling(source.path, "cpx-type.cp"),
+            text = "$text __cpx_type;"
+        )
+        val parsed = Parser(lexer.lex(fragment)).parse()
+        return parsed.syntax.declarations.singleOrNull() is SyntaxGlobalVariable &&
+            parsed.diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
+    }
+
+    private fun parseIntegerLiteral(text: String): BigInteger? {
+        val normalized = text.replace(Regex("^([+-])\\s+"), "$1")
+        val sign = when {
+            normalized.startsWith("-") -> -1
+            else -> 1
+        }
+        val unsigned = normalized.removePrefix("+").removePrefix("-")
+        if (unsigned.isEmpty()) return null
+        return try {
+            when {
+                unsigned.startsWith("0x", ignoreCase = true) -> BigInteger(unsigned.substring(2), 16) * BigInteger.valueOf(sign.toLong())
+                unsigned.length > 1 && unsigned.startsWith("0") -> BigInteger(unsigned.substring(1), 8) * BigInteger.valueOf(sign.toLong())
+                unsigned.all(Char::isDigit) -> BigInteger(unsigned) * BigInteger.valueOf(sign.toLong())
+                else -> null
+            }
+        } catch (_: NumberFormatException) {
+            null
+        }
+    }
+
+    private fun parseFloatingLiteral(text: String): BigDecimal? = text
+        .replace(Regex("^([+-])\\s+"), "$1")
+        .toBigDecimalOrNull()
 
     private fun splitTopLevel(text: String): List<String> {
         val result = mutableListOf<String>()
@@ -1274,52 +1461,156 @@ class CpxExpander(
     }
 
     private fun captureOrigin(node: AstNode, origin: Origin): AstNode = when (node) {
-        is AstProgram -> node.copy(origin = origin)
+        is AstProgram -> node.copy(
+            declarations = node.declarations.map { captureOriginDeclaration(it, origin) },
+            origin = origin
+        )
         is AstPackage -> node.copy(origin = origin)
-        is AstAlias -> node.copy(origin = origin)
-        is AstUnion -> node.copy(origin = origin)
-        is AstEnum -> node.copy(origin = origin)
+        is AstAlias -> node.copy(target = captureOriginType(node.target, origin), origin = origin)
+        is AstUnion -> node.copy(
+            fields = node.fields.map { captureOriginField(it, origin) },
+            origin = origin
+        )
+        is AstEnum -> node.copy(
+            values = node.values.map { it.copy(origin = origin) },
+            origin = origin
+        )
         is AstEnumValue -> node.copy(origin = origin)
-        is AstTypeRef -> node.copy(origin = origin)
-        is AstStruct -> node.copy(origin = origin)
-        is AstField -> node.copy(origin = origin)
-        is AstGlobalVariable -> node.copy(origin = origin)
+        is AstTypeRef -> captureOriginType(node, origin)
+        is AstStruct -> node.copy(
+            fields = node.fields.map { captureOriginField(it, origin) },
+            methods = node.methods.map { captureOriginFunction(it, origin) },
+            origin = origin
+        )
+        is AstField -> captureOriginField(node, origin)
+        is AstGlobalVariable -> node.copy(
+            type = captureOriginType(node.type, origin),
+            initializer = node.initializer?.let { captureOriginExpression(it, origin) },
+            origin = origin
+        )
         is AstComptimeFunction -> node.copy(origin = origin)
         is AstCpxInvocation -> node.copy(origin = origin)
         is AstImport -> node.copy(origin = origin)
-        is AstFunction -> node.copy(origin = origin)
-        is AstParameter -> node.copy(origin = origin)
-        is AstBlock -> node.copy(origin = origin)
-        is AstReturn -> node.copy(origin = origin)
-        is AstExpressionStatement -> node.copy(origin = origin)
-        is AstDefer -> node.copy(origin = origin)
-        is AstIf -> node.copy(origin = origin)
-        is AstWhile -> node.copy(origin = origin)
-        is AstFor -> node.copy(origin = origin)
+        is AstFunction -> captureOriginFunction(node, origin)
+        is AstParameter -> node.copy(type = captureOriginType(node.type, origin), origin = origin)
+        is AstBlock -> node.copy(statements = node.statements.map { captureOriginStatement(it, origin) }, origin = origin)
+        is AstReturn -> node.copy(expression = node.expression?.let { captureOriginExpression(it, origin) }, origin = origin)
+        is AstExpressionStatement -> node.copy(expression = captureOriginExpression(node.expression, origin), origin = origin)
+        is AstDefer -> node.copy(expression = captureOriginExpression(node.expression, origin), origin = origin)
+        is AstIf -> node.copy(
+            condition = captureOriginExpression(node.condition, origin),
+            thenBranch = captureOriginStatement(node.thenBranch, origin),
+            elseBranch = node.elseBranch?.let { captureOriginStatement(it, origin) },
+            origin = origin
+        )
+        is AstWhile -> node.copy(
+            condition = captureOriginExpression(node.condition, origin),
+            body = captureOriginStatement(node.body, origin),
+            origin = origin
+        )
+        is AstFor -> node.copy(
+            initializer = node.initializer?.let { captureOriginStatement(it, origin) },
+            condition = node.condition?.let { captureOriginExpression(it, origin) },
+            increment = node.increment?.let { captureOriginExpression(it, origin) },
+            body = captureOriginStatement(node.body, origin),
+            origin = origin
+        )
         is AstBreak -> node.copy(origin = origin)
         is AstContinue -> node.copy(origin = origin)
-        is AstVariableDeclaration -> node.copy(origin = origin)
-        is AstInnerFunction -> node.copy(origin = origin)
+        is AstVariableDeclaration -> node.copy(
+            type = captureOriginType(node.type, origin),
+            initializer = node.initializer?.let { captureOriginExpression(it, origin) },
+            origin = origin
+        )
+        is AstInnerFunction -> node.copy(
+            function = captureOriginFunction(node.function, origin),
+            origin = origin
+        )
         is AstIntegerLiteral -> node.copy(origin = origin)
         is AstBooleanLiteral -> node.copy(origin = origin)
         is AstFloatLiteral -> node.copy(origin = origin)
         is AstStringLiteral -> node.copy(origin = origin)
-        is AstStringTemplate -> node.copy(origin = origin)
+        is AstStringTemplate -> node.copy(
+            parts = node.parts.map { part ->
+                when (part) {
+                    is AstStringTextPart -> part
+                    is AstStringExpressionPart -> part.copy(expression = captureOriginExpression(part.expression, origin))
+                }
+            },
+            origin = origin
+        )
         is AstCharacterLiteral -> node.copy(origin = origin)
         is AstIdentifier -> node.copy(origin = origin)
-        is AstUnary -> node.copy(origin = origin)
-        is AstBinary -> node.copy(origin = origin)
-        is AstConditional -> node.copy(origin = origin)
-        is AstUpdate -> node.copy(origin = origin)
-        is AstSizeOf -> node.copy(origin = origin)
-        is AstAbiQuery -> node.copy(origin = origin)
-        is AstCast -> node.copy(origin = origin)
-        is AstCall -> node.copy(origin = origin)
-        is AstMemberAccess -> node.copy(origin = origin)
-        is AstIndexAccess -> node.copy(origin = origin)
-        is AstParenthesized -> node.copy(origin = origin)
+        is AstUnary -> node.copy(operand = captureOriginExpression(node.operand, origin), origin = origin)
+        is AstBinary -> node.copy(
+            left = captureOriginExpression(node.left, origin),
+            right = captureOriginExpression(node.right, origin),
+            origin = origin
+        )
+        is AstConditional -> node.copy(
+            condition = captureOriginExpression(node.condition, origin),
+            thenBranch = captureOriginExpression(node.thenBranch, origin),
+            elseBranch = captureOriginExpression(node.elseBranch, origin),
+            origin = origin
+        )
+        is AstUpdate -> node.copy(operand = captureOriginExpression(node.operand, origin), origin = origin)
+        is AstSizeOf -> node.copy(
+            operand = node.operand?.let { captureOriginExpression(it, origin) },
+            targetType = node.targetType?.let { captureOriginType(it, origin) },
+            origin = origin
+        )
+        is AstAbiQuery -> node.copy(
+            operand = node.operand?.let { captureOriginExpression(it, origin) },
+            targetType = node.targetType?.let { captureOriginType(it, origin) },
+            origin = origin
+        )
+        is AstCast -> node.copy(
+            target = captureOriginType(node.target, origin),
+            operand = captureOriginExpression(node.operand, origin),
+            origin = origin
+        )
+        is AstCall -> node.copy(
+            callee = captureOriginExpression(node.callee, origin),
+            arguments = node.arguments.map { captureOriginExpression(it, origin) },
+            origin = origin
+        )
+        is AstMemberAccess -> node.copy(receiver = captureOriginExpression(node.receiver, origin), origin = origin)
+        is AstIndexAccess -> node.copy(
+            receiver = captureOriginExpression(node.receiver, origin),
+            index = captureOriginExpression(node.index, origin),
+            origin = origin
+        )
+        is AstParenthesized -> node.copy(expression = captureOriginExpression(node.expression, origin), origin = origin)
         is AstErrorExpression -> node.copy(origin = origin)
     }
+
+    private fun captureOriginDeclaration(declaration: AstDeclaration, origin: Origin): AstDeclaration =
+        captureOrigin(declaration, origin) as AstDeclaration
+
+    private fun captureOriginField(field: AstField, origin: Origin): AstField =
+        field.copy(type = captureOriginType(field.type, origin), origin = origin)
+
+    private fun captureOriginFunction(function: AstFunction, origin: Origin): AstFunction = function.copy(
+        returnType = captureOriginType(function.returnType, origin),
+        parameters = function.parameters.map { parameter ->
+            parameter.copy(type = captureOriginType(parameter.type, origin), origin = origin)
+        },
+        body = function.body?.let { captureOriginStatement(it, origin) },
+        origin = origin
+    )
+
+    private fun captureOriginType(type: AstTypeRef, origin: Origin): AstTypeRef = type.copy(
+        functionParameters = type.functionParameters?.map { parameter ->
+            parameter.copy(type = captureOriginType(parameter.type, origin), origin = origin)
+        },
+        origin = origin
+    )
+
+    private fun captureOriginStatement(statement: AstStatement, origin: Origin): AstStatement =
+        captureOrigin(statement, origin) as AstStatement
+
+    private fun captureOriginExpression(expression: AstExpression, origin: Origin): AstExpression =
+        captureOrigin(expression, origin) as AstExpression
 
     private fun parseSyntaxValueNode(
         kind: String,

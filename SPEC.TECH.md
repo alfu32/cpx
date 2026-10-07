@@ -745,6 +745,19 @@ identifier interpolation
 nested CPX invocation
 ```
 
+The template scanner SHALL be lexical-state aware. Direct binding references
+are substituted only when they form complete C+ identifier tokens in code;
+strings, character literals, and comments are opaque literal fragments.
+Explicit identifier interpolation is validated before evaluation. The
+implementation SHALL reject non-composable syntax values with a stable
+diagnostic instead of relying on a later parse failure.
+
+`ComptimeValue` implementations SHALL preserve both semantic category and
+canonical identity. Scalar numeric spellings may normalize for cache keys,
+while list values retain recursively typed child values. Syntax-valued
+arguments are stored in the AST arena with the invocation origin applied
+recursively to every descendant node.
+
 Example source:
 
 ```c

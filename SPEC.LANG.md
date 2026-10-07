@@ -538,6 +538,18 @@ Interpolation MUST be valid for the syntactic context in which it occurs.
 
 For example, a declaration-valued binding cannot be inserted where an ordinary expression is required unless an explicit conversion defined by the language exists.
 
+Direct binding interpolation SHALL be recognized only at a complete lexical
+token boundary. Binding-looking text inside string literals, character
+literals, line comments, and block comments SHALL remain literal text. Explicit
+`{binding}` interpolation is required for identifier composition; a value that
+cannot be rendered as one identifier component SHALL produce a compile-time
+interpolation diagnostic rather than being passed to a later parser or C
+backend phase.
+
+Typed scalar literals SHALL be canonicalized for specialization identity while
+retaining their semantic category for rendering. Lists are recursively typed;
+their element categories participate in the canonical specialization value.
+
 ## 8.5 CPX categories
 
 A CPX has a syntactic result category.
@@ -566,6 +578,11 @@ type slot        accepts type CPX
 ```
 
 A mismatch is a compile-time error.
+
+Structural `cpx<type>` and `cpx<member>` results MAY be introduced through a
+declaration-context invocation and are processed before type-universe
+stabilization. Their generated declarations remain subject to ordinary C+
+declaration and collision rules.
 
 ---
 

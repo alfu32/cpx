@@ -84,6 +84,16 @@ class Lexer {
                 }
                 character.isDigit() -> {
                     val start = offset++
+                    if (character == '0' &&
+                        (source.text.getOrNull(offset) == 'x' || source.text.getOrNull(offset) == 'X')
+                    ) {
+                        offset++
+                        while (offset < source.text.length && source.text[offset].isDigit() ||
+                            offset < source.text.length && source.text[offset].lowercaseChar() in 'a'..'f'
+                        ) offset++
+                        add(TokenKind.INTEGER_LITERAL, start, offset)
+                        continue
+                    }
                     while (offset < source.text.length && source.text[offset].isDigit()) offset++
                     var isFloating = false
                     if (source.text.getOrNull(offset) == '.' && source.text.getOrNull(offset + 1)?.isDigit() == true) {

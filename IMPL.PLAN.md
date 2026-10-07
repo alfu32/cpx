@@ -16,7 +16,7 @@ Current task:
 R2.1 — typed CPX value and interpolation conformance
 
 Current milestone:
-R1 — Language and front-end conformance
+R2 — CPX, generics and reflection conformance
 ```
 
 All tasks initially have status `TODO`.
@@ -3479,15 +3479,15 @@ Implemented and tested on Linux:
 Windows execution remains part of the final cross-platform validation pass by
 project policy.
 
-## R2 [TODO] CPX, generics and reflection conformance
+## R2 [DOING] CPX, generics and reflection conformance
 
 **Progress**
 
 - R2.1 [DOING] — cover typed CPX values and interpolation categories across
   direct bindings, composed identifiers, expressions, statements, declarations,
   and type arguments.
-  - R2.1.1 [TODO] — complete typed value-category parsing and evaluation.
-  - R2.1.2 [TODO] — close interpolation boundary, hygiene, and provenance cases.
+  - R2.1.1 [DONE] — complete typed value-category parsing and evaluation.
+  - R2.1.2 [DONE] — close interpolation boundary, hygiene, and provenance cases.
   - R2.1.3 [TODO] — add deterministic expanded-source and generated-C fixtures.
 - R2.2 [TODO] — complete recursive expansion, fixed points, cycles, and cache
   invalidation.
@@ -3496,6 +3496,29 @@ project policy.
 R2.1 MUST finish before recursive specialization work because expansion results
 must have stable typed representations before identity and caching can be
 validated.
+
+### R2.1.1/R2.1.2 completion record
+
+Implemented and tested on Linux:
+
+- typed `type` arguments are parsed as C+ type syntax before expansion and
+  malformed type expressions receive `CPX010` without template instantiation;
+- integer and floating CPX arguments accept unary spacing and canonical numeric
+  values, including C-style octal and hexadecimal integer forms when lexed;
+- nested list arguments retain recursive typed elements and specialization
+  identity remains canonical rather than source-format dependent;
+- direct interpolation is token-aware and does not substitute binding names in
+  string literals, character literals, or comments;
+- explicit interpolation validates identifier composition and reports `CPX011`
+  for syntax-bearing or string values in identifier positions;
+- `type` and `member` structural CPX categories are admitted to the structural
+  phase;
+- captured expression/declaration trees recursively preserve generated
+  provenance on every nested AST node.
+
+R2.1.3 remains open for deterministic expanded-source and generated-C fixtures.
+Windows execution remains part of the final cross-platform validation pass by
+project policy.
 
 **Deliverables**
 

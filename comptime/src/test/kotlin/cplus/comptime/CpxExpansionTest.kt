@@ -243,6 +243,106 @@ class CpxExpansionTest {
     }
 
     @Test
+    fun directInterpolationSkipsStringLiteralsAndComments() {
+        val template = CpxTemplateParser().parse(
+            "// T\nconst char* text = \"T\"; int generated_{T}() { return 0; }",
+            CpxCategory.DECLARATION,
+            Origin.Direct(SourceRange(SourceFileId(120), 0, 1)),
+            setOf("T")
+        )
+
+        assertEquals(
+            "// T\nconst char* text = \"T\"; int generated_item() { return 0; }",
+            template.render(mapOf("T" to ComptimeValue.CtIdentifier("item")))
+        )
+        assertEquals(1, template.nodes.count { it is TemplateNode.Binding })
+    }
+
+    @Test
+    fun nestedSyntaxValuePreservesGeneratedOriginOnEveryAstNode() {
+        val sourceText = """
+            comptime cpx<decl> capture(expr E) {
+                return { int generated() { return E; } };
+            }
+            capture(value + (other * 2));
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(121), Path.of("nested-origin-value.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+        val value = result.argumentValues.values.single().single() as ComptimeValue.CtExpression
+        val root = result.syntaxArena[value.nodeId]
+
+        fun assertGenerated(node: AstNode) {
+            assertTrue(node.origin is Origin.Generated, "unexpected origin: ${node.origin}")
+            when (node) {
+                is AstBinary -> {
+                    assertGenerated(node.left)
+                    assertGenerated(node.right)
+                }
+                is AstParenthesized -> assertGenerated(node.expression)
+                is AstIdentifier,
+                is AstIntegerLiteral -> Unit
+                else -> error("unexpected captured expression: $node")
+            }
+        }
+
+        assertGenerated(root)
+    }
+
+    @Test
+    fun rejectsInvalidTypedArgumentsBeforeTemplateInstantiation() {
+        val sourceText = """
+            comptime cpx<decl> make(type T) {
+                return { struct generated_{T}_t { int value; }; };
+            }
+            make(1 + 2);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(122), Path.of("invalid-type-value.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.any { it.code == "CPX010" }, result.diagnostics.joinToString())
+        assertTrue(result.program.declarations.none { it is SyntaxStruct })
+    }
+
+    @Test
+    fun rejectsSyntaxValuesInIdentifierComposition() {
+        val sourceText = """
+            comptime cpx<decl> make(string S) {
+                return { int generated_{S}() { return 0; } };
+            }
+            make("not_an_identifier");
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(123), Path.of("invalid-interpolation.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.any { it.code == "CPX011" }, result.diagnostics.joinToString())
+        assertTrue(result.program.declarations.none { it is SyntaxFunction && it.name.startsWith("generated_") })
+    }
+
+    @Test
+    fun typeAndMemberCpxCategoriesAreStructural() {
+        val sourceText = """
+            comptime cpx<type> makeType(type T) {
+                return { struct generated_{T}_t { T value; }; };
+            }
+            comptime cpx<member> makeMember(type T) {
+                return { int generated_{T}(); };
+            }
+            makeType(int);
+            makeMember(int);
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(124), Path.of("structural-categories.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(result.diagnostics.none { it.code == "CPX003" }, result.diagnostics.joinToString())
+        assertTrue(result.program.declarations.any { it is SyntaxStruct && it.name == "generated_int_t" })
+        assertTrue(result.program.declarations.any { it is SyntaxFunction && it.name == "generated_int" })
+    }
+
+    @Test
     fun expandsTypedDeclarationAndReusesEquivalentSpecialization() {
         val sourceText = """
             comptime cpx<decl> optional(type T) {

@@ -12,7 +12,7 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 | LS §§1–4, 28–31 | source repository, origins, AST, lowering, source maps | `language-core` tests; compiler source-map and golden fixtures |
 | LS §§5, 23, 32–36, 44 | declaration catalogue, scopes, symbols, lookup, ambiguity diagnostics | semantic scope/catalogue/reference tests; compiler semantic tests |
 | LS §§6, 14, 30, 34 | declarations, Pratt expressions, methods, closures, parser recovery, supported and rejected function-pointer declarators | AST golden tests; method and closure compiler integration tests; function-pointer and `PARSE410` recovery fixtures |
-| LS §§7–13, 17–20, 29, 35–38 | typed CPX values, interpolation, hygiene, fixed point, phase barrier, cycles | `comptime` expansion/scheduler tests; CPX compiler integration tests |
+| LS §§7–13, 17–20, 29, 35–38 | typed CPX values, lexical interpolation boundaries, identifier-composition diagnostics, recursive syntax provenance, hygiene, fixed point, phase barrier, cycles | `comptime` expansion/scheduler tests; CPX compiler integration tests |
 | LS §§21–22, 43–43.4 | packages, relative/quoted imports, logical package imports, selective aliases, standard C headers, C sources, foreign symbols, qualified declarators, target-aware foreign typedef layout, function-pointer callbacks, pointer arithmetic, initializer and cast checks | parser golden test; semantic/compiler import tests; qualifier generated-C test; LP64/LLP64 ABI layout test; callback and pointer-arithmetic generated-C compile/execute tests; initializer diagnostic test; CLI module-run test and cross-header C dependency/execution tests |
 | LS §§24–27, 39, 47–51 | hoisting, headers, dependencies, incremental compilation, diagnostics | c-backend/compiler/CLI golden and incremental tests |
 | LS §§40–42 | workspace edits, semantic tokens, completion, hover, navigation, references, signature help, VS Code client, Run Main command, and TextMate grammar | CLI LSP integration/workspace tests; CLI module-run test; `vscode-extension` package tests and `.vsix` build |
@@ -29,8 +29,9 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 ### Implemented and executable
 
 - front-end, semantic model, methods including pointer receivers, imports,
-  basic CPX expansion, lowering, C emission, source maps, incremental cache
-  behavior, multi-token primitive type parsing, structured C qualifiers and
+  typed CPX argument parsing, lexical interpolation boundaries, recursive
+  syntax provenance, basic CPX expansion, lowering, C emission, source maps,
+  incremental cache behavior, multi-token primitive type parsing, structured C qualifiers and
   declarators, function-pointer callbacks, target-aware foreign fixed-width
   typedef layout, pointer arithmetic, aggregate pointer casts, global/local
   initializer checks, LSP primitives, and the
