@@ -3859,7 +3859,7 @@ M2 — C+ methods
 The plan is complete only when:
 
 ```text
-Overall: 145/145
+Overall: 146/146
 ```
 
 and the specification audit reports:
