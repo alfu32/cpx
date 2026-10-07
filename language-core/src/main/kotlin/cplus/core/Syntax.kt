@@ -290,7 +290,8 @@ data class SyntaxUpdate(
 ) : SyntaxExpression
 
 data class SyntaxSizeOf(
-    val operand: SyntaxExpression,
+    val operand: SyntaxExpression?,
+    val targetType: TypeSyntax? = null,
     override val range: SourceRange,
     override val origin: Origin
 ) : SyntaxExpression

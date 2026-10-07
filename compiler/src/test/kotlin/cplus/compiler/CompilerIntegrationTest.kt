@@ -332,7 +332,8 @@ class CompilerIntegrationTest {
 
             int main() {
                 struct item item;
-                return sizeof(item) > 0 ? 0 : 1;
+                int size = sizeof(int);
+                return size > 0 && sizeof(struct item) > 0 && sizeof(item) > 0 ? 0 : 1;
             }
         """.trimIndent()
         val result = CPlusCompiler().compileText(Files.createTempFile("cplus-sizeof", ".cp"), source)
@@ -340,6 +341,8 @@ class CompilerIntegrationTest {
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         val generated = result.generatedUnits.single().text
         assertTrue(generated.contains("sizeof(item)"))
+        assertTrue(generated.contains("sizeof(int)"))
+        assertTrue(generated.contains("sizeof(struct item)"))
 
         val directory = Files.createTempDirectory("cplus-sizeof-e2e")
         val cFile = directory.resolve("program.c")

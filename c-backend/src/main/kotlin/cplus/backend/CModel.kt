@@ -179,7 +179,7 @@ data class CUpdate(
     val prefix: Boolean,
     override val origin: Origin
 ) : CExpression
-data class CSizeOf(val operand: CExpression, override val origin: Origin) : CExpression
+data class CSizeOf(val operand: CExpression?, val targetType: CType? = null, override val origin: Origin) : CExpression
 data class CCast(val target: CType, val operand: CExpression, override val origin: Origin) : CExpression
 data class CCall(val callee: CExpression, val arguments: List<CExpression>, override val origin: Origin) : CExpression
 data class CMemberAccess(

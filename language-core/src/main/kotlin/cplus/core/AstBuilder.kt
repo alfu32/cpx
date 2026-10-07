@@ -93,7 +93,7 @@ class AstBuilder {
             node.origin
         )
         is SyntaxUpdate -> AstUpdate(expression(node.operand), node.operator, node.prefix, node.origin)
-        is SyntaxSizeOf -> AstSizeOf(expression(node.operand), node.origin)
+        is SyntaxSizeOf -> AstSizeOf(node.operand?.let(::expression), node.targetType?.let(::type), node.origin)
         is SyntaxCast -> AstCast(type(node.target), expression(node.operand), node.origin)
         is SyntaxCall -> AstCall(expression(node.callee), node.arguments.map(::expression), node.origin)
         is SyntaxMemberAccess -> AstMemberAccess(expression(node.receiver), node.member, node.origin)

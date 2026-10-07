@@ -941,7 +941,14 @@ class SemanticAnalyzer(
                 operandType
             }
             is AstSizeOf -> {
-                validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                expression.operand?.let {
+                    validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                }
+                expression.targetType?.let { target ->
+                    if (target.name !in knownPrimitiveNames && target.declarationKind == "named") {
+                        diagnostics.error("unsupported sizeof type '${target.name}'", rangeOf(target.origin), "SEM311")
+                    }
+                }
                 primitive("size_t")
             }
             is AstCast -> {

@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 57/104
+Overall: 58/105
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
-[DOING] [12/24] 4. Lowering and C backend
+[DOING] [13/25] 4. Lowering and C backend
 [DOING] [3/14] 5. Tooling, integration and quality
 
 Current task:
-4.2.4.3.2.2.2.2 — remaining expression and lvalue lowering
+4.2.4.3.2.2.2.2.2 — remaining expression and lvalue lowering
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1193,7 +1193,7 @@ all create correct bindings.
 
 ---
 
-# 4. [DOING] [12/24] Lowering and C backend
+# 4. [DOING] [13/25] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1272,7 +1272,7 @@ all create correct bindings.
 
 ---
 
-## 4.2 [DOING] [9/12] C+ feature lowering
+## 4.2 [DOING] [10/13] C+ feature lowering
 
 ### 4.2.1 [DONE] Method lowering
 
@@ -1358,7 +1358,7 @@ all create correct bindings.
 **Depends**
 - 4.2.3.2
 
-### 4.2.4 [DOING] [6/7] String-template and remaining expression lowering
+### 4.2.4 [DOING] [7/8] String-template and remaining expression lowering
 
 **Language**
 - LS §16
@@ -1456,7 +1456,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.1
 
-###### 4.2.4.3.2.2.2 [DOING] [1/2] Complete remaining expression and lvalue lowering
+###### 4.2.4.3.2.2.2 [DOING] [2/3] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1475,7 +1475,7 @@ all create correct bindings.
 **Depends**
 - 4.2.4.3.2.2.2
 
-####### 4.2.4.3.2.2.2.2 [TODO] Complete remaining expression and lvalue lowering
+####### 4.2.4.3.2.2.2.2 [DOING] [1/2] Complete remaining expression and lvalue lowering
 
 **Acceptance**
 - supported C+ expression and lvalue forms have explicit C AST nodes.
@@ -1483,6 +1483,25 @@ all create correct bindings.
 
 **Depends**
 - 4.2.4.3.2.2.2.1
+
+######## 4.2.4.3.2.2.2.2.1 [DONE] Lower type-form sizeof
+
+**Acceptance**
+- primitive and tagged C type forms are accepted by `sizeof`.
+- semantic analysis validates supported type operands.
+- C lowering emits native `sizeof(type)` syntax.
+
+**Depends**
+- 4.2.4.3.2.2.2.1
+
+######## 4.2.4.3.2.2.2.2.2 [TODO] Complete remaining expression and lvalue lowering
+
+**Acceptance**
+- supported C+ expression and lvalue forms have explicit C AST nodes.
+- unsupported forms produce diagnostics before emission.
+
+**Depends**
+- 4.2.4.3.2.2.2.2.1
 
 ---
 

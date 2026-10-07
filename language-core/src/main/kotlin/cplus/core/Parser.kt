@@ -494,14 +494,21 @@ class Parser(private val lexed: LexedSource) {
         var expression = when {
             match("sizeof") -> {
                 val keyword = previous()
-                val operand = if (match("(")) {
-                    val value = parseExpression() ?: SyntaxErrorExpression(keyword.range, direct(keyword.range))
-                    expect(")", "expected ')' after sizeof operand")
-                    value
+                val (operand, targetType) = if (match("(")) {
+                    if (looksLikeTypeName()) {
+                        val type = parseType()
+                        expect(")", "expected ')' after sizeof type")
+                        null to type
+                    } else {
+                        val value = parseExpression() ?: SyntaxErrorExpression(keyword.range, direct(keyword.range))
+                        expect(")", "expected ')' after sizeof operand")
+                        value to null
+                    }
                 } else {
-                    parsePrefix() ?: SyntaxErrorExpression(keyword.range, direct(keyword.range))
+                    (parsePrefix() ?: SyntaxErrorExpression(keyword.range, direct(keyword.range))) to null
                 }
-                SyntaxSizeOf(operand, span(keyword.range, operand.range), direct(span(keyword.range, operand.range)))
+                val end = targetType?.range ?: operand?.range ?: keyword.range
+                SyntaxSizeOf(operand, targetType, span(keyword.range, end), direct(span(keyword.range, end)))
             }
             looksLikeCast() -> {
                 val open = expect("(", "expected '(' before cast type") ?: token
@@ -634,6 +641,9 @@ class Parser(private val lexed: LexedSource) {
 
     private fun looksLikeCast(): Boolean = peek().isLexeme("(") &&
         (peek(1).lexeme in primitiveTypes || peek(1).isLexeme("struct") || peek(1).isLexeme("union") || peek(1).isLexeme("enum"))
+
+    private fun looksLikeTypeName(): Boolean = peek().lexeme in primitiveTypes ||
+        peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum")
 
     private fun binaryPrecedence(operator: String): Int = when (operator) {
         "=", "+=", "-=", "*=", "/=", "%=" -> 1
