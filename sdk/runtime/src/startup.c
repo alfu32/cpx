@@ -78,7 +78,7 @@ int __cplus_abort_status(void) {
 }
 
 /* libc/stdio may replace this hook in a hosted SDK profile. */
-void __cplus_flush_streams(void) { }
+__attribute__((weak)) void __cplus_flush_streams(void) { }
 
 extern int main(int argc, char** argv);
 

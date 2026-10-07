@@ -39,3 +39,6 @@ int puts(const char* text) {
 }
 
 int fflush(void* stream) { (void)stream; return 0; }
+
+/* The self-hosted stdio profile is unbuffered; retain an explicit libc hook. */
+void __cplus_flush_streams(void) { }

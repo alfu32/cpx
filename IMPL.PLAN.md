@@ -2623,7 +2623,7 @@ all create correct bindings.
 - Added separate normal and quick-exit handler stacks with reverse-registration execution.
 - Added immediate termination and abort-status primitives that skip normal cleanup.
 - Added Linux runtime integration coverage proving handler order through the self-hosted startup path.
-- Stream flushing remains delegated to the libc/stdio implementation scheduled below.
+- Added a weak runtime flush hook with a strong unbuffered C17 stdio implementation, so normal termination flushes through libc while immediate/abort paths skip it.
 
 **Depends**
 - 6.1.2.2
@@ -2901,6 +2901,7 @@ all create correct bindings.
 **Implementation**
 - Added source-delivered `std.mem` copy/move/set/compare operations and compiler-runtime equivalents with overlap-safe behavior.
 - Added fixed-width/core aliases and explicit byte/text source contracts without hosted OS dependencies.
+- SDK libc/std source modules import their dependencies explicitly and all delivered `.cp` sources pass CLI semantic checking as individual package entry points.
 
 **Depends**
 - 6.2.1.4

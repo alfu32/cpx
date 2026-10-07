@@ -1,5 +1,5 @@
 /// Portable byte and memory operations used by std and libc facades.
-void* std_mem_copy(void* destination, void* source, long size) {
+pub void* std_mem_copy(void* destination, void* source, long size) {
     long index = 0;
     char* target = (char*) destination;
     char* origin = (char*) source;
@@ -10,7 +10,7 @@ void* std_mem_copy(void* destination, void* source, long size) {
     return destination;
 }
 
-void* std_mem_move(void* destination, void* source, long size) {
+pub void* std_mem_move(void* destination, void* source, long size) {
     long index = 0;
     char* target = (char*) destination;
     char* origin = (char*) source;
@@ -29,7 +29,7 @@ void* std_mem_move(void* destination, void* source, long size) {
     return destination;
 }
 
-void* std_mem_set(void* destination, int value, long size) {
+pub void* std_mem_set(void* destination, int value, long size) {
     long index = 0;
     char* target = (char*) destination;
     while (index < size) {
@@ -39,7 +39,7 @@ void* std_mem_set(void* destination, int value, long size) {
     return destination;
 }
 
-int std_mem_compare(void* left, void* right, long size) {
+pub int std_mem_compare(void* left, void* right, long size) {
     long index = 0;
     char* a = (char*) left;
     char* b = (char*) right;
