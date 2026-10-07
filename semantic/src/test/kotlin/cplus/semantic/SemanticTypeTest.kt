@@ -1,6 +1,8 @@
 package cplus.semantic
 
 import cplus.core.AstBuilder
+import cplus.core.AstModule
+import cplus.core.AstProgram
 import cplus.core.Lexer
 import cplus.core.Parser
 import cplus.core.SourceFile
@@ -13,6 +15,51 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class SemanticTypeTest {
+    @Test
+    fun sourceTypeCatalogueSeparatesModuleOwnershipFromPublicExports() {
+        val text = """
+            pub typedef int public_count_t;
+            typedef int private_count_t;
+            pub struct public_record_t { int value; };
+            struct private_record_t { int value; };
+            pub union public_choice_t { int integer; float decimal; };
+            union private_choice_t { int value; };
+            pub enum public_tag_t { TAG_PUBLIC };
+            enum private_tag_t { TAG_PRIVATE };
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(29), Path.of("types.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        val declarations = AstBuilder().build(parsed.syntax).declarations
+        val program = AstProgram(
+            declarations,
+            parsed.syntax.origin,
+            listOf(AstModule("types", declarations), AstModule("consumer", emptyList()))
+        )
+
+        val result = SemanticAnalyzer().analyze(program)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val catalogue = result.model!!.sourceTypeCatalogue
+        val ownedTypes = catalogue.declarationsByModule.getValue("types")
+        assertEquals(
+            setOf(
+                "public_count_t", "private_count_t", "public_record_t", "private_record_t",
+                "public_choice_t", "private_choice_t", "public_tag_t", "private_tag_t"
+            ),
+            ownedTypes.keys
+        )
+        assertEquals(
+            setOf("public_count_t", "public_record_t", "public_choice_t", "public_tag_t"),
+            catalogue.exportsByModule.getValue("types").keys
+        )
+        assertEquals(SymbolKind.ALIAS, ownedTypes.getValue("public_count_t").kind)
+        assertEquals(SymbolKind.STRUCT, ownedTypes.getValue("public_record_t").kind)
+        assertEquals(SymbolKind.UNION, ownedTypes.getValue("public_choice_t").kind)
+        assertEquals(SymbolKind.ENUM, ownedTypes.getValue("public_tag_t").kind)
+        assertEquals(Visibility.PRIVATE, ownedTypes.getValue("private_count_t").visibility)
+    }
+
     @Test
     fun cSourceSymbolsExposeForeignToolingInformation() {
         val cText = "int helper_value(void) { return 12; }"

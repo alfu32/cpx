@@ -197,6 +197,26 @@ data class MethodSymbol(
     val abi: AbiKind = AbiKind.C
 )
 
+data class SourceTypeCatalogue(
+    val declarationsByModule: Map<String, Map<String, Symbol>>,
+    val exportsByModule: Map<String, Map<String, Symbol>>
+) {
+    companion object {
+        fun from(symbols: List<Symbol>): SourceTypeCatalogue {
+            val sourceTypeKinds = setOf(SymbolKind.ALIAS, SymbolKind.STRUCT, SymbolKind.UNION, SymbolKind.ENUM)
+            val declarationsByModule = symbols.asSequence()
+                .filter { it.kind in sourceTypeKinds }
+                .mapNotNull { symbol -> symbol.moduleName?.let { it to symbol } }
+                .groupBy({ it.first }, { it.second })
+                .mapValues { (_, declarations) -> declarations.associateBy(Symbol::name) }
+            val exportsByModule = declarationsByModule.mapValues { (_, declarations) ->
+                declarations.filterValues { it.visibility == Visibility.PUBLIC }
+            }
+            return SourceTypeCatalogue(declarationsByModule, exportsByModule)
+        }
+    }
+}
+
 data class SemanticModel(
     val program: AstProgram,
     val symbols: List<Symbol>,
@@ -220,6 +240,9 @@ data class SemanticModel(
     val referenceIndex: ReferenceIndex = ReferenceIndex(),
     val declarationCatalogue: DeclarationCatalogue = DeclarationCatalogue(emptyList())
 ) {
+    val sourceTypeCatalogue: SourceTypeCatalogue
+        get() = SourceTypeCatalogue.from(symbols)
+
     val foreignFunctions: Map<String, FunctionSymbol>
         get() = functions.filterValues { it.symbol.kind == SymbolKind.FOREIGN }
 

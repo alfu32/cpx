@@ -496,6 +496,12 @@ enum class SymbolKind {
 
 The symbol registry SHALL be the authoritative source for identity.
 
+The semantic model SHALL expose a source-type catalogue grouped by owning
+module. It SHALL retain each type symbol's kind and visibility and provide a
+separate public-export view for aliases, structures, unions, and enums. Import
+resolution consumes this catalogue; the fact that a module is present in the
+compilation graph SHALL NOT itself grant declaration visibility.
+
 ---
 
 # 11. Scope model
