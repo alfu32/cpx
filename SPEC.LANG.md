@@ -1572,6 +1572,31 @@ The parser MAY:
 
 The language semantics SHALL be determined from resolved symbol meaning, not parser rule ordering.
 
+## 34.1 C integer type specifiers
+
+C-compatible integer types MAY be written with the standard signedness and
+rank specifiers in any legal order. The `int` specifier is optional for
+`short`, `long`, and `long long`; `signed` or `unsigned` alone denotes the
+corresponding `int` type.
+
+A supported integer type specifier sequence SHALL contain at most one of
+`signed` and `unsigned`, and SHALL denote exactly one of:
+
+- `char`, optionally combined with `signed` or `unsigned`;
+- `short`, optionally accompanied by one `int`;
+- `int`;
+- one `long`, optionally accompanied by one `int`;
+- two `long` specifiers, optionally accompanied by one `int`.
+
+Equivalent spellings SHALL normalize to one canonical type identity while
+preserving the distinctions between plain `char`, `signed char`, and
+`unsigned char`, and between `short`, `int`, `long`, and `long long` ranks.
+For example, `unsigned long long int`, `long unsigned int long`, and
+`int unsigned long long` denote the same type. Invalid combinations, including
+conflicting signedness, repeated `int`, more than two `long` specifiers, or
+mixing `short` with `long`, SHALL be diagnosed rather than interpreted as a
+different type.
+
 ---
 
 # 35. CPX versus runtime function calls

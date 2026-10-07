@@ -46,6 +46,53 @@ class AstGoldenTest {
     }
 
     @Test
+    fun parserCanonicalizesCIntegerSpecifierOrderAndOptionalInt() {
+        val text = """
+            signed char signedByte;
+            unsigned char unsignedByte;
+            char signed signedByteAfter;
+            char unsigned unsignedByteAfter;
+            signed short int signedShort;
+            int unsigned short unsignedShort;
+            int signed signedInt;
+            long signed int signedLong;
+            int long unsigned unsignedLong;
+            signed long long int signedLongLong;
+            int unsigned long long unsignedLongLong;
+            signed plainSigned;
+            unsigned plainUnsigned;
+            int main() { return 0; }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(11), Path.of("integer-specifiers.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val ast = AstBuilder().build(parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        assertEquals(
+            listOf(
+                "signed char", "unsigned char", "signed char", "unsigned char",
+                "short", "unsigned short", "int", "long", "unsigned long", "long long",
+                "unsigned long long", "int", "unsigned int"
+            ),
+            ast.declarations.filterIsInstance<AstGlobalVariable>().map { it.type.name }
+        )
+    }
+
+    @Test
+    fun parserConsumesFourTokenIntegerSpecifierAndRejectsConflictingSigns() {
+        val text = "unsigned long long int count; unsigned signed int invalid;"
+        val source = SourceFile(SourceFileId(12), Path.of("integer-specifier-errors.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val ast = AstBuilder().build(parsed.syntax)
+
+        assertEquals(listOf("PARSE102"), parsed.diagnostics.map { it.code })
+        assertEquals(
+            listOf("unsigned long long", "int"),
+            ast.declarations.filterIsInstance<AstGlobalVariable>().map { it.type.name }
+        )
+    }
+
+    @Test
     fun parserRetainsTypeAndPointerQualifiers() {
         val text = "const char* text; volatile int* const value; int main(const char * const input) { return 0; }"
         val source = SourceFile(SourceFileId(9), Path.of("qualified-types.cp"), text, 1)

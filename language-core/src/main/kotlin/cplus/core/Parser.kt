@@ -834,25 +834,68 @@ class Parser(private val lexed: LexedSource) {
      * declaration name.
      */
     private fun parsePrimitiveTypeName(): String {
-        val parts = mutableListOf(advance().lexeme)
-        while (peek().lexeme in primitiveTypes && parts.size < 3) {
+        val first = advance()
+        val parts = mutableListOf(first.lexeme)
+        while (peek().lexeme in primitiveTypes) {
             parts += advance().lexeme
         }
-        return when (parts.joinToString(" ")) {
-            "signed int", "signed long int" -> "signed int"
-            "unsigned int", "unsigned long int" -> "unsigned int"
-            "signed long" -> "long"
-            "unsigned long" -> "unsigned long"
-            "signed long long" -> "long long"
-            "unsigned long long" -> "unsigned long long"
-            "long int" -> "long"
-            "long long" -> "long long"
-            "short int" -> "short"
-            "signed short" -> "short"
-            "unsigned short" -> "unsigned short"
-            "signed char" -> "char"
-            "unsigned char" -> "unsigned char"
-            else -> parts.joinToString(" ")
+        return canonicalPrimitiveTypeName(parts) ?: run {
+            diagnostics.error(
+                "invalid primitive type specifier sequence '${parts.joinToString(" ")}'",
+                span(first.range, previous().range),
+                "PARSE102"
+            )
+            "int"
+        }
+    }
+
+    private fun canonicalPrimitiveTypeName(specifiers: List<String>): String? {
+        val signCount = specifiers.count { it == "signed" || it == "unsigned" }
+        if (signCount > 1) return null
+        val unsigned = "unsigned" in specifiers
+
+        val nonIntegerSpecifiers = specifiers.filter { it in setOf("void", "bool", "float", "double") }
+        if (nonIntegerSpecifiers.isNotEmpty()) {
+            return when {
+                specifiers == listOf("void") -> "void"
+                specifiers == listOf("bool") -> "bool"
+                specifiers == listOf("float") -> "float"
+                specifiers == listOf("double") -> "double"
+                specifiers.size == 2 && specifiers.toSet() == setOf("long", "double") -> "long double"
+                else -> null
+            }
+        }
+
+        if (specifiers.any { it !in setOf("signed", "unsigned", "char", "short", "int", "long") }) {
+            return null
+        }
+
+        val charCount = specifiers.count { it == "char" }
+        val shortCount = specifiers.count { it == "short" }
+        val longCount = specifiers.count { it == "long" }
+        val intCount = specifiers.count { it == "int" }
+        if (charCount > 0) {
+            if (charCount != 1 || shortCount != 0 || longCount != 0 || intCount != 0) return null
+            return when {
+                unsigned -> "unsigned char"
+                "signed" in specifiers -> "signed char"
+                else -> "char"
+            }
+        }
+
+        if (shortCount > 1 || longCount > 2 || intCount > 1 || (shortCount > 0 && longCount > 0)) {
+            return null
+        }
+        val rank = when {
+            shortCount == 1 -> "short"
+            longCount == 1 -> "long"
+            longCount == 2 -> "long long"
+            else -> "int"
+        }
+        return when {
+            unsigned && rank == "int" -> "unsigned int"
+            unsigned -> "unsigned $rank"
+            else -> rank
         }
     }
 
