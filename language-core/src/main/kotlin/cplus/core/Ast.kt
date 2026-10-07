@@ -22,6 +22,13 @@ data class AstPackage(
     override val origin: Origin
 ) : AstDeclaration
 
+data class AstAlias(
+    val target: AstTypeRef,
+    val name: String,
+    val arrayDimensions: List<String> = emptyList(),
+    override val origin: Origin
+) : AstDeclaration
+
 data class AstUnion(
     val name: String,
     val fields: List<AstField>,

@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 33/93
+Overall: 34/93
 
 [DOING] [11/16] 1. Language front-end
-[DOING] [9/27] 2. Semantic model and modules
+[DOING] [10/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
 [DOING] [6/18] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.2.1.2.2 — function type representation
+2.2.1.2.4 — foreign type representation
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -434,9 +434,9 @@ All tasks initially have status `TODO`.
 
 ---
 
-## 2.2 [DOING] [4/9] Type and method system
+## 2.2 [DOING] [5/9] Type and method system
 
-### 2.2.1 [DOING] [3/6] Canonical type universe representation
+### 2.2.1 [DOING] [4/6] Canonical type universe representation
 
 **Technical**
 - TS §12 Type System Model
@@ -459,7 +459,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.1.1
 
-#### 2.2.1.2 [DOING] [2/4] Add arrays, function types, aliases and foreign types
+#### 2.2.1.2 [DOING] [3/4] Add arrays, function types, aliases and foreign types
 
 **Acceptance**
 - array, function, alias, and foreign type categories are representable semantically.
@@ -489,7 +489,7 @@ All tasks initially have status `TODO`.
 **Depends**
 - 2.2.1.2.1
 
-##### 2.2.1.2.3 [TODO] Represent aliases
+##### 2.2.1.2.3 [DONE] Represent aliases
 
 **Acceptance**
 - alias declarations have distinct symbols and canonical target types.

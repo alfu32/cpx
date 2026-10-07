@@ -46,6 +46,14 @@ class CLowerer(private val semantic: SemanticModel) {
                 declaration.origin
             )
         }
+        val aliases = program.declarations.filterIsInstance<AstAlias>().map { declaration ->
+            CAliasDeclaration(
+                declaration.name,
+                type(declaration.target),
+                declaration.arrayDimensions,
+                declaration.origin
+            )
+        }
         val globals = program.declarations.filterIsInstance<AstGlobalVariable>().map { declaration ->
             CGlobalDeclaration(
                 type(declaration.type),
@@ -66,7 +74,7 @@ class CLowerer(private val semantic: SemanticModel) {
         } + program.declarations.filterIsInstance<AstStruct>().flatMap { structure ->
             structure.methods.map { method -> lowerMethod(structure.name, method) }
         }
-        return LoweredCResult(CTranslationUnit(includes, structs, unions, enums, globals, functions), diagnostics.diagnostics)
+        return LoweredCResult(CTranslationUnit(includes, structs, unions, enums, aliases, globals, functions), diagnostics.diagnostics)
     }
 
     private fun lowerMethod(ownerName: String, method: AstFunction): CFunction {
@@ -88,6 +96,7 @@ class CLowerer(private val semantic: SemanticModel) {
 
     private fun type(reference: AstTypeRef): CType {
         val result = when {
+            semantic.aliases.containsKey(reference.name) -> CType.Named(reference.name, reference.pointerDepth)
             reference.declarationKind == "union" || semantic.unions.containsKey(reference.name) -> {
                 CType.Union(reference.name, reference.pointerDepth)
             }
@@ -397,8 +406,13 @@ class CEmitter {
                 appendLine("    ${value.name}$assigned,", value.origin)
             }
             appendLine("};", enum.origin)
-            if (index != unit.enums.lastIndex || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
+            if (index != unit.enums.lastIndex || unit.aliases.isNotEmpty() || unit.globals.isNotEmpty() || unit.functions.isNotEmpty()) appendLine()
         }
+
+        unit.aliases.forEach { alias ->
+            appendLine("typedef ${alias.target.render()} ${alias.name}${arraySuffix(alias.arrayDimensions)};", alias.origin)
+        }
+        if (unit.aliases.isNotEmpty() && (unit.globals.isNotEmpty() || unit.functions.isNotEmpty())) appendLine()
 
         unit.globals.forEach { global ->
             val initializer = global.initializer?.let { " = ${expression(it)}" } ?: ""

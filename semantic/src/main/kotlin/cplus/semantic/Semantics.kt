@@ -13,6 +13,7 @@ enum class SymbolKind {
     STRUCT,
     UNION,
     ENUM,
+    ALIAS,
     ENUM_VALUE,
     FIELD,
     FUNCTION,
@@ -89,6 +90,12 @@ data class FunctionType(
     }
 }
 
+data class AliasType(
+    override val id: TypeId,
+    override val name: String,
+    val target: CType
+) : CType
+
 data class UnknownType(
     override val id: TypeId,
     override val name: String = "<unknown>"
@@ -143,7 +150,8 @@ data class SemanticModel(
     val moduleFunctions: Map<String, Map<String, FunctionSymbol>> = emptyMap(),
     val qualifiedFunctionNames: Set<String> = emptySet(),
     val unions: Map<String, UnionType> = emptyMap(),
-    val enums: Map<String, EnumType> = emptyMap()
+    val enums: Map<String, EnumType> = emptyMap(),
+    val aliases: Map<String, AliasType> = emptyMap()
 ) {
     fun symbolNamed(name: String): Symbol? = symbols.firstOrNull { it.name == name }
 }
@@ -167,6 +175,7 @@ class SemanticAnalyzer {
         val structs = linkedMapOf<String, StructType>()
         val unions = linkedMapOf<String, UnionType>()
         val enums = linkedMapOf<String, EnumType>()
+        val aliases = linkedMapOf<String, AliasType>()
         val functions = linkedMapOf<String, FunctionSymbol>()
         val methods = linkedMapOf<String, Map<String, MethodSymbol>>()
         val globals = linkedMapOf<String, Symbol>()
@@ -190,7 +199,7 @@ class SemanticAnalyzer {
         }
 
         fun resolve(reference: AstTypeRef, dimensions: List<String> = emptyList()): CType =
-            resolveType(reference, structs, unions, enums, ::primitive, diagnostics, dimensions)
+            resolveType(reference, structs, unions, enums, ::primitive, diagnostics, dimensions, aliases)
 
         fun newSymbol(name: String, kind: SymbolKind, type: CType, origin: Origin, moduleName: String? = null): Symbol = Symbol(
             SymbolId(nextSymbolId.next()), name, kind, type, origin, moduleName = moduleName
@@ -200,6 +209,18 @@ class SemanticAnalyzer {
             val moduleName = declarationModules[declaration] ?: defaultModule
             when (declaration) {
                 is AstPackage -> Unit
+                is AstAlias -> {
+                    if (aliases.containsKey(declaration.name)) {
+                        diagnostics.error("duplicate type alias '${declaration.name}'", rangeOf(declaration.origin), "SEM008")
+                    } else {
+                        val target = resolve(declaration.target, declaration.arrayDimensions)
+                        val type = AliasType(TypeId(nextTypeId.next()), declaration.name, target)
+                        aliases[declaration.name] = type
+                        types += type
+                        val symbol = newSymbol(declaration.name, SymbolKind.ALIAS, type, declaration.origin, moduleName)
+                        scopes.define(rootScope, symbol.name, symbol.id)
+                    }
+                }
                 is AstUnion -> {
                     if (unions.containsKey(declaration.name)) {
                         diagnostics.error("duplicate union '${declaration.name}'", rangeOf(declaration.origin), "SEM005")
@@ -349,7 +370,7 @@ class SemanticAnalyzer {
             val locals = linkedMapOf<String, Symbol>()
             function.parameters.forEach { locals[it.name] = it }
             declaration.body?.let { statement ->
-                validateStatement(statement, function.returnType, locals, availableFunctions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, ::primitive)
+                validateStatement(statement, function.returnType, locals, availableFunctions, globals, structs, unions, enums, aliases, methods, expressionTypes, diagnostics, ::primitive)
             }
         }
 
@@ -364,7 +385,7 @@ class SemanticAnalyzer {
                     locals[parameter.name] = newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
                 }
                 method.body?.let { statement ->
-                    validateStatement(statement, methodSymbol.returnType, locals, availableFunctions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, ::primitive)
+                    validateStatement(statement, methodSymbol.returnType, locals, availableFunctions, globals, structs, unions, enums, aliases, methods, expressionTypes, diagnostics, ::primitive)
                 }
             }
         }
@@ -381,7 +402,8 @@ class SemanticAnalyzer {
             visibleFunctions,
             visibleFunctions.values.flatMap { it.keys }.filter { '.' in it }.toSet(),
             unions,
-            enums
+            enums,
+            aliases
         )
         return SemanticResult(model, diagnostics.diagnostics)
     }
@@ -441,9 +463,10 @@ class SemanticAnalyzer {
         enums: Map<String, EnumType>,
         primitive: (String) -> PrimitiveType,
         diagnostics: DiagnosticBag,
-        arrayDimensions: List<String> = emptyList()
+        arrayDimensions: List<String> = emptyList(),
+        aliases: Map<String, AliasType> = emptyMap()
     ): CType {
-        val base = when (reference.declarationKind) {
+        val base = aliases[reference.name] ?: when (reference.declarationKind) {
             "struct" -> structs[reference.name] ?: run {
                 diagnostics.error("unknown structure type '${reference.name}'", rangeOf(reference.origin), "SEM101")
                 UnknownType(TypeId(-1))
@@ -461,6 +484,7 @@ class SemanticAnalyzer {
                 structs[reference.name] != null -> structs.getValue(reference.name)
                 unions[reference.name] != null -> unions.getValue(reference.name)
                 enums[reference.name] != null -> enums.getValue(reference.name)
+                aliases[reference.name] != null -> aliases.getValue(reference.name)
                 else -> {
                     diagnostics.error("unknown type '${reference.name}'", rangeOf(reference.origin), "SEM102")
                     UnknownType(TypeId(-1))
@@ -486,6 +510,7 @@ class SemanticAnalyzer {
         structs: Map<String, StructType>,
         unions: Map<String, UnionType>,
         enums: Map<String, EnumType>,
+        aliases: Map<String, AliasType>,
         methods: Map<String, Map<String, MethodSymbol>>,
         expressionTypes: MutableMap<AstExpression, CType>,
         diagnostics: DiagnosticBag,
@@ -494,7 +519,7 @@ class SemanticAnalyzer {
     ) {
         when (statement) {
             is AstBlock -> statement.statements.forEach {
-                validateStatement(it, expectedReturn, locals, functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                validateStatement(it, expectedReturn, locals, functions, globals, structs, unions, enums, aliases, methods, expressionTypes, diagnostics, primitive, loopDepth)
             }
             is AstReturn -> {
                 val returnExpression = statement.expression
@@ -506,7 +531,7 @@ class SemanticAnalyzer {
                     val actual = validateExpression(returnExpression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                     if (expectedReturn.name == "void") {
                         diagnostics.error("void function cannot return a value", rangeOf(statement.origin), "SEM202")
-                    } else if (actual.name != "<unknown>" && expectedReturn.name != actual.name) {
+                } else if (actual.name != "<unknown>" && !equivalentTypes(expectedReturn, actual)) {
                         diagnostics.error(
                             "return type '${actual.name}' does not match '${expectedReturn.name}'",
                             rangeOf(statement.origin),
@@ -519,24 +544,24 @@ class SemanticAnalyzer {
             is AstDefer -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstIf -> {
                 validateExpression(statement.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                validateStatement(statement.thenBranch, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                validateStatement(statement.thenBranch, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, methods, expressionTypes, diagnostics, primitive, loopDepth)
                 statement.elseBranch?.let {
-                    validateStatement(it, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                    validateStatement(it, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, methods, expressionTypes, diagnostics, primitive, loopDepth)
                 }
             }
             is AstWhile -> {
                 validateExpression(statement.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                validateStatement(statement.body, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth + 1)
+                validateStatement(statement.body, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, methods, expressionTypes, diagnostics, primitive, loopDepth + 1)
             }
             is AstFor -> {
                 val loopLocals = LinkedHashMap(locals)
                 statement.initializer?.let {
-                    validateStatement(it, expectedReturn, loopLocals, functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth)
+                    validateStatement(it, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, methods, expressionTypes, diagnostics, primitive, loopDepth)
                 }
                 statement.condition?.let {
                     validateExpression(it, loopLocals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 }
-                validateStatement(statement.body, expectedReturn, loopLocals, functions, globals, structs, unions, enums, methods, expressionTypes, diagnostics, primitive, loopDepth + 1)
+                validateStatement(statement.body, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, methods, expressionTypes, diagnostics, primitive, loopDepth + 1)
                 statement.increment?.let {
                     validateExpression(it, loopLocals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 }
@@ -548,7 +573,7 @@ class SemanticAnalyzer {
                 diagnostics.error("continue is only valid inside a loop", rangeOf(statement.origin), "SEM206")
             }
             is AstVariableDeclaration -> {
-                val type = resolveType(statement.type, structs, unions, enums, primitive, diagnostics, statement.arrayDimensions)
+                val type = resolveType(statement.type, structs, unions, enums, primitive, diagnostics, statement.arrayDimensions, aliases)
                 val symbol = Symbol(SymbolId(-locals.size - 1), statement.name, SymbolKind.VARIABLE, type, statement.origin)
                 if (locals.containsKey(statement.name)) {
                     diagnostics.error("duplicate local '${statement.name}'", rangeOf(statement.origin), "SEM204")
@@ -690,6 +715,13 @@ class SemanticAnalyzer {
         call.arguments.forEach {
             validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
         }
+    }
+
+    private fun equivalentTypes(left: CType, right: CType): Boolean = canonicalType(left).name == canonicalType(right).name
+
+    private fun canonicalType(type: CType): CType = when (type) {
+        is AliasType -> canonicalType(type.target)
+        else -> type
     }
 
     private fun rangeOf(origin: Origin): SourceRange? = origin.primaryRange

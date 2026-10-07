@@ -8,6 +8,43 @@ import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
     @Test
+    fun typeAliasesResolveAndEmitAsTypedefs() {
+        val source = """
+            typedef int count_t;
+            count_t total;
+
+            count_t identity(count_t value) {
+                return value;
+            }
+
+            int main() {
+                count_t local = 7;
+                return identity(local);
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-alias", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("typedef int count_t;"))
+        assertTrue(generated.contains("count_t identity(count_t value);"))
+        assertTrue(generated.contains("count_t local = 7;"))
+
+        val directory = Files.createTempDirectory("cplus-alias-e2e")
+        val cFile = directory.resolve("program.c")
+        val executable = directory.resolve("program")
+        cFile.writeText(generated)
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(7, execution.waitFor())
+    }
+
+    @Test
     fun arrayDeclaratorsLowerAcrossDeclarations() {
         val source = """
             struct table {

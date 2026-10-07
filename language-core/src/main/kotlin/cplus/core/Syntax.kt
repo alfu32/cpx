@@ -19,6 +19,14 @@ data class SyntaxPackage(
     override val origin: Origin
 ) : SyntaxDeclaration
 
+data class SyntaxAlias(
+    val target: TypeSyntax,
+    val name: String,
+    val arrayDimensions: List<String> = emptyList(),
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxDeclaration
+
 data class SyntaxUnion(
     val name: String,
     val fields: List<SyntaxField>,

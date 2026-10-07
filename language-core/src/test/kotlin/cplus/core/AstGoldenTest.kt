@@ -18,6 +18,7 @@ class AstGoldenTest {
             when (it) {
                 is AstStruct -> it.name
                 is AstPackage -> it.name
+                is AstAlias -> it.name
                 is AstUnion -> it.name
                 is AstEnum -> it.name
                 is AstFunction -> it.name

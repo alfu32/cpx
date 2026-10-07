@@ -329,6 +329,7 @@ class CpxExpander(
 
     private fun reorigin(declaration: SyntaxDeclaration, origin: Origin): SyntaxDeclaration = when (declaration) {
         is SyntaxPackage -> declaration.copy(origin = origin)
+        is SyntaxAlias -> declaration.copy(target = reorigin(declaration.target, origin), origin = origin)
         is SyntaxUnion -> declaration.copy(
             fields = declaration.fields.map { it.copy(type = reorigin(it.type, origin), origin = origin) },
             origin = origin

@@ -25,6 +25,7 @@ class Parser(private val lexed: LexedSource) {
     private fun parseDeclaration(): SyntaxDeclaration? {
         while (peek().lexeme in setOf("pub", "static", "extern", "inline")) advance()
         if (peek().isLexeme("package")) return parsePackage()
+        if (match("typedef")) return parseAlias(previous())
         if (peek().isLexeme("import")) return parseImport()
         if (peek().isLexeme("comptime")) return parseComptimeFunction()
         if (peek().kind == TokenKind.IDENTIFIER && peek(1).isLexeme("(")) return parseCpxInvocation()
@@ -70,6 +71,15 @@ class Parser(private val lexed: LexedSource) {
         expect(";", "expected ';' after package declaration")
         val range = span(start.range, previous().range)
         return SyntaxPackage(parts.joinToString(""), range, direct(range))
+    }
+
+    private fun parseAlias(start: Token): SyntaxAlias? {
+        val target = parseType() ?: return recoverDeclaration()?.let { null }
+        val name = expectIdentifier("expected alias name") ?: return recoverDeclaration()?.let { null }
+        val arrayDimensions = parseArrayDimensions()
+        expect(";", "expected ';' after type alias")
+        val range = span(start.range, previous().range)
+        return SyntaxAlias(target, name.lexeme, arrayDimensions, range, direct(range))
     }
 
     private fun parseComptimeFunction(): SyntaxComptimeFunction {

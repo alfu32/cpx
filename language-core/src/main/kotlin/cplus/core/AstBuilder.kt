@@ -8,6 +8,7 @@ class AstBuilder {
 
     private fun declaration(node: SyntaxDeclaration): AstDeclaration = when (node) {
         is SyntaxPackage -> AstPackage(node.name, node.origin)
+        is SyntaxAlias -> AstAlias(type(node.target), node.name, node.arrayDimensions, node.origin)
         is SyntaxUnion -> AstUnion(node.name, node.fields.map(::field), node.origin)
         is SyntaxEnum -> AstEnum(
             node.name,

@@ -7,6 +7,7 @@ data class CTranslationUnit(
     val structs: List<CStructDeclaration>,
     val unions: List<CUnionDeclaration>,
     val enums: List<CEnumDeclaration>,
+    val aliases: List<CAliasDeclaration>,
     val globals: List<CGlobalDeclaration>,
     val functions: List<CFunction>
 )
@@ -39,6 +40,13 @@ data class CEnumDeclaration(
 data class CEnumValue(
     val name: String,
     val value: String?,
+    val origin: Origin
+)
+
+data class CAliasDeclaration(
+    val name: String,
+    val target: CType,
+    val arrayDimensions: List<String>,
     val origin: Origin
 )
 
@@ -82,6 +90,10 @@ sealed interface CType {
 
     data class Enum(val name: String, val pointerDepth: Int = 0) : CType {
         override fun render(): String = "enum $name" + "*".repeat(pointerDepth)
+    }
+
+    data class Named(val name: String, val pointerDepth: Int = 0) : CType {
+        override fun render(): String = name + "*".repeat(pointerDepth)
     }
 
     data object Unknown : CType {

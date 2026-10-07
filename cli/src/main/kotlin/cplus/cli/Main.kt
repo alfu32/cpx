@@ -184,6 +184,7 @@ private class AstPrinter {
         indent(depth)
         when (declaration) {
             is AstPackage -> appendLine("Package ${declaration.name}")
+            is AstAlias -> appendLine("Alias ${declaration.target.name} ${declaration.name}")
             is AstUnion -> {
                 appendLine("Union ${declaration.name}")
                 declaration.fields.forEach {
