@@ -1033,7 +1033,11 @@ structured reflection view. Structural evaluators receive the early-safe name
 view; reflective evaluators receive the full descriptor view only after the
 stabilization barrier. The reflection view includes aggregate fields and
 methods, enum members, alias targets, and layout size/alignment when the ABI
-model has established those facts. It has no mutation operations.
+model has established those facts. Semantic `TypeId` values map to the
+canonical descriptors used by the active compilation, so a `CtType` argument
+can be reflected without falling back to source spelling. It has no mutation
+operations. By-value recursive aggregates are reported as unsized until a
+future layout strategy can represent their invalid recursive layout explicitly.
 
 ---
 

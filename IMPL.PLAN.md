@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R2.3.2 — connect semantic type identities and ABI layout facts to reflection
+R3.1 — C backend ABI interoperability matrix
 
 Current milestone:
 R2 — CPX, generics and reflection conformance
@@ -3316,11 +3316,11 @@ specifications.
 
 ```text
 Foundation tasks: 146/146
-Completion phases: [DOING] [1/9]
+Completion phases: [DOING] [2/9]
 
 [DONE]  R0 — implementation inventory and scope freeze
-[DOING] R1 — language and front-end conformance
-[TODO]  R2 — CPX, generics and reflection conformance
+[DONE]  R1 — language and front-end conformance
+[DONE]  R2 — CPX, generics and reflection conformance
 [TODO]  R3 — C backend and ABI interoperability conformance
 [TODO]  R4 — runtime, allocator and libc behavior
 [TODO]  R5 — complete native std and platform services
@@ -3479,11 +3479,11 @@ Implemented and tested on Linux:
 Windows execution remains part of the final cross-platform validation pass by
 project policy.
 
-## R2 [DOING] CPX, generics and reflection conformance
+## R2 [DONE] CPX, generics and reflection conformance
 
 **Progress**
 
-- R2.1 [DOING] — cover typed CPX values and interpolation categories across
+- R2.1 [DONE] — cover typed CPX values and interpolation categories across
   direct bindings, composed identifiers, expressions, statements, declarations,
   and type arguments.
   - R2.1.1 [DONE] — complete typed value-category parsing and evaluation.
@@ -3491,12 +3491,12 @@ project policy.
   - R2.1.3 [DONE] — add deterministic expanded-source and generated-C fixtures.
 - R2.2 [DONE] — complete recursive expansion, fixed points, cycles, and cache
   invalidation.
-- R2.3 [DOING] — complete stabilized reflection and type-universe conformance.
+- R2.3 [DONE] — complete stabilized reflection and type-universe conformance.
   - R2.3.1 [DONE] — expose a frozen, read-only structural reflection snapshot
     to reflective evaluators.
-  - R2.3.2 [TODO] — connect semantic type identities and ABI layout facts to
+  - R2.3.2 [DONE] — connect semantic type identities and ABI layout facts to
     the reflection view.
-  - R2.3.3 [TODO] — add reflection-driven generated declarations and mutation
+  - R2.3.3 [DONE] — add reflection-driven generated declarations and mutation
     rejection fixtures.
 
 R2.1 MUST finish before recursive specialization work because expansion results
@@ -3570,7 +3570,26 @@ Implemented and tested on Linux:
 - reflective context tests prove generated structure members are available and
   structural mutation remains rejected after stabilization.
 
-Semantic `TypeId` and ABI layout integration remains R2.3.2.
+Semantic `TypeId` and ABI layout integration is covered by the completion
+record below.
+
+### R2.3.2/R2.3.3 completion record
+
+Implemented and tested on Linux:
+
+- provisional semantic models seed CPX with type descriptors keyed by
+  canonical `TypeId` values, including primitive, aggregate, alias, foreign,
+  pointer, array, and function categories;
+- the selected target ABI computes aggregate size/alignment and field order for
+  reflection, with by-value recursive aggregates safely reported as unsized;
+- reflective evaluators can resolve a bound `CtType` back to its semantic
+  descriptor and use field metadata to generate declarations after the phase
+  barrier;
+- generated reflection-driven C17 output executes successfully, and frozen
+  universes reject structural registration/mutation.
+
+R2 is complete. Windows execution remains part of the final cross-platform
+validation pass by project policy.
 
 **Deliverables**
 
@@ -3590,6 +3609,21 @@ structural mutations, and preserves source origins through every generated
 declaration.
 
 ## R3 [TODO] C backend and ABI interoperability conformance
+
+**Progress**
+
+- R3.1 [DOING] — close target ABI layout, calling convention, storage, and
+  declaration interoperability.
+  - R3.1.1 [TODO] — execute scalar, pointer, aggregate, callback, and variadic
+    C+/C caller round trips on Linux.
+  - R3.1.2 [TODO] — execute globals, TLS, export/link-name, and aggregate-return
+    interoperability fixtures.
+  - R3.1.3 [TODO] — audit generated declarations against target ABI layout and
+    calling-convention metadata.
+- R3.2 [TODO] — complete headers, dependencies, source maps, and external C
+  diagnostic remapping as one audited product.
+- R3.3 [TODO] — identify compiler-generated runtime helpers and either provide
+  them through the selected SDK or reject them before linking.
 
 **Deliverables**
 

@@ -638,13 +638,15 @@ data class StructuralTypeDescriptor(
     val methods: List<StructuralMethodDescriptor> = emptyList(),
     val layout: StructuralLayout? = null,
     val aliasTarget: StructuralTypeReference? = null,
-    val enumValues: List<String> = emptyList()
+    val enumValues: List<String> = emptyList(),
+    val typeId: TypeId? = null
 )
 
 data class TypeUniverseSnapshot(
     val names: Set<String>,
     val access: TypeUniverseAccess,
-    val descriptors: Map<String, StructuralTypeDescriptor> = emptyMap()
+    val descriptors: Map<String, StructuralTypeDescriptor> = emptyMap(),
+    val typeIds: Map<TypeId, String> = emptyMap()
 ) {
     fun typeNamed(name: String): StructuralTypeDescriptor? = descriptors[name]
 }
@@ -654,6 +656,10 @@ class ComptimeReflection(private val snapshot: TypeUniverseSnapshot) {
     fun names(): Set<String> = snapshot.names
 
     fun descriptor(name: String): StructuralTypeDescriptor? = snapshot.typeNamed(name)
+
+    fun nameOf(typeId: TypeId): String? = snapshot.typeIds[typeId]
+
+    fun descriptor(typeId: TypeId): StructuralTypeDescriptor? = nameOf(typeId)?.let(::descriptor)
 
     fun fieldsOf(name: String): List<StructuralFieldDescriptor> = descriptor(name)?.fields.orEmpty()
 
@@ -676,12 +682,14 @@ class ComptimeReflection(private val snapshot: TypeUniverseSnapshot) {
 /** Mutable only during structural expansion and immutable after freeze. */
 class ComptimeTypeUniverse {
     private val descriptors = linkedMapOf<String, StructuralTypeDescriptor>()
+    private val typeIds = linkedMapOf<TypeId, String>()
     private var frozen = false
 
     fun register(name: String): Boolean = register(StructuralTypeDescriptor(name, "unknown"))
 
     fun register(descriptor: StructuralTypeDescriptor): Boolean {
         if (frozen) return false
+        descriptor.typeId?.let { typeIds[it] = descriptor.name }
         if (descriptor.name in descriptors) return false
         descriptors[descriptor.name] = descriptor
         return true
@@ -689,6 +697,10 @@ class ComptimeTypeUniverse {
 
     fun registerAll(names: Iterable<String>) {
         names.forEach(::register)
+    }
+
+    fun registerDescriptors(descriptors: Iterable<StructuralTypeDescriptor>) {
+        descriptors.forEach(::register)
     }
 
     fun freeze() {
@@ -705,7 +717,8 @@ class ComptimeTypeUniverse {
         return TypeUniverseSnapshot(
             descriptors.keys.toSet(),
             access,
-            if (access == TypeUniverseAccess.FULL) descriptors.toMap() else emptyMap()
+            if (access == TypeUniverseAccess.FULL) descriptors.toMap() else emptyMap(),
+            if (access == TypeUniverseAccess.FULL) typeIds.toMap() else emptyMap()
         )
     }
 }
@@ -951,7 +964,8 @@ class CpxExpander(
         source: SourceFile,
         program: SyntaxProgram,
         typeResolver: ComptimeTypeResolver? = null,
-        referenceResolver: ComptimeReferenceResolver? = null
+        referenceResolver: ComptimeReferenceResolver? = null,
+        typeDescriptors: Iterable<StructuralTypeDescriptor> = emptyList()
     ): CpxExpansionResult {
         val diagnostics = DiagnosticBag()
         val syntaxArena = AstArena()
@@ -1012,6 +1026,7 @@ class CpxExpander(
             }
         }
 
+        scheduler.typeUniverse.registerDescriptors(typeDescriptors)
         registerStructuralDeclarations(scheduler.typeUniverse, program.declarations)
         program.declarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
             queueInvocation(invocation)

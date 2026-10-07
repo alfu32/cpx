@@ -2,7 +2,10 @@ package cplus.compiler
 
 import cplus.backend.GeneratedCUnit
 import cplus.backend.SourceMapping
+import cplus.comptime.ComptimeEvaluationResult
+import cplus.comptime.ComptimeEvaluator
 import cplus.comptime.ComptimeValue
+import cplus.comptime.CpxExpander
 import cplus.core.Origin
 import cplus.core.SourceRange
 import cplus.core.SourceRepository
@@ -1135,6 +1138,77 @@ class CompilerIntegrationTest {
         assertEquals(0, compileProcess.waitFor(), compileOutput)
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         assertEquals(9, execution.waitFor())
+    }
+
+    @Test
+    fun reflectiveCpxReceivesSemanticTypeIdentityAndAbiLayout() {
+        var observedTypeId: cplus.semantic.TypeId? = null
+        var observedSize: Long? = null
+        val expander = CpxExpander(
+            evaluator = ComptimeEvaluator { _, template, bindings, context ->
+                val type = bindings.values.single() as ComptimeValue.CtType
+                observedTypeId = type.typeId
+                observedSize = type.typeId?.let { context.reflection.descriptor(it)?.layout?.size }
+                ComptimeEvaluationResult(template.render(bindings))
+            }
+        )
+        val compiler = CPlusCompiler(CompilerContext(cpxExpander = expander))
+        val source = """
+            struct layout_sample {
+                int value;
+                char marker;
+            };
+            comptime cpx<expr> inspect(type T) {
+                return { int generated() { return 0; } };
+            }
+            inspect(layout_sample);
+            int main() { return generated(); }
+        """.trimIndent()
+
+        val result = compiler.compileText(Files.createTempFile("cplus-reflection-layout", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertTrue(observedTypeId != null)
+        assertEquals(8L, observedSize)
+    }
+
+    @Test
+    fun reflectionCanDriveAGeneratedDeclarationAfterStabilization() {
+        val expander = CpxExpander(
+            evaluator = ComptimeEvaluator { _, _, bindings, context ->
+                val type = bindings.values.single() as ComptimeValue.CtType
+                val fieldCount = type.typeId
+                    ?.let { context.reflection.descriptor(it) }
+                    ?.fields
+                    ?.size
+                    ?: 0
+                ComptimeEvaluationResult("int generated_field_count() { return $fieldCount; }")
+            }
+        )
+        val compiler = CPlusCompiler(CompilerContext(cpxExpander = expander))
+        val source = """
+            struct reflected_record {
+                int left;
+                int right;
+            };
+            comptime cpx<expr> derive(type T) {
+                return { int generated_field_count() { return 0; } };
+            }
+            derive(reflected_record);
+            int main() { return generated_field_count() == 2 ? 0 : 1; }
+        """.trimIndent()
+        val result = compiler.compileText(Files.createTempFile("cplus-reflection-generated", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val directory = Files.createTempDirectory("cplus-reflection-generated-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(result.generatedUnits.single().text) }
+        val executable = directory.resolve("program")
+        val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val output = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), output)
+        assertEquals(0, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
     }
 
     @Test

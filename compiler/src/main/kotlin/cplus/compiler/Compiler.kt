@@ -8,6 +8,11 @@ import cplus.comptime.ComptimeTypeResolver
 import cplus.comptime.CpxExpansionResult
 import cplus.comptime.CpxExpander
 import cplus.comptime.SpecializationKey
+import cplus.comptime.StructuralFieldDescriptor
+import cplus.comptime.StructuralMethodDescriptor
+import cplus.comptime.StructuralLayout
+import cplus.comptime.StructuralTypeDescriptor
+import cplus.comptime.StructuralTypeReference
 import cplus.core.*
 import cplus.semantic.*
 import java.nio.file.Files
@@ -134,6 +139,8 @@ internal data class IncrementalPipeline(
 class CPlusCompiler(
     private val context: CompilerContext = CompilerContext()
 ) {
+    private var activeTargetAbiDescriptor: TargetAbiDescriptor? = null
+
     internal fun invalidateSpecializations(keys: Set<SpecializationKey>) {
         if (keys.isNotEmpty()) context.cpxExpander.invalidateSpecializations(keys)
     }
@@ -160,6 +167,7 @@ class CPlusCompiler(
         if (!sdkResolution.isSuccessful) return sdkFailure(sdkResolution.diagnostics)
         val descriptor = TargetRegistry.load(sdkResolution.resolution!!)
         if (!descriptor.isSuccessful) return sdkFailure(descriptor.diagnostics)
+        activeTargetAbiDescriptor = descriptor.descriptor
         val intrinsics = IntrinsicRegistry.load(sdkResolution.resolution.layout.intrinsicCatalogue)
         if (!intrinsics.isSuccessful) return sdkFailure(intrinsics.diagnostics)
         val metadata = SdkMetadataCache.loadOrBuild(sdkResolution.resolution!!)
@@ -209,6 +217,7 @@ class CPlusCompiler(
         if (!sdkResolution.isSuccessful) return IncrementalPipeline(sdkFailure(sdkResolution.diagnostics), emptyMap())
         val descriptor = TargetRegistry.load(sdkResolution.resolution!!)
         if (!descriptor.isSuccessful) return IncrementalPipeline(sdkFailure(descriptor.diagnostics), emptyMap())
+        activeTargetAbiDescriptor = descriptor.descriptor
         val intrinsics = IntrinsicRegistry.load(sdkResolution.resolution.layout.intrinsicCatalogue)
         if (!intrinsics.isSuccessful) return IncrementalPipeline(sdkFailure(intrinsics.diagnostics), emptyMap())
         val metadata = SdkMetadataCache.loadOrBuild(sdkResolution.resolution!!)
@@ -283,6 +292,7 @@ class CPlusCompiler(
         if (!sdkResolution.isSuccessful) return sdkFailure(sdkResolution.diagnostics)
         val descriptor = TargetRegistry.load(sdkResolution.resolution!!)
         if (!descriptor.isSuccessful) return sdkFailure(descriptor.diagnostics)
+        activeTargetAbiDescriptor = descriptor.descriptor
         val intrinsics = IntrinsicRegistry.load(sdkResolution.resolution.layout.intrinsicCatalogue)
         if (!intrinsics.isSuccessful) return sdkFailure(intrinsics.diagnostics)
         val metadata = SdkMetadataCache.loadOrBuild(sdkResolution.resolution!!)
@@ -697,7 +707,15 @@ class CPlusCompiler(
         val referenceResolver = provisionalSemantic.model?.let { model ->
             ComptimeReferenceResolver { node, arena -> model.resolveComptimeReferences(node, arena) }
         }
-        val expanded = context.cpxExpander.expand(source, parsed.syntax, typeResolver, referenceResolver)
+        val expanded = context.cpxExpander.expand(
+            source,
+            parsed.syntax,
+            typeResolver,
+            referenceResolver,
+            provisionalSemantic.model?.let { model ->
+                comptimeTypeDescriptors(model, activeTargetAbiDescriptor)
+            }.orEmpty()
+        )
         val ast = context.astBuilder.build(expanded.program)
         val closure = context.closureLowerer.lower(ast)
         return FrontendUnit(source, lexed, parsed, expanded, closure.program, closure.diagnostics)
@@ -712,4 +730,143 @@ class CPlusCompiler(
         val source: SourceFile,
         val missing: Boolean
     )
+}
+
+private fun comptimeTypeDescriptors(
+    model: SemanticModel,
+    target: TargetAbiDescriptor?
+): List<StructuralTypeDescriptor> =
+    model.types.distinctBy { it.id }.mapNotNull { type ->
+        when (type) {
+            is cplus.semantic.PrimitiveType -> StructuralTypeDescriptor(type.name, "primitive", typeId = type.id)
+            is cplus.semantic.StructType -> StructuralTypeDescriptor(
+                type.name,
+                "struct",
+                fields = type.fields.map(::comptimeFieldDescriptor),
+                methods = type.methods.map(::comptimeMethodDescriptor),
+                layout = target?.let { comptimeLayout(type, it) },
+                typeId = type.id
+            )
+            is cplus.semantic.UnionType -> StructuralTypeDescriptor(
+                type.name,
+                "union",
+                fields = type.fields.map(::comptimeFieldDescriptor),
+                layout = target?.let { comptimeLayout(type, it) },
+                typeId = type.id
+            )
+            is cplus.semantic.EnumType -> StructuralTypeDescriptor(
+                type.name,
+                "enum",
+                layout = StructuralLayout("enum", type.values, isSized = true, size = 4, alignment = 4),
+                enumValues = type.values,
+                typeId = type.id
+            )
+            is cplus.semantic.AliasType -> StructuralTypeDescriptor(
+                type.name,
+                "alias",
+                aliasTarget = comptimeTypeReference(type.target),
+                typeId = type.id
+            )
+            is cplus.semantic.ForeignType -> StructuralTypeDescriptor(
+                type.name,
+                "foreign",
+                aliasTarget = type.underlyingType?.let(::comptimeTypeReference),
+                typeId = type.id
+            )
+            is cplus.semantic.PointerType -> StructuralTypeDescriptor(type.name, "pointer", typeId = type.id)
+            is cplus.semantic.ArrayType -> StructuralTypeDescriptor(type.name, "array", typeId = type.id)
+            is cplus.semantic.FunctionType -> StructuralTypeDescriptor(type.name, "function", typeId = type.id)
+            is cplus.semantic.UnknownType -> null
+        }
+    }
+
+private fun comptimeLayout(type: cplus.semantic.CType, target: TargetAbiDescriptor): cplus.comptime.StructuralLayout {
+    if (hasByValueCycle(type)) return cplus.comptime.StructuralLayout(
+        representation = when (type) {
+            is cplus.semantic.StructType -> "struct"
+            is cplus.semantic.UnionType -> "union"
+            else -> "object"
+        },
+        fieldOrder = emptyList(),
+        isSized = false
+    )
+    val layout = AbiLayoutEngine(target).layout(type)
+    return cplus.comptime.StructuralLayout(
+        representation = when (type) {
+            is cplus.semantic.StructType -> "struct"
+            is cplus.semantic.UnionType -> "union"
+            else -> "object"
+        },
+        fieldOrder = layout.fields.map { it.name },
+        isSized = layout.size > 0,
+        size = layout.size.toLong(),
+        alignment = layout.alignment.toLong()
+    )
+}
+
+private fun hasByValueCycle(type: cplus.semantic.CType): Boolean =
+    hasByValueCycle(type, linkedSetOf())
+
+private fun hasByValueCycle(
+    type: cplus.semantic.CType,
+    active: MutableSet<TypeId>
+): Boolean = when (type) {
+    is cplus.semantic.PointerType,
+    is cplus.semantic.PrimitiveType,
+    is cplus.semantic.EnumType,
+    is cplus.semantic.FunctionType,
+    is cplus.semantic.ForeignType,
+    is cplus.semantic.UnknownType -> false
+    is cplus.semantic.ArrayType -> hasByValueCycle(type.element, active)
+    is cplus.semantic.AliasType -> hasByValueCycle(type.target, active)
+    is cplus.semantic.StructType -> {
+        if (!active.add(type.id)) true
+        else type.fields.any { hasByValueCycle(it.symbol.type, active) }.also { active.remove(type.id) }
+    }
+    is cplus.semantic.UnionType -> {
+        if (!active.add(type.id)) true
+        else type.fields.any { hasByValueCycle(it.symbol.type, active) }.also { active.remove(type.id) }
+    }
+}
+
+private fun comptimeFieldDescriptor(field: FieldSymbol): StructuralFieldDescriptor {
+    val reference = comptimeTypeReference(field.symbol.type)
+    return StructuralFieldDescriptor(
+        field.symbol.name,
+        reference.name,
+        reference.pointerDepth,
+        typeReference = reference
+    )
+}
+
+private fun comptimeMethodDescriptor(method: MethodSymbol): StructuralMethodDescriptor =
+    StructuralMethodDescriptor(
+        method.symbol.name,
+        comptimeTypeReference(method.returnType).name,
+        method.parameters.map { comptimeTypeReference(it.type).name },
+        method.receiverKind == ReceiverKind.STATIC,
+        comptimeTypeReference(method.returnType),
+        method.parameters.map { comptimeTypeReference(it.type) }
+    )
+
+private fun comptimeTypeReference(type: cplus.semantic.CType): StructuralTypeReference {
+    var current = type
+    var pointers = 0
+    while (current is cplus.semantic.PointerType) {
+        pointers++
+        current = current.pointee
+    }
+    val kind = when (current) {
+        is cplus.semantic.StructType -> "struct"
+        is cplus.semantic.UnionType -> "union"
+        is cplus.semantic.EnumType -> "enum"
+        is cplus.semantic.PrimitiveType -> "primitive"
+        is cplus.semantic.AliasType -> "alias"
+        is cplus.semantic.ForeignType -> "foreign"
+        is cplus.semantic.ArrayType -> "array"
+        is cplus.semantic.FunctionType -> "function"
+        is cplus.semantic.UnknownType -> "unknown"
+        is cplus.semantic.PointerType -> "pointer"
+    }
+    return StructuralTypeReference(current.name, pointers, kind)
 }
