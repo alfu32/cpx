@@ -64,9 +64,12 @@ class CliGoldenFixtureTest {
 
     private fun assertOptionalText(path: Path, actual: String?) {
         if (path.exists()) {
-            assertEquals(path.readText(), actual, "golden mismatch for $path")
+            assertEquals(normalizeLineEndings(path.readText()), actual?.let(::normalizeLineEndings), "golden mismatch for $path")
         }
     }
+
+    private fun normalizeLineEndings(value: String): String =
+        value.replace("\r\n", "\n").replace('\r', '\n')
 
     private fun optionalLines(path: Path): List<String> = if (path.exists()) {
         path.readLines().map(String::trim).filter(String::isNotEmpty)
