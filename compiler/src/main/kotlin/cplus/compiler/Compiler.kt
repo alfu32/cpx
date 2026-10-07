@@ -216,6 +216,9 @@ class CPlusCompiler(
         if (!semantic.isSuccessful) {
             return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
         }
+        if (frontend.diagnostics().any { it.severity == DiagnosticSeverity.ERROR }) {
+            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
+        }
         val model = semantic.model ?: return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
         val lowered = context.cLowererFactory(model).lower(ast)
         if (lowered.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
@@ -286,6 +289,26 @@ class CPlusCompiler(
         }
         val model = semantic.model
         if (model == null) {
+            return resultOf(
+                listOf(
+                    CompilationArtifacts(
+                        base.source,
+                        base.lexed,
+                        base.parsed,
+                        base.expanded,
+                        mergedAst,
+                        semantic,
+                        null,
+                        null,
+                        additionalDiagnostics
+                    )
+                ),
+                moduleGraph,
+                cSourceDependencies,
+                cLinkDependencies = cLinkDependencies
+            )
+        }
+        if (units.any { unit -> unit.diagnostics().any { it.severity == DiagnosticSeverity.ERROR } }) {
             return resultOf(
                 listOf(
                     CompilationArtifacts(

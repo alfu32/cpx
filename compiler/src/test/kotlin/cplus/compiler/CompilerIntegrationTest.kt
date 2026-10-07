@@ -333,14 +333,13 @@ class CompilerIntegrationTest {
     fun syntaxErrorExpressionsAreRejectedBeforeCEmission() {
         val source = """
             int main() {
-                sizeof();
-                return 0;
+                return (1 + );
             }
         """.trimIndent()
 
         val result = CPlusCompiler().compileText(Files.createTempFile("cplus-error-expression", ".cp"), source)
 
-        assertTrue(result.diagnostics.any { it.code == "LOW408" }, result.diagnostics.joinToString())
+        assertTrue(result.diagnostics.any { it.code == "PARSE401" || it.code == "PARSE402" }, result.diagnostics.joinToString())
         assertTrue(result.generatedUnits.isEmpty())
         assertTrue(!result.isSuccessful)
     }

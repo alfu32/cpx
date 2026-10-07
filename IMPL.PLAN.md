@@ -12,10 +12,10 @@ Overall: 91/113
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-4.2.4.3.2.2.2.2.2.3 — reject syntax-error expressions before C emission
+5.3.1 — layered automated test suites
 
 Current milestone:
-M4 — Full compile-time model
+M6 — Development environment
 ```
 
 All tasks initially have status `TODO`.
@@ -1355,7 +1355,7 @@ all create correct bindings.
 
 ---
 
-## 4.2 [DOING] [12/14] C+ feature lowering
+## 4.2 [DONE] [14/14] C+ feature lowering
 
 ### 4.2.1 [DONE] Method lowering
 
@@ -1632,7 +1632,7 @@ all create correct bindings.
 
 ---
 
-## 4.3 [DOING] [3/4] C representation and declaration synthesis
+## 4.3 [DONE] [4/4] C representation and declaration synthesis
 
 ### 4.3.1 [DONE] C AST model
 
@@ -2039,7 +2039,7 @@ all create correct bindings.
 **Depends**
 - 4
 
-### 5.2.2 [DOING] [2/3] CLI commands
+### 5.2.2 [DONE] [3/3] CLI commands
 
 **Technical**
 - TS §57
@@ -2066,6 +2066,11 @@ all create correct bindings.
 
 **Depends**
 - 5.2.1
+
+**Implementation**
+- Single-file and workspace compilation gate C artifact publication on front-end error diagnostics.
+- Parser-recovery syntax errors therefore retain diagnostics and AST artifacts without emitting invalid C.
+- Closure, lexical, CPX, and parser front-end errors all stop lowering before C emission.
 
 #### 5.2.2.2 [DONE] AST and post-CPX expansion inspection
 
