@@ -225,3 +225,22 @@ int platform_process_exit(int status) {
     for (;;) { }
     return status;
 }
+
+long long platform_clock_ticks(void) {
+    struct cplus_timespec { long long seconds; long long nanoseconds; } time;
+#if defined(__x86_64__)
+    register long result __asm__("rax") = 228;
+    register long clock __asm__("rdi") = 1;
+    register void* value __asm__("rsi") = &time;
+    __asm__ volatile("syscall" : "+a"(result) : "D"(clock), "S"(value) : "rcx", "r11", "memory");
+#elif defined(__aarch64__)
+    register long result __asm__("x0") = 1;
+    register long clock __asm__("x8") = 113;
+    register void* value __asm__("x1") = &time;
+    __asm__ volatile("svc 0" : "+r"(result) : "r"(clock), "r"(value) : "memory");
+#else
+    return -1;
+#endif
+    if (result < 0) return -1;
+    return time.seconds * 1000000000LL + time.nanoseconds;
+}

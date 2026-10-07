@@ -70,9 +70,14 @@ object RuntimeLinker {
                 val formatter = resolution.layout.runtimeSource.resolve("format.c")
                 val stdio = resolution.layout.runtimeSource.resolve("stdio.c")
                 val libcCore = resolution.layout.runtimeSource.resolve("libc_core.c")
+                val time = resolution.layout.runtimeSource.resolve("time.c")
+                val math = resolution.layout.runtimeSource.resolve("math.c")
+                val ctype = resolution.layout.runtimeSource.resolve("ctype.c")
+                val locale = resolution.layout.runtimeSource.resolve("locale.c")
+                val signal = resolution.layout.runtimeSource.resolve("signal.c")
                 val filesystem = resolution.layout.runtimeSource.resolve("fs.c")
                 val platformRuntime = resolution.layout.platformSource.resolve("runtime.c")
-                val missing = listOf(startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, filesystem, platformRuntime).filterNot(Files::isRegularFile)
+                val missing = listOf(startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, filesystem, platformRuntime).filterNot(Files::isRegularFile)
                 if (missing.isNotEmpty()) {
                     RuntimeLinkPlanResult(
                         null,
@@ -90,7 +95,7 @@ object RuntimeLinker {
                         RuntimeLinkPlan(
                             target.buildProfile.runtime,
                             listOf(startup),
-                            listOf(runtime, compilerRuntime, allocator, formatter, stdio, libcCore, filesystem, platformRuntime),
+                            listOf(runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, filesystem, platformRuntime),
                             buildList {
                                 addAll(
                                     listOf(

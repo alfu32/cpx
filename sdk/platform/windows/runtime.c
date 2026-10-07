@@ -48,6 +48,7 @@ __declspec(dllimport) __cplus_bool __stdcall MoveFileExW(
     __cplus_dword flags
 );
 __declspec(dllimport) __cplus_dword __stdcall GetLastError(void);
+__declspec(dllimport) unsigned long long __stdcall GetTickCount64(void);
 __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(__cplus_dword code);
 
 #define __CPLUS_CP_UTF8 65001UL
@@ -188,4 +189,8 @@ int platform_file_rename(const char* source, const char* target) {
 int platform_process_exit(int status) {
     ExitProcess((__cplus_dword)status);
     return status;
+}
+
+long long platform_clock_ticks(void) {
+    return (long long)GetTickCount64() * 1000000LL;
 }

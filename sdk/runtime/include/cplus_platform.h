@@ -19,6 +19,7 @@
 
 long platform_write_stdout(const char* buffer, unsigned long length);
 int platform_process_exit(int status);
+long long platform_clock_ticks(void);
 typedef long long cplus_file_handle_t;
 typedef long long cplus_file_result_t;
 typedef unsigned long long cplus_file_size_t;

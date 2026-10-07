@@ -547,6 +547,13 @@ strerror
 
 and related C-standard operations.
 
+The self-hosted C17 profile provides bounded and unbounded formatted output,
+the corresponding `va_list` entry points, basic character classification and
+case conversion, C-locale selection, clock/time queries, and basic signal
+registration. Stream operations that require filesystem-backed `FILE` state
+remain layered on the native filesystem/stream stage and SHALL report an
+explicit capability failure until that stage is selected.
+
 ---
 
 # 11. `std.io`
@@ -2193,6 +2200,12 @@ fopen(path, mode)
 The latter MAY delegate to the former.
 
 The native API SHALL not be forced to reproduce historical libc design limitations.
+
+The C compatibility layer SHALL define `errno` as thread-local storage and
+shall translate PAL failures to the documented C error constants at the libc
+boundary. Native `std` operations SHOULD return structured errors instead of
+mutating `errno`; a PAL result SHALL never expose a raw syscall number or
+`GetLastError` value to either layer.
 
 The C compatibility layer SHALL define `errno` as thread-local storage and
 shall translate PAL failures to the documented C error constants at the libc

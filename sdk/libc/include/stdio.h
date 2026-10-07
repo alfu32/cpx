@@ -14,6 +14,8 @@ int vprintf(const char* format, va_list arguments);
 int vfprintf(FILE* stream, const char* format, va_list arguments);
 int vsprintf(char* buffer, const char* format, va_list arguments);
 int vsnprintf(char* buffer, size_t size, const char* format, va_list arguments);
+int fgetc(FILE* stream);
+int fputc(int value, FILE* stream);
 int puts(const char* text);
 int fflush(FILE* stream);
 

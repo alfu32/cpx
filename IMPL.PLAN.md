@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R4.4 — C17 stdio/varargs, time/math, and advanced libc families
+R4.4.2 — atomics, TLS details, Unicode, and setjmp/longjmp capability gate
 
 Current milestone:
 R4 — runtime, allocator and libc behavior
@@ -3693,7 +3693,7 @@ Independent C fixtures compile against generated headers and link/run without
 ABI ambiguity on every claimed target; generated products pass syntax, symbol,
 layout, source-map, and dependency audits.
 
-## R4 [TODO] Runtime, allocator and libc behavior
+## R4 [DOING] Runtime, allocator and libc behavior
 
 **Dependency-ordered work queue**
 
@@ -3704,7 +3704,7 @@ layout, source-map, and dependency audits.
   operations with overflow, double-free, and invalid-range diagnostics;
 - R4.3 [DONE] — implement the C+ memory/string/conversion core and thread-local
   errno boundary without importing host libc behavior into native APIs;
-- R4.4 [TODO] — implement the claimed C17 compatibility families in dependency
+- R4.4 [DOING] — implement the claimed C17 compatibility families in dependency
   order: stdio/varargs, time/math/locale, Unicode, signal, atomics, TLS, and
   setjmp/longjmp;
 - R4.5 [TODO] — execute independent C17 conformance fixtures, audit compiler
@@ -3744,6 +3744,22 @@ Implemented and executed on Linux:
   without leaking raw OS error values;
 - an executable Linux fixture validates overlap-safe memory movement, byte
   comparison, strings, conversions, allocator integration, and errno mapping.
+
+### R4.4.1 partial completion record
+
+Implemented and executed on Linux:
+
+- the self-hosted stdio layer supports `printf`, `fprintf`, `sprintf`,
+  `snprintf`, their `v*` forms, `puts`, `fputc`, `fgetc`, and explicit stream
+  markers without host stdio calls;
+- the formatter and SDK `stdarg.h` provide the selected C ABI's varargs path;
+- monotonic platform ticks feed `clock` and `time`, with Linux syscall and
+  Windows system-API adapters;
+- `sqrt`, `fabs`, character classification/case conversion, the C locale, and
+  basic signal registration/raise behavior have executable Linux coverage.
+
+R4.4 remains open for Unicode/wide-character semantics, atomics and detailed
+TLS behavior, and a target-specific decision for `setjmp`/`longjmp`.
 
 **Deliverables**
 
