@@ -849,55 +849,8 @@ class Parser(private val lexed: LexedSource) {
         }
     }
 
-    private fun canonicalPrimitiveTypeName(specifiers: List<String>): String? {
-        val signCount = specifiers.count { it == "signed" || it == "unsigned" }
-        if (signCount > 1) return null
-        val unsigned = "unsigned" in specifiers
-
-        val nonIntegerSpecifiers = specifiers.filter { it in setOf("void", "bool", "float", "double") }
-        if (nonIntegerSpecifiers.isNotEmpty()) {
-            return when {
-                specifiers == listOf("void") -> "void"
-                specifiers == listOf("bool") -> "bool"
-                specifiers == listOf("float") -> "float"
-                specifiers == listOf("double") -> "double"
-                specifiers.size == 2 && specifiers.toSet() == setOf("long", "double") -> "long double"
-                else -> null
-            }
-        }
-
-        if (specifiers.any { it !in setOf("signed", "unsigned", "char", "short", "int", "long") }) {
-            return null
-        }
-
-        val charCount = specifiers.count { it == "char" }
-        val shortCount = specifiers.count { it == "short" }
-        val longCount = specifiers.count { it == "long" }
-        val intCount = specifiers.count { it == "int" }
-        if (charCount > 0) {
-            if (charCount != 1 || shortCount != 0 || longCount != 0 || intCount != 0) return null
-            return when {
-                unsigned -> "unsigned char"
-                "signed" in specifiers -> "signed char"
-                else -> "char"
-            }
-        }
-
-        if (shortCount > 1 || longCount > 2 || intCount > 1 || (shortCount > 0 && longCount > 0)) {
-            return null
-        }
-        val rank = when {
-            shortCount == 1 -> "short"
-            longCount == 1 -> "long"
-            longCount == 2 -> "long long"
-            else -> "int"
-        }
-        return when {
-            unsigned && rank == "int" -> "unsigned int"
-            unsigned -> "unsigned $rank"
-            else -> rank
-        }
-    }
+    private fun canonicalPrimitiveTypeName(specifiers: List<String>): String? =
+        CPrimitiveTypes.canonicalizeSpecifierSequence(specifiers)
 
     private fun looksLikeVariableDeclaration(): Boolean {
         if (peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum")) return true
@@ -1028,9 +981,7 @@ class Parser(private val lexed: LexedSource) {
     )
 
     companion object {
-        private val primitiveTypes = setOf(
-            "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned"
-        )
+        private val primitiveTypes = CPrimitiveTypes.specifierKeywords
         private val typeQualifiers = setOf("const", "volatile", "restrict")
     }
 }

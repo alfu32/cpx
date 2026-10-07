@@ -738,7 +738,12 @@ private fun comptimeTypeDescriptors(
 ): List<StructuralTypeDescriptor> =
     model.types.distinctBy { it.id }.mapNotNull { type ->
         when (type) {
-            is cplus.semantic.PrimitiveType -> StructuralTypeDescriptor(type.name, "primitive", typeId = type.id)
+            is cplus.semantic.PrimitiveType -> StructuralTypeDescriptor(
+                type.name,
+                "primitive",
+                layout = target?.let { comptimeLayout(type, it) },
+                typeId = type.id
+            )
             is cplus.semantic.StructType -> StructuralTypeDescriptor(
                 type.name,
                 "struct",

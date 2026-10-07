@@ -1,6 +1,9 @@
 package cplus.compiler
 
 import cplus.semantic.*
+import cplus.core.CIntegerRank
+import cplus.core.CPrimitiveKind
+import cplus.core.CPrimitiveTypes
 
 data class AbiFieldLayout(
     val name: String,
@@ -60,16 +63,26 @@ class AbiLayoutEngine(private val target: TargetAbiDescriptor) {
         )
     }
 
-    private fun primitive(name: String): AbiLayout = when (name) {
-        "bool", "char", "signed char", "unsigned char" -> AbiLayout(1, 1)
-        "short", "signed short", "unsigned short" -> AbiLayout(2, 2)
-        "int", "signed", "signed int", "unsigned", "unsigned int", "float" -> AbiLayout(4, 4)
-        "long", "unsigned long" -> {
-            val size = if (target.cIntegerModel == "llp64") 4 else 8
-            AbiLayout(size, size)
+    private fun primitive(name: String): AbiLayout {
+        if (name in CPrimitiveTypes.standardIntegerTypedefNames) {
+            val size = target.pointerBits / 8
+            return AbiLayout(size, size)
         }
-        "long long", "unsigned long long", "double" -> AbiLayout(8, 8)
-        else -> AbiLayout(0, 1)
+        val type = CPrimitiveTypes.typeInfo(name) ?: return AbiLayout(0, 1)
+        val size = when (type.kind) {
+            CPrimitiveKind.VOID -> 0
+            CPrimitiveKind.BOOLEAN -> 1
+            CPrimitiveKind.FLOATING -> if (type.name == "float") 4 else 8
+            CPrimitiveKind.INTEGER -> when (type.rank) {
+                CIntegerRank.CHAR -> 1
+                CIntegerRank.SHORT -> 2
+                CIntegerRank.INT -> 4
+                CIntegerRank.LONG -> if (target.cIntegerModel == "llp64") 4 else 8
+                CIntegerRank.LONG_LONG -> 8
+                null -> 0
+            }
+        }
+        return AbiLayout(size, if (size == 0) 1 else size)
     }
 
     private fun align(value: Int, alignment: Int): Int = if (alignment <= 1) value else {

@@ -577,6 +577,16 @@ value class TypeId(val value: Int)
 
 Type equality SHALL rely on semantic identity/canonical form rather than textual spelling.
 
+`language-core` SHALL own one canonical C primitive catalog containing
+supported spellings, legal specifier-sequence normalization, integer rank and
+signedness, and numeric category. Parsing, semantic resolution and identity,
+CPX type resolution, closure lowering, ABI layout, reflection, and C lowering
+SHALL consume this catalog rather than maintain independent primitive-name
+tables. Target-dependent widths (notably `long`) SHALL be selected from the
+active ABI descriptor. C standard typedefs such as `size_t` and `ptrdiff_t`
+remain distinct from built-in primitives and SHALL resolve through target C
+header metadata or the compiler's explicit target model.
+
 ---
 
 # 13. Method model

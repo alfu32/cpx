@@ -10,19 +10,19 @@ runtime, SDK, LSP, and release products.
 ### Release roadmap dashboard
 
 ```text
-Historical foundation: 146/146 (complete; retained for traceability)
+Historical foundation: 145/146 evidenced; one std.core task reopened
 Roadmap leaf tasks:    25/45 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R1.2.3 — unify primitive identity across semantic, ABI, and C output
+Current task:          R1.4 — implement explicit source-type imports and visibility
 Current milestone:     R1 — language and front-end conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 7/11 primitive, ABI, type-import, and user-alias conformance open
+R1 [DOING] 8/11 primitive, ABI, type-import, and user-alias conformance open
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
-R5 [DOING] 1/5  native std foundations complete; file PAL extensions next
+R5 [DOING] 0/5  std.core target-size types remain; file PAL extensions later
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
@@ -35,17 +35,16 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R1.2.3 — unify primitive identity across semantic analysis, ABI layout,
-   reflection, and C output.
-2. R1.4 — implement kind-aware selective imports for source types and enforce
+1. R1.4 — implement kind-aware selective imports for source types and enforce
    module visibility boundaries.
-3. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
+2. R1.2.4/R1.2.5 — add explicit-import `std.fixed_width` aliases `i8`…`i64`
    and `u8`…`u64`, then define capability-gated `i128`/`u128` support.
-4. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
+3. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
    C and independent ABI fixtures.
-5. R5.2 onward — resume native std and platform work after the type boundary
-   is reliable, then finish R6–R8 and perform the deferred Windows validation
-   and patch pass.
+4. R5.1 — complete the reopened target-aware std.core byte/size/index types.
+5. R5.2 onward — resume native std and platform work after the type boundary is
+   reliable, finish R6–R8, and perform the deferred Windows validation and patch
+   pass.
 
 Latest completed implementation commits:
 
@@ -2432,7 +2431,7 @@ they are explicitly reopened as R1.4 below.
 
 ---
 
-# 6. [DONE] [33/33] C+ Standard Library, Runtime, SDK and Platform ABI
+# 6. [DOING] [32/33] C+ Standard Library, Runtime, SDK and Platform ABI
 
 **Purpose:** Make the C+ SDK self-hosting at the runtime/library level: source-delivered standard library and libc compatibility, explicit target/ABI metadata, platform abstraction layers, compiler/runtime intrinsics, target startup/link orchestration, and conformance tooling.
 
@@ -2911,7 +2910,7 @@ they are explicitly reopened as R1.4 below.
 
 ---
 
-## 6.3 [DONE] [8/8] Native `std` and C libc compatibility implementation
+## 6.3 [DOING] [7/8] Native `std` and C libc compatibility implementation
 
 **SDK**
 - SDK §6–19
@@ -2919,9 +2918,9 @@ they are explicitly reopened as R1.4 below.
 - SDK §75–76
 - SDK §90–92
 
-### 6.3.1 [DONE] [4/4] Native C+ standard-library core
+### 6.3.1 [DOING] [3/4] Native C+ standard-library core
 
-#### 6.3.1.1 [DONE] Implement `std.core`, `std.mem` and portable memory primitives
+#### 6.3.1.1 [DOING] Implement `std.core`, `std.mem` and portable memory primitives
 
 **SDK**
 - SDK §7 `std.core`
@@ -2929,7 +2928,7 @@ they are explicitly reopened as R1.4 below.
 - SDK §45 Compiler-generated Memory Operations
 
 **Acceptance**
-- target-neutral byte/size/index aliases, `usize/isize`, low-level numeric
+- target-aware byte/size/index aliases, `usize/isize`, low-level numeric
   limits, and pointer/memory utilities are available without hosted OS
   dependencies; opt-in `iN`/`uN` aliases are tracked separately in R1.2.4–R1.2.5.
 - portable copy/move/set/compare/zero operations exist.
@@ -2938,9 +2937,12 @@ they are explicitly reopened as R1.4 below.
 
 **Implementation**
 - Added source-delivered `std.mem` copy/move/set/compare operations and compiler-runtime equivalents with overlap-safe behavior.
-- Added target-neutral core aliases and explicit byte/text source contracts
-  without hosted OS dependencies. This does not implement the opt-in
-  `std.fixed_width` aliases tracked by R1.2.4–R1.2.5.
+- Added explicit byte/text source contracts without hosted OS dependencies.
+  Audit found that `std.core` had unused, fixed-width `std_byte_t`,
+  `std_size_t`, and `std_index_t` aliases but no required `usize`/`isize`
+  declarations. The dead aliases have been removed; target-aware replacements
+  remain open and are not counted complete. This does not implement the
+  opt-in `std.fixed_width` aliases tracked by R1.2.4–R1.2.5.
 - SDK libc/std source modules import their dependencies explicitly and all delivered `.cp` sources pass CLI semantic checking as individual package entry points.
 
 **Depends**
@@ -3347,15 +3349,16 @@ they are explicitly reopened as R1.4 below.
 
 # Completion roadmap — post-foundation implementation
 
-The historical sections above record the compiler/SDK foundation tasks that
-have been completed. They do not, by themselves, prove that every normative
-standard-library, runtime, platform, CLI, or release requirement is executable.
-This roadmap is the authoritative work queue for turning that foundation into
-the complete working CLI transcoder and self-hosted SDK described by the
-specifications.
+The historical sections above record the compiler/SDK foundation tasks and
+their current completion status. Some foundation work has been reopened where
+an acceptance requirement lacks implementation evidence. Those sections do
+not, by themselves, prove that every normative standard-library, runtime,
+platform, CLI, or release requirement is executable. This roadmap is the
+authoritative work queue for completing the working CLI transcoder and
+self-hosted SDK described by the specifications.
 
 ```text
-Foundation tasks: 146/146
+Foundation tasks: 145/146 (6.3.1.1 reopened: required target-aware size/index types are absent)
 Completion phases: [DOING] [2/9 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -3436,9 +3439,26 @@ of R1–R8 or deliberately recorded as a post-release extension.
   - R1.2.2 [DONE] — complete leading/pointer qualifiers, preserve structured
     declarators through C emission, and resolve foreign fixed-width/`stddef`
     aliases against their underlying target-aware types.
-  - R1.2.3 [TODO] — audit semantic, ABI-layout, reflection, and C-backend
-    primitive tables against one canonical type identity; keep SDK declarations
-    idiomatic C and remove unused custom integer aliases from `std.core`.
+  - R1.2.3 [DONE] — audit semantic, ABI-layout, reflection, CPX, closure, and
+    C-backend primitive tables against one canonical type identity; keep SDK
+    declarations idiomatic C and remove unused custom integer aliases from
+    `std.core`.
+    - Added a shared `CPrimitiveTypes` catalog for canonical C spellings,
+      integer rank/signedness, numeric classification, and legal specifier
+      sequences. Parser, semantic identity/resolution, CPX type recognition,
+      closure lowering, ABI layout, C lowering, and dependency collection now
+      consume that catalog rather than maintaining separate primitive tables.
+    - The semantic type universe now includes canonical primitives; reflective
+      CPX resolves reordered multiword spellings to the canonical descriptor
+      and exposes the target ABI layout.
+    - Removed the unused `std_byte_t`, `std_size_t`, and `std_index_t`
+      declarations from `std.core`. The audit separately reopened R5.1 because
+      its required target-aware byte/size/index types, including `usize` and
+      `isize`, are absent; they are not optimistically counted as complete.
+    - `./gradlew test` passes on Linux. ABI layout checks cover Linux and
+      Windows x86_64/AArch64 target descriptors; no Windows execution was
+      performed. Compiler integration verifies reflected `unsigned long long`
+      identity/layout and generated C execution.
   - R1.2.4 [TODO] — provide `std.fixed_width` as an explicit-import user-level
     source module defining ordinary typedef aliases `i8`, `i16`, `i32`, `i64`,
     `u8`, `u16`, `u32`, and `u64` over the target's corresponding C
@@ -3947,8 +3967,9 @@ dependencies.
 
 **Dependency-ordered work queue**
 
-- R5.1 [DONE] — complete target-neutral `std.core`, `std.mem`, `std.string`,
-  `std.text`, and collection value/error types;
+- R5.1 [DOING] — complete `std.core`, `std.mem`, `std.string`, `std.text`,
+  and collection value/error types, including target-aware byte/size/index
+  types;
 - R5.2 [TODO] — extend the file PAL with seek, metadata, create/remove,
   directory iteration, and stream adapters;
 - R5.3 [TODO] — implement memory/page, process/environment, time, thread,
@@ -3962,12 +3983,20 @@ R5.2 is sequenced after R1.1.1–R1.2.5, R1.4, and R3.1.3 because it extends
 public SDK function signatures and must use the verified C primitive, type
 import, and alias boundaries.
 
-### R5.1 completion record
+### R5.1 status audit
 
-Implemented and executed on Linux:
+The memory, string, text, collection, and value/error carrier work below has
+Linux execution evidence. R5.1 is reopened because the normative target-aware
+byte/size/index type requirement is not implemented: `std.core` had only
+unused scalar aliases without target-derived underlying types and no
+`usize`/`isize` declarations. Those unused aliases were removed. This task is
+not counted complete until the required
+ABI-aware types and their target tests exist.
 
-- `std.core` now defines target-neutral byte/size/index aliases plus explicit
-  error, result, and option value carriers without PAL or host error fields;
+Verified completed portions:
+
+- `std.core` provides explicit error, result, and option value carriers
+  without PAL or host error fields;
 - `std.mem` provides zeroing and unsigned-byte comparison/equality in addition
   to copy, move, and set;
 - `std.string` provides unsigned-byte comparison, copy, and append helpers;

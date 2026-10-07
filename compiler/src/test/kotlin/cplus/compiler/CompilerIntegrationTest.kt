@@ -1244,6 +1244,41 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun reflectiveCpxCanonicalizesAndDescribesBuiltinIntegerTypes() {
+        var observedTypeName: String? = null
+        var observedCanonicalSyntax: String? = null
+        var observedKind: String? = null
+        var observedSize: Long? = null
+        val expander = CpxExpander(
+            evaluator = ComptimeEvaluator { _, template, bindings, context ->
+                val type = bindings.values.single() as ComptimeValue.CtType
+                observedCanonicalSyntax = type.canonicalSyntax
+                val descriptor = type.typeId?.let(context.reflection::descriptor)
+                observedTypeName = descriptor?.name
+                observedKind = descriptor?.kind
+                observedSize = descriptor?.layout?.size
+                ComptimeEvaluationResult(template.render(bindings))
+            }
+        )
+        val compiler = CPlusCompiler(CompilerContext(cpxExpander = expander))
+        val source = """
+            comptime cpx<expr> inspect(type T) {
+                return { int generated() { return 0; } };
+            }
+            inspect(unsigned long long int);
+            int main() { return generated(); }
+        """.trimIndent()
+
+        val result = compiler.compileText(Files.createTempFile("cplus-reflection-primitive", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("unsigned long long", observedCanonicalSyntax)
+        assertEquals("unsigned long long", observedTypeName)
+        assertEquals("primitive", observedKind)
+        assertEquals(8L, observedSize)
+    }
+
+    @Test
     fun independentCCallerUsesGeneratedHeaderForScalarsAggregatesCallbacksAndVarargs() {
         val source = """
             pub struct c_api_pair {

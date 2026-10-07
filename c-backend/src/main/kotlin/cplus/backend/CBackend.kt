@@ -351,8 +351,8 @@ class CLowerer(
             reference.isStruct || semantic.structs.containsKey(reference.name) -> {
                 CType.Struct(reference.name, reference.pointerDepth, reference.qualifiers, reference.pointerQualifiers)
             }
-            reference.name in primitiveNames -> CType.Primitive(
-                reference.name,
+            CPrimitiveTypes.isKnownTypeName(reference.name) -> CType.Primitive(
+                CPrimitiveTypes.canonicalName(reference.name) ?: reference.name,
                 reference.pointerDepth,
                 reference.qualifiers,
                 reference.pointerQualifiers
@@ -713,14 +713,6 @@ class CLowerer(
         else -> false
     }
 
-    companion object {
-        private val primitiveNames = setOf(
-            "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
-            "signed char", "unsigned char", "signed short", "unsigned short",
-            "signed int", "unsigned int", "long long", "unsigned long", "unsigned long long",
-            "size_t", "ptrdiff_t", "max_align_t"
-        )
-    }
 }
 
 class CEmitter {

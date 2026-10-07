@@ -117,7 +117,7 @@ data class ForeignType(
 ) : CType
 
 private fun canonicalTypeKey(type: CType): String = when (type) {
-    is PrimitiveType -> "primitive:${type.name}"
+    is PrimitiveType -> "primitive:${CPrimitiveTypes.canonicalName(type.name) ?: type.name}"
     is StructType -> "struct:${type.name}"
     is UnionType -> "union:${type.name}"
     is EnumType -> "enum:${type.name}"
@@ -270,8 +270,13 @@ data class SemanticModel(
             "struct" -> structs[baseText]
             "union" -> unions[baseText]
             "enum" -> enums[baseText]
-            else -> structs[baseText] ?: unions[baseText] ?: enums[baseText] ?: aliases[baseText] ?:
-                foreignTypes[baseText] ?: types.firstOrNull { it is PrimitiveType && it.name == baseText }
+            else -> {
+                val canonicalPrimitiveName = CPrimitiveTypes.canonicalName(baseText)
+                structs[baseText] ?: unions[baseText] ?: enums[baseText] ?: aliases[baseText] ?:
+                    foreignTypes[baseText] ?: types.firstOrNull {
+                        it is PrimitiveType && it.name == (canonicalPrimitiveName ?: baseText)
+                    }
+            }
         } ?: return null
         val pointerDepth = normalized.count { it == '*' }
         val dimensions = Regex("\\[([^]]*)]").findAll(normalized).map { it.groupValues[1] }.toList()
@@ -525,9 +530,14 @@ class SemanticAnalyzer(
         val primitiveTypes = linkedMapOf<String, PrimitiveType>()
         val expressionTypes = linkedMapOf<AstExpression, CType>()
 
-        fun primitive(name: String): PrimitiveType = primitiveTypes.getOrPut(name) {
-            PrimitiveType(TypeId(nextTypeId.next()), name).also(types::add)
+        fun primitive(name: String): PrimitiveType {
+            val canonicalName = CPrimitiveTypes.canonicalName(name) ?: name
+            return primitiveTypes.getOrPut(canonicalName) {
+                PrimitiveType(TypeId(nextTypeId.next()), canonicalName).also(types::add)
+            }
         }
+
+        CPrimitiveTypes.types.forEach { primitive(it.name) }
 
         fun abiOf(attributes: Map<String, String>, origin: Origin): AbiKind {
             val value = attributes["abi"]?.lowercase() ?: return AbiKind.C
@@ -632,7 +642,8 @@ class SemanticAnalyzer(
                     foreignTypes.getValue(baseName)
                 }
                 foreignTypes[baseName] != null -> foreignTypes.getValue(baseName)
-                baseName in knownPrimitiveNames -> primitive(baseName)
+                CPrimitiveTypes.typeInfo(baseName) != null -> primitive(baseName)
+                baseName in CPrimitiveTypes.standardTypedefNames -> primitive(baseName)
                 else -> {
                     diagnostics.error("unsupported foreign type '$baseName' from $moduleName", rangeOf(origin), "SEM407")
                     UnknownType(TypeId(-1))
@@ -1232,7 +1243,7 @@ class SemanticAnalyzer(
                 UnknownType(TypeId(-1))
             }
             else -> when {
-                reference.name in knownPrimitiveNames -> primitive(reference.name)
+                CPrimitiveTypes.isKnownTypeName(reference.name) -> primitive(reference.name)
                 structs[reference.name] != null -> structs.getValue(reference.name)
                 unions[reference.name] != null -> unions.getValue(reference.name)
                 enums[reference.name] != null -> enums.getValue(reference.name)
@@ -1508,7 +1519,7 @@ class SemanticAnalyzer(
                     validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 }
                 expression.targetType?.let { target ->
-                    if (target.name !in knownPrimitiveNames && target.declarationKind == "named") {
+                    if (!CPrimitiveTypes.isKnownTypeName(target.name) && target.declarationKind == "named") {
                         diagnostics.error("unsupported sizeof type '${target.name}'", rangeOf(target.origin), "SEM311")
                     }
                 }
@@ -1522,7 +1533,7 @@ class SemanticAnalyzer(
                 if (target == null) {
                     diagnostics.error("${expression.query} requires a target type", rangeOf(expression.origin), "SEM312")
                 } else if (
-                    target.name !in knownPrimitiveNames &&
+                    !CPrimitiveTypes.isKnownTypeName(target.name) &&
                     target.declarationKind == "named" &&
                     target.name !in structs
                 ) {
@@ -1539,7 +1550,7 @@ class SemanticAnalyzer(
             is AstCast -> {
                 validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 val targetBase = when {
-                    expression.target.name in knownPrimitiveNames -> primitive(expression.target.name)
+                    CPrimitiveTypes.isKnownTypeName(expression.target.name) -> primitive(expression.target.name)
                     expression.target.declarationKind == "struct" -> structs[expression.target.name]
                     else -> null
                 }
@@ -1799,14 +1810,14 @@ class SemanticAnalyzer(
     }
 
     private fun isNumericType(type: CType): Boolean = when (val canonical = canonicalType(type)) {
-        is PrimitiveType -> canonical.name in numericPrimitiveNames
+        is PrimitiveType -> CPrimitiveTypes.isNumeric(canonical.name)
         is ForeignType -> canonical.underlyingType?.let(::isNumericType) == true
         is EnumType -> true
         else -> false
     }
 
     private fun isIntegerType(type: CType): Boolean = when (val canonical = canonicalType(type)) {
-        is PrimitiveType -> canonical.name !in setOf("float", "double") && canonical.name in numericPrimitiveNames
+        is PrimitiveType -> CPrimitiveTypes.isInteger(canonical.name)
         is ForeignType -> canonical.underlyingType?.let(::isIntegerType) == true
         is EnumType -> true
         else -> false
@@ -1864,13 +1875,6 @@ class SemanticAnalyzer(
 
     private val logicalOperators = setOf("&&", "||")
 
-    private val numericPrimitiveNames = setOf(
-        "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
-        "signed char", "unsigned char", "signed short", "unsigned short",
-        "signed int", "unsigned int", "signed long", "unsigned long", "long long", "unsigned long long",
-        "size_t", "ptrdiff_t", "max_align_t"
-    )
-
     private fun canonicalType(type: CType): CType = when (type) {
         is AliasType -> canonicalType(type.target)
         else -> type
@@ -1897,12 +1901,4 @@ class SemanticAnalyzer(
 
     private fun rangeOf(origin: Origin): SourceRange? = origin.primaryRange
 
-    companion object {
-        private val knownPrimitiveNames = setOf(
-            "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
-            "signed char", "unsigned char", "signed short", "unsigned short",
-            "signed int", "unsigned int", "long long", "unsigned long", "unsigned long long",
-            "size_t", "ptrdiff_t", "max_align_t"
-        )
-    }
 }

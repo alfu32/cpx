@@ -219,6 +219,14 @@ class SemanticTypeTest {
         assertNotEquals(canonicalId("signed_long"), canonicalId("signed_long_long"))
         assertNotEquals(canonicalId("unsigned_long"), canonicalId("unsigned_long_long"))
         assertEquals(
+            canonicalId("signed_int"),
+            model.canonicalTypeId(PrimitiveType(TypeId(-100), "signed int"))
+        )
+        assertEquals(
+            canonicalId("signed_short"),
+            model.canonicalTypeId(PrimitiveType(TypeId(-101), "signed short"))
+        )
+        assertEquals(
             model.canonicalTypeId(model.functions.getValue("first").signature),
             model.canonicalTypeId(model.functions.getValue("second").signature)
         )

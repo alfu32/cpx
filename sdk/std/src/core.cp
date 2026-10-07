@@ -1,8 +1,5 @@
-/// Target-neutral scalar aliases and value/error carriers used by std.*.
+/// Target-neutral value/error carriers used by std.*.
 /// These types contain no handles, errno values, or operating-system fields.
-typedef unsigned char std_byte_t;
-typedef unsigned long long std_size_t;
-typedef long long std_index_t;
 
 struct std_error_t {
     int code;

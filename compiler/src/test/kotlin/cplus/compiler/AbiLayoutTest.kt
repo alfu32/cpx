@@ -103,6 +103,8 @@ class AbiLayoutTest {
                 assertEquals(expectedSize, layout.alignment, "$name $typeName alignment")
             }
             assertEquals(descriptor.pointerBits / 8, layouts.layout(PointerType(TypeId(50), PrimitiveType(TypeId(51), "int"))).size, name)
+            assertEquals(descriptor.pointerBits / 8, layouts.layout(PrimitiveType(TypeId(62), "size_t")).size, "$name size_t")
+            assertEquals(descriptor.pointerBits / 8, layouts.layout(PrimitiveType(TypeId(63), "ptrdiff_t")).size, "$name ptrdiff_t")
             assertEquals(longSize, layouts.layout(PrimitiveType(TypeId(52), "long")).size, name)
             assertEquals(8, layouts.layout(PrimitiveType(TypeId(53), "long long")).size, name)
 

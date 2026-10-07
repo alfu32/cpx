@@ -1748,10 +1748,7 @@ class CpxExpander(
     }
 
     private val identifierPattern = Regex("[A-Za-z_][A-Za-z0-9_]*")
-    private val primitiveTypeNames = setOf(
-        "void", "bool", "char", "short", "int", "long", "float", "double",
-        "signed", "unsigned"
-    )
+    private val primitiveTypeNames = CPrimitiveTypes.specifierKeywords
 
     private fun syntheticSibling(source: Path, name: String): Path =
         source.resolveSibling(name.replace(Regex("[^A-Za-z0-9_.-]"), "_"))

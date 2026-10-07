@@ -413,10 +413,9 @@ class AstClosureLowerer {
         return Callable(hoistedName, environmentName?.let { "${hoistedName}__env" }, captures)
     }
 
-    private fun typeFrom(type: AstTypeRef): CType = when (type.name) {
-        "void", "bool", "char", "short", "int", "long", "float", "double" -> cplus.semantic.PrimitiveType(cplus.semantic.TypeId(type.hashCode()), type.name)
-        else -> cplus.semantic.ForeignType(cplus.semantic.TypeId(type.hashCode()), type.name)
-    }
+    private fun typeFrom(type: AstTypeRef): CType = CPrimitiveTypes.typeInfo(type.name)?.let { primitive ->
+        cplus.semantic.PrimitiveType(cplus.semantic.TypeId(type.hashCode()), primitive.name)
+    } ?: cplus.semantic.ForeignType(cplus.semantic.TypeId(type.hashCode()), type.name)
 
     private fun lowerExpression(
         expression: AstExpression,

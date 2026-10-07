@@ -107,7 +107,7 @@ class CDependencyCollector {
     }
 
     private fun includeForTypeName(name: String): String? = when (name) {
-        "size_t", "ptrdiff_t", "max_align_t" -> "stddef.h"
+        in CPrimitiveTypes.standardTypedefNames -> "stddef.h"
         "FILE", "fpos_t" -> "stdio.h"
         else -> null
     }
@@ -115,7 +115,7 @@ class CDependencyCollector {
     private fun includeForCType(type: CType, includes: MutableSet<String>) {
         when (type) {
             is CType.Named -> includeForTypeName(type.name)?.let(includes::add)
-            is CType.Primitive -> if (type.name in setOf("size_t", "ptrdiff_t", "max_align_t")) includes += "stddef.h"
+            is CType.Primitive -> if (type.name in CPrimitiveTypes.standardTypedefNames) includes += "stddef.h"
             is CType.FunctionPointer -> {
                 includeForCType(type.returnType, includes)
                 type.parameterTypes.forEach { includeForCType(it, includes) }

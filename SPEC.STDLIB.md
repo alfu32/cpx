@@ -435,10 +435,14 @@ low-level numeric limits
 
 No operating-system dependency is permitted.
 
-The SDK provides target-neutral byte, size, and index aliases together with
-explicit `std_error_t`, `std_result_t`, and `std_option_t` value carriers.
-These carriers contain status and value data only; PAL handles, raw syscall
-numbers, and host `errno` values are not part of their representation.
+`std.core` SHALL provide target-aware byte, size, and index aliases together
+with explicit `std_error_t`, `std_result_t`, and `std_option_t` value carriers.
+Size and index aliases SHALL follow the target C ABI (using the corresponding
+standard C types where available), rather than substituting a fixed-width
+integer. The value carriers contain status and value data only; PAL handles,
+raw syscall numbers, and host `errno` values are not part of their
+representation. Unused `std_byte_t`, `std_size_t`, and `std_index_t` aliases
+are not part of the API.
 
 `std.core` SHALL NOT add custom `i8`/`i16`/`i32`/`i64`, `u8`/`u16`/`u32`/`u64`,
 or 128-bit aliases to compiler built-ins or native SDK API signatures. Programs
