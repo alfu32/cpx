@@ -32,5 +32,20 @@ class AbiLayoutTest {
         assertTrue(layout.fields.all { it.alignment > 0 })
     }
 
+    @Test
+    fun appliesTargetIntegerModelToLong() {
+        val windows = requireNotNull(
+            TargetRegistry.load(
+                SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+                    .resolve("abi/windows-x86_64.toml")
+            ).descriptor
+        )
+        val longType = PrimitiveType(TypeId(4), "long")
+        val longLongType = PrimitiveType(TypeId(5), "long long")
+
+        assertEquals(4, AbiLayoutEngine(windows).layout(longType).size)
+        assertEquals(8, AbiLayoutEngine(windows).layout(longLongType).size)
+    }
+
     private fun ownerOrigin(): cplus.core.Origin = cplus.core.Origin.Synthetic(null)
 }

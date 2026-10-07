@@ -1616,7 +1616,11 @@ class SemanticAnalyzer(
 
     private val logicalOperators = setOf("&&", "||")
 
-    private val numericPrimitiveNames = setOf("bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned")
+    private val numericPrimitiveNames = setOf(
+        "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
+        "signed char", "unsigned char", "signed short", "unsigned short",
+        "signed int", "unsigned int", "long long", "unsigned long long"
+    )
 
     private fun canonicalType(type: CType): CType = when (type) {
         is AliasType -> canonicalType(type.target)

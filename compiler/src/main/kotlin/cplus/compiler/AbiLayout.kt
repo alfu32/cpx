@@ -63,7 +63,11 @@ class AbiLayoutEngine(private val target: TargetAbiDescriptor) {
         "bool", "char", "signed char", "unsigned char" -> AbiLayout(1, 1)
         "short", "signed short", "unsigned short" -> AbiLayout(2, 2)
         "int", "signed", "signed int", "unsigned", "unsigned int", "float" -> AbiLayout(4, 4)
-        "long", "unsigned long", "long long", "unsigned long long", "double" -> AbiLayout(8, 8)
+        "long", "unsigned long" -> {
+            val size = if (target.cIntegerModel == "llp64") 4 else 8
+            AbiLayout(size, size)
+        }
+        "long long", "unsigned long long", "double" -> AbiLayout(8, 8)
         else -> AbiLayout(0, 1)
     }
 

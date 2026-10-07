@@ -3368,6 +3368,10 @@ of R1–R8 or deliberately recorded as a post-release extension.
   regression coverage.
 - R1.2 [DOING] — reconcile semantic primitive widths, qualifiers, declarators,
   and fixed-width aliases across all target ABI descriptors.
+  - R1.2.1 [DONE] — apply LP64/LLP64 `long` layout rules and recognize all
+    parsed numeric primitive forms in argument compatibility.
+  - R1.2.2 [DOING] — complete qualifiers, declarators, and foreign fixed-width
+    alias layout.
 
 **Deliverables**
 
