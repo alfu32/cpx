@@ -562,6 +562,12 @@ flattened type string. Indirect calls resolve their callable signature from the
 shared semantic expression-type table and reuse the direct-call argument
 validator.
 
+Expression validation SHALL distinguish numeric, scalar, object-pointer, array,
+and callable-pointer operands for arithmetic and comparisons. Initializer
+validation SHALL run for globals as well as block locals before lowering; the C
+backend SHALL not be the first component to discover an incompatible object
+type.
+
 Each canonical type SHOULD have a stable:
 
 ```kotlin

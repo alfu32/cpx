@@ -560,6 +560,63 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun pointerArithmeticAndArrayDecayCompileAndExecute() {
+        val source = """
+            int main() {
+                int values[3];
+                values[0] = 4;
+                values[1] = 5;
+                values[2] = 6;
+                int* pointer = values;
+                return *(pointer + 1) == 5 && (pointer + 2) - pointer == 2 ? 0 : 1;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-pointer-arithmetic", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val directory = Files.createTempDirectory("cplus-pointer-arithmetic-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(result.generatedUnits.single().text) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(0, execution.waitFor())
+    }
+
+    @Test
+    fun aggregatePointerCastsRemainValidCDeclarators() {
+        val source = """
+            struct item {
+                int value;
+            };
+
+            int main() {
+                struct item item;
+                item.value = 7;
+                void* raw = &item;
+                struct item* typed = (struct item*) raw;
+                return typed->value == 7 ? 0 : 1;
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-aggregate-cast", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val directory = Files.createTempDirectory("cplus-aggregate-cast-e2e")
+        val cFile = directory.resolve("program.c").also { it.writeText(result.generatedUnits.single().text) }
+        val executable = directory.resolve("program")
+        val compileProcess = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compileProcess.inputStream.bufferedReader().readText()
+        assertEquals(0, compileProcess.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        assertEquals(0, execution.waitFor())
+    }
+
+    @Test
     fun configuredHeaderDeclarationsResolveForeignFunctionSignatures() {
         val source = """
             import { puts } from c.stdio;

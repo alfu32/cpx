@@ -1761,6 +1761,17 @@ function-pointer parameter using the selected C ABI's function-to-pointer
 conversion. Calling a function-pointer value SHALL validate its argument count,
 argument types, and return type exactly as a direct call does.
 
+Object pointers MAY be incremented or decremented by an integer and compatible
+object pointers MAY be subtracted, producing `ptrdiff_t`. Pointer arithmetic on
+function pointers or incompatible object pointers SHALL be diagnosed. Arrays
+used in value expressions SHALL provide the corresponding element-pointer
+behavior required by indexing and pointer arithmetic.
+
+Initializers SHALL be type-checked against the declared object type before C
+emission. Global and local initializer mismatches SHALL produce a semantic
+diagnostic. Explicit casts MAY convert supported primitive and aggregate pointer
+types and SHALL retain their target declarator in generated C.
+
 The native filesystem API MUST accept UTF-8 paths whose separators are `/`.
 Portable C+ source MUST NOT select Windows separators, drive spelling, or a
 host character encoding. The selected PAL adapter owns conversion to the

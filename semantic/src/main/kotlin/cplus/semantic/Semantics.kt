@@ -987,6 +987,31 @@ class SemanticAnalyzer(
             knownModules
         )
 
+        program.declarations.filterIsInstance<AstGlobalVariable>().forEach { declaration ->
+            val initializer = declaration.initializer ?: return@forEach
+            val moduleName = declarationModules[declaration] ?: defaultModule
+            val availableFunctions = visibleFunctions[moduleName] ?: functions
+            val actual = validateExpression(
+                initializer,
+                emptyMap(),
+                availableFunctions,
+                globals,
+                structs,
+                methods,
+                expressionTypes,
+                diagnostics,
+                ::primitive
+            )
+            val expected = globals[declaration.name]?.type
+            if (expected != null && actual !is UnknownType && !argumentCompatible(expected, actual)) {
+                diagnostics.error(
+                    "global initializer for '${declaration.name}' has type '${actual.name}', expected '${expected.name}'",
+                    rangeOf(declaration.origin),
+                    "SEM308"
+                )
+            }
+        }
+
         program.declarations.filterIsInstance<AstFunction>().forEach { declaration ->
             val function = functions[declaration.name] ?: return@forEach
             val moduleName = declarationModules[declaration] ?: defaultModule
@@ -1363,7 +1388,14 @@ class SemanticAnalyzer(
                     scopes.define(scopeId, statement.name, symbol.id)
                 }
                 statement.initializer?.let {
-                    validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                    val actual = validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                    if (actual !is UnknownType && !argumentCompatible(type, actual)) {
+                        diagnostics.error(
+                            "initializer for '${statement.name}' has type '${actual.name}', expected '${type.name}'",
+                            rangeOf(statement.origin),
+                            "SEM308"
+                        )
+                    }
                 }
             }
             is AstInnerFunction -> {
@@ -1453,10 +1485,7 @@ class SemanticAnalyzer(
                         diagnostics.error("cannot assign '${right.name}' to '${left.name}'", rangeOf(expression.origin), "SEM308")
                     }
                 }
-                when (expression.operator) {
-                    in comparisonOperators, in logicalOperators -> primitive("bool")
-                    else -> left
-                }
+                binaryResultType(expression.operator, left, right, expression.origin, diagnostics, primitive)
             }
             is AstConditional -> {
                 validateExpression(expression.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
@@ -1509,11 +1538,16 @@ class SemanticAnalyzer(
             }
             is AstCast -> {
                 validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                if (expression.target.name !in knownPrimitiveNames) {
+                val targetBase = when {
+                    expression.target.name in knownPrimitiveNames -> primitive(expression.target.name)
+                    expression.target.declarationKind == "struct" -> structs[expression.target.name]
+                    else -> null
+                }
+                if (targetBase == null) {
                     diagnostics.error("unsupported cast target '${expression.target.name}'", rangeOf(expression.target.origin), "SEM310")
                     UnknownType(TypeId(-1))
                 } else {
-                    var target: CType = primitive(expression.target.name)
+                    var target: CType = targetBase
                     repeat(expression.target.pointerDepth) {
                         target = PointerType(TypeId(-1), target)
                     }
@@ -1706,12 +1740,108 @@ class SemanticAnalyzer(
 
     private fun argumentCompatible(expected: CType, actual: CType): Boolean = when {
         expected is ArrayType && actual is ArrayType -> equivalentTypes(expected.element, actual.element)
-        expected is PrimitiveType && actual is PrimitiveType && expected.name in numericPrimitiveNames && actual.name in numericPrimitiveNames -> true
+        isNumericType(expected) && isNumericType(actual) -> true
         expected is PointerType && expected.pointee is FunctionType && actual is FunctionType ->
             equivalentTypes(expected.pointee, actual)
         expected is PointerType && expected.pointee is FunctionType && actual is PointerType && actual.pointee is FunctionType ->
             equivalentTypes(expected.pointee, actual.pointee)
+        isPointerLike(expected) && isPointerLike(actual) -> pointersCompatible(expected, actual)
         else -> equivalentTypes(expected, actual)
+    }
+
+    private fun binaryResultType(
+        operator: String,
+        left: CType,
+        right: CType,
+        origin: Origin,
+        diagnostics: DiagnosticBag,
+        primitive: (String) -> PrimitiveType
+    ): CType {
+        if (left is UnknownType || right is UnknownType) return UnknownType(TypeId(-1))
+        fun invalid(message: String): CType {
+            diagnostics.error(message, rangeOf(origin), "SEM316")
+            return UnknownType(TypeId(-1))
+        }
+        return when {
+            operator in assignmentOperators -> left
+            operator in logicalOperators -> {
+                if (!isScalarType(left) || !isScalarType(right)) {
+                    invalid("logical operator '$operator' requires scalar operands")
+                } else primitive("bool")
+            }
+            operator in comparisonOperators -> {
+                val valid = isNumericType(left) && isNumericType(right) || pointersCompatible(left, right)
+                if (!valid) invalid("comparison operator '$operator' requires compatible scalar operands")
+                else primitive("bool")
+            }
+            operator == "+" -> when {
+                isNumericType(left) && isNumericType(right) -> left
+                isPointerLike(left) && isIntegerType(right) -> pointerValueType(left)
+                isIntegerType(left) && isPointerLike(right) -> pointerValueType(right)
+                else -> invalid("operator '+' requires numeric operands or a pointer and integer")
+            }
+            operator == "-" -> when {
+                isNumericType(left) && isNumericType(right) -> left
+                isPointerLike(left) && isIntegerType(right) -> pointerValueType(left)
+                isPointerLike(left) && isPointerLike(right) && pointersCompatible(left, right) -> primitive("ptrdiff_t")
+                else -> invalid("operator '-' requires numeric operands, pointer/integer, or compatible pointers")
+            }
+            operator in setOf("*", "/", "%") -> {
+                if (isNumericType(left) && isNumericType(right)) left
+                else invalid("operator '$operator' requires numeric operands")
+            }
+            operator in setOf("<<", ">>", "|", "^", "&") -> {
+                if (isIntegerType(left) && isIntegerType(right)) left
+                else invalid("operator '$operator' requires integer operands")
+            }
+            else -> left
+        }
+    }
+
+    private fun isNumericType(type: CType): Boolean = when (val canonical = canonicalType(type)) {
+        is PrimitiveType -> canonical.name in numericPrimitiveNames
+        is ForeignType -> canonical.underlyingType?.let(::isNumericType) == true
+        is EnumType -> true
+        else -> false
+    }
+
+    private fun isIntegerType(type: CType): Boolean = when (val canonical = canonicalType(type)) {
+        is PrimitiveType -> canonical.name !in setOf("float", "double") && canonical.name in numericPrimitiveNames
+        is ForeignType -> canonical.underlyingType?.let(::isIntegerType) == true
+        is EnumType -> true
+        else -> false
+    }
+
+    private fun isScalarType(type: CType): Boolean = isNumericType(type) || isPointerLike(type)
+
+    private fun isPointerLike(type: CType): Boolean = when (val canonical = canonicalType(type)) {
+        is PointerType -> true
+        is ArrayType -> true
+        else -> false
+    }
+
+    private fun pointerPointee(type: CType): CType? = when (val canonical = canonicalType(type)) {
+        is PointerType -> canonical.pointee
+        is ArrayType -> canonical.element
+        else -> null
+    }
+
+    private fun pointerValueType(type: CType): CType = when (val canonical = canonicalType(type)) {
+        is PointerType -> canonical
+        is ArrayType -> PointerType(TypeId(-1), canonical.element)
+        else -> UnknownType(TypeId(-1))
+    }
+
+    private fun pointersCompatible(left: CType, right: CType): Boolean {
+        val leftPointee = pointerPointee(left) ?: return false
+        val rightPointee = pointerPointee(right) ?: return false
+        if (leftPointee is FunctionType || rightPointee is FunctionType) {
+            return callableSignature(leftPointee) != null && callableSignature(rightPointee) != null &&
+                equivalentTypes(leftPointee, rightPointee)
+        }
+        if (leftPointee is PrimitiveType && leftPointee.name == "void") return true
+        if (rightPointee is PrimitiveType && rightPointee.name == "void") return true
+        return equivalentTypes(leftPointee, rightPointee)
     }
 
     private fun isAssignable(
@@ -1737,7 +1867,8 @@ class SemanticAnalyzer(
     private val numericPrimitiveNames = setOf(
         "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned",
         "signed char", "unsigned char", "signed short", "unsigned short",
-        "signed int", "unsigned int", "long long", "unsigned long long"
+        "signed int", "unsigned int", "signed long", "unsigned long", "long long", "unsigned long long",
+        "size_t", "ptrdiff_t", "max_align_t"
     )
 
     private fun canonicalType(type: CType): CType = when (type) {

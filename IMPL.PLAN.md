@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R1.3.2 — declaration and expression reconciliation
+R1.3.3 — unsupported declarator diagnostics and recovery
 
 Current milestone:
 R1 — Language and front-end conformance
@@ -3376,9 +3376,9 @@ of R1–R8 or deliberately recorded as a post-release extension.
 - R1.3 [DOING] — close the remaining declaration matrix in dependency order.
   - R1.3.1 [DONE] — represent function types and function-pointer declarators
     from source through semantic validation, indirect calls, and C emission.
-  - R1.3.2 [DOING] — reconcile arrays, pointer arithmetic, casts, globals, and
+  - R1.3.2 [DONE] — reconcile arrays, pointer arithmetic, casts, globals, and
     initializer/lvalue rules across parser, semantic analysis, and lowering.
-  - R1.3.3 [TODO] — add stable unsupported-declarator diagnostics and recovery
+  - R1.3.3 [DOING] — add stable unsupported-declarator diagnostics and recovery
     fixtures so parser acceptance cannot outrun backend support.
 
 **Deliverables**
@@ -3443,6 +3443,24 @@ Implemented and tested on Linux:
   callback arguments;
 - C emission renders callback names inside valid `(*name)(...)` declarators;
 - a generated callback program is compiled with C17 and executed successfully.
+
+Windows execution remains part of the final cross-platform validation pass by
+project policy.
+
+### R1.3.2 completion record
+
+Implemented and tested on Linux:
+
+- array values participate in compatible pointer initialization and indexed
+  access;
+- numeric, object-pointer, array, and callable-pointer operands receive
+  operator-specific semantic validation;
+- pointer/integer addition, pointer/integer subtraction, and compatible pointer
+  subtraction produce the appropriate semantic result types;
+- aggregate pointer casts are accepted and preserve C declarators;
+- global and local initializers are checked against declared object types;
+- generated programs cover array decay, pointer arithmetic, and aggregate casts;
+- invalid pointer arithmetic and initializer mismatches have stable diagnostics.
 
 Windows execution remains part of the final cross-platform validation pass by
 project policy.

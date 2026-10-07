@@ -126,6 +126,26 @@ class SemanticTypeTest {
     }
 
     @Test
+    fun initializerTypesAndPointerArithmeticAreValidated() {
+        val text = """
+            int invalid_global = "wrong";
+
+            int main() {
+                int value = "wrong";
+                return value * &value;
+            }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(13), Path.of("initializer-pointer-errors.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        val result = SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+
+        assertTrue(result.diagnostics.count { it.code == "SEM308" } >= 2, result.diagnostics.joinToString())
+        assertTrue(result.diagnostics.any { it.code == "SEM316" }, result.diagnostics.joinToString())
+        assertTrue(!result.isSuccessful)
+    }
+
+    @Test
     fun equivalentAliasAndPointerSpellingSharesCanonicalTypeIdentity() {
         val text = """
             typedef int count_t;
