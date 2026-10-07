@@ -193,5 +193,6 @@ data class AstUnary(val operator: String, val operand: AstExpression, override v
 data class AstBinary(val left: AstExpression, val operator: String, val right: AstExpression, override val origin: Origin) : AstExpression
 data class AstCall(val callee: AstExpression, val arguments: List<AstExpression>, override val origin: Origin) : AstExpression
 data class AstMemberAccess(val receiver: AstExpression, val member: String, override val origin: Origin) : AstExpression
+data class AstIndexAccess(val receiver: AstExpression, val index: AstExpression, override val origin: Origin) : AstExpression
 data class AstParenthesized(val expression: AstExpression, override val origin: Origin) : AstExpression
 data class AstErrorExpression(override val origin: Origin) : AstExpression

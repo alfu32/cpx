@@ -300,6 +300,11 @@ class CLowerer(private val semantic: SemanticModel) {
                 node.origin
             )
         }
+        is AstIndexAccess -> CIndexAccess(
+            expression(node.receiver, ownerName, instanceMethod),
+            expression(node.index, ownerName, instanceMethod),
+            node.origin
+        )
         is AstParenthesized -> CParenthesized(expression(node.expression, ownerName, instanceMethod), node.origin)
         is AstErrorExpression -> CIntegerLiteral("0", node.origin)
     }
@@ -556,6 +561,7 @@ class CEmitter {
         is CBinary -> "(${expression(expression.left)} ${expression.operator} ${expression(expression.right)})"
         is CCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
         is CMemberAccess -> "${expression(expression.receiver)}${if (expression.pointerReceiver) "->" else "."}${expression.member}"
+        is CIndexAccess -> "${expression(expression.receiver)}[${expression(expression.index)}]"
         is CParenthesized -> "(${expression(expression.expression)})"
     }
 

@@ -269,6 +269,13 @@ data class SyntaxMemberAccess(
     override val origin: Origin
 ) : SyntaxExpression
 
+data class SyntaxIndexAccess(
+    val receiver: SyntaxExpression,
+    val index: SyntaxExpression,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxExpression
+
 data class SyntaxParenthesized(
     val expression: SyntaxExpression,
     override val range: SourceRange,

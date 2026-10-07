@@ -501,6 +501,11 @@ class Parser(private val lexed: LexedSource) {
                     val member = expectIdentifier("expected member name after '.'") ?: return expression
                     SyntaxMemberAccess(expression, member.lexeme, span(expression.range, member.range), direct(span(expression.range, member.range)))
                 }
+                match("[") -> {
+                    val index = parseExpression() ?: SyntaxErrorExpression(previous().range, direct(previous().range))
+                    val close = expect("]", "expected ']' after index expression") ?: previous()
+                    SyntaxIndexAccess(expression, index, span(expression.range, close.range), direct(span(expression.range, close.range)))
+                }
                 else -> return expression
             }
         }

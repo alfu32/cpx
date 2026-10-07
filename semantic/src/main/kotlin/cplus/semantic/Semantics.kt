@@ -922,6 +922,18 @@ class SemanticAnalyzer(
                     }
                 }
             }
+            is AstIndexAccess -> {
+                val receiver = validateExpression(expression.receiver, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                validateExpression(expression.index, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                when (val indexed = canonicalType(receiver)) {
+                    is ArrayType -> indexed.element
+                    is PointerType -> indexed.pointee
+                    else -> {
+                        diagnostics.error("expression is not indexable", rangeOf(expression.origin), "SEM305")
+                        UnknownType(TypeId(-1))
+                    }
+                }
+            }
             is AstParenthesized -> validateExpression(expression.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstErrorExpression -> UnknownType(TypeId(-1))
         }

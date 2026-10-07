@@ -126,11 +126,13 @@ class CompilerIntegrationTest {
             int numbers[4];
 
             int first(int values[3]) {
-                return 4;
+                return values[1];
             }
 
             int main() {
                 int local[2];
+                local[0] = 1;
+                local[1] = 4;
                 return first(local);
             }
         """.trimIndent()
@@ -142,6 +144,7 @@ class CompilerIntegrationTest {
         assertTrue(generated.contains("int numbers[4];"))
         assertTrue(generated.contains("int first(int values[3]);"))
         assertTrue(generated.contains("int local[2];"))
+        assertTrue(generated.contains("return values[1];"))
 
         val directory = Files.createTempDirectory("cplus-arrays-e2e")
         val cFile = directory.resolve("program.c")

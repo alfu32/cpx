@@ -280,6 +280,7 @@ private class AstPrinter {
         is AstBinary -> "(${expression(expression.left)} ${expression.operator} ${expression(expression.right)})"
         is AstCall -> "${expression(expression.callee)}(${expression.arguments.joinToString(", ") { argument -> expression(argument) }})"
         is AstMemberAccess -> "${expression(expression.receiver)}.${expression.member}"
+        is AstIndexAccess -> "${expression(expression.receiver)}[${expression(expression.index)}]"
         is AstParenthesized -> "(${expression(expression.expression)})"
         is AstErrorExpression -> "<error>"
     }

@@ -170,6 +170,11 @@ data class CMemberAccess(
     val pointerReceiver: Boolean = false,
     override val origin: Origin
 ) : CExpression
+data class CIndexAccess(
+    val receiver: CExpression,
+    val index: CExpression,
+    override val origin: Origin
+) : CExpression
 data class CParenthesized(val expression: CExpression, override val origin: Origin) : CExpression
 
 data class SourceMapping(

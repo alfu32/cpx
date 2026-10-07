@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 46/93
+Overall: 47/95
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [22/27] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
-[DOING] [6/18] 4. Lowering and C backend
+[DOING] [7/20] 4. Lowering and C backend
 [DOING] [1/12] 5. Tooling, integration and quality
 
 Current task:
-2.4.3 — C source import and build dependency representation
+4.2.4.2 — string-template lowering
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1221,7 +1221,7 @@ all create correct bindings.
 
 ---
 
-## 4.2 [DOING] [4/6] C+ feature lowering
+## 4.2 [DOING] [5/8] C+ feature lowering
 
 ### 4.2.1 [DONE] Method lowering
 
@@ -1307,7 +1307,7 @@ all create correct bindings.
 **Depends**
 - 4.2.3.2
 
-### 4.2.4 [TODO] String-template and remaining expression lowering
+### 4.2.4 [DOING] [1/3] String-template and remaining expression lowering
 
 **Language**
 - LS §16
@@ -1321,6 +1321,36 @@ all create correct bindings.
 **Depends**
 - 4.1
 - 4.2.2 where helper closures are generated
+
+#### 4.2.4.1 [DONE] Array and pointer indexing lowering
+
+**Acceptance**
+- postfix index expressions parse after calls and member access.
+- array and pointer element types resolve semantically.
+- C lowering emits indexed expressions with preserved origins.
+- a runtime fixture reads and writes indexed array elements.
+
+**Depends**
+- 1.3
+- 4.3.1
+
+#### 4.2.4.2 [TODO] String-template lowering
+
+**Acceptance**
+- string templates lower to valid ordinary C+ or C constructs.
+- no template-specific syntax reaches C AST.
+
+**Depends**
+- 4.2.4.1
+
+#### 4.2.4.3 [TODO] Complete remaining expression and lvalue lowering
+
+**Acceptance**
+- supported C+ expression and lvalue forms have explicit C AST nodes.
+- unsupported forms produce diagnostics before emission.
+
+**Depends**
+- 4.2.4.1
 
 ---
 

@@ -78,6 +78,7 @@ class AstBuilder {
         is SyntaxBinary -> AstBinary(expression(node.left), node.operator, expression(node.right), node.origin)
         is SyntaxCall -> AstCall(expression(node.callee), node.arguments.map(::expression), node.origin)
         is SyntaxMemberAccess -> AstMemberAccess(expression(node.receiver), node.member, node.origin)
+        is SyntaxIndexAccess -> AstIndexAccess(expression(node.receiver), expression(node.index), node.origin)
         is SyntaxParenthesized -> AstParenthesized(expression(node.expression), node.origin)
         is SyntaxErrorExpression -> AstErrorExpression(node.origin)
     }

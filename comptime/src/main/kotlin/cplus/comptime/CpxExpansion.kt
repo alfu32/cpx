@@ -402,6 +402,7 @@ class CpxExpander(
         is SyntaxBinary -> expression.copy(left = reorigin(expression.left, origin), right = reorigin(expression.right, origin), origin = origin)
         is SyntaxCall -> expression.copy(callee = reorigin(expression.callee, origin), arguments = expression.arguments.map { reorigin(it, origin) }, origin = origin)
         is SyntaxMemberAccess -> expression.copy(receiver = reorigin(expression.receiver, origin), origin = origin)
+        is SyntaxIndexAccess -> expression.copy(receiver = reorigin(expression.receiver, origin), index = reorigin(expression.index, origin), origin = origin)
         is SyntaxParenthesized -> expression.copy(expression = reorigin(expression.expression, origin), origin = origin)
         is SyntaxErrorExpression -> expression.copy(origin = origin)
     }
