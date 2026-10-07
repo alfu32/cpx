@@ -203,19 +203,63 @@ enum class TypeUniverseAccess {
     FULL
 }
 
+data class StructuralTypeReference(
+    val name: String,
+    val pointerDepth: Int = 0,
+    val declarationKind: String = "named"
+)
+
+data class StructuralFieldDescriptor(
+    val name: String,
+    val type: String,
+    val pointerDepth: Int = 0,
+    val arrayDimensions: List<String> = emptyList(),
+    val typeReference: StructuralTypeReference = StructuralTypeReference(type, pointerDepth)
+)
+
+data class StructuralMethodDescriptor(
+    val name: String,
+    val returnType: String,
+    val parameters: List<String>,
+    val isStatic: Boolean = false,
+    val returnTypeReference: StructuralTypeReference = StructuralTypeReference(returnType),
+    val parameterTypeReferences: List<StructuralTypeReference> = parameters.map(::StructuralTypeReference)
+)
+
+data class StructuralLayout(
+    val representation: String,
+    val fieldOrder: List<String>,
+    val isSized: Boolean
+)
+
+data class StructuralTypeDescriptor(
+    val name: String,
+    val kind: String,
+    val fields: List<StructuralFieldDescriptor> = emptyList(),
+    val methods: List<StructuralMethodDescriptor> = emptyList(),
+    val layout: StructuralLayout? = null
+)
+
 data class TypeUniverseSnapshot(
     val names: Set<String>,
-    val access: TypeUniverseAccess
-)
+    val access: TypeUniverseAccess,
+    val descriptors: Map<String, StructuralTypeDescriptor> = emptyMap()
+) {
+    fun typeNamed(name: String): StructuralTypeDescriptor? = descriptors[name]
+}
 
 /** Mutable only during structural expansion and immutable after freeze. */
 class ComptimeTypeUniverse {
-    private val names = linkedSetOf<String>()
+    private val descriptors = linkedMapOf<String, StructuralTypeDescriptor>()
     private var frozen = false
 
-    fun register(name: String): Boolean {
+    fun register(name: String): Boolean = register(StructuralTypeDescriptor(name, "unknown"))
+
+    fun register(descriptor: StructuralTypeDescriptor): Boolean {
         if (frozen) return false
-        return names.add(name)
+        if (descriptor.name in descriptors) return false
+        descriptors[descriptor.name] = descriptor
+        return true
     }
 
     fun registerAll(names: Iterable<String>) {
@@ -233,7 +277,11 @@ class ComptimeTypeUniverse {
         check(access != TypeUniverseAccess.FULL || frozen) {
             "full type-universe introspection requires the structural barrier"
         }
-        return TypeUniverseSnapshot(names.toSet(), access)
+        return TypeUniverseSnapshot(
+            descriptors.keys.toSet(),
+            access,
+            if (access == TypeUniverseAccess.FULL) descriptors.toMap() else emptyMap()
+        )
     }
 }
 
@@ -456,7 +504,7 @@ class CpxExpander(
             .filterIsInstance<SyntaxComptimeFunction>()
             .forEach { definitions[it.name] = it }
         val scheduler = ComptimeScheduler()
-        scheduler.typeUniverse.registerAll(program.declarations.mapNotNull(::structuralTypeName))
+        registerStructuralDeclarations(scheduler.typeUniverse, program.declarations)
         program.declarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
             val definition = definitions[invocation.name]
             if (definition == null) {
@@ -576,7 +624,7 @@ class CpxExpander(
                 task.key.canonical
             )
             val declarations = parsed.syntax.declarations.map { reorigin(it, expansionOrigin) }
-            scheduler.typeUniverse.registerAll(declarations.mapNotNull(::structuralTypeName))
+            registerStructuralDeclarations(scheduler.typeUniverse, declarations)
             declarations
                 .filterIsInstance<SyntaxComptimeFunction>()
                 .forEach { definitions.putIfAbsent(it.name, it) }
@@ -637,17 +685,62 @@ class CpxExpander(
 
     private fun canonicalArgument(argument: String): String = argument
         .trim()
-
-    private fun structuralTypeName(declaration: SyntaxDeclaration): String? = when (declaration) {
-        is SyntaxAlias -> declaration.name
-        is SyntaxEnum -> declaration.name
-        is SyntaxStruct -> declaration.name
-        is SyntaxUnion -> declaration.name
-        else -> null
-    }
         .replace(Regex("\\s+"), " ")
         .removePrefix("struct ")
         .trim()
+
+    private fun registerStructuralDeclarations(
+        universe: ComptimeTypeUniverse,
+        declarations: Iterable<SyntaxDeclaration>
+    ) {
+        declarations.mapNotNull(::structuralTypeDescriptor).forEach(universe::register)
+    }
+
+    private fun structuralTypeDescriptor(declaration: SyntaxDeclaration): StructuralTypeDescriptor? = when (declaration) {
+        is SyntaxAlias -> StructuralTypeDescriptor(declaration.name, "alias")
+        is SyntaxEnum -> StructuralTypeDescriptor(
+            declaration.name,
+            "enum",
+            layout = StructuralLayout("enum", declaration.values.map { it.name }, isSized = true)
+        )
+        is SyntaxUnion -> StructuralTypeDescriptor(
+            declaration.name,
+            "union",
+            declaration.fields.map(::structuralFieldDescriptor),
+            layout = StructuralLayout("union", declaration.fields.map { it.name }, isSized = true)
+        )
+        is SyntaxStruct -> StructuralTypeDescriptor(
+            declaration.name,
+            "struct",
+            declaration.fields.map(::structuralFieldDescriptor),
+            declaration.methods.map(::structuralMethodDescriptor),
+            StructuralLayout("struct", declaration.fields.map { it.name }, isSized = true)
+        )
+        else -> null
+    }
+
+    private fun structuralFieldDescriptor(field: SyntaxField): StructuralFieldDescriptor = StructuralFieldDescriptor(
+        field.name,
+        field.type.name,
+        field.type.pointerDepth,
+        field.arrayDimensions,
+        StructuralTypeReference(field.type.name, field.type.pointerDepth, field.type.declarationKind)
+    )
+
+    private fun structuralMethodDescriptor(function: SyntaxFunction): StructuralMethodDescriptor = StructuralMethodDescriptor(
+        function.name,
+        function.returnType.name,
+        function.parameters.map { it.type.name },
+        function.isMethod && function.parameters.none { it.isReceiver },
+        StructuralTypeReference(
+            function.returnType.name,
+            function.returnType.pointerDepth,
+            function.returnType.declarationKind
+        ),
+        function.parameters.map {
+            StructuralTypeReference(it.type.name, it.type.pointerDepth, it.type.declarationKind)
+        }
+    )
 
     private fun reorigin(declaration: SyntaxDeclaration, origin: Origin): SyntaxDeclaration = when (declaration) {
         is SyntaxPackage -> declaration.copy(origin = origin)

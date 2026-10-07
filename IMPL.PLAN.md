@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 80/113
+Overall: 82/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
-[DOING] [9/20] 3. Compile-time and CPX system
+[DOING] [11/20] 3. Compile-time and CPX system
 [DOING] [28/34] 4. Lowering and C backend
 [DOING] [6/14] 5. Tooling, integration and quality
 
 Current task:
-3.5.1 — structural fixed-point engine
+3.5.4 — reflective CPX phase
 
 Current milestone:
 M4 — Full compile-time model
@@ -831,7 +831,7 @@ all create correct bindings.
 
 ---
 
-# 3. [DOING] [9/20] Compile-time and CPX system
+# 3. [DOING] [11/20] Compile-time and CPX system
 
 **Purpose:** Implement the compile-time language, readable CPX templates, generics, fixed-point expansion, hygiene and reflection.
 
@@ -1150,7 +1150,7 @@ all create correct bindings.
 
 ---
 
-## 3.5 [DOING] [0/4] Structural stabilization and reflection
+## 3.5 [DOING] [2/4] Structural stabilization and reflection
 
 ### 3.5.1 [DOING] Structural fixed-point engine
 
@@ -1174,7 +1174,7 @@ all create correct bindings.
 - Structural output exposes a declaration fingerprint based on semantic shape rather than source text, ranges, or origins.
 - Full type-universe stabilization and resolver feedback between structural waves remain to be completed.
 
-### 3.5.2 [TODO] Type-universe stabilization barrier
+### 3.5.2 [DONE] Type-universe stabilization barrier
 
 **Language**
 - LS §18
@@ -1192,7 +1192,13 @@ all create correct bindings.
 - 3.5.1
 - 2.2
 
-### 3.5.3 [TODO] Structured reflection API
+**Implementation**
+- `ComptimeTypeUniverse` accepts structural registrations until an explicit freeze barrier.
+- `ComptimeScheduler.closeStructuralPhase()` freezes the universe and publishes `StableTypeUniverse` readiness.
+- Mutation after freeze is rejected, while full introspection is unavailable before the barrier.
+- Tests cover early-safe snapshots, reflective task gating, and post-freeze mutation rejection.
+
+### 3.5.3 [DONE] Structured reflection API
 
 **Language**
 - LS §19
@@ -1209,6 +1215,12 @@ all create correct bindings.
 
 **Depends**
 - 3.5.2
+
+**Implementation**
+- Frozen type-universe snapshots now expose structured type, field, and method descriptors through a read-only API.
+- Early-safe snapshots expose names only; full descriptors require the structural barrier.
+- Typed references and deterministic layout metadata are retained where known.
+- Reflection over functions, scopes, and richer semantic values remains outside this initial structural API.
 
 ### 3.5.4 [TODO] Reflective CPX phase
 

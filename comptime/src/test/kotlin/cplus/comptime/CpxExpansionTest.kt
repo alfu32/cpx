@@ -329,7 +329,14 @@ class CpxExpansionTest {
     @Test
     fun typeUniverseRejectsMutationAndFullIntrospectionAfterFreeze() {
         val scheduler = ComptimeScheduler()
-        assertTrue(scheduler.typeUniverse.register("BeforeFreeze"))
+        val descriptor = StructuralTypeDescriptor(
+            "BeforeFreeze",
+            "struct",
+            fields = listOf(StructuralFieldDescriptor("value", "int")),
+            methods = listOf(StructuralMethodDescriptor("read", "int", emptyList())),
+            layout = StructuralLayout("struct", listOf("value"), isSized = true)
+        )
+        assertTrue(scheduler.typeUniverse.register(descriptor))
         assertEquals(
             setOf("BeforeFreeze"),
             scheduler.typeUniverse.snapshot(TypeUniverseAccess.EARLY_SAFE).names
@@ -345,5 +352,8 @@ class CpxExpansionTest {
             setOf("BeforeFreeze"),
             scheduler.typeUniverse.snapshot(TypeUniverseAccess.FULL).names
         )
+        assertEquals(descriptor, scheduler.typeUniverse.snapshot(TypeUniverseAccess.FULL).typeNamed("BeforeFreeze"))
+        assertEquals("int", descriptor.fields.single().typeReference.name)
+        assertEquals(listOf("value"), descriptor.layout?.fieldOrder)
     }
 }
