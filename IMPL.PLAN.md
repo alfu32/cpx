@@ -3,14 +3,14 @@
 ## Dashboard
 
 ```text
-Overall: 116/145
+Overall: 117/145
 
 [DONE] [16/16] 1. Language front-end
 [DONE] [30/30] 2. Semantic model and modules
 [DONE] [20/20] 3. Compile-time and CPX system
 [DONE] [34/34] 4. Lowering and C backend
 [DONE] [14/14] 5. Tooling, integration and quality
-[TODO] [3/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
+[TODO] [4/32] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
 6.1.1.4 — Add SDK semantic metadata and reproducible cache format
@@ -2425,7 +2425,7 @@ all create correct bindings.
 
 ---
 
-## 6.1 [TODO] [3/8] SDK packaging and runtime foundation
+## 6.1 [TODO] [4/8] SDK packaging and runtime foundation
 
 **SDK**
 - SDK §2–6
@@ -2435,7 +2435,7 @@ all create correct bindings.
 - SDK §78–81
 - SDK §93–101
 
-### 6.1.1 [TODO] [3/4] SDK distribution, profiles and resolver
+### 6.1.1 [DONE] [4/4] SDK distribution, profiles and resolver
 
 #### 6.1.1.1 [DONE] [4/4] Define SDK manifest and ABI/runtime version contract
 
@@ -2528,7 +2528,7 @@ all create correct bindings.
 - 6.1.1.1
 - 2.4
 
-#### 6.1.1.4 [TODO] Add SDK semantic metadata and reproducible cache format
+#### 6.1.1.4 [DONE] [4/4] Add SDK semantic metadata and reproducible cache format
 
 **SDK**
 - SDK §58 SDK Semantic Metadata
@@ -2543,6 +2543,12 @@ all create correct bindings.
 - metadata is reproducible from C+ source and never authoritative over source.
 - stale/incompatible metadata is rejected and rebuilt.
 - language tooling can use metadata without losing source navigation when sources are installed.
+
+**Implementation**
+- Added deterministic versioned SDK metadata containing source hashes, declarations, exports, documentation comments, and CPX signatures.
+- Added manifest/target/schema/source-hash validation with automatic stale-cache rebuilds.
+- Exposed metadata through `CompileResult.sdkResolution` while retaining source as the compilation authority.
+- Added cache reuse and deterministic-content regression coverage.
 
 **Depends**
 - 6.1.1.3

@@ -147,6 +147,9 @@ class CPlusCompiler(
         if (profileDiagnostics.isNotEmpty()) return sdkFailure(profileDiagnostics)
         val sdkResolution = SdkResolver.resolve(sdk.manifest, request.target, request.externalSysroot)
         if (!sdkResolution.isSuccessful) return sdkFailure(sdkResolution.diagnostics)
+        val metadata = SdkMetadataCache.loadOrBuild(sdkResolution.resolution!!)
+        if (!metadata.isSuccessful) return sdkFailure(metadata.diagnostics)
+        val resolvedSdk = sdkResolution.resolution.copy(metadata = metadata.metadata)
         context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(request.target))
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
@@ -158,7 +161,7 @@ class CPlusCompiler(
                 cSourceDependencies = dependencies(request.cSources),
                 additionalDiagnostics = foreignInputs.diagnostics + linkDiagnostics,
                 cLinkDependencies = cLinkDependencies,
-                sdkResolution = sdkResolution.resolution
+                sdkResolution = resolvedSdk
             )
         }
         return compileWorkspace(
@@ -166,7 +169,7 @@ class CPlusCompiler(
             foreignInputs,
             cLinkDependencies,
             linkDiagnostics,
-            sdkResolution = sdkResolution.resolution
+            sdkResolution = resolvedSdk
         )
     }
 
@@ -189,6 +192,9 @@ class CPlusCompiler(
         if (profileDiagnostics.isNotEmpty()) return IncrementalPipeline(sdkFailure(profileDiagnostics), emptyMap())
         val sdkResolution = SdkResolver.resolve(sdk.manifest, request.target, request.externalSysroot)
         if (!sdkResolution.isSuccessful) return IncrementalPipeline(sdkFailure(sdkResolution.diagnostics), emptyMap())
+        val metadata = SdkMetadataCache.loadOrBuild(sdkResolution.resolution!!)
+        if (!metadata.isSuccessful) return IncrementalPipeline(sdkFailure(metadata.diagnostics), emptyMap())
+        val resolvedSdk = sdkResolution.resolution.copy(metadata = metadata.metadata)
         context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(request.target))
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
@@ -219,7 +225,7 @@ class CPlusCompiler(
                 cSourceDependencies = dependencies(request.cSources),
                 additionalDiagnostics = foreignInputs.diagnostics + linkDiagnostics,
                 cLinkDependencies = cLinkDependencies,
-                sdkResolution = sdkResolution.resolution
+                sdkResolution = resolvedSdk
             )
         } else {
             compileWorkspace(
@@ -228,7 +234,7 @@ class CPlusCompiler(
                 cLinkDependencies,
                 linkDiagnostics,
                 units,
-                sdkResolution.resolution
+                resolvedSdk
             )
         }
         return IncrementalPipeline(result, entries)
@@ -256,13 +262,16 @@ class CPlusCompiler(
         if (profileDiagnostics.isNotEmpty()) return sdkFailure(profileDiagnostics)
         val sdkResolution = SdkResolver.resolve(sdk.manifest, target, null)
         if (!sdkResolution.isSuccessful) return sdkFailure(sdkResolution.diagnostics)
+        val metadata = SdkMetadataCache.loadOrBuild(sdkResolution.resolution!!)
+        if (!metadata.isSuccessful) return sdkFailure(metadata.diagnostics)
+        val resolvedSdk = sdkResolution.resolution.copy(metadata = metadata.metadata)
         context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(target))
         val sourceFiles = sources
             .distinctBy { it.path.toAbsolutePath().normalize() }
             .map { source -> context.sourceRepository.put(source.path, source.text) }
         val frontends = sourceFiles.map(::frontend)
         if (frontends.size <= 1) {
-            return resultOf(frontends.map { compileFrontend(it, options) }, sdkResolution = sdkResolution.resolution)
+            return resultOf(frontends.map { compileFrontend(it, options) }, sdkResolution = resolvedSdk)
         }
         val request = CompileRequest(sourceFiles.map { it.path }, target = target, options = options, sdkManifest = sdkManifest)
         return compileWorkspace(
@@ -271,7 +280,7 @@ class CPlusCompiler(
             emptyList(),
             emptyList(),
             frontends,
-            sdkResolution = sdkResolution.resolution
+            sdkResolution = resolvedSdk
         )
     }
 

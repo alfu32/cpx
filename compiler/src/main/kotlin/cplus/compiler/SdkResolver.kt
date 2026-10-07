@@ -21,7 +21,8 @@ data class SdkLayout(
 data class SdkResolution(
     val manifest: SdkManifest,
     val layout: SdkLayout,
-    val externalSysroot: Path?
+    val externalSysroot: Path?,
+    val metadata: SdkSemanticMetadata? = null
 )
 
 data class SdkResolutionResult(

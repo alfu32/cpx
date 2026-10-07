@@ -88,6 +88,20 @@ class SdkManifestTest {
         assertTrue(!result.isSuccessful)
     }
 
+    @Test
+    fun rebuildsAndThenReusesDeterministicSdkMetadata() {
+        val manifest = assertNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val resolution = assertNotNull(SdkResolver.resolve(manifest, TargetInfo()).resolution)
+
+        val first = SdkMetadataCache.loadOrBuild(resolution)
+        val second = SdkMetadataCache.loadOrBuild(resolution)
+
+        assertTrue(first.isSuccessful, first.diagnostics.joinToString())
+        assertTrue(second.isSuccessful, second.diagnostics.joinToString())
+        assertEquals(first.metadata, second.metadata)
+        assertTrue(second.metadata!!.sources.any { it.declarations.isNotEmpty() })
+    }
+
     private fun manifestText(): String = """
         sdk_version = "0.1.0"
         language_abi_version = "1"

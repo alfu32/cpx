@@ -1977,6 +1977,13 @@ incremental cache identity, and is copied into `ComptimeTargetInfo` for target
 selection. The current repository SDK provides the initial Linux x86_64
 layout and C17 profile.
 
+The SDK metadata cache is a deterministic, versioned artifact under the SDK
+cache root. It stores source-relative paths, content hashes, declarations,
+exports, documentation comments, and CPX signatures. The compiler verifies
+schema, manifest identity, target identity, and all source hashes before reuse;
+otherwise it rebuilds the metadata from source. Metadata accelerates tooling
+and inspection but never replaces source as the authority for compilation.
+
 ---
 
 # 59. Pipeline orchestration
