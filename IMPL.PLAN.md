@@ -13,7 +13,7 @@ Overall: 146/146
 [DONE] [33/33] 6. C+ Standard Library, Runtime, SDK and Platform ABI
 
 Current task:
-R1.2 — semantic type/ABI-width matrix
+R1.3 — declaration and function-pointer matrix
 
 Current milestone:
 R1 — Language and front-end conformance
@@ -3366,13 +3366,20 @@ of R1–R8 or deliberately recorded as a post-release extension.
 - R1.1 [DONE] — combine multi-token primitive spellings such as `long long`
   and `unsigned long long` in the syntax/AST path, with parser and generated-C
   regression coverage.
-- R1.2 [DOING] — reconcile semantic primitive widths, qualifiers, declarators,
+- R1.2 [DONE] — reconcile semantic primitive widths, qualifiers, declarators,
   and fixed-width aliases across all target ABI descriptors.
   - R1.2.1 [DONE] — apply LP64/LLP64 `long` layout rules and recognize all
     parsed numeric primitive forms in argument compatibility.
   - R1.2.2 [DONE] — complete leading/pointer qualifiers, preserve structured
     declarators through C emission, and resolve foreign fixed-width/`stddef`
     aliases against their underlying target-aware types.
+- R1.3 [DOING] — close the remaining declaration matrix in dependency order.
+  - R1.3.1 [TODO] — represent function types and function-pointer declarators
+    from source through semantic validation and C emission.
+  - R1.3.2 [TODO] — reconcile arrays, pointer arithmetic, casts, globals, and
+    initializer/lvalue rules across parser, semantic analysis, and lowering.
+  - R1.3.3 [TODO] — add stable unsupported-declarator diagnostics and recovery
+    fixtures so parser acceptance cannot outrun backend support.
 
 **Deliverables**
 
@@ -3408,6 +3415,23 @@ Implemented and tested:
 
 Function-pointer declarators and the remaining declaration matrix stay in the
 next R1 work item; they are not implied by this stage's completion.
+
+### R1.3 execution contract
+
+R1.3 MUST be implemented in the following order:
+
+1. extend syntax/AST declarators and semantic `FunctionType` identity;
+2. lower function pointers and callback arguments without changing ordinary
+   function ABI names;
+3. add generated-C and executable callback fixtures on Linux and Windows;
+4. reconcile the existing array, pointer, cast, initializer, global, and
+   lvalue paths against the same type representation;
+5. add negative parser/semantic/backend fixtures for unsupported declarators.
+
+The stage gate is a clean Linux and Windows suite plus independently compiled C
+caller and C+ caller fixtures for function pointers and callbacks. No R1.3
+subtask is complete from parser-only output or declarations without execution
+evidence.
 
 ## R2 [TODO] CPX, generics and reflection conformance
 
