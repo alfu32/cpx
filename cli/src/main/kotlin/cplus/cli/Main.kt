@@ -30,6 +30,7 @@ internal class Cli {
             "expand" -> expand(args.drop(1))
             "build" -> build(args.drop(1))
             "run" -> runProgram(args.drop(1))
+            "lsp" -> lsp(args.drop(1))
             else -> {
                 System.err.println("unknown command '$command'")
                 printUsage(System.err)
@@ -119,6 +120,14 @@ internal class Cli {
         if (buildExitCode != 0) return buildExitCode
         val process = ProcessBuilder(executable.toString()).inheritIO().start()
         return process.waitFor()
+    }
+
+    private fun lsp(arguments: List<String>): Int {
+        if (arguments.isNotEmpty()) {
+            System.err.println("lsp accepts no positional arguments and communicates over stdin/stdout")
+            return 2
+        }
+        return LspServer().run(System.`in`, System.out)
     }
 
     private fun buildExecutable(
@@ -299,6 +308,7 @@ internal class Cli {
         stream.println("  expand      print the post-CPX normalized AST")
         stream.println("  build       transcode and compile one source file with cc")
         stream.println("  run         build and execute one source file")
+        stream.println("  lsp         serve compiler diagnostics over stdio JSON-RPC")
     }
 
     private data class FileArguments(

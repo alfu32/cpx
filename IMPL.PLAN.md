@@ -3,16 +3,16 @@
 ## Dashboard
 
 ```text
-Overall: 73/113
+Overall: 75/113
 
 [DOING] [11/16] 1. Language front-end
 [DOING] [26/30] 2. Semantic model and modules
 [DOING] [6/20] 3. Compile-time and CPX system
-[DOING] [27/34] 4. Lowering and C backend
-[DOING] [3/14] 5. Tooling, integration and quality
+[DOING] [28/34] 4. Lowering and C backend
+[DOING] [4/14] 5. Tooling, integration and quality
 
 Current task:
-4.4.4 — end-to-end C execution fixtures
+5.2.3 — incremental dependency invalidation
 
 Current milestone:
 M5 — Advanced runtime lowering
@@ -1193,7 +1193,7 @@ all create correct bindings.
 
 ---
 
-# 4. [DOING] [27/34] Lowering and C backend
+# 4. [DOING] [28/34] Lowering and C backend
 
 **Purpose:** Transform resolved C+ into target-C AST, generate headers/dependencies/names, emit source, and preserve source mappings.
 
@@ -1724,7 +1724,7 @@ all create correct bindings.
 
 ---
 
-## 4.4 [DOING] [4/5] C emission and source mapping
+## 4.4 [DONE] [5/5] C emission and source mapping
 
 ### 4.4.1 [DONE] Deterministic C emitter
 
@@ -1799,7 +1799,7 @@ all create correct bindings.
 - unmapped or foreign C diagnostics retain their generated/foreign path and location.
 - the CLI build path prints mapped C+ locations with generated-C locations as context.
 
-### 4.4.4 [TODO] End-to-end C execution fixtures
+### 4.4.4 [DONE] End-to-end C execution fixtures
 
 **Technical**
 - TS §64
@@ -1811,6 +1811,11 @@ all create correct bindings.
 
 **Depends**
 - 4.4.1–4.4.3
+
+**Implementation**
+- compiler integration fixtures cover generated C, native compilation, and executable behavior across lowering features.
+- CLI integration fixtures cover `build`, `check`, executable output, generated C output, and `--header` output.
+- generated source maps and native execution are asserted in the same verification suite.
 
 ---
 
@@ -1905,7 +1910,7 @@ all create correct bindings.
 
 ---
 
-## 5.2 [DOING] [3/6] CLI, build and incremental compiler
+## 5.2 [DOING] [4/6] CLI, build and incremental compiler
 
 ### 5.2.1 [DONE] Public compiler API
 
@@ -1958,7 +1963,7 @@ all create correct bindings.
 **Depends**
 - 5.2.1
 
-#### 5.2.2.3 [TODO] Remaining CLI commands
+#### 5.2.2.3 [DONE] Remaining CLI commands
 
 **Acceptance**
 - `lsp` and any specified formatting/inspection commands have documented behavior.
@@ -1968,6 +1973,11 @@ all create correct bindings.
 **Depends**
 - 5.2.2.1
 - 5.2.2.2
+
+**Implementation**
+- `lsp` is a stdio JSON-RPC command with initialize, shutdown, exit, and document lifecycle handling.
+- `didOpen`, full-text `didChange`, and `didClose` use `CPlusCompiler` and publish structured diagnostics.
+- CLI integration tests cover framed requests, compiler diagnostics, executable builds, headers, and failure exit codes.
 
 ### 5.2.3 [TODO] Incremental dependency invalidation
 
