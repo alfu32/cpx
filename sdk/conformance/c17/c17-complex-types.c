@@ -8,6 +8,59 @@ _Static_assert(_Alignof(float complex) == _Alignof(float), "float complex alignm
 _Static_assert(_Alignof(double complex) == _Alignof(double), "double complex alignment");
 _Static_assert(_Alignof(long double complex) == _Alignof(long double), "long double complex alignment");
 
+#define CPLUS_CHECK_COMPLEX_EXP_ROOTS(tag, real_type, complex_type, exp_function, log_function, pow_function, \
+                                     sqrt_function, exp_real, log_real, sin_real, cos_real, atan2_real, \
+                                     acos_real, fabs_real, large_value, overflow_input, tolerance) \
+    static int cplus_check_complex_roots_##tag(void) { \
+        real_type pi = acos_real((real_type)-1); \
+        complex_type value = __builtin_complex((real_type)3, (real_type)4); \
+        complex_type result = exp_function(__builtin_complex((real_type)0, (real_type)0)); \
+        if (__real__ result != (real_type)1 || __imag__ result != (real_type)0 || __builtin_signbit(__imag__ result)) return 1; \
+        result = exp_function(__builtin_complex((real_type)0.5, (real_type)-0.75)); \
+        if (fabs_real(__real__ result - exp_real((real_type)0.5) * cos_real((real_type)-0.75)) > (tolerance) || \
+            fabs_real(__imag__ result - exp_real((real_type)0.5) * sin_real((real_type)-0.75)) > (tolerance)) return 2; \
+        result = log_function(value); \
+        if (fabs_real(__real__ result - log_real((real_type)5)) > (tolerance) || \
+            fabs_real(__imag__ result - atan2_real((real_type)4, (real_type)3)) > (tolerance)) return 3; \
+        result = pow_function(__builtin_complex((real_type)1, (real_type)1), __builtin_complex((real_type)2, (real_type)0)); \
+        if (fabs_real(__real__ result) > (tolerance) || fabs_real(__imag__ result - (real_type)2) > (tolerance)) return 4; \
+        result = pow_function(__builtin_complex((real_type)0, (real_type)0), __builtin_complex((real_type)0, (real_type)0)); \
+        if (__real__ result != (real_type)1 || __imag__ result != (real_type)0) return 5; \
+        result = sqrt_function(value); \
+        if (fabs_real(__real__ result - (real_type)2) > (tolerance) || fabs_real(__imag__ result - (real_type)1) > (tolerance)) return 6; \
+        result = sqrt_function(__builtin_complex((real_type)-4, (real_type)-0.0)); \
+        if (__real__ result != (real_type)0 || __builtin_signbit(__real__ result) || \
+            __imag__ result != (real_type)-2 || !__builtin_signbit(__imag__ result)) return 7; \
+        result = log_function(__builtin_complex((real_type)-0.0, (real_type)-0.0)); \
+        if (!__builtin_isinf(__real__ result) || __real__ result > (real_type)0 || \
+            fabs_real(__imag__ result + pi) > (tolerance)) return 8; \
+        result = exp_function(__builtin_complex((real_type)(INFINITY), (real_type)0)); \
+        if (!__builtin_isinf(__real__ result) || __real__ result < (real_type)0 || \
+            __imag__ result != (real_type)0 || __builtin_signbit(__imag__ result)) return 9; \
+        result = exp_function(__builtin_complex((real_type)1, (real_type)(INFINITY))); \
+        if (!__builtin_isnan(__real__ result) || !__builtin_isnan(__imag__ result)) return 10; \
+        result = log_function(__builtin_complex((real_type)(INFINITY), (real_type)(NAN))); \
+        if (!__builtin_isinf(__real__ result) || !__builtin_isnan(__imag__ result)) return 11; \
+        result = sqrt_function(__builtin_complex((real_type)2, (real_type)(INFINITY))); \
+        if (!__builtin_isinf(__real__ result) || !__builtin_isinf(__imag__ result)) return 12; \
+        result = sqrt_function(__builtin_complex((real_type)(NAN), (real_type)2)); \
+        if (!__builtin_isnan(__real__ result) || !__builtin_isnan(__imag__ result)) return 13; \
+        result = exp_function(__builtin_complex((real_type)(overflow_input), acos_real((real_type)0))); \
+        if (!__builtin_isfinite(__real__ result) || __real__ result == (real_type)0) return 14; \
+        result = log_function(__builtin_complex((real_type)(large_value), (real_type)(large_value))); \
+        if (!__builtin_isfinite(__real__ result)) return 15; \
+        return 0; \
+    }
+
+CPLUS_CHECK_COMPLEX_EXP_ROOTS(float, float, float complex, cexpf, clogf, cpowf, csqrtf,
+    expf, logf, sinf, cosf, atan2f, acosf, fabsf, 3.0e38F, 100.0F, 2.0e-4F)
+CPLUS_CHECK_COMPLEX_EXP_ROOTS(double, double, double complex, cexp, clog, cpow, csqrt,
+    exp, log, sin, cos, atan2, acos, fabs, 1.3e308, 710.0, 1.0e-12)
+CPLUS_CHECK_COMPLEX_EXP_ROOTS(long_double, long double, long double complex, cexpl, clogl, cpowl, csqrtl,
+    expl, logl, sinl, cosl, atan2l, acosl, fabsl, 1.0e4932L, 11000.0L, 1.0e-15L)
+
+#undef CPLUS_CHECK_COMPLEX_EXP_ROOTS
+
 int main(void) {
     float complex single = CMPLXF(1.25F, -2.5F);
     double complex double_value = CMPLX(3.125, -4.5);
@@ -52,5 +105,8 @@ int main(void) {
     double large_component = 0x1.fffffffffffffp+1022;
     double large_magnitude = cabs(CMPLX(large_component, large_component));
     if (!isfinite(large_magnitude) || large_magnitude <= large_component) return 28;
+    if (cplus_check_complex_roots_float() != 0) return 30 + cplus_check_complex_roots_float();
+    if (cplus_check_complex_roots_double() != 0) return 50 + cplus_check_complex_roots_double();
+    if (cplus_check_complex_roots_long_double() != 0) return 70 + cplus_check_complex_roots_long_double();
     return 0;
 }

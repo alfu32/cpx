@@ -18,6 +18,7 @@ class ComplexAbiIntegrationTest {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val source = """
             import {
+                cexpf, cexp, cexpl, clogf, clog, clogl, cpowf, cpow, cpowl, csqrtf, csqrt, csqrtl,
                 cabsf, cabs, cabsl, cargf, carg, cargl,
                 crealf, creal, creall, cimagf, cimag, cimagl,
                 conjf, conj, conjl, cprojf, cproj, cprojl
@@ -60,6 +61,20 @@ class ComplexAbiIntegrationTest {
             pub float _Complex project_float(float _Complex value) { return cprojf(value); }
             pub double _Complex project_double(double _Complex value) { return cproj(value); }
             pub long double _Complex project_extended(long double _Complex value) { return cprojl(value); }
+            pub float _Complex exponential_float(float _Complex value) { return cexpf(value); }
+            pub double _Complex logarithm_double(double _Complex value) { return clog(value); }
+            pub long double _Complex power_extended(long double _Complex base, long double _Complex exponent) {
+                return cpowl(base, exponent);
+            }
+            pub float _Complex square_root_float(float _Complex value) { return csqrtf(value); }
+            pub double _Complex exponential_double(double _Complex value) { return cexp(value); }
+            pub long double _Complex logarithm_extended(long double _Complex value) { return clogl(value); }
+            pub float _Complex power_float(float _Complex base, float _Complex exponent) { return cpowf(base, exponent); }
+            pub double _Complex square_root_double(double _Complex value) { return csqrt(value); }
+            pub long double _Complex exponential_extended(long double _Complex value) { return cexpl(value); }
+            pub float _Complex logarithm_float(float _Complex value) { return clogf(value); }
+            pub double _Complex power_double(double _Complex base, double _Complex exponent) { return cpow(base, exponent); }
+            pub long double _Complex square_root_extended(long double _Complex value) { return csqrtl(value); }
         """.trimIndent()
         val result = CPlusCompiler().compileText(Files.createTempFile("complex-abi", ".cp"), source)
 
@@ -156,6 +171,21 @@ class ComplexAbiIntegrationTest {
                         if (project_float(CMPLXF(1.0F, 2.0F)) != CMPLXF(1.0F, 2.0F)) return 33;
                         if (project_double(CMPLX(1.0, 2.0)) != CMPLX(1.0, 2.0)) return 34;
                         if (project_extended(CMPLXL(1.0L, 2.0L)) != CMPLXL(1.0L, 2.0L)) return 35;
+                        if (exponential_float(CMPLXF(0.0F, 0.0F)) != CMPLXF(1.0F, 0.0F)) return 36;
+                        if (exponential_double(CMPLX(0.0, 0.0)) != CMPLX(1.0, 0.0)) return 37;
+                        if (exponential_extended(CMPLXL(0.0L, 0.0L)) != CMPLXL(1.0L, 0.0L)) return 38;
+                        if (fabsf(crealf(logarithm_float(CMPLXF(3.0F, 4.0F))) - logf(5.0F)) > 0.0002F) return 39;
+                        if (fabs(creal(logarithm_double(CMPLX(3.0, 4.0))) - log(5.0)) > 1e-12) return 40;
+                        if (fabsl(creall(logarithm_extended(CMPLXL(3.0L, 4.0L))) - logl(5.0L)) > 1e-15L) return 41;
+                        if (fabsf(crealf(power_float(CMPLXF(1.0F, 1.0F), CMPLXF(2.0F, 0.0F)))) > 0.0002F ||
+                            fabsf(cimagf(power_float(CMPLXF(1.0F, 1.0F), CMPLXF(2.0F, 0.0F))) - 2.0F) > 0.0002F) return 42;
+                        if (fabs(creal(power_double(CMPLX(1.0, 1.0), CMPLX(2.0, 0.0)))) > 1e-12 ||
+                            fabs(cimag(power_double(CMPLX(1.0, 1.0), CMPLX(2.0, 0.0))) - 2.0) > 1e-12) return 43;
+                        if (fabsl(creall(power_extended(CMPLXL(1.0L, 1.0L), CMPLXL(2.0L, 0.0L)))) > 1e-15L ||
+                            fabsl(cimagl(power_extended(CMPLXL(1.0L, 1.0L), CMPLXL(2.0L, 0.0L))) - 2.0L) > 1e-15L) return 44;
+                        if (square_root_float(CMPLXF(3.0F, 4.0F)) != CMPLXF(2.0F, 1.0F)) return 45;
+                        if (square_root_double(CMPLX(3.0, 4.0)) != CMPLX(2.0, 1.0)) return 46;
+                        if (square_root_extended(CMPLXL(3.0L, 4.0L)) != CMPLXL(2.0L, 1.0L)) return 47;
                         return 0;
                     }
                 """.trimIndent()

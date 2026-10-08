@@ -97,6 +97,148 @@
         return value; \
     }
 
+#define CPLUS_DEFINE_COMPLEX_EXP_ROOT(suffix, real_type, complex_type, exponential, logarithm, logarithm_one_plus, \
+                                     hypotenuse, absolute, square_root, sine, cosine, angle, copy_sign, \
+                                     is_nan, is_inf, is_finite, infinity) \
+    static real_type cplus_complex_exp_product_##suffix(real_type exponent, real_type factor) { \
+        real_type scale; \
+        if (factor == (real_type)0) return copy_sign((real_type)0, factor); \
+        scale = exponential(exponent); \
+        if (is_inf(scale) && is_finite(exponent)) { \
+            return copy_sign(exponential(exponent + logarithm(absolute(factor))), factor); \
+        } \
+        return scale * factor; \
+    } \
+    complex_type cexp##suffix(complex_type value) { \
+        real_type real_part = __real__ value; \
+        real_type imaginary_part = __imag__ value; \
+        real_type cosine_value; \
+        real_type sine_value; \
+        if (is_nan(imaginary_part)) { \
+            if (is_inf(real_part) && real_part < (real_type)0) \
+                return __builtin_complex((real_type)0, (real_type)0); \
+            if (is_inf(real_part) && real_part > (real_type)0) \
+                return __builtin_complex((real_type)(infinity), (real_type)(NAN)); \
+            if (is_nan(real_part)) return __builtin_complex((real_type)(NAN), (real_type)(NAN)); \
+            return __builtin_complex((real_type)(NAN), (real_type)(NAN)); \
+        } \
+        if (is_inf(imaginary_part)) { \
+            if (is_inf(real_part) && real_part < (real_type)0) \
+                return __builtin_complex((real_type)0, (real_type)0); \
+            if (is_inf(real_part) && real_part > (real_type)0) \
+                return __builtin_complex((real_type)(infinity), (real_type)(NAN)); \
+            return __builtin_complex((real_type)(NAN), (real_type)(NAN)); \
+        } \
+        if (is_nan(real_part)) { \
+            if (imaginary_part == (real_type)0) \
+                return __builtin_complex((real_type)(NAN), imaginary_part); \
+            return __builtin_complex((real_type)(NAN), (real_type)(NAN)); \
+        } \
+        cosine_value = cosine(imaginary_part); \
+        sine_value = sine(imaginary_part); \
+        if (is_inf(real_part)) { \
+            if (real_part > (real_type)0) { \
+                real_part = cosine_value == (real_type)0 ? copy_sign((real_type)0, cosine_value) \
+                    : copy_sign((real_type)(infinity), cosine_value); \
+                imaginary_part = sine_value == (real_type)0 ? copy_sign((real_type)0, sine_value) \
+                    : copy_sign((real_type)(infinity), sine_value); \
+            } else { \
+                real_part = copy_sign((real_type)0, cosine_value); \
+                imaginary_part = copy_sign((real_type)0, sine_value); \
+            } \
+            return __builtin_complex(real_part, imaginary_part); \
+        } \
+        return __builtin_complex( \
+            cplus_complex_exp_product_##suffix(real_part, cosine_value), \
+            cplus_complex_exp_product_##suffix(real_part, sine_value)); \
+    } \
+    static real_type cplus_complex_log_magnitude_##suffix(real_type real_part, real_type imaginary_part) { \
+        real_type absolute_real = absolute(real_part); \
+        real_type absolute_imaginary = absolute(imaginary_part); \
+        real_type larger; \
+        real_type smaller; \
+        real_type ratio; \
+        if (is_inf(absolute_real) || is_inf(absolute_imaginary)) return (real_type)(infinity); \
+        if (is_nan(absolute_real) || is_nan(absolute_imaginary)) return (real_type)(NAN); \
+        larger = absolute_real > absolute_imaginary ? absolute_real : absolute_imaginary; \
+        smaller = absolute_real > absolute_imaginary ? absolute_imaginary : absolute_real; \
+        if (larger == (real_type)0) return -(real_type)(infinity); \
+        ratio = smaller / larger; \
+        return logarithm(larger) + (real_type)0.5 * logarithm_one_plus(ratio * ratio); \
+    } \
+    complex_type clog##suffix(complex_type value) { \
+        real_type real_part = __real__ value; \
+        real_type imaginary_part = __imag__ value; \
+        if (is_inf(real_part) || is_inf(imaginary_part)) { \
+            return __builtin_complex((real_type)(infinity), angle(imaginary_part, real_part)); \
+        } \
+        if (is_nan(real_part) || is_nan(imaginary_part)) \
+            return __builtin_complex((real_type)(NAN), (real_type)(NAN)); \
+        return __builtin_complex( \
+            cplus_complex_log_magnitude_##suffix(real_part, imaginary_part), \
+            angle(imaginary_part, real_part)); \
+    } \
+    complex_type cpow##suffix(complex_type base, complex_type exponent) { \
+        real_type base_real = __real__ base; \
+        real_type base_imaginary = __imag__ base; \
+        real_type exponent_real = __real__ exponent; \
+        real_type exponent_imaginary = __imag__ exponent; \
+        if (exponent_real == (real_type)0 && exponent_imaginary == (real_type)0) \
+            return __builtin_complex((real_type)1, (real_type)0); \
+        if (base_real == (real_type)1 && base_imaginary == (real_type)0) \
+            return __builtin_complex((real_type)1, (real_type)0); \
+        return cexp##suffix(exponent * clog##suffix(base)); \
+    } \
+    complex_type csqrt##suffix(complex_type value) { \
+        real_type real_part = __real__ value; \
+        real_type imaginary_part = __imag__ value; \
+        real_type absolute_real; \
+        real_type absolute_imaginary; \
+        real_type scale; \
+        real_type scaled_real; \
+        real_type scaled_imaginary; \
+        real_type scaled_magnitude; \
+        real_type root_scale; \
+        real_type result_real; \
+        real_type result_imaginary; \
+        if (is_inf(imaginary_part)) \
+            return __builtin_complex((real_type)(infinity), copy_sign((real_type)(infinity), imaginary_part)); \
+        if (is_inf(real_part)) { \
+            if (real_part > (real_type)0) { \
+                result_imaginary = is_nan(imaginary_part) ? (real_type)(NAN) \
+                    : copy_sign((real_type)0, imaginary_part); \
+                return __builtin_complex((real_type)(infinity), result_imaginary); \
+            } \
+            if (is_nan(imaginary_part)) \
+                return __builtin_complex((real_type)(NAN), copy_sign((real_type)(infinity), imaginary_part)); \
+            return __builtin_complex((real_type)0, copy_sign((real_type)(infinity), imaginary_part)); \
+        } \
+        if (is_nan(real_part) || is_nan(imaginary_part)) \
+            return __builtin_complex((real_type)(NAN), (real_type)(NAN)); \
+        if (imaginary_part == (real_type)0) { \
+            if (real_part < (real_type)0) \
+                return __builtin_complex((real_type)0, copy_sign(square_root(-real_part), imaginary_part)); \
+            result_real = real_part == (real_type)0 ? (real_type)0 : square_root(real_part); \
+            return __builtin_complex(result_real, imaginary_part); \
+        } \
+        absolute_real = absolute(real_part); \
+        absolute_imaginary = absolute(imaginary_part); \
+        scale = absolute_real > absolute_imaginary ? absolute_real : absolute_imaginary; \
+        scaled_real = real_part / scale; \
+        scaled_imaginary = imaginary_part / scale; \
+        scaled_magnitude = hypotenuse(scaled_real, scaled_imaginary); \
+        root_scale = square_root(scale); \
+        if (real_part >= (real_type)0) { \
+            result_real = root_scale * square_root((scaled_magnitude + scaled_real) * (real_type)0.5); \
+            result_imaginary = imaginary_part / ((real_type)2 * result_real); \
+        } else { \
+            result_imaginary = copy_sign( \
+                root_scale * square_root((scaled_magnitude - scaled_real) * (real_type)0.5), imaginary_part); \
+            result_real = absolute_imaginary / ((real_type)2 * absolute(result_imaginary)); \
+        } \
+        return __builtin_complex(result_real, result_imaginary); \
+    }
+
 CPLUS_DEFINE_COMPLEX_MULTIPLY(__mulsc3, float, float _Complex, __builtin_isnan, __builtin_isinf, copysignf, INFINITY)
 CPLUS_DEFINE_COMPLEX_MULTIPLY(__muldc3, double, double _Complex, __builtin_isnan, __builtin_isinf, copysign, HUGE_VAL)
 CPLUS_DEFINE_COMPLEX_MULTIPLY(__mulxc3, long double, long double _Complex, __builtin_isnan, __builtin_isinf, copysignl, HUGE_VALL)
@@ -112,6 +254,14 @@ CPLUS_DEFINE_COMPLEX_COMPONENTS(f, float, float _Complex, hypotf, atan2f, copysi
 CPLUS_DEFINE_COMPLEX_COMPONENTS(, double, double _Complex, hypot, atan2, copysign, HUGE_VAL)
 CPLUS_DEFINE_COMPLEX_COMPONENTS(l, long double, long double _Complex, hypotl, atan2l, copysignl, HUGE_VALL)
 
+CPLUS_DEFINE_COMPLEX_EXP_ROOT(f, float, float _Complex, expf, logf, log1pf, hypotf, fabsf, sqrtf, sinf, cosf,
+                              atan2f, copysignf, __builtin_isnan, __builtin_isinf, __builtin_isfinite, INFINITY)
+CPLUS_DEFINE_COMPLEX_EXP_ROOT(, double, double _Complex, exp, log, log1p, hypot, fabs, sqrt, sin, cos,
+                              atan2, copysign, __builtin_isnan, __builtin_isinf, __builtin_isfinite, HUGE_VAL)
+CPLUS_DEFINE_COMPLEX_EXP_ROOT(l, long double, long double _Complex, expl, logl, log1pl, hypotl, fabsl, sqrtl, sinl,
+                              cosl, atan2l, copysignl, __builtin_isnan, __builtin_isinf, __builtin_isfinite, HUGE_VALL)
+
+#undef CPLUS_DEFINE_COMPLEX_EXP_ROOT
 #undef CPLUS_DEFINE_COMPLEX_COMPONENTS
 #undef CPLUS_DEFINE_COMPLEX_DIVIDE
 #undef CPLUS_DEFINE_COMPLEX_MULTIPLY
