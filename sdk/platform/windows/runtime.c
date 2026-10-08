@@ -219,8 +219,7 @@ void* platform_page_allocate(unsigned long long page_count) {
 }
 
 int platform_page_release(void* address, unsigned long long page_count) {
-    (void)page_count;
-    if (!address) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (!address || page_count == 0) return (int)CPLUS_PAL_INVALID_ARGUMENT;
     return VirtualFree(address, 0, __CPLUS_MEM_RELEASE) ? 0 : (int)cplus_normalize_windows_error();
 }
 

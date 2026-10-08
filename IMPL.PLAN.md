@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; std.core and native services reopened
-Roadmap leaf tasks:    36/65 evidenced on Linux
+Roadmap leaf tasks:    37/65 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.1 — verify page-memory adapters and allocator behavior on Linux
+Current task:          R5.3.2 — implement process identity, spawn, wait and exit adapters
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,12 +22,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
-R5 [DOING] 4/21 native std and platform-service work remains open
+R5 [DOING] 5/21 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       36/65 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       37/65 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -4093,8 +4093,9 @@ dependencies.
     matrix, error-normalization and dependency audit, and close platform gaps;
 - R5.3 [TODO] — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
-  - R5.3.1 [TODO] — verify page allocation/release, allocator behavior,
-    overflow handling, alignment, zeroing and libc allocation delegation;
+  - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
+    zero/overflow page counts, invalid releases, allocator overflow and invalid
+    alignment, preserving the already-tested allocation/libc behavior;
   - R5.3.2 [TODO] — implement process identity, spawn, wait and exit using
     opaque handles and normalized status/error results;
   - R5.3.3 [TODO] — implement environment and argument access plus portable
@@ -4187,6 +4188,17 @@ C+ modules with the self-hosted Linux runtime and executes file and directory
 roundtrips; ABI tests confirm both PAL and std metadata layouts across the four
 declared Linux/Windows x86_64/AArch64 descriptors. `./gradlew build` passes on
 Linux. No Windows execution is claimed; R5.2.5 remains open.
+
+R5.3.1 acceptance evidence: Linux `RuntimeAllocatorTest` now exercises
+zero/overflow page counts, invalid release arguments, successful page release,
+allocator size/alignment overflow, invalid alignment, zero-size allocation,
+zeroed allocation, data-preserving resize and release. `RuntimeLibcCoreTest`
+executes `calloc`, `realloc`, `aligned_alloc`, `free`, zeroing, alignment and
+overflow-to-`ENOMEM` behavior through the libc façade. `AbiLayoutTest`
+confirms the fixed-width page-count type and declarations on Linux/Windows
+x86_64/AArch64 descriptors. The Windows adapter now rejects zero-page release
+requests, but no Windows execution is claimed. Focused tests and
+`./gradlew build --no-daemon` pass on Linux; R5.3.2 is next.
 
 ### R5.1 status audit
 
