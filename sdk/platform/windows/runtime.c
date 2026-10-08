@@ -72,6 +72,21 @@ typedef struct __cplus_windows_thread_control {
     void* result;
 } __cplus_windows_thread_control;
 
+typedef struct __cplus_windows_init_once {
+    void* pointer;
+} __cplus_windows_init_once;
+typedef long long (__stdcall *__cplus_windows_procedure)(void);
+typedef __cplus_bool (__stdcall *__cplus_wait_on_address_fn)(
+    volatile void* address,
+    void* compare_address,
+    unsigned long long address_size,
+    __cplus_dword milliseconds);
+typedef void (__stdcall *__cplus_wake_by_address_fn)(void* address);
+typedef int (__stdcall *__cplus_windows_init_callback)(
+    __cplus_windows_init_once* once,
+    void* parameter,
+    void** context);
+
 __declspec(dllimport) __cplus_handle __stdcall GetStdHandle(__cplus_dword kind);
 __declspec(dllimport) __cplus_dword __stdcall GetCurrentProcessId(void);
 __declspec(dllimport) __cplus_dword __stdcall GetCurrentThreadId(void);
@@ -93,13 +108,13 @@ __declspec(dllimport) __cplus_handle __stdcall CreateThread(
     __cplus_dword creation_flags,
     __cplus_dword* thread_id);
 __declspec(dllimport) __cplus_bool __stdcall SwitchToThread(void);
-__declspec(dllimport) __cplus_bool __stdcall WaitOnAddress(
-    volatile void* address,
-    void* compare_address,
-    unsigned long long address_size,
-    __cplus_dword milliseconds);
-__declspec(dllimport) void __stdcall WakeByAddressSingle(void* address);
-__declspec(dllimport) void __stdcall WakeByAddressAll(void* address);
+__declspec(dllimport) void* __stdcall GetModuleHandleW(const unsigned short* module_name);
+__declspec(dllimport) __cplus_windows_procedure __stdcall GetProcAddress(void* module, const char* name);
+__declspec(dllimport) __cplus_bool __stdcall InitOnceExecuteOnce(
+    __cplus_windows_init_once* once,
+    __cplus_windows_init_callback callback,
+    void* parameter,
+    void** context);
 void __cplus_windows_network_cleanup(void);
 __declspec(dllimport) unsigned short* __stdcall GetCommandLineW(void);
 __declspec(dllimport) unsigned short* __stdcall GetEnvironmentStringsW(void);
@@ -1004,9 +1019,64 @@ static int cplus_windows_valid_atomic32(const volatile int* address) {
     return address && (((unsigned long long)(const void*)address & 3ULL) == 0);
 }
 
+/* Resolve the Windows 8 address-wait APIs at runtime. Some supported
+   Windows SDK/import-library combinations omit these newer imports even
+   though the runtime can use them when the OS provides the exports. */
+#define __CPLUS_WINDOWS_FUNCTION(type, procedure) \
+    (((union { __cplus_windows_procedure generic; type typed; }){ .generic = (procedure) }).typed)
+
+static __cplus_windows_init_once cplus_windows_atomic_wait_once;
+static int cplus_windows_atomic_wait_status = (int)CPLUS_PAL_UNSUPPORTED;
+static __cplus_wait_on_address_fn cplus_windows_wait_on_address;
+static __cplus_wake_by_address_fn cplus_windows_wake_by_address_single;
+static __cplus_wake_by_address_fn cplus_windows_wake_by_address_all;
+
+static int __stdcall cplus_windows_resolve_atomic_wait(
+    __cplus_windows_init_once* once,
+    void* parameter,
+    void** context) {
+    static const unsigned short kernel32_name[] = {
+        'k', 'e', 'r', 'n', 'e', 'l', '3', '2', '.', 'd', 'l', 'l', 0
+    };
+    void* kernel32;
+    __cplus_windows_procedure wait_procedure;
+    __cplus_windows_procedure wake_single_procedure;
+    __cplus_windows_procedure wake_all_procedure;
+    (void)once;
+    (void)parameter;
+    (void)context;
+
+    kernel32 = GetModuleHandleW(kernel32_name);
+    if (!kernel32) return 1;
+    wait_procedure = GetProcAddress(kernel32, "WaitOnAddress");
+    wake_single_procedure = GetProcAddress(kernel32, "WakeByAddressSingle");
+    wake_all_procedure = GetProcAddress(kernel32, "WakeByAddressAll");
+    if (!wait_procedure || !wake_single_procedure || !wake_all_procedure) return 1;
+    cplus_windows_wait_on_address =
+        __CPLUS_WINDOWS_FUNCTION(__cplus_wait_on_address_fn, wait_procedure);
+    cplus_windows_wake_by_address_single =
+        __CPLUS_WINDOWS_FUNCTION(__cplus_wake_by_address_fn, wake_single_procedure);
+    cplus_windows_wake_by_address_all =
+        __CPLUS_WINDOWS_FUNCTION(__cplus_wake_by_address_fn, wake_all_procedure);
+    cplus_windows_atomic_wait_status = 0;
+    return 1;
+}
+
+static int cplus_windows_ensure_atomic_wait(void) {
+    if (!InitOnceExecuteOnce(
+            &cplus_windows_atomic_wait_once,
+            cplus_windows_resolve_atomic_wait,
+            (void*)0,
+            (void**)0)) {
+        return (int)CPLUS_PAL_IO_ERROR;
+    }
+    return cplus_windows_atomic_wait_status;
+}
+
 int platform_atomic_wait32(volatile int* address, int expected) {
     if (!cplus_windows_valid_atomic32(address)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
-    return WaitOnAddress(address, &expected, sizeof(expected), __CPLUS_INFINITE)
+    if (cplus_windows_ensure_atomic_wait() != 0) return (int)CPLUS_PAL_UNSUPPORTED;
+    return cplus_windows_wait_on_address(address, &expected, sizeof(expected), __CPLUS_INFINITE)
         ? 0 : (int)cplus_normalize_windows_error();
 }
 
@@ -1014,12 +1084,13 @@ int platform_atomic_wake32(volatile int* address, unsigned int count) {
     unsigned int index;
     if (!cplus_windows_valid_atomic32(address)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
     if (count == 0) return 0;
+    if (cplus_windows_ensure_atomic_wait() != 0) return (int)CPLUS_PAL_UNSUPPORTED;
     if (count == 0xffffffffU) {
-        WakeByAddressAll((void*)address);
+        cplus_windows_wake_by_address_all((void*)address);
         return 0;
     }
     if (count > 0x7fffffffU) count = 0x7fffffffU;
-    for (index = 0; index < count; index++) WakeByAddressSingle((void*)address);
+    for (index = 0; index < count; index++) cplus_windows_wake_by_address_single((void*)address);
     return 0;
 }
 
