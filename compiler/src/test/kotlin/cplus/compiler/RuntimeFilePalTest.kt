@@ -10,6 +10,29 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeFilePalTest {
     @Test
+    fun linuxPlatformAdapterIsWarningFreeForX86AndAarch64Targets() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val clangAvailable = runCatching {
+            ProcessBuilder("clang", "--version").start().waitFor() == 0
+        }.getOrDefault(false)
+        assumeTrue(clangAvailable, "Clang is not installed")
+
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val adapter = resolution.layout.platformSource.resolve("runtime.c")
+        listOf("x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu").forEach { triple ->
+            val process = ProcessBuilder(
+                "clang", "--target=$triple", "-std=c17", "-Wall", "-Wextra", "-Werror",
+                "-ffreestanding", "-fno-builtin", "-fsyntax-only",
+                "-I", resolution.layout.runtimeInclude.toString(), adapter.toString()
+            ).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), "$triple: $output")
+        }
+    }
+
+    @Test
     fun linuxDirectoryIterationRejectsInvalidUtf8NamesAsUnsupported() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)

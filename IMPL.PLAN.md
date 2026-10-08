@@ -4627,8 +4627,11 @@ dependencies.
     removal rejects directories while preserving them. Null metadata outputs,
     null directory-read buffers, and invalid directory handles are checked for
     stable argument errors. These checks extend Linux evidence only and do not
-    close the cross-platform leaf. A dedicated
-    Linux fixture creates a directory entry with an invalid UTF-8 byte and
+    close the cross-platform leaf. `RuntimeFilePalTest` also repeats
+    warning-as-error C17 syntax checks for the production Linux adapter with
+    Clang targeting x86_64 and AArch64; these are source checks, not AArch64
+    runtime execution. A dedicated Linux fixture creates a directory entry
+    with an invalid UTF-8 byte and
     verifies production directory iteration returns `UNSUPPORTED`; the linked
     fixture also passes the dependency audit.
 - R5.3 [DONE] 12/12 — implement and Linux-execute the remaining PAL services;
