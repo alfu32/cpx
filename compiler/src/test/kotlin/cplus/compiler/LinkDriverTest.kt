@@ -2,7 +2,9 @@ package cplus.compiler
 
 import kotlin.test.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import java.nio.file.Files
 
 class LinkDriverTest {
     @Test
@@ -36,6 +38,41 @@ class LinkDriverTest {
         val capabilities = CCompilerToolchains.classify("x86_64-w64-mingw32-gcc")
         assertTrue(capabilities.supportsNoDefaultLibraries)
         assertTrue(CCompilerToolchains.targetFlags(TargetInfo(targetTriple = "windows-x86_64"), "clang").single().startsWith("--target="))
+    }
+
+    @Test
+    fun probesAndValidatesTheAdvertisedLinuxInt128CompilerAbi() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val linux = requireNotNull(TargetRegistry.load(root.resolve("abi/linux-x86_64.toml")).descriptor)
+        val windows = requireNotNull(TargetRegistry.load(root.resolve("abi/windows-x86_64.toml")).descriptor)
+
+        assertTrue(CCompilerToolchains.supportsInt128(linux, "cc"))
+        assertTrue(CCompilerToolchains.validateTargetFeatures(linux, "cc").isEmpty())
+        assertEquals(1, CCompilerToolchains.validateTargetFeatures(linux, "cl.exe").size)
+        assertTrue(CCompilerToolchains.validateTargetFeatures(windows, "cl.exe").isEmpty())
+    }
+
+    @Test
+    fun refusesLinkingWhenTheSelectedCompilerCannotHonorAdvertisedInt128Abi() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/linux-x86_64.toml")).descriptor)
+        val sdk = resolution.copy(targetDescriptor = descriptor)
+        val plan = requireNotNull(RuntimeLinker.plan(sdk, target).plan)
+        val directory = Files.createTempDirectory("cplus-int128-link-rejection")
+        val generated = directory.resolve("generated.c")
+        val output = directory.resolve("program")
+
+        val result = LinkDriver.link(
+            LinkRequest(generated, output, target, sdk, cCompiler = "cl.exe"),
+            plan
+        )
+
+        assertFalse(result.isSuccessful)
+        assertTrue(result.output.contains("does not satisfy the verified 128-bit"), result.output)
+        assertFalse(Files.exists(output))
     }
 
     @Test

@@ -10,6 +10,18 @@ data class CCompilerCapabilities(
 )
 
 object CCompilerToolchains {
+    private val INT128_PROBE_SOURCE = """
+        #if !defined(__SIZEOF_INT128__)
+        #error compiler does not define a 128-bit integer type
+        #endif
+        _Static_assert(sizeof(__int128) == 16, "signed int128 width");
+        _Static_assert(sizeof(unsigned __int128) == 16, "unsigned int128 width");
+        _Static_assert(_Alignof(__int128) == 16, "signed int128 alignment");
+        _Static_assert(_Alignof(unsigned __int128) == 16, "unsigned int128 alignment");
+        __int128 signed_value(__int128 value) { return value + 1; }
+        unsigned __int128 unsigned_value(unsigned __int128 value) { return value + 1; }
+    """.trimIndent()
+
     fun classify(executable: String): CCompilerCapabilities {
         val name = executable.substringAfterLast('/').substringAfterLast('\\').lowercase()
         return when {
@@ -56,6 +68,48 @@ object CCompilerToolchains {
     }
 
     fun isMsvcStyle(compiler: String): Boolean = classify(compiler).kind in setOf(CCompilerKind.MSVC, CCompilerKind.CLANG_CL)
+
+    /**
+     * The current int128 ABI contract is deliberately limited to Linux x86_64
+     * and GCC/Clang-compatible C drivers. The probe verifies the selected
+     * driver's width, alignment, and C17 declaration support before linking.
+     */
+    fun supportsInt128(target: TargetAbiDescriptor, compiler: String): Boolean {
+        if ("int128" !in target.features || target.targetTriple != "linux-x86_64") return false
+        if (classify(compiler).kind !in setOf(CCompilerKind.GCC, CCompilerKind.CLANG)) return false
+        val executableName = compiler.substringAfterLast('/').substringAfterLast('\\').lowercase()
+        if (executableName.contains("mingw") || executableName.contains("w64")) return false
+
+        val process = try {
+            ProcessBuilder(compiler, "-std=c17", "-x", "c", "-fsyntax-only", "-")
+                .redirectErrorStream(true)
+                .start()
+        } catch (_: Exception) {
+            return false
+        }
+        return try {
+            process.outputStream.bufferedWriter().use { it.write(INT128_PROBE_SOURCE) }
+            if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                false
+            } else {
+                process.inputStream.bufferedReader().use { it.readText() }
+                process.exitValue() == 0
+            }
+        } catch (_: Exception) {
+            process.destroyForcibly()
+            false
+        }
+    }
+
+    fun validateTargetFeatures(target: TargetAbiDescriptor, compiler: String): List<String> = buildList {
+        if ("int128" in target.features && !supportsInt128(target, compiler)) {
+            add(
+                "target '${target.targetTriple}' advertises int128, but C compiler '$compiler' " +
+                    "does not satisfy the verified 128-bit width/alignment ABI contract"
+            )
+        }
+    }
 
     private fun TargetInfo.osName(): String = targetTriple.substringBefore('-')
 

@@ -48,6 +48,26 @@ class AbiLayoutTest {
     }
 
     @Test
+    fun exposesInt128LayoutOnlyForTheVerifiedTarget() {
+        val int128 = PrimitiveType(TypeId(40), "__int128")
+        val unsignedInt128 = PrimitiveType(TypeId(41), "unsigned __int128")
+        val linuxLayouts = AbiLayoutEngine(target)
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        listOf(
+            "linux-aarch64", "windows-x86_64", "windows-aarch64", "darwin-x86_64", "darwin-aarch64"
+        ).forEach { targetName ->
+            val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor)
+            val layouts = AbiLayoutEngine(descriptor)
+            assertEquals(0, layouts.layout(int128).size, targetName)
+            assertEquals(0, layouts.layout(unsignedInt128).size, targetName)
+        }
+        assertEquals(16, linuxLayouts.layout(int128).size)
+        assertEquals(16, linuxLayouts.layout(int128).alignment)
+        assertEquals(16, linuxLayouts.layout(unsignedInt128).size)
+        assertEquals(16, linuxLayouts.layout(unsignedInt128).alignment)
+    }
+
+    @Test
     fun resolvesForeignFixedWidthAndStddefAliasesToTheirUnderlyingLayouts() {
         val result = CPlusCompiler().compileText(
             java.nio.file.Files.createTempFile("foreign-layout", ".cp"),

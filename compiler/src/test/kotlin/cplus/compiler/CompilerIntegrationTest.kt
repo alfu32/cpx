@@ -14,6 +14,7 @@ import java.nio.file.Files
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
@@ -1112,6 +1113,114 @@ class CompilerIntegrationTest {
         val compileOutput = compileProcess.inputStream.bufferedReader().readText()
         assertEquals(0, compileProcess.waitFor(), compileOutput)
         assertEquals(3, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
+    }
+
+    @Test
+    fun stdFixedWidthInt128AliasesCompileAndUseTheLinuxCAbiAcrossTranslationUnits() {
+        val sdkRoot = SdkManifestLocator.defaultManifestPath()
+            .toAbsolutePath().normalize().parent!!.parent!!
+        val fixedWidthModule = sdkRoot.resolve("std/src/fixed_width.cp")
+        val directory = Files.createTempDirectory("cplus-int128-abi")
+        val main = directory.resolve("int128_main.cp").also {
+            it.writeText(
+                """
+                    import { i128, u128, i64 } from std.fixed_width;
+
+                    pub i128 add_signed(i128 left, i128 right) { return left + right; }
+                    pub u128 add_unsigned(u128 left, u128 right) { return left + right; }
+                    pub i128 convert_unsigned(u128 value) { return (i128)value; }
+                    pub i64 truncate_signed(i128 value) { return (i64)value; }
+                """.trimIndent()
+            )
+        }
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, fixedWidthModule)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue("typedef __int128 i128;" in generated, generated)
+        assertTrue("typedef unsigned __int128 u128;" in generated, generated)
+        assertTrue("i128 add_signed(i128 left, i128 right)" in generated, generated)
+        assertTrue("u128 add_unsigned(u128 left, u128 right)" in generated, generated)
+        val header = result.generatedHeaders.single().text
+        assertTrue("typedef __int128 i128;" in header, header)
+        assertTrue("typedef unsigned __int128 u128;" in header, header)
+        assertTrue("i128 add_signed(i128 left, i128 right);" in header, header)
+        assertTrue("u128 add_unsigned(u128 left, u128 right);" in header, header)
+        val model = requireNotNull(result.semanticModel)
+        val layouts = AbiLayoutEngine(requireNotNull(result.sdkResolution?.targetDescriptor))
+        assertEquals(16, layouts.layout(model.aliases.getValue("i128")).size)
+        assertEquals(16, layouts.layout(model.aliases.getValue("i128")).alignment)
+        assertEquals(16, layouts.layout(model.aliases.getValue("u128")).size)
+        assertEquals(16, layouts.layout(model.aliases.getValue("u128")).alignment)
+
+        val generatedFile = directory.resolve("generated.c").also { it.writeText(generated) }
+        directory.resolve("generated.h").writeText(header)
+        val callerFile = directory.resolve("caller.c").also {
+            it.writeText(
+                """
+                    #include "generated.h"
+                    int main(void) {
+                        i128 signed_value = ((i128)1) << 100;
+                        u128 unsigned_value = ((u128)1) << 120;
+                        if (add_signed(signed_value, 9) != signed_value + 9) return 1;
+                        if (add_unsigned(unsigned_value, 17) != unsigned_value + 17) return 2;
+                        if (convert_unsigned((u128)42) != (i128)42) return 3;
+                        if (truncate_signed((i128)123) != 123) return 4;
+                        return 0;
+                    }
+                """.trimIndent()
+            )
+        }
+        val executable = directory.resolve("int128-abi")
+        val process = ProcessBuilder(
+            "cc", "-std=c17", "-I", sdkRoot.resolve("libc/include").toString(),
+            generatedFile.toString(), callerFile.toString(), "-o", executable.toString()
+        ).redirectErrorStream(true).start()
+        val compilerOutput = process.inputStream.bufferedReader().readText()
+        assertEquals(0, process.waitFor(), compilerOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(0, execution.waitFor(), executionOutput)
+    }
+
+    @Test
+    fun int128TypesAreExplicitlyRejectedOnTargetsWithoutTheVerifiedFeature() {
+        val sdkRoot = SdkManifestLocator.defaultManifestPath()
+            .toAbsolutePath().normalize().parent!!.parent!!
+        val fixedWidthModule = sdkRoot.resolve("std/src/fixed_width.cp")
+        val directory = Files.createTempDirectory("cplus-int128-unsupported")
+        val supportedWidthUse = directory.resolve("supported.cp").also {
+            it.writeText("import { i64 } from std.fixed_width; int main() { i64 value; return 0; }")
+        }
+        val supportedWidthResult = CPlusCompiler().compile(
+            CompileRequest(listOf(supportedWidthUse, fixedWidthModule), target = TargetInfo(targetTriple = "linux-aarch64"))
+        )
+        assertTrue(supportedWidthResult.isSuccessful, supportedWidthResult.diagnostics.joinToString())
+        assertFalse("typedef __int128 i128;" in supportedWidthResult.generatedUnits.single().text)
+        assertFalse("typedef unsigned __int128 u128;" in supportedWidthResult.generatedUnits.single().text)
+
+        val importedUse = directory.resolve("imported.cp").also {
+            it.writeText("import { i128 } from std.fixed_width; pub i128 pass(i128 value) { return value; }")
+        }
+        val importedResult = CPlusCompiler().compile(
+            CompileRequest(listOf(importedUse, fixedWidthModule), target = TargetInfo(targetTriple = "linux-aarch64"))
+        )
+        assertTrue(importedResult.diagnostics.any { it.code == "SEM411" }, importedResult.diagnostics.joinToString())
+        assertFalse(importedResult.isSuccessful)
+
+        val builtinUse = directory.resolve("builtin.cp").also {
+            it.writeText(
+                """
+                    __int128 pass_signed(__int128 value) { return value; }
+                    unsigned __int128 pass_unsigned(unsigned __int128 value) { return value; }
+                """.trimIndent()
+            )
+        }
+        val builtinResult = CPlusCompiler().compile(
+            CompileRequest(listOf(builtinUse), target = TargetInfo(targetTriple = "windows-x86_64"))
+        )
+        assertTrue(builtinResult.diagnostics.count { it.code == "SEM411" } >= 2, builtinResult.diagnostics.joinToString())
+        assertFalse(builtinResult.isSuccessful)
     }
 
     @Test

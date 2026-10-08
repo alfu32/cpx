@@ -17,3 +17,7 @@ pub typedef uint8_t u8;
 pub typedef uint16_t u16;
 pub typedef uint32_t u32;
 pub typedef uint64_t u64;
+
+/// Available only when the selected target and C compiler advertise int128.
+pub typedef __int128 i128;
+pub typedef unsigned __int128 u128;

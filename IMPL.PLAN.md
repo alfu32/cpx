@@ -11,14 +11,14 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    31/49 evidenced on Linux
+Roadmap leaf tasks:    32/49 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R1.2.5 — verify capability-gated i128/u128 support
-Current milestone:     R1 — language and front-end conformance
+Current task:          R3.1.3 — finish the parsed primitive-to-ABI audit
+Current milestone:     R3 — compiler, C ABI, and native linking conformance
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 14/15 primitive, ABI, type-import, and user-alias conformance open
+R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
@@ -27,7 +27,7 @@ R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       31/49 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       32/49 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,13 +35,10 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R1.2.5 — establish capability-gated `i128`/`u128` support in
-   `std.fixed_width` without weakening the already verified `i8`…`i64` and
-   `u8`…`u64` aliases.
-2. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
+1. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
    C and independent ABI fixtures.
-3. R5.1 — complete the reopened target-aware std.core byte/size/index types.
-4. R5.2 onward — resume native std and platform work after the type boundary is
+2. R5.1 — complete the reopened target-aware std.core byte/size/index types.
+3. R5.2 onward — resume native std and platform work after the type boundary is
    reliable, finish R6–R8, and perform the deferred Windows validation and patch
    pass.
 
@@ -3431,7 +3428,7 @@ of R1–R8 or deliberately recorded as a post-release extension.
     - Invalid signedness reports the same `PARSE102` code and message in CLI
       and LSP diagnostics. Verified with `:compiler:test` and `:cli:test` on
       Linux.
-- R1.2 [DOING] — reconcile primitive signedness, semantic identity, target
+- R1.2 [DONE] — reconcile primitive signedness, semantic identity, target
   widths, C emission, and fixed-width aliases across target ABI descriptors.
   - R1.2.1 [DONE] — preserve `signed char` and integer rank/signedness through
     semantic compatibility and verify LP64/LLP64 widths for all parsed forms.
@@ -3488,12 +3485,25 @@ of R1–R8 or deliberately recorded as a post-release extension.
       remains in R6.1; this task does not claim that CLI integration is complete.
     - `:language-core:test`, `:semantic:test`, `:c-backend:test`,
       `:compiler:test`, `:cli:test`, and `./gradlew build` pass on Linux.
-  - R1.2.5 [TODO] — establish target/compiler capability and exact ABI support
-    for signed and unsigned 128-bit integers; because standard C does not
-    provide `int128_t`/`uint128_t`, expose `i128`/`u128` in `std.fixed_width`
-    only where primitive representation, calling convention, and generated-C
-    mapping are verified; test layout, arithmetic, conversions, function
-    arguments/returns, and generated C, with explicit diagnostics elsewhere.
+  - R1.2.5 [DONE] — establish target/compiler capability and exact ABI support
+    for signed and unsigned 128-bit integers. Since standard C does not provide
+    `int128_t`/`uint128_t`, `std.fixed_width` exposes `i128`/`u128` only for
+    the verified Linux x86_64 target/compiler contract.
+    - Added canonical `__int128` and `unsigned __int128` primitive identities,
+      16-byte Linux x86_64 layout, and an `int128` target capability. Other
+      initial target descriptors do not advertise this extension.
+    - Semantic analysis omits unsupported aliases from generated C and reports
+      SEM411 for unavailable direct or imported 128-bit types. The link driver
+      probes the selected GCC/Clang-compatible compiler's C17 width/alignment
+      before accepting the advertised ABI.
+    - An end-to-end fixture compiles generated C and its public header, then
+      links and runs an independent C translation unit exercising signed and
+      unsigned arithmetic above 64 bits, conversions, arguments, and returns.
+      Layout, unsupported-target diagnostics, compiler probing, and refused
+      links are covered by focused tests.
+    - `./gradlew build` passes on Linux. Windows/AArch64 execution remains
+      deferred; their descriptors conservatively omit `int128` pending the
+      final cross-platform validation pass.
 - R1.3 [DONE] — close the remaining declaration matrix in dependency order.
   - R1.3.1 [DONE] — represent function types and function-pointer declarators
     from source through semantic validation, indirect calls, and C emission.

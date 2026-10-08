@@ -1597,6 +1597,23 @@ conflicting signedness, repeated `int`, more than two `long` specifiers, or
 mixing `short` with `long`, SHALL be diagnosed rather than interpreted as a
 different type.
 
+### 34.1.1 Target-gated 128-bit integer extension
+
+C+ implementations MAY support the compiler-extension spellings `__int128`
+and `unsigned __int128`. When supported, they denote signed and unsigned
+integer types with exactly 128 bits of representation and the target ABI's
+declared size, alignment, and C calling convention. This extension is not part
+of ISO C, and its availability SHALL be determined by the selected target
+capability rather than inferred from the host compiler.
+
+The optional `std.fixed_width` source module MAY export `i128` and `u128` as
+ordinary aliases of these types. Such aliases SHALL remain explicit imports;
+they SHALL NOT be injected into the primitive namespace, `std.core`, or native
+SDK signatures. If the selected target does not advertise and implement the
+128-bit representation and ABI, use of either the extension spelling or the
+corresponding `std.fixed_width` alias SHALL produce diagnostic `SEM411` rather
+than silently selecting a narrower type.
+
 ---
 
 # 35. CPX versus runtime function calls

@@ -57,16 +57,18 @@ class CLowerer(
                 declaration.isPublic
             )
         }
-        val aliases = program.declarations.filterIsInstance<AstAlias>().map { declaration ->
-            activeModuleName = moduleByDeclaration[declaration] ?: "<main>"
-            CAliasDeclaration(
-                declaration.name,
-                type(declaration.target),
-                declaration.arrayDimensions,
-                declaration.origin,
-                declaration.isPublic
-            )
-        }
+        val aliases = program.declarations.filterIsInstance<AstAlias>()
+            .filter { declaration -> declaration.name in semantic.aliases }
+            .map { declaration ->
+                activeModuleName = moduleByDeclaration[declaration] ?: "<main>"
+                CAliasDeclaration(
+                    declaration.name,
+                    type(declaration.target),
+                    declaration.arrayDimensions,
+                    declaration.origin,
+                    declaration.isPublic
+                )
+            }
         val aliasesByName = aliases.associateBy { it.name }
         fun aliasReferences(type: CType): Set<String> = when (type) {
             is CType.Named -> if (type.name in aliasesByName) setOf(type.name) else emptySet()

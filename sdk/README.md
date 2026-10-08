@@ -8,3 +8,7 @@ headers are never the source of truth.
 `u8` through `u64` aliases. Programs must explicitly import the names they use;
 the aliases are ordinary typedefs over `c.stdint` exact-width types and are not
 compiler primitives or part of `std.core`.
+The same module exports `i128` and `u128` only for Linux x86_64; linking checks
+that the selected GCC/Clang-compatible C compiler supports the verified
+16-byte size/alignment contract. Other target descriptors omit that feature,
+and use of these aliases there is diagnosed rather than narrowed.

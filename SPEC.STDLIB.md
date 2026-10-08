@@ -422,7 +422,12 @@ convenience. It exports `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, and
 `u64` as ordinary typedef aliases of the corresponding exact-width C integer
 types. Programs MUST import these names explicitly; they are not compiler
 built-ins and are not injected into `std.core` or native SDK signatures.
-128-bit aliases are governed separately by target capability and ABI support.
+The module also exports `i128` and `u128` only for the `linux-x86_64` target,
+whose SDK ABI descriptor advertises the `int128` feature. The selected GCC- or
+Clang-compatible C compiler MUST pass the C17 width/alignment capability probe
+at link time. Other targets MUST omit these aliases from generated C and MUST
+report `SEM411` if they are used; Windows and AArch64 remain unsupported until
+their compiler and calling-convention ABIs are verified.
 
 ---
 
@@ -461,9 +466,11 @@ that want concise fixed-width names MAY explicitly import the user-level
 the target's exact-width integer types (`i8` through `i64` over `int8_t`
 through `int64_t`, and `u8` through `u64` over `uint8_t` through `uint64_t`);
 it is not implicitly imported. The `i128` and `u128` aliases are available only
-on targets for which the compiler, generated-C mapping, and ABI support are
-verified. Unsupported widths MUST produce a diagnostic rather than silently
-changing width or signedness.
+on `linux-x86_64`, where the compiler, generated-C mapping, and ABI support
+have been verified. The implementation maps them to the C compiler extension
+`__int128` and `unsigned __int128`, not to nonexistent standard `int128_t` or
+`uint128_t` typedefs. Unsupported widths MUST produce `SEM411` rather than
+silently changing width or signedness.
 
 ---
 

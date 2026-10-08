@@ -524,7 +524,9 @@ class SemanticAnalyzer(
     fun analyze(
         program: AstProgram,
         knownModules: Set<String> = emptySet(),
-        foreignSources: List<CSourceUnit> = emptyList()
+        foreignSources: List<CSourceUnit> = emptyList(),
+        targetFeatures: Set<String> = emptySet(),
+        targetName: String = "selected target"
     ): SemanticResult {
         nextSymbolId = generateSequence(1) { it + 1 }.iterator()
         nextTypeId = generateSequence(1) { it + 1 }.iterator()
@@ -588,6 +590,20 @@ class SemanticAnalyzer(
         } else {
             program.modules.associate { it.name to it.declarations }
         }
+        val fixedWidthAliasNames = setOf("i128", "u128")
+        val fixedWidthBaseAliasNames = setOf(
+            "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"
+        )
+        val fixedWidthModules = moduleDeclarationLists.filterValues { declarations ->
+            declarations.filterIsInstance<AstPackage>().any { it.name == "std" } &&
+                declarations.filterIsInstance<AstAlias>().mapTo(mutableSetOf()) { it.name }
+                    .containsAll(fixedWidthBaseAliasNames)
+        }.keys
+        val supportsInt128 = "int128" in targetFeatures
+
+        fun isUnavailableFixedWidthAlias(moduleName: String, aliasName: String): Boolean =
+            !supportsInt128 && moduleName in fixedWidthModules && aliasName in fixedWidthAliasNames
+
         val moduleTypeAliases = linkedMapOf<String, MutableMap<String, String>>()
         moduleDeclarationLists.forEach { (moduleName, declarations) ->
             declarations.filterIsInstance<AstImport>().forEach { import ->
@@ -686,7 +702,9 @@ class SemanticAnalyzer(
             }
         }
 
-        CPrimitiveTypes.types.forEach { primitive(it.name) }
+        CPrimitiveTypes.types
+            .filter { supportsInt128 || it.rank != CIntegerRank.INT128 }
+            .forEach { primitive(it.name) }
 
         fun abiOf(attributes: Map<String, String>, origin: Origin): AbiKind {
             val value = attributes["abi"]?.lowercase() ?: return AbiKind.C
@@ -712,7 +730,11 @@ class SemanticAnalyzer(
         fun sourceType(reference: SourceTypeBindingRef): CType? = when (
             val declaration = sourceTypeDeclarationsByModule[reference.ownerModule]?.get(reference.declarationName)
         ) {
-            is AstAlias -> resolveAlias(reference.declarationName, reference.ownerModule)
+            is AstAlias -> if (isUnavailableFixedWidthAlias(reference.ownerModule, reference.declarationName)) {
+                null
+            } else {
+                resolveAlias(reference.declarationName, reference.ownerModule)
+            }
             is AstStruct -> structs[reference.declarationName]
             is AstUnion -> unions[reference.declarationName]
             is AstEnum -> enums[reference.declarationName]
@@ -734,7 +756,28 @@ class SemanticAnalyzer(
             } else null
             val importedType = qualifiedBinding ?: moduleTypeBindingRefs[moduleName]?.get(reference.name)
             val baseReference = reference.copy(pointerDepth = 0, functionParameters = null, functionPointerDepth = 0)
+            val canonicalPrimitive = CPrimitiveTypes.canonicalName(reference.name)
+            val unavailablePrimitiveInt128 = !supportsInt128 &&
+                CPrimitiveTypes.typeInfo(canonicalPrimitive ?: "")?.rank == CIntegerRank.INT128
+            val unavailableImportedAlias = importedType?.let {
+                isUnavailableFixedWidthAlias(it.ownerModule, it.declarationName)
+            } == true
+            val unavailableUnimportedAlias = !supportsInt128 &&
+                reference.name in fixedWidthAliasNames &&
+                (moduleName in fixedWidthModules || (
+                    importedType == null &&
+                        reference.name !in sourceTypeDeclarationsByModule[moduleName].orEmpty() &&
+                        fixedWidthModules.isNotEmpty()
+                    ))
             var resolved = when {
+                unavailablePrimitiveInt128 || unavailableImportedAlias || unavailableUnimportedAlias -> {
+                    diagnostics.error(
+                        "128-bit integer type '${reference.name}' is unavailable for target '$targetName'",
+                        rangeOf(reference.origin),
+                        "SEM411"
+                    )
+                    UnknownType(TypeId(-1))
+                }
                 qualifiedParts.size == 2 -> importedType?.let(::sourceType) ?: UnknownType(TypeId(-1))
                 importedType != null -> sourceType(importedType) ?: UnknownType(TypeId(-1))
                 else -> {
@@ -843,7 +886,18 @@ class SemanticAnalyzer(
                     foreignTypes.getValue(baseName)
                 }
                 foreignTypes[baseName] != null -> foreignTypes.getValue(baseName)
-                CPrimitiveTypes.typeInfo(baseName) != null -> primitive(baseName)
+                CPrimitiveTypes.typeInfo(baseName) != null -> {
+                    if (!supportsInt128 && CPrimitiveTypes.typeInfo(baseName)?.rank == CIntegerRank.INT128) {
+                        diagnostics.error(
+                            "128-bit integer type '$baseName' is unavailable for target '$targetName'",
+                            rangeOf(origin),
+                            "SEM411"
+                        )
+                        UnknownType(TypeId(-1))
+                    } else {
+                        primitive(baseName)
+                    }
+                }
                 baseName in CPrimitiveTypes.standardTypedefNames -> primitive(baseName)
                 else -> {
                     diagnostics.error("unsupported foreign type '$baseName' from $moduleName", rangeOf(origin), "SEM407")
@@ -1068,6 +1122,9 @@ class SemanticAnalyzer(
                 is AstAlias -> {
                     if (aliasDeclarations[declaration.name]?.singleOrNull() !== declaration) {
                         diagnostics.error("duplicate type alias '${declaration.name}'", rangeOf(declaration.origin), "SEM008")
+                    } else if (isUnavailableFixedWidthAlias(moduleName, declaration.name)) {
+                        // Keep the source declarations discoverable for import diagnostics, but do
+                        // not materialize aliases whose representation is unavailable on this target.
                     } else {
                         resolveAlias(declaration.name, moduleName)
                     }

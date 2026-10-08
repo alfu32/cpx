@@ -340,7 +340,12 @@ class CPlusCompiler(
         val parsed = frontend.parsed
         val expanded = frontend.expanded
         val ast = frontend.ast
-        val semantic = context.semanticAnalyzer.analyze(ast, foreignSources = foreignSources)
+        val semantic = context.semanticAnalyzer.analyze(
+            ast,
+            foreignSources = foreignSources,
+            targetFeatures = activeTargetAbiDescriptor?.features.orEmpty(),
+            targetName = activeTargetAbiDescriptor?.targetTriple ?: "selected target"
+        )
         if (!semantic.isSuccessful) {
             return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
         }
@@ -397,7 +402,13 @@ class CPlusCompiler(
                 AstModule(unit.source.path.fileName.toString().substringBeforeLast('.'), unit.ast.declarations)
             }
         )
-        val semantic = context.semanticAnalyzer.analyze(mergedAst, moduleGraph.moduleNames, foreignInputs.units)
+        val semantic = context.semanticAnalyzer.analyze(
+            mergedAst,
+            moduleGraph.moduleNames,
+            foreignInputs.units,
+            activeTargetAbiDescriptor?.features.orEmpty(),
+            activeTargetAbiDescriptor?.targetTriple ?: "selected target"
+        )
         val additionalDiagnostics = first.closureDiagnostics + units.drop(1).flatMap { it.diagnostics() } +
             unresolvedImportCycleDiagnostics(moduleGraph, semantic.diagnostics) +
             foreignInputs.diagnostics +
@@ -696,7 +707,11 @@ class CPlusCompiler(
     private fun frontend(source: SourceFile): FrontendUnit {
         val lexed = context.lexer.lex(source)
         val parsed = Parser(lexed).parse()
-        val provisionalSemantic = SemanticAnalyzer().analyze(context.astBuilder.build(parsed.syntax))
+        val provisionalSemantic = SemanticAnalyzer().analyze(
+            context.astBuilder.build(parsed.syntax),
+            targetFeatures = activeTargetAbiDescriptor?.features.orEmpty(),
+            targetName = activeTargetAbiDescriptor?.targetTriple ?: "selected target"
+        )
         val typeResolver = provisionalSemantic.model?.let { model ->
             ComptimeTypeResolver { typeText ->
                 model.resolveComptimeTypeIdentity(typeText)?.let { identity ->

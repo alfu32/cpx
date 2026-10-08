@@ -79,10 +79,12 @@ class AbiLayoutEngine(private val target: TargetAbiDescriptor) {
                 CIntegerRank.INT -> 4
                 CIntegerRank.LONG -> if (target.cIntegerModel == "llp64") 4 else 8
                 CIntegerRank.LONG_LONG -> 8
+                CIntegerRank.INT128 -> if ("int128" in target.features) 16 else 0
                 null -> 0
             }
         }
-        return AbiLayout(size, if (size == 0) 1 else size)
+        val alignment = if (type.rank == CIntegerRank.INT128 && size > 0) 16 else size
+        return AbiLayout(size, if (alignment == 0) 1 else alignment)
     }
 
     private fun align(value: Int, alignment: Int): Int = if (alignment <= 1) value else {

@@ -12,7 +12,8 @@ enum class CIntegerRank {
     SHORT,
     INT,
     LONG,
-    LONG_LONG
+    LONG_LONG,
+    INT128
 }
 
 enum class CIntegerSignedness {
@@ -31,7 +32,7 @@ data class CPrimitiveTypeInfo(
 /** Canonical C primitive spellings shared by parsing, semantic analysis, and backends. */
 object CPrimitiveTypes {
     val specifierKeywords: Set<String> = setOf(
-        "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned"
+        "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "__int128"
     )
 
     val standardTypedefNames: Set<String> = setOf("size_t", "ptrdiff_t", "max_align_t")
@@ -51,6 +52,8 @@ object CPrimitiveTypes {
         CPrimitiveTypeInfo("unsigned long", CPrimitiveKind.INTEGER, CIntegerRank.LONG, CIntegerSignedness.UNSIGNED),
         CPrimitiveTypeInfo("long long", CPrimitiveKind.INTEGER, CIntegerRank.LONG_LONG, CIntegerSignedness.SIGNED),
         CPrimitiveTypeInfo("unsigned long long", CPrimitiveKind.INTEGER, CIntegerRank.LONG_LONG, CIntegerSignedness.UNSIGNED),
+        CPrimitiveTypeInfo("__int128", CPrimitiveKind.INTEGER, CIntegerRank.INT128, CIntegerSignedness.SIGNED),
+        CPrimitiveTypeInfo("unsigned __int128", CPrimitiveKind.INTEGER, CIntegerRank.INT128, CIntegerSignedness.UNSIGNED),
         CPrimitiveTypeInfo("float", CPrimitiveKind.FLOATING),
         CPrimitiveTypeInfo("double", CPrimitiveKind.FLOATING)
     )
@@ -103,6 +106,12 @@ object CPrimitiveTypes {
                 specifiers.size == 2 && specifiers.toSet() == setOf("long", "double") -> "long double"
                 else -> null
             }
+        }
+
+        val int128Count = specifiers.count { it == "__int128" }
+        if (int128Count > 0) {
+            if (int128Count != 1 || specifiers.any { it in setOf("char", "short", "int", "long") }) return null
+            return if (unsigned) "unsigned __int128" else "__int128"
         }
 
         val charCount = specifiers.count { it == "char" }

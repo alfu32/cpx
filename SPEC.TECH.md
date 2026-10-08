@@ -598,6 +598,16 @@ through `u64` as ordinary source typedefs over the corresponding `intN_t` and
 `uintN_t` declarations. These aliases SHALL NOT be added to the primitive
 catalog or implicitly injected into another module's type environment.
 
+`i128` and `u128` are a separately capability-gated C compiler extension, not
+standard C typedefs. Initially, only `sdk/abi/linux-x86_64.toml` advertises
+`int128`; its ABI contract is a 16-byte size and alignment and the target's C
+function calling convention. Semantic analysis receives target features from
+that descriptor, omits the aliases on other targets, and reports `SEM411` for
+unavailable direct or imported 128-bit types. Before linking, the selected
+GCC/Clang-compatible driver MUST pass a C17 probe for signed/unsigned width and
+alignment. The generated-C ABI is covered by an independent C translation-unit
+caller test. No Windows or AArch64 support is implied by this initial boundary.
+
 ---
 
 # 13. Method model

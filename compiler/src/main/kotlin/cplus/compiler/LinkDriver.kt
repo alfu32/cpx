@@ -37,9 +37,17 @@ object LinkDriver {
     }
 
     fun link(request: LinkRequest, plan: RuntimeLinkPlan): LinkResult {
+        val command = command(request, plan)
+        val descriptor = request.sdk.targetDescriptor
+            ?: TargetRegistry.load(request.sdk.layout.abiDescriptor).descriptor
+        val featureDiagnostics = descriptor?.let {
+            CCompilerToolchains.validateTargetFeatures(it, command.first())
+        }.orEmpty()
+        if (featureDiagnostics.isNotEmpty()) {
+            return LinkResult(command, 1, featureDiagnostics.joinToString("\n"))
+        }
         request.generatedSource.parent?.let { Files.createDirectories(it) }
         request.output.parent?.let { Files.createDirectories(it) }
-        val command = command(request, plan)
         val process = ProcessBuilder(command).redirectErrorStream(true).start()
         val output = process.inputStream.bufferedReader().readText()
         return LinkResult(command, process.waitFor(), output)
