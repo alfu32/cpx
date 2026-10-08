@@ -4863,8 +4863,10 @@ dependencies.
         unresolved host-runtime symbols. Public declarations and 64-bit handle
         ABI checks pass for Linux/Windows x86_64 and AArch64 descriptors;
         warning-as-error C17 checks pass for the forwarding source on all four
-        targets; the full Gradle build passes. Windows runtime execution remains
-        deferred.
+        targets; the full Gradle build passes. The same C+ thread facade now
+        executes natively on Windows x86_64, covering worker creation/join,
+        independent identities, yield, callback return, and optional result
+        storage; its PE passes `RuntimeDependencyAuditor`.
     - R5.4.3.2 [DONE] — implement typed `std.sync` mutex, condition, semaphore,
       and once wrappers over PAL synchronization state;
       - **Acceptance evidence:** `RuntimeStdSyncTest` compiles and executes a
