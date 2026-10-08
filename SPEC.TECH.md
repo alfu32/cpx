@@ -2075,6 +2075,10 @@ link names unless path-shaped. `--map` SHALL emit deterministic generated-C
 and source byte ranges with source paths relative to the project root (or the
 invocation directory for standalone sources). `run --output` SHALL retain the
 native executable at that path; without it, the executable is temporary.
+The CLI SHALL remove its temporary `run` product directory after build failure
+or process completion and SHALL return the child process exit status. Process-
+start failures SHALL be reported as CLI errors. The distributable fat JAR SHALL
+use reproducible entry ordering and timestamps.
 
 ---
 

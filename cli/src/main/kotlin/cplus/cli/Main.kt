@@ -177,25 +177,49 @@ internal class Cli {
 
     private fun runProgram(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val temporaryDirectory = Files.createTempDirectory("cplus-run")
-        val executable = parsed.output ?: temporaryDirectory.resolve(parsed.sources.first().nameWithoutExtension)
-        val buildExitCode = buildExecutable(
-            parsed.sources,
-            parsed.cSources,
-            executable,
-            parsed.headerOutput,
-            parsed.libraries,
-            parsed.includeDirectories,
-            parsed.sdkManifest,
-            parsed.externalSysroot,
-            parsed.target,
-            parsed.cCompiler,
-            parsed.mapOutput,
-            parsed.sourceBase
-        )
-        if (buildExitCode != 0) return buildExitCode
-        val process = ProcessBuilder(executable.toString()).inheritIO().start()
-        return process.waitFor()
+        val ownsTemporaryDirectory = parsed.output == null
+        val temporaryDirectory = if (ownsTemporaryDirectory) {
+            runCatching { Files.createTempDirectory("cplus-run") }.getOrElse {
+                System.err.println("unable to create temporary run directory: ${it.message}")
+                return 2
+            }
+        } else null
+        val executable = parsed.output ?: temporaryDirectory!!.resolve(parsed.sources.first().nameWithoutExtension)
+        return try {
+            val buildExitCode = buildExecutable(
+                parsed.sources,
+                parsed.cSources,
+                executable,
+                parsed.headerOutput,
+                parsed.libraries,
+                parsed.includeDirectories,
+                parsed.sdkManifest,
+                parsed.externalSysroot,
+                parsed.target,
+                parsed.cCompiler,
+                parsed.mapOutput,
+                parsed.sourceBase
+            )
+            if (buildExitCode != 0) return buildExitCode
+            try {
+                ProcessBuilder(executable.toString()).inheritIO().start().waitFor()
+            } catch (error: java.io.IOException) {
+                System.err.println("unable to start program '${executable.fileName}': ${error.message}")
+                2
+            }
+        } finally {
+            temporaryDirectory?.let(::deleteTemporaryProduct)
+        }
+    }
+
+    private fun deleteTemporaryProduct(directory: Path) {
+        try {
+            Files.walk(directory).use { paths ->
+                paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+            }
+        } catch (error: java.io.IOException) {
+            System.err.println("unable to clean temporary run directory: ${error.message}")
+        }
     }
 
     private fun lsp(arguments: List<String>): Int {

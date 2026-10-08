@@ -1321,7 +1321,8 @@ cplus run hello.cp
 ```
 
 Pass `--output` to retain the executable at a chosen path; otherwise `run`
-builds into a temporary directory.
+builds into a temporary directory and removes it after the program exits or
+the build fails.
 
 ---
 

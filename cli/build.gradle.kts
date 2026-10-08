@@ -27,6 +27,8 @@ val fatJar by tasks.registering(Jar::class) {
     archiveBaseName.set("cplus-cli")
     archiveClassifier.set("all")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
     manifest {
         attributes["Main-Class"] = application.mainClass.get()
     }

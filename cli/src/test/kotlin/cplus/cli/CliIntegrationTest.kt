@@ -453,6 +453,26 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun runCleansTemporaryProductsAndPreservesProgramExitStatus() {
+        val directory = Files.createTempDirectory("cplus-cli-run-cleanup")
+        val source = directory.resolve("main.cp").also { it.writeText("int main() { return 23; }") }
+        val originalTemporaryRoot = System.getProperty("java.io.tmpdir")
+        val temporaryRoot = Files.createDirectories(directory.resolve("temporary"))
+        try {
+            System.setProperty("java.io.tmpdir", temporaryRoot.toString())
+            assertEquals(23, Cli().run(listOf("run", source.toString())))
+            assertTrue(Files.list(temporaryRoot).use { paths -> paths.noneMatch { it.fileName.toString().startsWith("cplus-run") } })
+            source.writeText("void invalid_value; int main() { return 0; }")
+            val diagnostics = captureStderr { assertEquals(1, Cli().run(listOf("run", source.toString()))) }
+            assertTrue(diagnostics.isNotBlank())
+            assertTrue(Files.list(temporaryRoot).use { paths -> paths.noneMatch { it.fileName.toString().startsWith("cplus-run") } })
+        } finally {
+            if (originalTemporaryRoot == null) System.clearProperty("java.io.tmpdir")
+            else System.setProperty("java.io.tmpdir", originalTemporaryRoot)
+        }
+    }
+
+    @Test
     fun selfHostedRuntimeProvidesStringTemplateFormatterWithoutHostedStdio() {
         val directory = Files.createTempDirectory("cplus-cli-runtime-format")
         val source = directory.resolve("main.cp").also {
