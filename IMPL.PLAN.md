@@ -4369,9 +4369,11 @@ layout, source-map, and dependency audits.
     47/0/0/0 because the existing registered fixture was extended. No Windows
     or AArch64 complex execution is claimed.
     **Depends:** R4.6.1 and R5.4.5.2–R5.4.5.10.
-  - R4.6.2.3 [TODO] — implement and execute `cexp`, `clog`, `cpow`, and
+  - R4.6.2.3 [DOING] — implement and execute `cexp`, `clog`, `cpow`, and
     `csqrt` for all three precisions, including branch cuts, signed zeros,
     infinities, and NaNs. Add independent C17 fixture and dependency audit.
+    Work is active; no completion credit is assigned until all three-precision
+    edge cases, independent callers, dependency checks, and the full build pass.
     **Depends:** R4.6.2.2 and R5.4.5.2–R5.4.5.10.
   - R4.6.2.4 [TODO] — implement and execute the C17 circular, inverse,
     hyperbolic, and inverse-hyperbolic complex function families for all three
