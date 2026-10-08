@@ -5416,6 +5416,10 @@ hard-coded CLI path.
   Clang's linker-option form; the Clang-built Linux product links without the
   previous unused-option warning and executes successfully. Regression tests
   check both target link plans and the Clang command construction.
+  `CliIntegrationTest` now repeats the Linux Clang x86_64 build/run/dependency
+  audit and the Linux AArch64 cross-build checks for ELF machine, TLS, missing
+  interpreter/dynamic section, and unresolved symbols when the required tools
+  are installed. These cross-link assertions do not claim AArch64 execution.
   Its `PT_TLS` segment has a one-byte initialized image, eight-byte memory image,
   and four-byte alignment, matching the emitted TLS metadata symbols. This
   exposed that `--gc-sections` could remove an empty `.tdata` section required

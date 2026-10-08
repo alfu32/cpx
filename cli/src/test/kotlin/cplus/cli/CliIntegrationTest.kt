@@ -9,9 +9,11 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -120,6 +122,116 @@ class CliIntegrationTest {
         }
         assertTrue(output.contains("observed:"))
     }
+
+    @Test
+    fun linuxClangBuildProducesAndAuditsAnExecutableWithoutHostRuntimeDependencies() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val clangAvailable = runCatching {
+            ProcessBuilder("clang", "--version").start().waitFor() == 0
+        }.getOrDefault(false)
+        assumeTrue(clangAvailable, "Clang is not installed")
+
+        val directory = Files.createTempDirectory("cplus-cli-clang-static")
+        val source = directory.resolve("main.cp").also {
+            it.writeText("int main() { return 12 - 12; }")
+        }
+        val executable = directory.resolve("program")
+        val buildOutput = captureStdout {
+            assertEquals(
+                0,
+                Cli().run(
+                    listOf(
+                        "build", source.toString(), "--target", "linux-x86_64",
+                        "--c-compiler", "clang", "--output", executable.toString()
+                    )
+                )
+            )
+        }
+        assertTrue("argument unused" !in buildOutput, buildOutput)
+        assertEquals(0, ProcessBuilder(executable.toString()).start().waitFor())
+
+        val manifest = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
+        val auditOutput = captureStdout {
+            assertEquals(
+                0,
+                Cli().run(
+                    listOf(
+                        "audit", executable.toString(), "--target", "linux-x86_64",
+                        "--sdk", manifest.toString(), "--runtime", "cplus", "--libc", "c17"
+                    )
+                )
+            )
+        }
+        assertTrue(auditOutput.contains("observed:"), auditOutput)
+    }
+
+    @Test
+    fun linuxAarch64ClangBuildProducesStaticTlsProduct() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        assumeTrue(commandAvailable("clang"), "Clang is not installed")
+        assumeTrue(commandAvailable("readelf") && commandAvailable("nm"), "ELF inspection tools are not installed")
+        val linkerAvailable = System.getenv("PATH").orEmpty()
+            .split(java.io.File.pathSeparator)
+            .filter(String::isNotBlank)
+            .map(Path::of)
+            .any { directory -> runCatching {
+                Files.isExecutable(directory.resolve("ld.lld")) ||
+                    Files.newDirectoryStream(directory, "ld.lld-*").use { entries ->
+                        entries.any { path -> path.fileName.toString().removePrefix("ld.lld-").toIntOrNull() != null && Files.isExecutable(path) }
+                    }
+            }.getOrDefault(false) }
+        assumeTrue(linkerAvailable, "LLD is not installed")
+
+        val source = Path.of("examples/module_main.cp").toAbsolutePath().normalize()
+        assumeTrue(Files.isRegularFile(source), "module example is missing")
+        val directory = Files.createTempDirectory("cplus-cli-aarch64-static")
+        val executable = directory.resolve("module_main")
+        val buildOutput = captureStdout {
+            assertEquals(
+                0,
+                Cli().run(
+                    listOf(
+                        "build", source.toString(), "--target", "linux-aarch64",
+                        "--c-compiler", "clang", "--output", executable.toString()
+                    )
+                )
+            )
+        }
+        assertTrue("argument unused" !in buildOutput, buildOutput)
+
+        fun inspect(vararg command: String): String {
+            val process = ProcessBuilder(*command).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), output)
+            return output
+        }
+
+        val header = inspect("readelf", "-h", executable.toString())
+        assertTrue("ELF64" in header && "AArch64" in header, header)
+        val programHeaders = inspect("readelf", "-l", executable.toString())
+        assertTrue("TLS" in programHeaders, programHeaders)
+        assertTrue("Requesting program interpreter" !in programHeaders, programHeaders)
+        assertTrue("No dynamic section" in inspect("readelf", "-d", executable.toString()))
+        assertTrue(inspect("nm", "-u", executable.toString()).isBlank())
+
+        val manifest = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
+        val auditOutput = captureStdout {
+            assertEquals(
+                0,
+                Cli().run(
+                    listOf(
+                        "audit", executable.toString(), "--target", "linux-aarch64",
+                        "--sdk", manifest.toString(), "--runtime", "cplus", "--libc", "c17"
+                    )
+                )
+            )
+        }
+        assertTrue(auditOutput.contains("observed:"), auditOutput)
+    }
+
+    private fun commandAvailable(command: String): Boolean = runCatching {
+        ProcessBuilder(command, "--version").start().waitFor() == 0
+    }.getOrDefault(false)
 
     @Test
     fun astAndExpandInspectDifferentCompilerPhaseRepresentations() {
