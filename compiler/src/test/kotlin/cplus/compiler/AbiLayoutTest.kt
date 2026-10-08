@@ -186,6 +186,26 @@ class AbiLayoutTest {
     }
 
     @Test
+    fun processPalUsesOpaqueSixtyFourBitHandlesAcrossDeclaredTargets() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val api = root.resolve("platform/api/process.cp")
+        listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { targetName ->
+            val result = CPlusCompiler().compile(
+                CompileRequest(listOf(api), target = TargetInfo(targetTriple = targetName))
+            )
+            assertTrue(result.isSuccessful, "$targetName: ${result.diagnostics.joinToString()}")
+            val model = requireNotNull(result.semanticModel)
+            val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor)
+            val layouts = AbiLayoutEngine(descriptor)
+            val handleType = model.functions.getValue("platform_process_spawn").returnType
+            assertEquals("long long", handleType.name, "$targetName process handle type")
+            assertEquals(8, layouts.layout(handleType).size, "$targetName process handle size")
+            assertEquals("long long", model.functions.getValue("platform_process_wait").parameters.first().type.name)
+            assertTrue("platform_process_id" in result.generatedUnits.joinToString("\n") { it.text })
+        }
+    }
+
+    @Test
     fun auditsPrimitiveAndAggregateLayoutAcrossDeclaredTargetMatrix() {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { name ->

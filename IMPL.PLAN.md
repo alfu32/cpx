@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; std.core and native services reopened
-Roadmap leaf tasks:    37/65 evidenced on Linux
+Roadmap leaf tasks:    38/65 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.2 — implement process identity, spawn, wait and exit adapters
+Current task:          R5.3.3 — implement process arguments, environment and standard-stream services
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,12 +22,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
-R5 [DOING] 5/21 native std and platform-service work remains open
+R5 [DOING] 6/21 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       37/65 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       38/65 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -4097,8 +4097,9 @@ dependencies.
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
     alignment, preserving the already-tested allocation/libc behavior;
-  - R5.3.2 [TODO] — implement process identity, spawn, wait and exit using
-    opaque handles and normalized status/error results;
+  - R5.3.2 [DONE] — implement the specified process identity/spawn/wait ABI,
+    UTF-8 argv, inherited environment/standard streams, synchronous launch
+    errors and normalized exit status;
   - R5.3.3 [TODO] — implement environment and argument access plus portable
     standard-input/output/error service contracts;
   - R5.3.4 [TODO] — provide distinct wall, monotonic and process-CPU clocks
@@ -4142,8 +4143,10 @@ so R5.4.5 does not add a platform math service.
 
 R5.3 leaf acceptance evidence is executable, not declaration-only: R5.3.1
 checks allocation/zeroing/alignment/reallocation/release and overflow; R5.3.2
-spawns a child and verifies wait/exit status; R5.3.3 checks arguments,
-environment and standard streams; R5.3.4 distinguishes wall, monotonic and
+checks positive process identity, child argv, inherited environment/standard
+streams, synchronous missing-executable errors, wait/reap and exit status;
+R5.3.3 checks current-process arguments, environment and standard streams;
+R5.3.4 distinguishes wall, monotonic and
 CPU clocks; R5.3.5 exercises create/join/TLS; R5.3.6 exercises contended
 mutex/condition/semaphore/once and supported atomic wait/wake; R5.3.7 executes
 TCP and UDP loopback transfers; and R5.3.8 resolves and converts valid and
@@ -4199,7 +4202,18 @@ overflow-to-`ENOMEM` behavior through the libc façade. `AbiLayoutTest`
 confirms the fixed-width page-count type and declarations on Linux/Windows
 x86_64/AArch64 descriptors. The Windows adapter now rejects zero-page release
 requests, but no Windows execution is claimed. Focused tests and
-`./gradlew build --no-daemon` pass on Linux; R5.3.2 is next.
+`./gradlew build --no-daemon` pass on Linux.
+
+R5.3.2 acceptance evidence: `RuntimeProcessPalTest` builds a freestanding,
+static Linux executable with `-nostdlib` and the production startup/PAL
+sources. It verifies positive process identity, startup environment capture and
+inheritance, argv delivery, inherited stdout, synchronous invalid/missing
+executable errors, child wait/reap, normal exit status, and signal status
+normalization. `AbiLayoutTest` verifies the opaque `long long` process handle
+and declarations across Linux/Windows x86_64/AArch64 descriptors. Linux x86_64
+runtime execution passes; Linux AArch64 and Windows adapters pass cross-target
+syntax compilation. Windows execution remains deferred. The full
+`./gradlew build --no-daemon` passes; R5.3.3 is next.
 
 ### R5.1 status audit
 

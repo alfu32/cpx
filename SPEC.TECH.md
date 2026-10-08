@@ -2845,6 +2845,19 @@ same generated contract is valid under Linux LP64 and Windows LLP64. The
 linker includes `fs.c` and exactly one target platform runtime unit in a
 self-hosted product.
 
+The process ABI follows the same boundary: process handles use a signed
+64-bit opaque carrier, argument vectors are borrowed UTF-8 null-terminated
+pointer arrays, the child inherits the current environment and standard
+streams, and PAL failures use the stable CPLUS error set. Linux uses
+target-catalogued process syscalls; spawn uses a close-on-exec
+error channel so `execve` failures are returned synchronously instead of being
+confused with a child exit code. Windows uses `CreateProcessW`, converts
+UTF-8 arguments to UTF-16, applies the Windows argument-quoting rules, inherits
+the process environment and standard handles, and closes the process handle
+after a successful wait. Neither adapter delegates process creation or
+waiting to an installed host libc. The selected runtime link plan includes
+the common process startup state and exactly one target adapter.
+
 The C backend's ABI gate includes an independently compiled C17 caller fixture.
 The fixture MUST consume the generated public header and link against generated
 C, exercising scalar and object-pointer parameters, aggregate by-value

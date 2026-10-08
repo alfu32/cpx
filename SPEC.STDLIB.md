@@ -822,6 +822,39 @@ standard streams
 
 OS-specific process creation is implemented by the PAL.
 
+The process PAL SHALL expose process identity, spawn, wait, and termination
+through the uniform C ABI:
+
+```c
+typedef long long cplus_process_handle_t;
+
+long long platform_process_id(void);
+cplus_process_handle_t platform_process_spawn(
+    const char* executable,
+    const char* const* arguments);
+int platform_process_wait(cplus_process_handle_t process, int* exit_status);
+int platform_process_exit(int status);
+```
+
+`arguments`, when non-null, SHALL be a null-terminated UTF-8 vector whose
+first element is the child `argv[0]`; when null, the PAL SHALL use
+`executable` as `argv[0]`. The child SHALL inherit the current process
+environment and standard input, output, and error streams. The PAL SHALL NOT
+invoke a shell or parse a command string. Argument storage is borrowed only
+for the duration of spawn and SHALL NOT be retained by the PAL.
+
+Spawn SHALL return an opaque non-negative process handle on success or a
+stable negative PAL error on failure. It SHALL report executable lookup or
+permission failures synchronously, including failures that occur while
+starting the child. Wait SHALL write the child's exit status and return zero
+on success; a successful wait consumes/reaps the process handle. Normal Linux
+exit codes are reported in the range 0–255; signal termination is reported as
+128 plus the signal number. Windows exit status is preserved in the C `int`
+`exit_status` out-parameter. A failed wait SHALL return a stable negative PAL error and SHALL
+NOT expose an OS process type or native error number. Process identity SHALL
+be a positive target process identifier represented in the fixed-width return
+type.
+
 ---
 
 # 14. `std.time`

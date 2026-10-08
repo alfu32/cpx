@@ -24,8 +24,15 @@
 #define CPLUS_PAL_UNSUPPORTED (-6L)
 #define CPLUS_PAL_BUFFER_TOO_SMALL (-7L)
 
+typedef long long cplus_process_handle_t;
+
 long platform_write_stdout(const char* buffer, unsigned long length);
 int platform_process_exit(int status);
+long long platform_process_id(void);
+cplus_process_handle_t platform_process_spawn(
+    const char* executable,
+    const char* const* arguments);
+int platform_process_wait(cplus_process_handle_t process, int* exit_status);
 long long platform_clock_ticks(void);
 typedef long long cplus_file_handle_t;
 typedef long long cplus_file_result_t;

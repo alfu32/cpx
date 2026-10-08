@@ -10,6 +10,7 @@ static int __cplus_allocator_initialized;
 static int __cplus_global_state_initialized;
 static int __cplus_argc;
 static char** __cplus_argv;
+extern char** __cplus_environment;
 
 /* GCC-family Windows drivers emit this constructor hook even for C-only units.
    The C+ runtime has no global-constructor table at this layer, so the hook is
@@ -24,6 +25,7 @@ int __cplus_runtime_init(int argc, char** argv) {
     __cplus_quick_exit_handler_count = 0;
     __cplus_argc = argc;
     __cplus_argv = argv;
+    __cplus_environment = argv && argc >= 0 ? argv + argc + 1 : (char**)0;
     __cplus_tls_initialized = 1;
     __cplus_allocator_initialized = 1;
     __cplus_global_state_initialized = 1;

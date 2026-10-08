@@ -1,5 +1,7 @@
 #include "cplus_platform.h"
 
+char** __cplus_environment;
+
 static long cplus_normalize_linux_result(long result) {
     long error;
     if (result >= 0) return result;
@@ -205,6 +207,138 @@ int platform_page_release(void* address, unsigned long long page_count) {
     (void)bytes;
     return (int)CPLUS_PAL_UNSUPPORTED;
 #endif
+}
+
+static long cplus_linux_process_fork(void) {
+#if defined(__x86_64__)
+    return cplus_linux_syscall1(57, 0);
+#elif defined(__aarch64__)
+    return cplus_linux_syscall6(220, 17, 0, 0, 0, 0, 0);
+#else
+    return -38;
+#endif
+}
+
+static long cplus_linux_process_execve(const char* executable, const char* const* arguments, const char* const* environment) {
+#if defined(__x86_64__)
+    return cplus_linux_syscall3(59, (long)executable, (long)arguments, (long)environment);
+#elif defined(__aarch64__)
+    return cplus_linux_syscall3(221, (long)executable, (long)arguments, (long)environment);
+#else
+    (void)executable; (void)arguments; (void)environment;
+    return -38;
+#endif
+}
+
+static long cplus_linux_process_wait4(long process, int* status) {
+#if defined(__x86_64__)
+    return cplus_linux_syscall4(61, process, (long)status, 0, 0);
+#elif defined(__aarch64__)
+    return cplus_linux_syscall4(260, process, (long)status, 0, 0);
+#else
+    (void)process; (void)status;
+    return -38;
+#endif
+}
+
+long long platform_process_id(void) {
+#if defined(__x86_64__)
+    return cplus_linux_syscall1(39, 0);
+#elif defined(__aarch64__)
+    return cplus_linux_syscall1(172, 0);
+#else
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+}
+
+long long platform_process_spawn(const char* executable, const char* const* arguments) {
+    static const char* const empty_environment[] = { (const char*)0 };
+    const char* generated_arguments[2];
+    const char* const* child_arguments = arguments;
+    const char* const* child_environment = (const char* const*)__cplus_environment;
+    int error_pipe[2];
+    long result;
+    long child;
+    int child_error = 0;
+
+    if (!executable || executable[0] == '\0' || (arguments && !arguments[0])) {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
+    if (!child_arguments) {
+        generated_arguments[0] = executable;
+        generated_arguments[1] = (const char*)0;
+        child_arguments = generated_arguments;
+    }
+    if (!child_environment) child_environment = empty_environment;
+
+#if defined(__x86_64__)
+    result = cplus_linux_syscall2(293, (long)error_pipe, 0x80000);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall2(59, (long)error_pipe, 0x80000);
+#else
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+    if (result < 0) return cplus_normalize_linux_result(result);
+
+    child = cplus_linux_process_fork();
+    if (child < 0) {
+        cplus_linux_syscall1(3, error_pipe[0]);
+        cplus_linux_syscall1(3, error_pipe[1]);
+        return cplus_normalize_linux_result(child);
+    }
+    if (child == 0) {
+        long exec_result;
+        int error_number;
+        cplus_linux_syscall1(3, error_pipe[0]);
+        exec_result = cplus_linux_process_execve(executable, child_arguments, child_environment);
+        error_number = (int)-exec_result;
+        cplus_linux_syscall3(1, error_pipe[1], (long)&error_number, sizeof(error_number));
+#if defined(__x86_64__)
+        cplus_linux_syscall1(60, 127);
+#elif defined(__aarch64__)
+        cplus_linux_syscall1(93, 127);
+#endif
+        for (;;) { }
+    }
+
+    cplus_linux_syscall1(3, error_pipe[1]);
+    do {
+        result = cplus_linux_syscall3(0, error_pipe[0], (long)&child_error, sizeof(child_error));
+    } while (result == -4);
+    cplus_linux_syscall1(3, error_pipe[0]);
+    if (result == 0) return child;
+
+    if (result == (long)sizeof(child_error)) {
+        int ignored_status;
+        long waited;
+        do {
+            waited = cplus_linux_process_wait4(child, &ignored_status);
+        } while (waited == -4);
+        return cplus_normalize_linux_result(-(long)child_error);
+    }
+
+    {
+        int ignored_status;
+        long waited;
+        do {
+            waited = cplus_linux_process_wait4(child, &ignored_status);
+        } while (waited == -4);
+    }
+    return result < 0 ? cplus_normalize_linux_result(result) : CPLUS_PAL_IO_ERROR;
+}
+
+int platform_process_wait(long long process, int* exit_status) {
+    int status;
+    long result;
+    if (process <= 0 || !exit_status) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    do {
+        result = cplus_linux_process_wait4((long)process, &status);
+    } while (result == -4);
+    result = cplus_normalize_linux_result(result);
+    if (result < 0) return (int)result;
+    if ((status & 0x7f) == 0) *exit_status = (status >> 8) & 0xff;
+    else *exit_status = 128 + (status & 0x7f);
+    return 0;
 }
 
 long platform_write_stdout(const char* buffer, unsigned long length) {

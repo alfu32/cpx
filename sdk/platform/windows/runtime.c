@@ -1,5 +1,7 @@
 #include "cplus_platform.h"
 
+char** __cplus_environment;
+
 typedef void* __cplus_handle;
 typedef unsigned long __cplus_dword;
 typedef int __cplus_bool;
@@ -37,8 +39,35 @@ typedef struct __cplus_directory_iterator {
     int has_current;
     int finished;
 } __cplus_directory_iterator;
+typedef struct __cplus_startup_info_w {
+    __cplus_dword size;
+    unsigned short* reserved;
+    unsigned short* desktop;
+    unsigned short* title;
+    __cplus_dword x;
+    __cplus_dword y;
+    __cplus_dword x_size;
+    __cplus_dword y_size;
+    __cplus_dword x_count_chars;
+    __cplus_dword y_count_chars;
+    __cplus_dword fill_attribute;
+    __cplus_dword flags;
+    unsigned short show_window;
+    unsigned short reserved_size;
+    unsigned char* reserved_data;
+    __cplus_handle standard_input;
+    __cplus_handle standard_output;
+    __cplus_handle standard_error;
+} __cplus_startup_info_w;
+typedef struct __cplus_process_information {
+    __cplus_handle process;
+    __cplus_handle thread;
+    __cplus_dword process_id;
+    __cplus_dword thread_id;
+} __cplus_process_information;
 
 __declspec(dllimport) __cplus_handle __stdcall GetStdHandle(__cplus_dword kind);
+__declspec(dllimport) __cplus_dword __stdcall GetCurrentProcessId(void);
 __declspec(dllimport) __cplus_handle __stdcall GetProcessHeap(void);
 __declspec(dllimport) void* __stdcall HeapAlloc(__cplus_handle heap, __cplus_dword flags, unsigned long long bytes);
 __declspec(dllimport) __cplus_bool __stdcall HeapFree(__cplus_handle heap, __cplus_dword flags, void* memory);
@@ -114,6 +143,20 @@ __declspec(dllimport) __cplus_bool __stdcall MoveFileExW(
     __cplus_dword flags
 );
 __declspec(dllimport) __cplus_dword __stdcall GetLastError(void);
+__declspec(dllimport) __cplus_bool __stdcall CreateProcessW(
+    const unsigned short* application_name,
+    unsigned short* command_line,
+    void* process_attributes,
+    void* thread_attributes,
+    __cplus_bool inherit_handles,
+    __cplus_dword creation_flags,
+    void* environment,
+    const unsigned short* current_directory,
+    __cplus_startup_info_w* startup_info,
+    __cplus_process_information* process_information
+);
+__declspec(dllimport) __cplus_dword __stdcall WaitForSingleObject(__cplus_handle handle, __cplus_dword milliseconds);
+__declspec(dllimport) __cplus_bool __stdcall GetExitCodeProcess(__cplus_handle process, __cplus_dword* exit_code);
 __declspec(dllimport) unsigned long long __stdcall GetTickCount64(void);
 __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(__cplus_dword code);
 
@@ -137,12 +180,17 @@ __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(__cplus_dw
 #define __CPLUS_MEM_RELEASE 0x8000UL
 #define __CPLUS_PAGE_READWRITE 4UL
 #define __CPLUS_INVALID_HANDLE ((void*)(-1))
+#define __CPLUS_STARTF_USESTDHANDLES 0x100UL
+#define __CPLUS_WAIT_OBJECT_0 0UL
+#define __CPLUS_INFINITE 0xffffffffUL
+#define __CPLUS_MAX_ARGUMENTS 4096
+#define __CPLUS_MAX_COMMAND_LINE 32767
 
 static long cplus_normalize_windows_error(void) {
     __cplus_dword error = GetLastError();
     if (error == 2 || error == 3) return CPLUS_PAL_NOT_FOUND;
     if (error == 5) return CPLUS_PAL_ACCESS_DENIED;
-    if (error == 87) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (error == 6 || error == 87) return CPLUS_PAL_INVALID_ARGUMENT;
     if (error == 1 || error == 50) return CPLUS_PAL_UNSUPPORTED;
     if (error == 1113) return CPLUS_PAL_UNSUPPORTED;
     return CPLUS_PAL_IO_ERROR;
@@ -156,7 +204,7 @@ static unsigned short* cplus_windows_path(const char* path) {
     unsigned short* result;
     if (!path) return (unsigned short*)0;
     length = MultiByteToWideChar(__CPLUS_CP_UTF8, __CPLUS_MB_ERR_INVALID_CHARS, path, -1, (unsigned short*)0, 0);
-    if (length <= 0) return (unsigned short*)0;
+    if (length <= 0 || length > __CPLUS_MAX_COMMAND_LINE) return (unsigned short*)0;
     heap = GetProcessHeap();
     if (!heap) return (unsigned short*)0;
     result = (unsigned short*)HeapAlloc(heap, 0, (unsigned long long)length * 2ULL);
@@ -174,6 +222,65 @@ static unsigned short* cplus_windows_path(const char* path) {
 
 static void cplus_windows_free_path(unsigned short* path) {
     if (path) HeapFree(GetProcessHeap(), 0, path);
+}
+
+static unsigned short* cplus_windows_utf8(const char* text) {
+    int length;
+    int converted;
+    unsigned short* result;
+    if (!text) return (unsigned short*)0;
+    length = MultiByteToWideChar(__CPLUS_CP_UTF8, __CPLUS_MB_ERR_INVALID_CHARS, text, -1, (unsigned short*)0, 0);
+    if (length <= 0 || length > __CPLUS_MAX_COMMAND_LINE) return (unsigned short*)0;
+    result = (unsigned short*)HeapAlloc(GetProcessHeap(), 0, (unsigned long long)length * 2ULL);
+    if (!result) return (unsigned short*)0;
+    converted = MultiByteToWideChar(__CPLUS_CP_UTF8, __CPLUS_MB_ERR_INVALID_CHARS, text, -1, result, length);
+    if (converted <= 0) {
+        HeapFree(GetProcessHeap(), 0, result);
+        return (unsigned short*)0;
+    }
+    return result;
+}
+
+static int cplus_windows_append_command_character(unsigned short* command, int* length, unsigned short value) {
+    if (*length >= __CPLUS_MAX_COMMAND_LINE - 1) return 0;
+    command[(*length)++] = value;
+    return 1;
+}
+
+static int cplus_windows_append_backslashes(unsigned short* command, int* length, unsigned int count) {
+    while (count-- > 0) {
+        if (!cplus_windows_append_command_character(command, length, (unsigned short)'\\')) return 0;
+    }
+    return 1;
+}
+
+static int cplus_windows_append_quoted_argument(unsigned short* command, int* length, const char* argument) {
+    unsigned short* wide = cplus_windows_utf8(argument);
+    int index = 0;
+    int success = 1;
+    if (!wide) return 0;
+    if (*length > 0) success = cplus_windows_append_command_character(command, length, (unsigned short)' ');
+    if (success) success = cplus_windows_append_command_character(command, length, (unsigned short)'"');
+    while (success && wide[index] != 0) {
+        unsigned int backslashes = 0;
+        while (wide[index] == (unsigned short)'\\') {
+            backslashes++;
+            index++;
+        }
+        if (wide[index] == (unsigned short)'"') {
+            success = cplus_windows_append_backslashes(command, length, backslashes * 2U + 1U);
+            if (success) success = cplus_windows_append_command_character(command, length, (unsigned short)'"');
+            index++;
+        } else if (wide[index] == 0) {
+            success = cplus_windows_append_backslashes(command, length, backslashes * 2U);
+        } else {
+            success = cplus_windows_append_backslashes(command, length, backslashes);
+            if (success) success = cplus_windows_append_command_character(command, length, wide[index++]);
+        }
+    }
+    if (success) success = cplus_windows_append_command_character(command, length, (unsigned short)'"');
+    cplus_windows_free_path(wide);
+    return success;
 }
 
 static unsigned short* cplus_windows_directory_pattern(const char* path) {
@@ -498,6 +605,102 @@ int platform_file_rename(const char* source, const char* target) {
 int platform_process_exit(int status) {
     ExitProcess((__cplus_dword)status);
     return status;
+}
+
+long long platform_process_id(void) {
+    return (long long)GetCurrentProcessId();
+}
+
+long long platform_process_spawn(const char* executable, const char* const* arguments) {
+    unsigned short* wide_executable;
+    unsigned short* command_line;
+    int command_length = 0;
+    unsigned int argument_count = 0;
+    __cplus_startup_info_w startup_info;
+    __cplus_process_information process_information;
+    int error;
+    if (!executable || executable[0] == '\0' || (arguments && !arguments[0])) {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
+    wide_executable = cplus_windows_path(executable);
+    if (!wide_executable) return CPLUS_PAL_INVALID_ARGUMENT;
+    command_line = (unsigned short*)HeapAlloc(
+        GetProcessHeap(), 0, (unsigned long long)__CPLUS_MAX_COMMAND_LINE * 2ULL);
+    if (!command_line) {
+        cplus_windows_free_path(wide_executable);
+        return CPLUS_PAL_IO_ERROR;
+    }
+    if (!arguments) {
+        if (!cplus_windows_append_quoted_argument(command_line, &command_length, executable)) {
+            cplus_windows_free_path(command_line);
+            cplus_windows_free_path(wide_executable);
+            return CPLUS_PAL_INVALID_ARGUMENT;
+        }
+    } else {
+        while (arguments[argument_count]) {
+            if (argument_count >= __CPLUS_MAX_ARGUMENTS ||
+                !cplus_windows_append_quoted_argument(command_line, &command_length, arguments[argument_count])) {
+                cplus_windows_free_path(command_line);
+                cplus_windows_free_path(wide_executable);
+                return CPLUS_PAL_INVALID_ARGUMENT;
+            }
+            argument_count++;
+        }
+    }
+    command_line[command_length] = 0;
+    startup_info.size = sizeof(startup_info);
+    startup_info.reserved = (unsigned short*)0;
+    startup_info.desktop = (unsigned short*)0;
+    startup_info.title = (unsigned short*)0;
+    startup_info.x = 0;
+    startup_info.y = 0;
+    startup_info.x_size = 0;
+    startup_info.y_size = 0;
+    startup_info.x_count_chars = 0;
+    startup_info.y_count_chars = 0;
+    startup_info.fill_attribute = 0;
+    startup_info.flags = __CPLUS_STARTF_USESTDHANDLES;
+    startup_info.show_window = 0;
+    startup_info.reserved_size = 0;
+    startup_info.reserved_data = (unsigned char*)0;
+    startup_info.standard_input = GetStdHandle((__cplus_dword)-10);
+    startup_info.standard_output = GetStdHandle((__cplus_dword)-11);
+    startup_info.standard_error = GetStdHandle((__cplus_dword)-12);
+    if (!CreateProcessW(
+            wide_executable,
+            command_line,
+            (void*)0,
+            (void*)0,
+            1,
+            0,
+            (void*)0,
+            (const unsigned short*)0,
+            &startup_info,
+            &process_information)) {
+        error = (int)cplus_normalize_windows_error();
+        cplus_windows_free_path(command_line);
+        cplus_windows_free_path(wide_executable);
+        return error;
+    }
+    CloseHandle(process_information.thread);
+    cplus_windows_free_path(command_line);
+    cplus_windows_free_path(wide_executable);
+    return (long long)process_information.process;
+}
+
+int platform_process_wait(long long process, int* exit_status) {
+    __cplus_handle process_handle = (__cplus_handle)process;
+    __cplus_dword wait_result;
+    __cplus_dword status;
+    if (process <= 0 || process_handle == __CPLUS_INVALID_HANDLE || !exit_status) {
+        return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    }
+    wait_result = WaitForSingleObject(process_handle, __CPLUS_INFINITE);
+    if (wait_result != __CPLUS_WAIT_OBJECT_0) return (int)cplus_normalize_windows_error();
+    if (!GetExitCodeProcess(process_handle, &status)) return (int)cplus_normalize_windows_error();
+    if (!CloseHandle(process_handle)) return (int)cplus_normalize_windows_error();
+    *exit_status = (int)status;
+    return 0;
 }
 
 long long platform_clock_ticks(void) {
