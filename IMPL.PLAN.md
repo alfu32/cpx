@@ -4591,7 +4591,7 @@ dependencies.
   **Progress evidence, not completion:** `NativeStdTest` now checks overlap in
   both directions and same-address `std_mem_move`, null-backed span lookup,
   target-sized values, and the byte/text/value operations under each available
-  GCC and Clang compiler with signed-overflow sanitization. `std_mem_move`
+  GCC and Clang compiler with undefined-behavior sanitization. `std_mem_move`
   compares integerized addresses instead of applying undefined relational
   pointer comparison to unrelated objects; read-only memory/string/text
   inputs now use `const`. The span contract now explicitly makes null-backed
@@ -5263,7 +5263,7 @@ does not change completion status or dashboard counts.
 The complete host-side generated-C fixture now also links and runs through
 `LinkDriver` and the self-hosted runtime with each available GCC/Clang driver;
 each product passes `RuntimeDependencyAuditor`. The sanitizer-backed hosted
-compiler runs remain additional signed-overflow checks, not evidence for
+compiler runs use the undefined-behavior sanitizer, not evidence for
 host-independent linking. The fixture exercises both error/result paths,
 present/absent options, empty and reversed ranges/slices/spans, string
 equality/copy/append, text empty/prefix queries, and unsigned-byte memory
@@ -5277,7 +5277,7 @@ length also used a potentially overflowing signed subtraction. Commit
 without signed overflow. `NativeStdPublicSurfaceTest` compiles explicit imports
 and checks field layouts for Linux and Windows target descriptors;
 `NativeStdTest` executes ranges crossing zero and the full signed endpoint
-range under signed-overflow sanitization. Focused tests and the full Gradle
+range under undefined-behavior sanitization. Focused tests and the full Gradle
 build pass. This is subtask progress only; R5.1 remains open and its dashboard
 count is unchanged.
 

@@ -82,8 +82,8 @@ class NativeStdTest {
             compilers.forEach { compiler ->
                 val executable = directory.resolve("native_std_${compiler.replace('/', '_')}")
                 val compile = ProcessBuilder(
-                    compiler, "-std=c17", "-fsanitize=signed-integer-overflow",
-                    "-fno-sanitize-recover=signed-integer-overflow",
+                    compiler, "-std=c17", "-fsanitize=undefined",
+                    "-fno-sanitize-recover=all",
                     "-I", root.resolve("libc/include").toString(),
                     combined.toString(), "-o", executable.toString()
                 )
