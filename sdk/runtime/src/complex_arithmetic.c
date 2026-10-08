@@ -1,4 +1,5 @@
 #include <math.h>
+#include <complex.h>
 
 /*
  * GCC and Clang lower C complex multiplication/division to these compiler
@@ -79,6 +80,23 @@
         return __builtin_complex(real_part, imaginary_part); \
     }
 
+#define CPLUS_DEFINE_COMPLEX_COMPONENTS(suffix, real_type, complex_type, magnitude, argument, copy_sign, infinity) \
+    real_type creal##suffix(complex_type value) { return __real__ value; } \
+    real_type cimag##suffix(complex_type value) { return __imag__ value; } \
+    real_type cabs##suffix(complex_type value) { return magnitude(__real__ value, __imag__ value); } \
+    real_type carg##suffix(complex_type value) { return argument(__imag__ value, __real__ value); } \
+    complex_type conj##suffix(complex_type value) { \
+        return __builtin_complex(__real__ value, -__imag__ value); \
+    } \
+    complex_type cproj##suffix(complex_type value) { \
+        real_type real_part = __real__ value; \
+        real_type imaginary_part = __imag__ value; \
+        if (__builtin_isinf(real_part) || __builtin_isinf(imaginary_part)) { \
+            return __builtin_complex((real_type)(infinity), copy_sign((real_type)0, imaginary_part)); \
+        } \
+        return value; \
+    }
+
 CPLUS_DEFINE_COMPLEX_MULTIPLY(__mulsc3, float, float _Complex, __builtin_isnan, __builtin_isinf, copysignf, INFINITY)
 CPLUS_DEFINE_COMPLEX_MULTIPLY(__muldc3, double, double _Complex, __builtin_isnan, __builtin_isinf, copysign, HUGE_VAL)
 CPLUS_DEFINE_COMPLEX_MULTIPLY(__mulxc3, long double, long double _Complex, __builtin_isnan, __builtin_isinf, copysignl, HUGE_VALL)
@@ -90,5 +108,10 @@ CPLUS_DEFINE_COMPLEX_DIVIDE(__divdc3, double, double _Complex, __builtin_isnan, 
 CPLUS_DEFINE_COMPLEX_DIVIDE(__divxc3, long double, long double _Complex, __builtin_isnan, __builtin_isinf,
                             __builtin_isfinite, copysignl, fabsl, fmaxl, logbl, scalbnl, HUGE_VALL)
 
+CPLUS_DEFINE_COMPLEX_COMPONENTS(f, float, float _Complex, hypotf, atan2f, copysignf, INFINITY)
+CPLUS_DEFINE_COMPLEX_COMPONENTS(, double, double _Complex, hypot, atan2, copysign, HUGE_VAL)
+CPLUS_DEFINE_COMPLEX_COMPONENTS(l, long double, long double _Complex, hypotl, atan2l, copysignl, HUGE_VALL)
+
+#undef CPLUS_DEFINE_COMPLEX_COMPONENTS
 #undef CPLUS_DEFINE_COMPLEX_DIVIDE
 #undef CPLUS_DEFINE_COMPLEX_MULTIPLY
