@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    105/128 accepted with recorded evidence; 23 TODO
+Roadmap leaf tasks:    106/128 accepted with recorded evidence; 22 TODO
 Phase gates:           10/12 complete; 1 active; 1 queued
-Current task:          R10.1.2.2 — build a shared typed export inventory
+Current task:          R10.1.2.3 — invalidate discovery and compilation consistently
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -36,10 +36,10 @@ R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
 R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
-R10 [DOING] 8/19 import discovery, completion and quick fixes
+R10 [DOING] 9/19 import discovery, completion and quick fixes
 R11 [TODO]  0/12 compile-time extension methods
 
-TOTAL       105/128 implementation tasks accepted; 10/12 phase gates complete,
+TOTAL       106/128 implementation tasks accepted; 10/12 phase gates complete,
             1 active, 1 queued
 ```
 
@@ -49,7 +49,7 @@ R10 adds 19 terminal tasks and R11 adds 12, increasing the prior 97-task
 denominator to 128 without changing the accepted numerator. Their broader
 existing task IDs are retained as composites, not double-counted as leaves.
 The recorded Linux/Windows results above apply to the prior R0–R9 baseline, not
-these features. Six R10 leaves now have recorded Linux evidence; no R10/R11
+these features. Nine R10 leaves now have recorded Linux evidence; no R10/R11
 phase gate has passed.
 
 R9 adds four independently accepted distribution leaves to the prior 93-task
@@ -3783,7 +3783,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [10/12 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 105/128 accepted; R10.1 (8/10) active, R10 active, R11 queued
+Roadmap leaf tasks: 106/128 accepted; R10.1 (9/10) active, R10 active, R11 queued
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3795,7 +3795,7 @@ Roadmap leaf tasks: 105/128 accepted; R10.1 (8/10) active, R10 active, R11 queue
 [DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
-[DOING] R10 — import discovery, completion and quick fixes (8/19 leaves)
+[DOING] R10 — import discovery, completion and quick fixes (9/19 leaves)
 [TODO]  R11 — compile-time extension methods (0/12 leaves)
 ```
 
@@ -5893,17 +5893,17 @@ The installable distribution runs from an unrelated project directory without
 manual SDK configuration; an explicit JVM property selects a development SDK;
 the CLI help identifies the JVM option.
 
-## R10 [DOING] [8/19] Discoverable imports and editor fixes
+## R10 [DOING] [9/19] Discoverable imports and editor fixes
 
 **Language:** LS §21 Imports; §22 Importing C; §41.1 Import assistance.
 **Technical:** TS §28 C import architecture; §54.1 Discoverable imports.
 
-All R10.1.1 leaves are implemented; R10.1.2.1 is accepted. The implementation runbook is
+All R10.1.1 leaves and R10.1.2.1–R10.1.2.2 are accepted. The implementation runbook is
 [IMPL.HANDOFF.IMPORTS-TRAITS.md](IMPL.HANDOFF.IMPORTS-TRAITS.md).
 The existing R10/R11 IDs are retained as composites; only terminal children
 count. File paths using `...` are expanded in the runbook's repository map.
 
-### R10.1 [DOING] [8/10] Shared discovery foundations
+### R10.1 [DOING] [9/10] Shared discovery foundations
 
 **Language:** LS §21 Imports; §22 Importing C.
 **Technical:** TS §27 Import resolver; §28 C import architecture; §47 Incremental compilation model.
@@ -6092,7 +6092,7 @@ contains the provider include; an absent header member reports `SEM408`. The
 Existing C-source/link, math, complex, stdint, stdio, backend, and CLI tests pass.
 This is Linux-only evidence; native Windows execution remains in R10.3.2.3.
 
-#### R10.1.2 [DOING] [1/3] Shared module resolver and export index
+#### R10.1.2 [DOING] [2/3] Shared module resolver and export index
 
 **Language:** LS §21 Imports; §41.1 Import assistance.
 **Technical:** TS §27 Import resolver; §47 Incremental compilation model; §54.1 Discoverable imports.
@@ -6120,21 +6120,33 @@ module overlay, and exclusion of an unrelated `main` from the compile closure.
 No native Windows execution is claimed; platform acceptance remains assigned
 to R10.3.2.3.
 
-##### R10.1.2.2 [DOING] Build a shared typed export inventory
+##### R10.1.2.2 [DONE] Build a shared typed export inventory
 
 **Language:** LS §21.2 Import semantics; §22.2 Foreign symbols; §41.1 Import assistance.
 **Technical:** TS §30 Reference index; §54.1 Discoverable imports.
 
 **Depends:** R10.1.1.4, R10.1.2.1.
-**Files:** New `compiler/.../ImportIndex.kt`; `SdkMetadata.kt`; semantic export models; `cli/.../LspLanguageService.kt`.
+**Files:** New `compiler/.../ImportIndex.kt` and tests; existing `CHeaderImport.kt`, `CHeaderPreprocessor.kt`, and `ModuleSourceResolver.kt`.
 
-**Deliverable:** Immutable entries containing stable symbol identity, name/kind/signature/docs, provider/import reference, visibility, source URI/range, and configuration fingerprint. Index SDK, project/source-path, and supported C-header exports through shared parser/semantic results. Separate candidate inventory from imported lexical bindings.
+**Deliverable:** Immutable entries containing stable symbol identity, name/kind/signature/docs, provider/import reference, visibility, source URI/range, and configuration fingerprint. Discover SDK/project source exports through the shared parser and C exports by enumerating configured headers and running the selected target-aware preprocessor/declaration parser. Separate candidate inventory from imported lexical bindings.
 
 **Acceptance:** Public functions, values, enum constants, structures and typedefs appear with correct providers; private declarations do not. Ambiguous providers remain distinct; discovering a symbol never makes it visible without an import. Invalid/unsupported C declarations are not offered as callable functions. CPX-generated exports use validated expansion metadata, not regex guesses or executing arbitrary bodies during a scan.
 
 **Verify:** `gradle :compiler:test :cli:test` (new import-index fixtures).
 
-##### R10.1.2.3 [TODO] Invalidate discovery and compilation consistently
+**Evidence:** Linux, 2026-10-08 — `./gradlew :compiler:test :cli:test` passes.
+`ImportIndexTest` verifies public functions, values, enum constants, structures,
+fields and typedefs; private declarations are omitted. Provider identities
+preserve same-named exports from different modules. SDK `std.*` files and
+overlays are indexed without installing or writing into the SDK. Configured C
+header roots are enumerated rather than names hard-coded in CLI logic; a real
+`stdio.h` declaration (`printf`) is discovered with its header URI/range and
+signature. CPX-generated exports are accepted only from a validated expansion
+whose source fingerprint matches; scans never execute CPX invocations. The
+inventory is a candidate catalogue and does not change semantic bindings.
+Native Windows evidence remains assigned to R10.3.2.3.
+
+##### R10.1.2.3 [DOING] Invalidate discovery and compilation consistently
 
 **Language:** LS §39 Determinism; §41.1 Import assistance.
 **Technical:** TS §47 Incremental compilation model; §54.1 Discoverable imports; §62 Caching.

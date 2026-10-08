@@ -3,7 +3,7 @@
 ## Start here
 
 This is the active implementation runbook. The current leaf is tracked in
-`IMPL.PLAN.md` (currently `R10.1.2.2`); consult that file for status and evidence.
+`IMPL.PLAN.md` (currently `R10.1.2.3`); consult that file for status and evidence.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
@@ -14,8 +14,8 @@ The requested outcomes are:
 - Define direct extension methods using exactly
   `comptime trait type_identifier { ... }`.
 
-Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1
-resolver task are accepted; resume at **R10.1.2.2**, not by restarting the
+Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1–
+R10.1.2.2 discovery tasks are accepted; resume at **R10.1.2.3**, not by restarting the
 parser foundation or jumping ahead to the VS Code UI. Do not restart R0–R9 or
 rewrite the compiler.
 
@@ -251,8 +251,8 @@ Windows test. Their task dependencies permit this order.
 6. `R10.1.1.3.4` — Audit declaration coverage against the delivered SDK headers.
 7. `R10.1.1.4` — Bind discovered symbols and retire function whitelists.
 8. `R10.1.2.1` — Unify CLI and LSP source graph discovery. (Accepted.)
-9. `R10.1.2.2` — Build a shared typed export inventory. (Active.)
-10. `R10.1.2.3` — Invalidate discovery and compilation consistently.
+9. `R10.1.2.2` — Build a shared typed export inventory. (Accepted.)
+10. `R10.1.2.3` — Invalidate discovery and compilation consistently. (Active.)
 11. `R10.2.1.1` — Identify incomplete import contexts from shared tokens.
 12. `R10.2.1.2` — Serialize provider and export completion through JSON-RPC.
 13. `R10.2.2.1` — Implement one import-edit builder.
