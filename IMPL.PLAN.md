@@ -30,7 +30,7 @@ R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DONE]  6/6  Linux and native Windows primitive source-to-ABI evidence
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows family matrix pending
 R5 [DOING] 40/41 native std and platform-service leaf tasks evidenced
-R6 [DOING] 4/4  CLI transcoder/build-product leaves accepted; Windows gate pending
+R6 [DOING] 4/4  CLI leaves accepted; Windows fat-JAR smoke passes, product gate pending
 R7 [DOING] 3/3  Linux extension product accepted; Windows gate pending
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 
@@ -5477,8 +5477,12 @@ matrix reports platform services as `pass` rather than merely `planned`.
   `./gradlew build --no-daemon` pass. The packaged JAR passes
   `check examples/minimal.cp`; Windows-target `sdk doctor` and runtime-plan
   inspection pass; Linux `libc test` reports 51 pass, 0 fail, 0 unsupported,
-  and 0 planned. This is not Windows runtime execution or final product
-  validation. Commit: `95e18a0`.
+  and 0 planned. Native Windows VM validation now builds/loads the fat JAR,
+  checks `examples/minimal.cp`, builds and audits a Windows PE (only
+  `KERNEL32.dll` observed), and runs `examples/import_defer.cp` successfully
+  with the expected stdout and exit status. This is a product smoke test, not
+  the complete clean-checkout, target/profile, and release acceptance gate.
+  Commit: `95e18a0`.
 
 **Deliverables**
 
