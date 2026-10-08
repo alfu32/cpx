@@ -2498,6 +2498,15 @@ and the exponent is an odd integer, otherwise positive infinity. `hypot`
 SHALL return a nonnegative result, with infinity taking precedence over a NaN
 operand.
 
+The `exp`, `exp2`, and `expm1` families SHALL preserve their C17 special-value
+behavior; finite overflow and underflow-to-zero SHALL set `errno` to `ERANGE`.
+The `log`, `log10`, and `log2` families SHALL return negative infinity with
+`ERANGE` for zero and a quiet NaN with `EDOM` for negative nonzero inputs.
+`log1p` SHALL apply those pole/domain results at `-1` and values below `-1`,
+respectively, and SHALL preserve signed zero. `logb` SHALL return the binary
+exponent for finite nonzero inputs, positive infinity for either infinity,
+and negative infinity with `ERANGE` for zero.
+
 The SDK SHALL expose the supported real operations through `std.math` with
 explicit C+ declarations and types. It SHALL preserve the selected target's
 floating formats and ABI, including `long double`, and SHALL NOT silently

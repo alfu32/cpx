@@ -1129,6 +1129,155 @@ CPLUS_MATH_DEFINE_POW(
 
 #undef CPLUS_MATH_DEFINE_POW
 
+#define CPLUS_MATH_DEFINE_EXP_LOG_API( \
+    suffix, type, classifier, sign_value, frexp_value, truncate_value, ilogb_value, \
+    log_positive, exp_value, scale_value, maximum_exponent, minimum_subnormal_exponent) \
+    type exp##suffix(type value) { \
+        return exp_value(value); \
+    } \
+    type exp2##suffix(type value) { \
+        int kind = classifier(value); \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) return sign_value(value) ? (type)0 : (type)HUGE_VALL; \
+        if (value > (type)(maximum_exponent + 2)) { \
+            errno = ERANGE; \
+            return (type)HUGE_VALL; \
+        } \
+        if (value < (type)(minimum_subnormal_exponent - 2)) { \
+            errno = ERANGE; \
+            return (type)0; \
+        } \
+        if (truncate_value(value) == value) return scale_value((type)1, (long)value); \
+        return exp_value(value * (type)0x1.62e42fefa39ef35793c7673007e6p-1L); \
+    } \
+    type expm1##suffix(type value) { \
+        int kind = classifier(value); \
+        int iteration; \
+        type term; \
+        type sum; \
+        type magnitude; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) return sign_value(value) ? (type)-1 : value; \
+        if (value == (type)0) return value; \
+        if (value < (type)-80) return (type)-1; \
+        magnitude = value < (type)0 ? -value : value; \
+        if (magnitude < (type)0.5) { \
+            term = value; \
+            sum = value; \
+            for (iteration = 2; iteration <= 48; iteration++) { \
+                term *= value / (type)iteration; \
+                sum += term; \
+            } \
+            return sum; \
+        } \
+        return exp_value(value) - (type)1; \
+    } \
+    static type cplus_math_log_argument_##suffix(type value) { \
+        int kind = classifier(value); \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) { \
+            if (!sign_value(value)) return value; \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (kind == FP_ZERO) { \
+            errno = ERANGE; \
+            return (type)-HUGE_VALL; \
+        } \
+        if (sign_value(value)) { \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        return log_positive(value); \
+    } \
+    type log##suffix(type value) { \
+        return cplus_math_log_argument_##suffix(value); \
+    } \
+    type log10##suffix(type value) { \
+        if (classifier(value) == FP_NAN || classifier(value) == FP_ZERO || \
+            classifier(value) == FP_INFINITE || sign_value(value)) \
+            return cplus_math_log_argument_##suffix(value); \
+        return log_positive(value) / (type)0x1.26bb1bbb5551582dd4adac5705a6p+1L; \
+    } \
+    type log2##suffix(type value) { \
+        int exponent; \
+        type fraction; \
+        if (classifier(value) == FP_NAN || classifier(value) == FP_ZERO || \
+            classifier(value) == FP_INFINITE || sign_value(value)) \
+            return cplus_math_log_argument_##suffix(value); \
+        fraction = frexp_value(value, &exponent); \
+        if (fraction == (type)0.5) return (type)(exponent - 1); \
+        return log_positive(value) / (type)0x1.62e42fefa39ef35793c7673007e6p-1L; \
+    } \
+    type log1p##suffix(type value) { \
+        int kind = classifier(value); \
+        int iteration; \
+        type z; \
+        type z_squared; \
+        type term; \
+        type sum; \
+        type magnitude; \
+        if (kind == FP_NAN) return value; \
+        if (value == (type)-1) { \
+            errno = ERANGE; \
+            return (type)-HUGE_VALL; \
+        } \
+        if (value < (type)-1) { \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (kind == FP_INFINITE) return value; \
+        if (value == (type)0) return value; \
+        magnitude = value < (type)0 ? -value : value; \
+        if (magnitude >= (type)0.5) return cplus_math_log_argument_##suffix((type)1 + value); \
+        z = value / ((type)2 + value); \
+        z_squared = z * z; \
+        term = z; \
+        sum = z; \
+        for (iteration = 3; iteration <= 95; iteration += 2) { \
+            term *= z_squared; \
+            sum += term / (type)iteration; \
+        } \
+        return (type)2 * sum; \
+    } \
+    type logb##suffix(type value) { \
+        int kind = classifier(value); \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) return (type)HUGE_VALL; \
+        if (kind == FP_ZERO) { \
+            errno = ERANGE; \
+            return (type)-HUGE_VALL; \
+        } \
+        return (type)ilogb_value(value); \
+    }
+
+CPLUS_MATH_DEFINE_EXP_LOG_API(
+    f, float, cplus_math_classify_float, cplus_math_sign_float, frexpf,
+    cplus_math_truncate_float, ilogbf, cplus_math_log_positive_f, cplus_math_exp_f,
+    cplus_math_scale_float, 127, -149)
+CPLUS_MATH_DEFINE_EXP_LOG_API(
+    , double, cplus_math_classify_double, cplus_math_sign_double, frexp,
+    cplus_math_truncate_double, ilogb, cplus_math_log_positive_, cplus_math_exp_,
+    cplus_math_scale_double, 1023, -1074)
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+CPLUS_MATH_DEFINE_EXP_LOG_API(
+    l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double, frexpl,
+    cplus_math_truncate_long_double, ilogbl, cplus_math_log_positive_l, cplus_math_exp_l,
+    cplus_math_scale_long_double, 1023, -1074)
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+CPLUS_MATH_DEFINE_EXP_LOG_API(
+    l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double, frexpl,
+    cplus_math_truncate_long_double, ilogbl, cplus_math_log_positive_l, cplus_math_exp_l,
+    cplus_math_scale_long_double, 16383, -16445)
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+CPLUS_MATH_DEFINE_EXP_LOG_API(
+    l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double, frexpl,
+    cplus_math_truncate_long_double, ilogbl, cplus_math_log_positive_l, cplus_math_exp_l,
+    cplus_math_scale_long_double, 16383, -16494)
+#endif
+
+#undef CPLUS_MATH_DEFINE_EXP_LOG_API
+
 static void cplus_math_increment_magnitude(unsigned char* bytes, unsigned int sign_byte) {
     unsigned int index;
     for (index = 0; index < sign_byte; index++) {
