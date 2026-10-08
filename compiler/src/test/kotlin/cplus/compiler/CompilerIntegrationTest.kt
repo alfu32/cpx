@@ -172,6 +172,123 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun cpxGeneratedExtensionExecutesClosuresAndDeferWithExpansionSourceMaps() {
+        val directory = Files.createTempDirectory("cplus-trait-cpx-runtime")
+        val sourceText = """
+            import { puts } from c.stdio;
+            comptime cpx<decl> make(type T) {
+                return {
+                    struct box_{T}_t { T value; };
+                    comptime trait box_{T}_t {
+                        int read(self) {
+                            int offset = 2;
+                            int addOffset(int value) { return value + offset; }
+                            return addOffset(self.value);
+                        }
+                        char* display(self) { return "value=${'$'}{self.value}"; }
+                        void increment(self*) { defer self->value += 1; }
+                    }
+                };
+            }
+            make(int);
+            int main() {
+                box_int_t box;
+                box.value = 9;
+                int before = box.read();
+                box.increment();
+                puts(box.display());
+                return before + box.read();
+            }
+        """.trimIndent()
+        val sourcePath = directory.resolve("main.cp")
+        val result = CPlusCompiler().compileText(sourcePath, sourceText)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single()
+        assertEquals(1, generated.text.lines().count { it.trim() == "struct box_int_t {" }, generated.text)
+        val methodLine = generated.text.lines().indexOfFirst { it.contains("self->value") } + 1
+        assertTrue(methodLine > 0, generated.text)
+        val mapping = generated.mappingsForGeneratedLine(methodLine).firstOrNull { it.origin is Origin.Expansion }
+        assertNotNull(mapping, "generated trait body must retain expansion source mapping")
+        val expansion = mapping.origin as Origin.Expansion
+        assertEquals(sourcePath, result.artifacts.single().source.path)
+        assertTrue(expansion.definition.primaryRange != null)
+        assertTrue(expansion.invocation.primaryRange != null)
+
+        val cFile = directory.resolve("main.c").also { it.writeText(generated.text) }
+        val executable = directory.resolve("main")
+        val runtime = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
+            .parent!!.parent!!.resolve("runtime/src/format.c")
+        val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), runtime.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), compileOutput)
+
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = normalizeLineEndings(execution.inputStream.bufferedReader().readText())
+        assertEquals(23, execution.waitFor(), executionOutput)
+        assertTrue(executionOutput.startsWith("value=10\n"), executionOutput)
+    }
+
+    @Test
+    fun importedStructAliasesUnionAndEnumExtensionsExecuteAcrossModules() {
+        val directory = Files.createTempDirectory("cplus-trait-imported-receivers")
+        val types = directory.resolve("types.cp").also {
+            it.writeText(
+                """
+                    pub struct point_t { int value; };
+                    pub typedef point_t point_alias_t;
+                    pub union packet_t { int number; };
+                    pub enum status_t { ready = 1 };
+                """.trimIndent()
+            )
+        }
+        val extensions = directory.resolve("extensions.cp").also {
+            it.writeText(
+                """
+                    import {point_alias_t, packet_t, status_t} from types;
+                    pub comptime trait point_alias_t { int read(self) { return self.value; } }
+                    pub comptime trait packet_t { int readNumber(self) { return self.number; } }
+                    pub comptime trait status_t { int code(self) { return self; } }
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    import {point_alias_t as Point, packet_t, status_t} from types;
+                    import extensions;
+                    int main() {
+                        Point point;
+                        point.value = 4;
+                        packet_t packet;
+                        packet.number = 3;
+                        status_t state = ready;
+                        return point.read() + packet.readNumber() + state.code();
+                    }
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, extensions, types)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        val cFile = directory.resolve("program.c").also { it.writeText(generated) }
+        val executable = directory.resolve("program")
+        val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), compileOutput)
+
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(8, execution.waitFor(), executionOutput)
+    }
+
+    @Test
     fun externalCCompilerDiagnosticsMapGeneratedRangesAndRetainForeignLocations() {
         val directory = Files.createTempDirectory("cplus-c-diagnostics")
         val source = SourceRepository().let { repository ->

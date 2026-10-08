@@ -244,6 +244,7 @@ class CLowerer(
             trait.methods.mapNotNull { method ->
                 val registered = semantic.methodRegistry.allMethods.singleOrNull { candidate ->
                     candidate.isExtension && candidate.definingModule == activeModuleName &&
+                        candidate.symbol.name == method.name &&
                         candidate.symbol.origin.primaryRange == method.origin.primaryRange
                 }
                 if (registered == null) {

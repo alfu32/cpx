@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    124/129 accepted with recorded evidence; 5 TODO
+Roadmap leaf tasks:    125/129 accepted with recorded evidence; 4 TODO
 Phase gates:           11/13 complete; 2 active; 0 queued
-Current task:          R11.2.1.3 — verify the complete trait execution and provenance matrix
+Current task:          R11.2.2.1 — use visible extension symbols in language tooling
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -37,10 +37,10 @@ R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
 R10 [DOING] 18/19 import discovery, completion and quick fixes
-R11 [DOING] 8/12 compile-time extension methods
+R11 [DOING] 9/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 
-TOTAL       124/129 implementation tasks accepted; 11/13 phase gates complete,
+TOTAL       125/129 implementation tasks accepted; 11/13 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3785,9 +3785,9 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [11/13 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 124/129 accepted; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 125/129 accepted; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (2/3) accepted/in progress;
-                     R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (2/3); R10 and R11 active, R12 accepted
+                     R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3); R10 and R11 active, R12 accepted
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3800,7 +3800,7 @@ Roadmap leaf tasks: 124/129 accepted; R10.1 (10/10), R10.2 (4/4),
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
 [DOING] R10 — import discovery, completion and quick fixes (18/19 leaves)
-[DOING] R11 — compile-time extension methods (8/12 leaves)
+[DOING] R11 — compile-time extension methods (9/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 ```
 
@@ -6363,7 +6363,7 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle test :cli:fatJar :cli:installDist`; extension checks/host tests; native Windows equivalents at the final platform pass.
 
-## R11 [DOING] [8/12] Compile-time extension methods
+## R11 [DOING] [9/12] Compile-time extension methods
 
 **Language:** LS §6.3.1 Compile-time extension methods; §21 Imports.
 **Technical:** TS §13.1 Compile-time traits; §33 Method lowering; §54 Completion.
@@ -6479,12 +6479,12 @@ that subsequently passes `cplus check`.
 
 **Evidence:** `./gradlew :semantic:test :compiler:test :cli:test --no-daemon` passes after updating the AST-inspection assertion to expect successful semantic acceptance of the now-supported trait declaration. `TraitImportVisibilityTest` verifies direct selective/module/aliased activation without free-function bindings, hidden private/unimported/transitive extensions (including cycles), deterministic imported-provider ambiguity for canonical-identical receivers through typedef aliases, local native/field/duplicate conflicts, and rejection of public extension targets/signatures that expose private types. The model exposes only directly imported modules, and calls resolve only a single visible candidate; ambiguity records no winner. CLI AST inspection continues to keep trait methods grouped with their bodies. R11.2 owns C emission and editor navigation.
 
-### R11.2 [DOING] [2/6] C lowering and editor/product acceptance
+### R11.2 [DOING] [3/6] C lowering and editor/product acceptance
 
 **Language:** LS §6.3.1 Compile-time extension methods; §28 Source provenance; §30 Lowering model; §41 Language-server model.
 **Technical:** TS §33 Method lowering; §41 C symbol naming; §54 Completion; §63 Testing architecture.
 
-#### R11.2.1 [DOING] [2/3] Lower and execute extension methods
+#### R11.2.1 [DONE] [3/3] Lower and execute extension methods
 
 **Language:** LS §6.3.1 Compile-time extension methods; §30 Lowering model; §31 Final C-subset validation.
 **Technical:** TS §33 Method lowering; §41 C symbol naming; §43 Source-map builder.
@@ -6521,7 +6521,7 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle :c-backend:test :compiler:test` plus native compile/execute receiver fixtures.
 
-##### R11.2.1.3 [TODO] Verify the complete trait execution and provenance matrix
+##### R11.2.1.3 [DONE] Verify the complete trait execution and provenance matrix
 
 **Language:** LS §6.3.1 Compile-time extension methods; §28 Source provenance; §29 CPX and source provenance.
 **Technical:** TS §33 Method lowering; §43 Source-map builder; §63 Testing architecture.
@@ -6534,6 +6534,8 @@ that subsequently passes `cplus check`.
 **Acceptance:** Native C products produce asserted results, not just nonempty output. An error in a trait method maps to its real method declaration/expansion origin. Before/after layout checks match. Cross-module and closure/defer/string-template trait bodies execute correctly. Unsupported cases retain stable diagnostics.
 
 **Verify:** `gradle :comptime:test :semantic:test :c-backend:test :compiler:test :cli:test` with native fixture execution.
+
+**Evidence:** `./gradlew :comptime:test :semantic:test :c-backend:test :compiler:test :cli:test --no-daemon` passes. Native generated-C fixtures execute imported struct typedef-alias, union, and enum extensions across modules; primitive and aggregate/pointer receiver runtime behavior; and CPX-generated extension bodies containing a captured closure, `defer`, and string-template formatting. The CPX fixture asserts one unchanged aggregate definition, successful runtime results, and generated-line mappings whose `Origin.Expansion` retains both definition and invocation ranges. Private/invalid receiver and unsupported target diagnostics remain covered by semantic tests. Platform-specific native Windows execution remains in the final product gate.
 
 #### R11.2.2 [TODO] [0/3] Expose and release extension methods
 
