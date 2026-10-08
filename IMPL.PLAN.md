@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    51/72 accepted with recorded evidence
+Roadmap leaf tasks:    52/72 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.3.1 — implement std.thread façade
+Current task:          R5.4.3.2 — implement typed std.sync wrappers
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 19/28 native std and platform-service work remains open
+R5 [DOING] 20/28 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       51/72 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       52/72 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -85,10 +85,16 @@ and the full Gradle build passes. Commit `cc436ca` brings the numerator to
 51/70. Windows runtime execution remains deferred and is not claimed.
 
 R5.4.3 was decomposed into independently testable thread, synchronization,
-and atomic API leaves. This increases the roadmap denominator from 70 to 72
-without adding completion credit; R5 remains 19/28. R5.4.3.1 is the active
-task. Its acceptance evidence must exercise the public C+ façade, not just the
-existing PAL thread tests. Windows runtime execution remains deferred.
+and atomic API leaves. This increased the roadmap denominator from 70 to 72
+without adding completion credit; at decomposition R5 remained 19/28.
+R5.4.3.1 then passed a compiled C+ caller test for create/join, callback result
+and thread identity, yield, invalid handles, and nullable join results; the
+linked Linux executable has no unresolved host-runtime symbols. Public
+declarations and 64-bit handle layout passed all four target descriptor checks,
+strict warning-as-error C17 source checks passed on Linux/Windows x86_64 and
+AArch64, and the full Gradle build passed. Commit `25d2da6` brings the numerator
+to 52/72 and R5 to 20/28. Windows runtime execution remains deferred. The
+current task is R5.4.3.2.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -4354,15 +4360,19 @@ dependencies.
         Windows x86_64/AArch64 descriptors. Strict warning-as-error C17 source
         checks and the full Gradle build pass. Windows runtime execution remains
         deferred.
-  - R5.4.3 [DOING] [0/3] — implement public thread, synchronization, and atomic
+  - R5.4.3 [DOING] [1/3] — implement public thread, synchronization, and atomic
     APIs over the existing PAL services;
-    - R5.4.3.1 [DOING] — implement the `std.thread` façade for thread creation,
+    - R5.4.3.1 [DONE] — implement the `std.thread` façade for thread creation,
       joining, current-thread identity, and yielding with opaque handles;
-      - **Acceptance evidence:** a C+ caller creates and joins a worker, checks
-        its returned context and current-thread identity, exercises yield and
-        invalid arguments, and links without unresolved host symbols. Public
-        declarations and handle ABI are checked for Linux/Windows x86_64 and
-        AArch64 descriptors. Windows runtime execution remains deferred.
+      - **Acceptance evidence:** `RuntimeStdThreadTest` compiles and executes a
+        C+ caller that creates and joins workers, validates callback result,
+        distinct positive parent/worker identities, yield, invalid handles, and
+        the optional null result pointer. The linked Linux executable has no
+        unresolved host-runtime symbols. Public declarations and 64-bit handle
+        ABI checks pass for Linux/Windows x86_64 and AArch64 descriptors;
+        warning-as-error C17 checks pass for the forwarding source on all four
+        targets; the full Gradle build passes. Windows runtime execution remains
+        deferred.
     - R5.4.3.2 [TODO] — implement typed `std.sync` mutex, condition, semaphore,
       and once wrappers over PAL synchronization state;
       - **Acceptance evidence:** C+ execution covers uncontended and contended
