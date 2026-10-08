@@ -1,4 +1,5 @@
 /* Expose the executable's PT_TLS template to the freestanding PAL adapter. */
+EXTERN(__cplus_tls_data_anchor)
 SECTIONS
 {
   .cplus_tls_metadata (INFO) :

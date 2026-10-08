@@ -1,6 +1,8 @@
 package cplus.compiler
 
+import java.io.File
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 
 enum class CCompilerKind { GCC, CLANG, CLANG_CL, MSVC, TCC, UNKNOWN }
@@ -71,6 +73,32 @@ object CCompilerToolchains {
             return listOf("--target=aarch64-unknown-linux-gnu")
         }
         return emptyList()
+    }
+
+    fun targetLinkerFlags(target: TargetInfo, compiler: String): List<String> {
+        if (target.targetTriple != "linux-aarch64" || classify(compiler).kind != CCompilerKind.CLANG) return emptyList()
+        val searchPaths = buildList {
+            runCatching { Path.of(compiler).toAbsolutePath().normalize().parent }.getOrNull()?.let(::add)
+            addAll(System.getenv("PATH").orEmpty().split(File.pathSeparator).filter(String::isNotBlank).map(Path::of))
+        }.distinct()
+        return listOfNotNull(discoverLldDriverFlag(searchPaths))
+    }
+
+    internal fun discoverLldDriverFlag(searchPaths: List<Path>): String? {
+        if (searchPaths.any { Files.isExecutable(it.resolve("ld.lld")) }) return "-fuse-ld=lld"
+
+        val versionedLinkers = searchPaths.flatMap { directory ->
+            runCatching {
+                Files.newDirectoryStream(directory, "ld.lld-*").use { entries ->
+                    entries.mapNotNull { path ->
+                        val name = path.fileName.toString()
+                        val version = name.removePrefix("ld.lld-").toIntOrNull()
+                        version?.takeIf { Files.isExecutable(path) }
+                    }.toList()
+                }
+            }.getOrDefault(emptyList())
+        }
+        return versionedLinkers.maxOrNull()?.let { "-fuse-ld=lld-$it" }
     }
 
     fun targetAbiFlags(target: TargetAbiDescriptor, compiler: String): List<String> {

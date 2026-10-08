@@ -1,11 +1,32 @@
 package cplus.compiler
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.nio.file.Files
 
 class LinkDriverTest {
+    @Test
+    fun discoversHighestVersionedLldFromCompilerSearchPath() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val directory = Files.createTempDirectory("cplus-lld-discovery")
+        val older = Files.createFile(directory.resolve("ld.lld-17"))
+        val newer = Files.createFile(directory.resolve("ld.lld-18"))
+        assertTrue(older.toFile().setExecutable(true))
+        assertTrue(newer.toFile().setExecutable(true))
+
+        try {
+            assertEquals("-fuse-ld=lld-18", CCompilerToolchains.discoverLldDriverFlag(listOf(directory)))
+            assertEquals(null, CCompilerToolchains.discoverLldDriverFlag(emptyList()))
+        } finally {
+            Files.deleteIfExists(older)
+            Files.deleteIfExists(newer)
+            Files.deleteIfExists(directory)
+        }
+    }
+
     @Test
     fun windowsGnuInvocationUsesOnlyTargetRuntimeAndOsImports() {
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)

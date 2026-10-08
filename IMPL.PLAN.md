@@ -5401,17 +5401,22 @@ hard-coded CLI path.
   Clang strict C17 syntax checks passed for every `sdk/runtime/src/*.c` file
   and Linux PAL C source; both AArch64 startup and thread assembly files also
   assemble. The check exposed and removed an unused private formatter helper
-  that failed `-Werror`. This is source/assembly validation only: no AArch64
-  cross-linker or emulator is available here, so no AArch64 product execution
-  is claimed. The Linux fat JAR also built and ran
-  `examples/module_main.cp` with `Result: 12` and exit status 0;
-  `examples/minimal.cp` returned its program exit status 3. That run exposed
-  a missing GNU-stack note in the x86_64 setjmp assembly, now fixed; the rerun
-  linked without the executable-stack warning. Windows testing and patching
-  remain deferred; the last MinGW full-runtime link evidence reports
-  unresolved `__emutls_get_address`, `WaitOnAddress`, `WakeByAddressSingle`,
-  and `WakeByAddressAll` symbols. R8.3 remains open and receives no completion
-  credit.
+  that failed `-Werror`. The CLI/LinkDriver now discovers versioned LLD
+  executables for Clang/Linux-AArch64 linking. The actual CLI built
+  `examples/module_main.cp` as a static AArch64 ELF product; `readelf` reports
+  ELF64/AArch64, `nm -u` is empty, and no dynamic section is present. Its
+  `PT_TLS` segment has a one-byte initialized image, eight-byte memory image,
+  and four-byte alignment, matching the emitted TLS metadata symbols. This
+  exposed that `--gc-sections` could remove an empty `.tdata` section required
+  by the TLS linker script; Linux startup now retains a minimal initialized
+  TLS anchor. Linux x86_64 TLS/C17 regression tests and a fresh module run
+  (`Result: 12`, exit 0) pass after that change. AArch64 execution remains
+  unverified because no emulator is available. The prior x86_64 CLI run also
+  exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows
+  testing and patching remain deferred; the last MinGW full-runtime link
+  evidence reports unresolved `__emutls_get_address`, `WaitOnAddress`,
+  `WakeByAddressSingle`, and `WakeByAddressAll` symbols. R8.3 remains open and
+  receives no completion credit.
 - R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
   builds, documented examples, and upgrade/ABI compatibility rules.
 

@@ -65,7 +65,8 @@ object LinkDriver {
         }
         val sectionLinkerFlags = sectionGarbageCollectionFlags(request, plan, compiler)
         return listOf(compiler, "-std=${request.target.cDialect}") +
-            CCompilerToolchains.targetFlags(request.target, compiler) + targetAbiFlags(request, compiler) +
+            CCompilerToolchains.targetFlags(request.target, compiler) +
+            CCompilerToolchains.targetLinkerFlags(request.target, compiler) + targetAbiFlags(request, compiler) +
             sectionFlags + plan.compilerFlags + includes +
             listOf(request.generatedSource.toString()) +
             plan.runtimeSources.map(Path::toString) +

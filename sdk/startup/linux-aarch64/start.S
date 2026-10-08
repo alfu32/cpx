@@ -17,3 +17,7 @@ _start:
     bl platform_process_exit
     b .
 .size _start, .-_start
+.section .tdata,"awT",%progbits
+.globl __cplus_tls_data_anchor
+__cplus_tls_data_anchor:
+.byte 0

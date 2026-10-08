@@ -2993,6 +2993,12 @@ thread attachment before calling its entry function. Windows uses
 performs the same runtime attachment before user code. Thread-control and stack
 storage use the PAL page allocator and are released by join.
 
+Linux startup contributes a one-byte initialized TLS anchor so the linker
+retains `.tdata` even when the program's TLS variables are all zero-initialized
+and section garbage collection is enabled. The TLS metadata script roots this
+anchor and derives the initialized image bounds and alignment from `.tdata`
+and `.tbss`; the runtime copies the anchor along with the rest of the image.
+
 The target-independent `sdk/runtime/src/thread.c` façade implements the public
 `std.thread` create/join/current-identity/yield declarations by forwarding to
 the version-4 PAL. It preserves the 64-bit opaque handle and stable status
