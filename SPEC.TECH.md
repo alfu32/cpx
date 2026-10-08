@@ -2862,8 +2862,11 @@ confused with a child exit code. Windows uses `CreateProcessW`, converts
 UTF-8 arguments to UTF-16, applies the Windows argument-quoting rules, inherits
 the process environment and standard handles, and closes the process handle
 after a successful wait. Neither adapter delegates process creation or
-waiting to an installed host libc. The selected runtime link plan includes
-the common process startup state and exactly one target adapter.
+waiting to an installed host libc. The target-independent `process.c` façade
+forwards identity, argument/environment views, spawn/wait/exit, and
+standard-channel operations while preserving PAL errors and borrowed-storage
+rules. `RuntimeLinker` includes this façade, the common process startup state,
+and exactly one target adapter.
 
 The version-4 PAL time adapter exposes separate UTC wall, steady monotonic,
 and current process CPU clocks as checked signed 64-bit nanoseconds. Linux uses

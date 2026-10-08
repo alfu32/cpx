@@ -872,7 +872,7 @@ class Parser(private val lexed: LexedSource) {
     }
 
     private fun looksLikeInnerFunction(): Boolean {
-        if (peek(1).isLexeme(".") || peek(1).isLexeme("->")) return false
+        if (peek(1).isLexeme(".") || peek(1).isLexeme("->") || peek(1).isLexeme("=")) return false
         val typeEnd = when {
             peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum") -> 2
             peek().lexeme in primitiveTypes || peek().lexeme in typeQualifiers -> 1

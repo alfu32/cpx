@@ -79,6 +79,15 @@ class AstGoldenTest {
     }
 
     @Test
+    fun parserKeepsAssignmentFromFunctionCallAsExpression() {
+        val text = "int identity(int value) { return value; } int main() { int result; result = identity(7); return result; }"
+        val source = SourceFile(SourceFileId(40), Path.of("function-call-assignment.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+    }
+
+    @Test
     fun parserConsumesFourTokenIntegerSpecifierAndRejectsConflictingSigns() {
         val text = "unsigned long long int count; unsigned signed int invalid;"
         val source = SourceFile(SourceFileId(12), Path.of("integer-specifier-errors.cp"), text, 1)

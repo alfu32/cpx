@@ -830,6 +830,29 @@ standard streams
 
 OS-specific process creation is implemented by the PAL.
 
+The target-independent native façade SHALL expose the same operations without
+publishing an OS process type:
+
+```c
+long long std_process_id(void);
+unsigned long long std_process_argument_count(void);
+const char* std_process_argument(unsigned long long index);
+const char* const* std_process_environment(void);
+long long std_process_spawn(const char* executable, const char* const* arguments);
+int std_process_wait(long long process, int* exit_status);
+int std_process_exit(int status);
+long long std_process_stdin_read(void* buffer, unsigned long long capacity);
+long long std_process_stdout_write(const char* buffer, unsigned long long length);
+long long std_process_stderr_write(const char* buffer, unsigned long long length);
+```
+
+These entry points SHALL forward to the corresponding PAL operations without
+retaining argument, environment, or I/O buffers, and SHALL preserve PAL return
+values and borrowed-view lifetimes. The process ID SHALL be positive on
+success. Standard-channel operations SHALL use the same byte counts and stable
+negative PAL errors as the underlying PAL; a zero-length operation SHALL
+preserve the PAL's zero-length behavior.
+
 The process PAL SHALL expose process identity, spawn, wait, and termination
 through the uniform C ABI:
 
