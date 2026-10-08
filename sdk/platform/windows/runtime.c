@@ -100,6 +100,7 @@ __declspec(dllimport) __cplus_bool __stdcall WaitOnAddress(
     __cplus_dword milliseconds);
 __declspec(dllimport) void __stdcall WakeByAddressSingle(void* address);
 __declspec(dllimport) void __stdcall WakeByAddressAll(void* address);
+void __cplus_windows_network_cleanup(void);
 __declspec(dllimport) unsigned short* __stdcall GetCommandLineW(void);
 __declspec(dllimport) unsigned short* __stdcall GetEnvironmentStringsW(void);
 __declspec(dllimport) __cplus_bool __stdcall FreeEnvironmentStringsW(unsigned short* environment);
@@ -842,6 +843,7 @@ int platform_file_rename(const char* source, const char* target) {
 }
 
 int platform_process_exit(int status) {
+    __cplus_windows_network_cleanup();
     ExitProcess((__cplus_dword)status);
     return status;
 }

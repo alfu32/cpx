@@ -2901,10 +2901,15 @@ architecture's direct socket syscalls, setting close-on-exec on created and
 accepted descriptors. Windows adapters translate it to Winsock structures and
 resolve Winsock entry points from `ws2_32.dll` on first use through the already
 required kernel API; the executable's PE import table therefore does not gain
-an unconditional `ws2_32` dependency. Both adapters expose blocking lifecycle,
-TCP stream, UDP datagram, local/peer address, and shutdown operations with
-stable PAL error results. The subsequent address/DNS stage adds text
-conversion and name resolution above this binary transport ABI.
+an unconditional `ws2_32` dependency. Windows initialization SHALL be
+thread-safe and process-wide, load the system copy of `ws2_32.dll`, request
+Winsock 2.2, and cache only stable PAL status values. A successful startup SHALL
+be balanced by `WSACleanup` during process termination. The runtime linker
+includes the Windows socket adapter only for Windows targets. Both adapters
+expose blocking lifecycle, TCP stream, UDP datagram, local/peer address, and
+shutdown operations with stable PAL error results. The subsequent address/DNS
+stage adds text conversion and name resolution above this binary transport
+ABI.
 
 The C backend's ABI gate includes an independently compiled C17 caller fixture.
 The fixture MUST consume the generated public header and link against generated

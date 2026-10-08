@@ -25,7 +25,7 @@ object PlatformAbiRegistry {
             descriptor.startupEntry,
             descriptor.systemLibraries,
             "declared-dll",
-            setOf("memory", "file", "process", "sync")
+            setOf("memory", "file", "process", "sync", "socket-transport")
         )
         "darwin" -> PlatformAbiProfile(
             descriptor.targetTriple,

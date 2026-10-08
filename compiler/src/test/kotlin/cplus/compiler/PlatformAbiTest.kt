@@ -19,7 +19,7 @@ class PlatformAbiTest {
     }
 
     @Test
-    fun catalogsLinuxSocketSyscallsByTargetAndDoesNotAdvertiseUnimplementedWindowsSockets() {
+    fun catalogsLinuxSocketSyscallsAndAdvertisesImplementedWindowsSocketTransport() {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val expected = mapOf(
             "linux-x86_64" to mapOf(
@@ -42,6 +42,6 @@ class PlatformAbiTest {
             assertTrue("socket-transport" in PlatformAbiRegistry.profile(descriptor).supportedServices)
         }
         val windows = requireNotNull(TargetRegistry.load(root.resolve("abi/windows-x86_64.toml")).descriptor)
-        assertTrue("socket-transport" !in PlatformAbiRegistry.profile(windows).supportedServices)
+        assertTrue("socket-transport" in PlatformAbiRegistry.profile(windows).supportedServices)
     }
 }

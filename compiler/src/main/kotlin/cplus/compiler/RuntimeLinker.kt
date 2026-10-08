@@ -86,12 +86,22 @@ object RuntimeLinker {
                 } else {
                     emptyList()
                 }
+                val platformNetworkRuntime = if (descriptor.os == "windows") {
+                    listOf(resolution.layout.platformSource.resolve("network.c"))
+                } else {
+                    emptyList()
+                }
                 val threadTlsScript = if (descriptor.os == "linux") {
                     listOf(resolution.layout.platformSource.resolve("thread-tls.ld"))
                 } else {
                     emptyList()
                 }
-                val missing = (listOf(startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, synchronization, platformRuntime) + setjmp + threadStartup + threadTlsScript).filterNot(Files::isRegularFile)
+                val commonRuntime = listOf(
+                    startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time,
+                    math, ctype, locale, signal, wide, wctype, filesystem, synchronization, platformRuntime
+                )
+                val missing = (commonRuntime + setjmp + threadStartup + platformNetworkRuntime + threadTlsScript)
+                    .filterNot(Files::isRegularFile)
                 if (missing.isNotEmpty()) {
                     RuntimeLinkPlanResult(
                         null,
@@ -109,7 +119,7 @@ object RuntimeLinker {
                         RuntimeLinkPlan(
                             target.buildProfile.runtime,
                             listOf(startup),
-                            listOf(runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, synchronization, platformRuntime) + setjmp + threadStartup,
+                            commonRuntime.drop(1) + setjmp + threadStartup + platformNetworkRuntime,
                             buildList {
                                 addAll(
                                     listOf(

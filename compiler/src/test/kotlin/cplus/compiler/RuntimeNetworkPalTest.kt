@@ -277,4 +277,61 @@ class RuntimeNetworkPalTest {
             Files.deleteIfExists(directory)
         }
     }
+
+    @Test
+    fun windowsFreestandingProductLoadsWinsockDynamically() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val crossToolsAvailable = listOf("x86_64-w64-mingw32-gcc", "x86_64-w64-mingw32-objdump").all { tool ->
+            runCatching { ProcessBuilder(tool, "--version").start().waitFor() == 0 }.getOrDefault(false)
+        }
+        org.junit.jupiter.api.Assumptions.assumeTrue(crossToolsAvailable)
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val planResult = RuntimeLinker.plan(resolution, target)
+        assertTrue(planResult.isSuccessful, planResult.diagnostics.joinToString())
+        val directory = Files.createTempDirectory("cplus-runtime-windows-network")
+        val source = directory.resolve("windows_network_test.c").also {
+            Files.writeString(it, """
+                #include "cplus_platform.h"
+                __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(unsigned long status);
+
+                void mainCRTStartup(void) {
+                    int status = platform_socket_open(0, CPLUS_SOCKET_STREAM) == CPLUS_PAL_UNSUPPORTED ? 0 : 1;
+                    ExitProcess((unsigned long)status);
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("windows_network_test.exe")
+        try {
+            val compile = ProcessBuilder(
+                listOf(
+                    "x86_64-w64-mingw32-gcc", "-std=c17", "-nostdlib", "-nodefaultlibs",
+                    "-nostartfiles", "-ffreestanding", "-fno-builtin", "-fno-stack-protector",
+                    "-Wl,--entry,mainCRTStartup", "-Wl,--subsystem,console",
+                    "-I", resolution.layout.runtimeInclude.toString(), source.toString(),
+                    resolution.layout.platformSource.resolve("network.c").toString(), "-lkernel32",
+                    "-o", executable.toString()
+                )
+            ).redirectErrorStream(true).start()
+            val compileOutput = compile.inputStream.bufferedReader().readText()
+            assertEquals(0, compile.waitFor(), compileOutput)
+
+            val inspect = ProcessBuilder("x86_64-w64-mingw32-objdump", "-p", executable.toString())
+                .redirectErrorStream(true)
+                .start()
+            val importTable = inspect.inputStream.bufferedReader().readText()
+            assertEquals(0, inspect.waitFor(), importTable)
+            val normalizedImports = importTable.lowercase()
+            assertTrue("kernel32.dll" in normalizedImports, importTable)
+            assertTrue("loadlibraryexw" in normalizedImports, importTable)
+            assertTrue("getprocaddress" in normalizedImports, importTable)
+            assertTrue("initonceexecuteonce" in normalizedImports, importTable)
+            assertTrue("ws2_32.dll" !in normalizedImports, importTable)
+        } finally {
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(source)
+            Files.deleteIfExists(directory)
+        }
+    }
 }
