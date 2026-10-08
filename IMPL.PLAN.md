@@ -19,8 +19,8 @@ Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
 Windows full-runtime link: native Windows and local MinGW PE products pass
-Latest full test suites: Linux `gradle test` passes (1m37s); native Windows
-                         VM `gradle test` passes (3m26s)
+Latest full test suites: Linux `gradle test` passes (1m40s); native Windows
+                         VM `gradle test` passes (3m40s)
 Windows runtime evidence: allocator, process, stdio channels, clocks, threads/TLS,
                           atomics/synchronization, TCP/UDP/IPv6, resolver,
                           std.math façade, C17 subset, locale/signal/ctype,
