@@ -12,12 +12,6 @@ typedef __builtin_va_list __cplus_va_list;
 #define __cplus_va_end __builtin_va_end
 #endif
 
-static unsigned long __cplus_strlen(const char* text) {
-    unsigned long size = 0;
-    while (text[size] != 0) size++;
-    return size;
-}
-
 static void __cplus_put(char* buffer, unsigned long* cursor, char value) {
     if (*cursor < 1023) buffer[(*cursor)++] = value;
 }

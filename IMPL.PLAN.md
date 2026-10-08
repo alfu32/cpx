@@ -5392,11 +5392,19 @@ hard-coded CLI path.
   continues to report actual fixture compile/run, stream, and dependency-audit
   results. `./gradlew build --no-daemon` passes, including the focused matrix
   and Linux C17 executable-conformance tests. Commits: `34a0d5f`, `82172d8`.
-- R8.3 [TODO] — run Linux x86_64/AArch64 and Windows x86_64 (plus available
+- R8.3 [DOING] — run Linux x86_64/AArch64 and Windows x86_64 (plus available
   Windows AArch64/Darwin targets) product validation, including complete
-  self-hosted Windows PE cross-linking; the current local MinGW x86_64 attempt
-  fails on unresolved `__emutls_get_address`, `WaitOnAddress`,
-  `WakeByAddressSingle`, and `WakeByAddressAll` symbols;
+  self-hosted Windows PE cross-linking. Linux x86_64 C17 executable
+  conformance and the libc-family runtime fixture pass. For Linux AArch64,
+  Clang strict C17 syntax checks passed for every `sdk/runtime/src/*.c` file
+  and Linux PAL C source; both AArch64 startup and thread assembly files also
+  assemble. The check exposed and removed an unused private formatter helper
+  that failed `-Werror`. This is source/assembly validation only: no AArch64
+  cross-linker or emulator is available here, so no AArch64 product execution
+  is claimed. Windows testing and patching remain deferred; the last MinGW
+  full-runtime link evidence reports unresolved `__emutls_get_address`,
+  `WaitOnAddress`, `WakeByAddressSingle`, and `WakeByAddressAll` symbols.
+  R8.3 remains open and receives no completion credit.
 - R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
   builds, documented examples, and upgrade/ABI compatibility rules.
 
