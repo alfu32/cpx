@@ -19,6 +19,24 @@ typedef struct __cplus_by_handle_file_information {
     __cplus_dword file_index_high;
     __cplus_dword file_index_low;
 } __cplus_by_handle_file_information;
+typedef struct __cplus_find_data_w {
+    __cplus_dword attributes;
+    __cplus_filetime creation_time;
+    __cplus_filetime access_time;
+    __cplus_filetime write_time;
+    __cplus_dword size_high;
+    __cplus_dword size_low;
+    __cplus_dword reserved0;
+    __cplus_dword reserved1;
+    unsigned short file_name[260];
+    unsigned short alternate_file_name[14];
+} __cplus_find_data_w;
+typedef struct __cplus_directory_iterator {
+    __cplus_handle search_handle;
+    __cplus_find_data_w current;
+    int has_current;
+    int finished;
+} __cplus_directory_iterator;
 
 __declspec(dllimport) __cplus_handle __stdcall GetStdHandle(__cplus_dword kind);
 __declspec(dllimport) __cplus_handle __stdcall GetProcessHeap(void);
@@ -68,6 +86,28 @@ __declspec(dllimport) __cplus_bool __stdcall SetFilePointerEx(
     long long* new_position,
     __cplus_dword move_method
 );
+__declspec(dllimport) __cplus_bool __stdcall CreateDirectoryW(const unsigned short* path, void* security_attributes);
+__declspec(dllimport) __cplus_bool __stdcall DeleteFileW(const unsigned short* path);
+__declspec(dllimport) __cplus_bool __stdcall RemoveDirectoryW(const unsigned short* path);
+__declspec(dllimport) __cplus_handle __stdcall FindFirstFileW(
+    const unsigned short* pattern,
+    __cplus_find_data_w* find_data
+);
+__declspec(dllimport) __cplus_bool __stdcall FindNextFileW(
+    __cplus_handle search_handle,
+    __cplus_find_data_w* find_data
+);
+__declspec(dllimport) __cplus_bool __stdcall FindClose(__cplus_handle search_handle);
+__declspec(dllimport) int __stdcall WideCharToMultiByte(
+    __cplus_dword code_page,
+    __cplus_dword flags,
+    const unsigned short* source,
+    int source_length,
+    char* destination,
+    int destination_length,
+    const char* default_character,
+    int* used_default_character
+);
 __declspec(dllimport) __cplus_bool __stdcall MoveFileExW(
     const unsigned short* existing_path,
     const unsigned short* new_path,
@@ -79,6 +119,7 @@ __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(__cplus_dw
 
 #define __CPLUS_CP_UTF8 65001UL
 #define __CPLUS_MB_ERR_INVALID_CHARS 8UL
+#define __CPLUS_WC_ERR_INVALID_CHARS 0x80UL
 #define __CPLUS_GENERIC_READ 0x80000000UL
 #define __CPLUS_GENERIC_WRITE 0x40000000UL
 #define __CPLUS_FILE_SHARE_ALL 7UL
@@ -103,6 +144,7 @@ static long cplus_normalize_windows_error(void) {
     if (error == 5) return CPLUS_PAL_ACCESS_DENIED;
     if (error == 87) return CPLUS_PAL_INVALID_ARGUMENT;
     if (error == 1 || error == 50) return CPLUS_PAL_UNSUPPORTED;
+    if (error == 1113) return CPLUS_PAL_UNSUPPORTED;
     return CPLUS_PAL_IO_ERROR;
 }
 
@@ -132,6 +174,41 @@ static unsigned short* cplus_windows_path(const char* path) {
 
 static void cplus_windows_free_path(unsigned short* path) {
     if (path) HeapFree(GetProcessHeap(), 0, path);
+}
+
+static unsigned short* cplus_windows_directory_pattern(const char* path) {
+    unsigned short* base = cplus_windows_path(path);
+    unsigned short* pattern;
+    int length = 0;
+    int separator;
+    int index;
+    if (!base) return (unsigned short*)0;
+    while (base[length] != 0) length++;
+    if (length == 0 || length > 0x7ffffffc) {
+        cplus_windows_free_path(base);
+        return (unsigned short*)0;
+    }
+    separator = length > 0 && base[length - 1] != (unsigned short)'\\';
+    pattern = (unsigned short*)HeapAlloc(
+        GetProcessHeap(),
+        0,
+        (unsigned long long)(length + separator + 2) * 2ULL
+    );
+    if (!pattern) {
+        cplus_windows_free_path(base);
+        return (unsigned short*)0;
+    }
+    for (index = 0; index < length; index++) pattern[index] = base[index];
+    if (separator) pattern[length++] = (unsigned short)'\\';
+    pattern[length++] = (unsigned short)'*';
+    pattern[length] = 0;
+    cplus_windows_free_path(base);
+    return pattern;
+}
+
+static int cplus_windows_is_dot_name(const unsigned short* name, int length) {
+    return (length == 1 && name[0] == (unsigned short)'.') ||
+        (length == 2 && name[0] == (unsigned short)'.' && name[1] == (unsigned short)'.');
 }
 
 void* platform_page_allocate(unsigned long long page_count) {
@@ -262,6 +339,144 @@ int platform_file_metadata(const char* path, cplus_file_metadata_t* metadata) {
     metadata->reserved0 = 0;
     metadata->reserved1 = 0;
     return 0;
+}
+
+int platform_directory_create(const char* path) {
+    unsigned short* wide_path;
+    int result;
+    if (!path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    wide_path = cplus_windows_path(path);
+    if (!wide_path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    result = CreateDirectoryW(wide_path, (void*)0) ? 0 : (int)cplus_normalize_windows_error();
+    cplus_windows_free_path(wide_path);
+    return result;
+}
+
+int platform_file_remove(const char* path) {
+    unsigned short* wide_path;
+    int result;
+    if (!path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    wide_path = cplus_windows_path(path);
+    if (!wide_path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    result = DeleteFileW(wide_path) ? 0 : (int)cplus_normalize_windows_error();
+    cplus_windows_free_path(wide_path);
+    return result;
+}
+
+int platform_directory_remove(const char* path) {
+    unsigned short* wide_path;
+    int result;
+    if (!path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    wide_path = cplus_windows_path(path);
+    if (!wide_path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    result = RemoveDirectoryW(wide_path) ? 0 : (int)cplus_normalize_windows_error();
+    cplus_windows_free_path(wide_path);
+    return result;
+}
+
+long long platform_directory_open(const char* path) {
+    unsigned short* pattern;
+    __cplus_directory_iterator* iterator;
+    __cplus_handle search_handle;
+    int error;
+    if (!path) return CPLUS_PAL_INVALID_ARGUMENT;
+    pattern = cplus_windows_directory_pattern(path);
+    if (!pattern) return CPLUS_PAL_INVALID_ARGUMENT;
+    iterator = (__cplus_directory_iterator*)HeapAlloc(
+        GetProcessHeap(), 0, (unsigned long long)sizeof(__cplus_directory_iterator)
+    );
+    if (!iterator) {
+        cplus_windows_free_path(pattern);
+        return CPLUS_PAL_IO_ERROR;
+    }
+    search_handle = FindFirstFileW(pattern, &iterator->current);
+    if (search_handle == __CPLUS_INVALID_HANDLE) {
+        error = (int)cplus_normalize_windows_error();
+        cplus_windows_free_path(pattern);
+        HeapFree(GetProcessHeap(), 0, iterator);
+        return error;
+    }
+    cplus_windows_free_path(pattern);
+    iterator->search_handle = search_handle;
+    iterator->has_current = 1;
+    iterator->finished = 0;
+    return (long long)iterator;
+}
+
+long long platform_directory_read(long long handle, char* utf8_name, unsigned long long capacity) {
+    __cplus_directory_iterator* iterator = (__cplus_directory_iterator*)handle;
+    if (!iterator || (void*)handle == __CPLUS_INVALID_HANDLE || !utf8_name) {
+        return (long long)CPLUS_PAL_INVALID_ARGUMENT;
+    }
+    for (;;) {
+        int wide_length = 0;
+        int utf8_length;
+        int converted;
+        int error;
+        if (iterator->finished) return 0;
+        if (!iterator->has_current) {
+            if (!FindNextFileW(iterator->search_handle, &iterator->current)) {
+                error = (int)GetLastError();
+                if (error == 18) {
+                    iterator->finished = 1;
+                    return 0;
+                }
+                return (long long)cplus_normalize_windows_error();
+            }
+            iterator->has_current = 1;
+        }
+        while (wide_length < 260 && iterator->current.file_name[wide_length] != 0) wide_length++;
+        if (wide_length == 260) return (long long)CPLUS_PAL_IO_ERROR;
+        if (cplus_windows_is_dot_name(iterator->current.file_name, wide_length)) {
+            iterator->has_current = 0;
+            continue;
+        }
+        utf8_length = WideCharToMultiByte(
+            __CPLUS_CP_UTF8,
+            __CPLUS_WC_ERR_INVALID_CHARS,
+            iterator->current.file_name,
+            wide_length,
+            (char*)0,
+            0,
+            (const char*)0,
+            (int*)0
+        );
+        if (utf8_length <= 0) {
+            error = (int)GetLastError();
+            iterator->has_current = 0;
+            if (error == 1113) return (long long)CPLUS_PAL_UNSUPPORTED;
+            return (long long)cplus_normalize_windows_error();
+        }
+        if (capacity <= (unsigned long long)utf8_length) return (long long)CPLUS_PAL_BUFFER_TOO_SMALL;
+        converted = WideCharToMultiByte(
+            __CPLUS_CP_UTF8,
+            __CPLUS_WC_ERR_INVALID_CHARS,
+            iterator->current.file_name,
+            wide_length,
+            utf8_name,
+            utf8_length,
+            (const char*)0,
+            (int*)0
+        );
+        if (converted <= 0) {
+            error = (int)GetLastError();
+            iterator->has_current = 0;
+            if (error == 1113) return (long long)CPLUS_PAL_UNSUPPORTED;
+            return (long long)cplus_normalize_windows_error();
+        }
+        utf8_name[converted] = '\0';
+        iterator->has_current = 0;
+        return (long long)converted;
+    }
+}
+
+int platform_directory_close(long long handle) {
+    __cplus_directory_iterator* iterator = (__cplus_directory_iterator*)handle;
+    int result;
+    if (!iterator || (void*)handle == __CPLUS_INVALID_HANDLE) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    result = FindClose(iterator->search_handle) ? 0 : (int)cplus_normalize_windows_error();
+    HeapFree(GetProcessHeap(), 0, iterator);
+    return result;
 }
 
 int platform_file_rename(const char* source, const char* target) {
