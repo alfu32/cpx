@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    50/70 accepted with recorded evidence
+Roadmap leaf tasks:    51/70 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.2.2 — implement UTC calendar conversion
+Current task:          R5.4.3 — implement std.thread/std.sync façades
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 18/26 native std and platform-service work remains open
+R5 [DOING] 19/26 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       50/70 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       51/70 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -74,7 +74,15 @@ conversion, increasing the denominator from 69 to 70 with no automatic credit.
 R5.4.2.1 then passed C+ execution, duration overflow and unchanged-output
 vectors, injected C time/clock failure checks, the four-target duration layout
 audit, strict four-target source checks, and the full Gradle build. Commit
-`141f393` brings the numerator to 50/70; calendar conversion remains open.
+`141f393` brought the numerator to 50/70; at that point calendar
+conversion remained open.
+R5.4.2.2 then passed executable calendar round trips for the Unix epoch, leap
+day, pre-epoch timestamps, astronomical year zero, and both signed 64-bit
+second endpoints; invalid dates/nanoseconds and unrepresentable years preserve
+outputs. The public layout matches 32 bytes with 8-byte alignment across all
+four target descriptors. Strict C17 checks pass for Linux/Windows x86_64/AArch64
+and the full Gradle build passes. Commit `cc436ca` brings the numerator to
+51/70. Windows runtime execution remains deferred and is not claimed.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -128,6 +136,7 @@ Latest completed implementation commits:
 - `f5159ef` — implement the native `std.process` façade (Linux C+ execution; Windows execution deferred).
 - `f79c654` — verify synchronous not-found errors through `std.process`.
 - `141f393` — implement checked `std.time` clocks and durations (calendar conversion remains open).
+- `cc436ca` — implement proleptic-Gregorian UTC calendar conversion (Windows execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4314,7 +4323,7 @@ dependencies.
     - The first caller compilation exposed and fixed parser lookahead that
       treated `local = functionCall(...)` as an inner-function declaration;
       a focused parser regression test passes.
-  - R5.4.2 [DOING] [1/2] — complete `std.time`, including the normative UTC
+  - R5.4.2 [DONE] [2/2] — complete `std.time`, including the normative UTC
     calendar representation, over the version-4 clock services;
     - R5.4.2.1 [DONE] — implement wall/monotonic/process-CPU clock forwarding,
       checked signed nanosecond durations, and C `time()`/`clock()` error
@@ -4328,14 +4337,17 @@ dependencies.
         Windows x86_64/AArch64. Strict warning-as-error C17 checks pass for the
         runtime source on all four targets, the static Linux caller has no
         undefined host-runtime symbols, and the full Gradle build passes.
-    - R5.4.2.2 [DOING] — define and implement proleptic-Gregorian UTC calendar
+    - R5.4.2.2 [DONE] — define and implement proleptic-Gregorian UTC calendar
       conversion to/from signed Unix seconds plus nanoseconds;
-      - **Acceptance:** epoch, leap-year, pre-epoch, range, invalid-field, and
-        nanosecond-boundary vectors round-trip through the C+ façade; conversion
-        errors leave output unchanged; the public calendar structure has a
-        verified fixed layout across all four Linux/Windows target descriptors;
-        strict source checks and the full Gradle build pass. Windows runtime
-        execution remains deferred.
+      - **Acceptance evidence:** the C+ fixture round-trips epoch, leap day,
+        pre-epoch timestamp, astronomical year zero, and both signed 64-bit
+        second endpoints with fractional nanoseconds. Invalid non-leap dates,
+        out-of-range fields/nanoseconds, and unrepresentable years return the
+        specified statuses without modifying outputs. `std_calendar_time_t`
+        size/alignment/offsets match 32/8/[0,8,12,16,20,24,28] across Linux and
+        Windows x86_64/AArch64 descriptors. Strict warning-as-error C17 source
+        checks and the full Gradle build pass. Windows runtime execution remains
+        deferred.
   - R5.4.3 [TODO] — implement `std.thread`/`std.sync` and map atomic APIs to
     compiler/runtime intrinsics and supported wait/wake services;
   - R5.4.4 [TODO] — implement portable `std.net` address, DNS, socket, TCP and
