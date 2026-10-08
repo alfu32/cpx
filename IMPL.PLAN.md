@@ -4963,7 +4963,12 @@ dependencies.
         against the production Linux resolver. Linked public C+ products have
         no undefined host-runtime symbols. Strict warning-as-error C17 checks
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
-        Gradle build passes. Windows runtime execution remains deferred.
+        Gradle build passes. The public address/format/numeric-resolver fixture
+        also executes on native Windows x86_64, including canonical IPv4/IPv6
+        formatting, output-preserving invalid cases, numeric resolution, and
+        capacity reporting; its PE passes `RuntimeDependencyAuditor`. Windows
+        system-name resolution is separately validated by the native resolver
+        fixture.
       - **Depends:** R5.4.4.1 and R5.3.8.
   - R5.4.5 [DONE] [11/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
