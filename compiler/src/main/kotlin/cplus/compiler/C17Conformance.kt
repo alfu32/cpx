@@ -211,13 +211,13 @@ internal object C17TargetRunner {
         }
         if (targetOs == normalizedHostOs && targetArch == normalizedHostArch) return emptyList()
 
-        val emulator = when (targetTriple) {
-            "linux-aarch64" -> "qemu-aarch64"
-            "linux-x86_64" -> "qemu-x86_64"
+        val emulators = when (targetTriple) {
+            "linux-aarch64" -> listOf("qemu-aarch64", "qemu-aarch64-static")
+            "linux-x86_64" -> listOf("qemu-x86_64", "qemu-x86_64-static")
             else -> return null
         }
         val executable = searchPath.asSequence()
-            .map { it.resolve(emulator) }
+            .flatMap { directory -> emulators.asSequence().map(directory::resolve) }
             .firstOrNull(Files::isExecutable)
             ?: return null
         return listOf(executable.toAbsolutePath().normalize().toString())

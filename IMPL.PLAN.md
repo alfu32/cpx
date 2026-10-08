@@ -356,7 +356,8 @@ below. Its current dependency sequence is:
   request. R8.3 receives no completion credit until its target-matrix gate is
   satisfied. `C17ConformanceRunner` now distinguishes execution failure from
   a missing target runner: it selects native execution or an installed Linux
-  QEMU user-mode runner and reports cross-target execution as `unsupported`
+  QEMU user-mode runner (including both regular and `-static` executable
+  names) and reports cross-target execution as `unsupported`
   when none is available. The Linux AArch64 CLI audit reports 0 failures and
   8 unsupported cases on this x86_64 host (including the unavailable runner);
   this is an explicit capability result, not AArch64 execution evidence.

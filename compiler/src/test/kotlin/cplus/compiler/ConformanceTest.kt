@@ -18,14 +18,22 @@ class ConformanceTest {
 
         val directory = Files.createTempDirectory("cplus-target-runner")
         val emulator = Files.createFile(directory.resolve("qemu-aarch64"))
+        val staticEmulator = Files.createFile(directory.resolve("qemu-aarch64-static"))
         assertTrue(emulator.toFile().setExecutable(true))
+        assertTrue(staticEmulator.toFile().setExecutable(true))
         try {
             assertEquals(
                 listOf(emulator.toAbsolutePath().normalize().toString()),
                 C17TargetRunner.commandPrefix("linux-aarch64", "Linux", "x86_64", listOf(directory))
             )
+            Files.delete(emulator)
+            assertEquals(
+                listOf(staticEmulator.toAbsolutePath().normalize().toString()),
+                C17TargetRunner.commandPrefix("linux-aarch64", "Linux", "x86_64", listOf(directory))
+            )
         } finally {
             Files.deleteIfExists(emulator)
+            Files.deleteIfExists(staticEmulator)
             Files.deleteIfExists(directory)
         }
     }
