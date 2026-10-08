@@ -20,3 +20,7 @@ gradle
 sdk/cache/
 build/
 **/build/
+.kode
+.kode.json
+rc0
+
