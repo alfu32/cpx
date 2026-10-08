@@ -431,6 +431,9 @@ Latest completed implementation commits:
 - `37014e0` — implement C17 real/complex type-generic math dispatch and its audited fixture (R4.6.2.5 Linux x86_64).
 - `0ca174d` — add project/workspace manifests and SDK-rooted source imports across CLI source commands (R6.1).
 - `81aa251` — normalize CLI output, source-map, target, SDK, compiler, sysroot, and native-input options (R6.2).
+- `e3058a1` — complete local MinGW freestanding Windows PE linking with emulated TLS and dynamic atomic wait/wake lookup (R8.3 cross-link evidence; native Windows execution pending).
+- `b1b7c7c` — add repeatable MinGW PE import auditing to CLI integration tests (R8.3).
+- `7ee3d62` — execute initialized thread-local storage in the MinGW PE product under Wine (R8.3 compatibility evidence; native Windows execution pending).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
