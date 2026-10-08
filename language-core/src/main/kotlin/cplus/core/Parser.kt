@@ -63,6 +63,9 @@ class Parser(private val lexed: LexedSource) {
         if (peek().isLexeme("package")) return parsePackage()
         if (match("typedef")) return parseAlias(previous(), isPublic)
         if (peek().isLexeme("import")) return parseImport()
+        if (peek().isLexeme("comptime") && peek(1).lexeme in setOf("trait", "traits")) {
+            return parseTrait(isPublic)
+        }
         if (peek().isLexeme("comptime")) return parseComptimeFunction(isPublic)
         if (peek().kind == TokenKind.IDENTIFIER && peek(1).isLexeme("(")) return parseCpxInvocation()
         if (match("struct") && peek(1).isLexeme("{")) {
@@ -167,6 +170,107 @@ class Parser(private val lexed: LexedSource) {
         val close = expect("}", "expected '}' after compile-time function") ?: previous()
         val range = span(start.range, close.range)
         return SyntaxComptimeFunction(name.lexeme, category, parameters, template, range, direct(range), isPublic)
+    }
+
+    private fun parseTrait(isPublic: Boolean): SyntaxTrait {
+        val start = advance()
+        if (!match("trait")) {
+            diagnostics.error("trait declarations use the singular syntax 'comptime trait Type'", peek().range, "PARSE520")
+            recoverTraitDeclaration()
+            val range = span(start.range, previous().range)
+            val missing = syntheticToken("<missing>", start.range)
+            return SyntaxTrait(missing.lexeme, direct(missing.range), emptyList(), range, direct(range), isPublic)
+        }
+
+        val target = if (peek().kind == TokenKind.IDENTIFIER ||
+            (peek().kind == TokenKind.KEYWORD && peek().lexeme in primitiveTypes)
+        ) advance() else {
+            diagnostics.error("expected a single type identifier after 'comptime trait'", peek().range, "PARSE521")
+            null
+        }
+        if (target == null) {
+            recoverTraitDeclaration()
+            val range = span(start.range, previous().range)
+            val missing = syntheticToken("<missing>", start.range)
+            return SyntaxTrait(missing.lexeme, direct(missing.range), emptyList(), range, direct(range), isPublic)
+        }
+
+        if (!match("{")) {
+            diagnostics.error("expected '{' after trait target; angle-bracket targets are not supported", peek().range, "PARSE522")
+            recoverTraitDeclaration()
+            val range = span(start.range, previous().range)
+            return SyntaxTrait(target.lexeme, direct(target.range), emptyList(), range, direct(range), isPublic)
+        }
+        val methods = mutableListOf<SyntaxFunction>()
+        while (!atEnd() && !peek().isLexeme("}")) {
+            val before = index
+            if (peek().isLexeme("comptime") && peek(1).lexeme == "trait") {
+                diagnostics.error("nested trait declarations are not supported", peek().range, "PARSE523")
+                skipNestedTrait()
+                continue
+            }
+            val attributes = parseAttributes()
+            if (peek().isLexeme("pub")) {
+                diagnostics.error("trait method visibility is inherited from its trait block", peek().range, "PARSE524")
+                advance()
+            }
+            val returnType = parseType()
+            if (returnType == null) {
+                diagnostics.error("trait blocks may contain only method definitions", peek().range, "PARSE525")
+                recoverTraitMember()
+            } else {
+                val declarator = parseDeclarator(returnType, "trait method")
+                if (declarator == null) {
+                    recoverTraitMember()
+                } else if (!match("(")) {
+                    diagnostics.error("trait blocks may contain only method definitions, not fields", declarator.name.range, "PARSE525")
+                    expect(";", "expected ';' after invalid trait field")
+                } else {
+                    val method = parseFunction(
+                        declarator.type,
+                        declarator.name,
+                        isMethod = true,
+                        ownerName = target.lexeme,
+                        attributes = attributes
+                    )
+                    val receivers = method.parameters.withIndex().filter { it.value.isReceiver }
+                    if (receivers.size != 1 || receivers.firstOrNull()?.index != 0) {
+                        diagnostics.error("trait methods require exactly one first receiver parameter named self or self*", method.range, "PARSE526")
+                    }
+                    if (method.body == null) {
+                        diagnostics.error("trait methods require a function body", method.range, "PARSE527")
+                    }
+                    methods += method
+                }
+            }
+            if (index == before) advance()
+        }
+        val close = expect("}", "expected '}' after trait methods") ?: previous()
+        val range = span(start.range, close.range)
+        return SyntaxTrait(target.lexeme, direct(target.range), methods, range, direct(range), isPublic)
+    }
+
+    private fun recoverTraitMember() {
+        while (!atEnd() && !peek().isLexeme(";") && !peek().isLexeme("}")) advance()
+        match(";")
+    }
+
+    private fun recoverTraitDeclaration() {
+        while (!atEnd() && !peek().isLexeme("{") && !peek().isLexeme(";")) advance()
+        if (match("{")) {
+            var depth = 1
+            while (!atEnd() && depth > 0) {
+                when (advance().lexeme) {
+                    "{" -> depth++
+                    "}" -> depth--
+                }
+            }
+        }
+        match(";")
+    }
+
+    private fun skipNestedTrait() {
+        recoverTraitDeclaration()
     }
 
     private fun parseCpxInvocation(): SyntaxCpxInvocation {

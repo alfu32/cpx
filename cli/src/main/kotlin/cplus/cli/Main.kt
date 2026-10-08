@@ -1054,6 +1054,13 @@ internal class AstPrinter {
                     appendLine("Method ${it.returnType.name} ${it.name}(${it.parameters.joinToString(", ") { parameter -> parameter.name }})")
                 }
             }
+            is AstTrait -> {
+                appendLine("Trait ${declaration.targetName}")
+                declaration.methods.forEach { method ->
+                    indent(depth + 1)
+                    appendLine("Method ${method.returnType.name} ${method.name}(${method.parameters.joinToString(", ") { parameter -> parameter.name }})")
+                }
+            }
             is AstGlobalVariable -> {
                 appendLine("Global ${declaration.type.name} ${declaration.name}")
             }

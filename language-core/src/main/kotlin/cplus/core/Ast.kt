@@ -75,6 +75,14 @@ data class AstStruct(
     override val isPublic: Boolean = false
 ) : AstDeclaration
 
+data class AstTrait(
+    val targetName: String,
+    val targetOrigin: Origin,
+    val methods: List<AstFunction>,
+    override val origin: Origin,
+    override val isPublic: Boolean = false
+) : AstDeclaration
+
 data class AstField(
     val type: AstTypeRef,
     val name: String,

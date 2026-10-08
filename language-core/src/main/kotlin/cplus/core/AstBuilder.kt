@@ -29,6 +29,13 @@ class AstBuilder {
             node.origin,
             node.isPublic
         )
+        is SyntaxTrait -> AstTrait(
+            node.targetName,
+            node.targetOrigin,
+            node.methods.map { function(it, node.targetName) },
+            node.origin,
+            node.isPublic
+        )
         is SyntaxGlobalVariable -> AstGlobalVariable(
             type(node.type),
             node.name,

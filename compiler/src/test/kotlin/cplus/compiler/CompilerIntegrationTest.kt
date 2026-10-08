@@ -20,6 +20,22 @@ import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
     @Test
+    fun parsedTraitDeclarationIsRejectedExplicitlyUntilSemanticRegistrationIsImplemented() {
+        val source = """
+            struct counter_t { int value; };
+            comptime trait counter_t {
+                int read(self) { return self.value; }
+            }
+            int main() { return 0; }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-trait-parser-stage", ".cp"), source)
+
+        val unsupported = result.diagnostics.single { it.code == "SEM415" }
+        assertTrue(unsupported.message.contains("parsed but not supported"))
+        assertTrue(result.generatedUnits.isEmpty(), "unsupported trait syntax must not silently emit a program")
+    }
+
+    @Test
     fun externalCCompilerDiagnosticsMapGeneratedRangesAndRetainForeignLocations() {
         val directory = Files.createTempDirectory("cplus-c-diagnostics")
         val source = SourceRepository().let { repository ->

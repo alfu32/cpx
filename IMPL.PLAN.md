@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    116/129 accepted with recorded evidence; 13 TODO
+Roadmap leaf tasks:    117/129 accepted with recorded evidence; 12 TODO
 Phase gates:           11/13 complete; 2 active; 0 queued
-Current task:          R11.1.1.1 — parse the exact singular trait syntax
+Current task:          R11.1.1.2 — traverse trait bodies in ordinary compiler passes
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -37,10 +37,10 @@ R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
 R10 [DOING] 18/19 import discovery, completion and quick fixes
-R11 [DOING] 0/12 compile-time extension methods
+R11 [DOING] 1/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 
-TOTAL       116/129 implementation tasks accepted; 11/13 phase gates complete,
+TOTAL       117/129 implementation tasks accepted; 11/13 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3785,7 +3785,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [11/13 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 116/129 accepted; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 117/129 accepted; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (2/3) accepted/in progress;
                      R10 and R11 active, R12 accepted
 
@@ -3800,7 +3800,7 @@ Roadmap leaf tasks: 116/129 accepted; R10.1 (10/10), R10.2 (4/4),
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
 [DOING] R10 — import discovery, completion and quick fixes (18/19 leaves)
-[DOING] R11 — compile-time extension methods (0/12 leaves)
+[DOING] R11 — compile-time extension methods (1/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 ```
 
@@ -6363,7 +6363,7 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle test :cli:fatJar :cli:installDist`; extension checks/host tests; native Windows equivalents at the final platform pass.
 
-## R11 [DOING] [0/12] Compile-time extension methods
+## R11 [DOING] [1/12] Compile-time extension methods
 
 **Language:** LS §6.3.1 Compile-time extension methods; §21 Imports.
 **Technical:** TS §13.1 Compile-time traits; §33 Method lowering; §54 Completion.
@@ -6378,13 +6378,13 @@ that subsequently passes `cplus check`.
 **Language:** LS §6.3.1 Compile-time extension methods; §28 Source provenance.
 **Technical:** TS §6 Parser; §8 AST architecture; §13.1 Compile-time traits.
 
-##### R11.1.1.1 [DOING] Parse the exact singular trait syntax
+##### R11.1.1.1 [DONE] Parse the exact singular trait syntax
 
 **Language:** LS §6.3.1 Compile-time extension methods.
 **Technical:** TS §6 Parser; §7 Syntax tree versus AST; §13.1 Compile-time traits.
 
 **Depends:** R10.1.2.3.
-**Files:** `language-core/.../Parser.kt`, `Syntax.kt`, `Ast.kt`, `AstBuilder.kt`; `AstGoldenTest.kt`.
+**Files:** `language-core/.../Parser.kt`, `Syntax.kt`, `Ast.kt`, `AstBuilder.kt`; `AstGoldenTest.kt`; explicit declaration consumers in semantic/comptime/CLI.
 
 **Deliverable:** Explicit `SyntaxTrait`/`AstTrait` with target identifier, visibility, methods and origins. Dispatch `comptime trait` before `comptime cpx`; reuse method/receiver parsing. Keep consumer dispatch exhaustive and explicitly reject not-yet-supported trait processing rather than silently dropping blocks.
 
@@ -6392,7 +6392,9 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle :language-core:test` and compile affected dependent modules to catch exhaustive `when` sites.
 
-##### R11.1.1.2 [TODO] Traverse trait bodies in ordinary compiler passes
+**Evidence:** `./gradlew :language-core:test :comptime:test --no-daemon` passes, as do `./gradlew :compiler:compileKotlin :cli:compileKotlin --no-daemon` and the focused compiler test `./gradlew :compiler:test --tests cplus.compiler.CompilerIntegrationTest.parsedTraitDeclarationIsRejectedExplicitlyUntilSemanticRegistrationIsImplemented --no-daemon`. Parser tests cover private/public blocks, primitive and nominal target spelling, `self`/`self*`, source ranges, plural and angle-bracket rejection, missing/repeated receiver, fields, static methods, nested blocks, missing bodies, and recovery to the following declaration. The semantic analyzer reports `SEM415` and emits no C until trait registration is implemented; declaration visitors use explicit branches rather than dropping the node.
+
+##### R11.1.1.2 [DOING] Traverse trait bodies in ordinary compiler passes
 
 **Language:** LS §6.3.1 Compile-time extension methods; §14 Inner functions and lexical capture; §15 Deferred execution; §16 String templates; §28 Source provenance.
 **Technical:** TS §13.1 Compile-time traits; §32 AST rewrite framework; §34 Inner-function lowering.

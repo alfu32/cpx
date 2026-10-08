@@ -78,6 +78,15 @@ data class SyntaxStruct(
     override val isPublic: Boolean = false
 ) : SyntaxDeclaration
 
+data class SyntaxTrait(
+    val targetName: String,
+    val targetOrigin: Origin,
+    val methods: List<SyntaxFunction>,
+    override val range: SourceRange,
+    override val origin: Origin,
+    override val isPublic: Boolean = false
+) : SyntaxDeclaration
+
 data class SyntaxField(
     val type: TypeSyntax,
     val name: String,

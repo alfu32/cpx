@@ -17,6 +17,7 @@ class AstGoldenTest {
         assertEquals(listOf("point_t", "main"), ast.declarations.map {
             when (it) {
                 is AstStruct -> it.name
+                is AstTrait -> it.targetName
                 is AstPackage -> it.name
                 is AstAlias -> it.name
                 is AstUnion -> it.name
@@ -31,6 +32,60 @@ class AstGoldenTest {
         val structure = ast.declarations.first() as AstStruct
         assertEquals("int", structure.fields.single().type.name)
         assertEquals("x", structure.fields.single().name)
+    }
+
+    @Test
+    fun parsesExplicitTraitBlocksAndBuildsAstWithReceiverFormsAndOrigins() {
+        val text = """
+            comptime trait counter_t {
+                int read(self) { return self.value; }
+                void increment(self*) { self->value += 1; }
+            }
+            pub comptime trait int {
+                int doubled(self) { return self * 2; }
+            }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(901), Path.of("traits.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val traits = parsed.syntax.declarations.filterIsInstance<SyntaxTrait>()
+        val astTraits = AstBuilder().build(parsed.syntax).declarations.filterIsInstance<AstTrait>()
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        assertEquals(listOf("counter_t", "int"), traits.map { it.targetName })
+        assertEquals(listOf(false, true), traits.map { it.isPublic })
+        assertEquals(listOf("read", "increment"), traits.first().methods.map { it.name })
+        assertTrue(traits.first().methods.all { it.isMethod && it.body != null })
+        assertEquals(listOf(false, true), traits.first().methods.map { it.parameters.first().isPointerReceiver })
+        assertEquals(text.indexOf("counter_t"), traits.first().targetOrigin.primaryRange?.startOffset)
+        assertEquals(text.indexOf("int read"), traits.first().methods.first().range.startOffset)
+        assertEquals("counter_t", astTraits.first().targetName)
+        assertEquals("counter_t", astTraits.first().methods.first().ownerName)
+        assertTrue(astTraits.first().methods.first().parameters.first().isReceiver)
+    }
+
+    @Test
+    fun rejectsInvalidTraitFormsAndRecoversAtFollowingDeclarations() {
+        val invalid = listOf(
+            "comptime traits<counter_t> { int read(self) { return 0; } }",
+            "comptime trait<counter_t> { int read(self) { return 0; } }",
+            "comptime trait counter_t { int missingReceiver() { return 0; } }",
+            "comptime trait counter_t { int repeated(self, self*) { return 0; } }",
+            "comptime trait counter_t { int field; }",
+            "comptime trait counter_t { int staticMethod() { return 0; } }",
+            "comptime trait counter_t { comptime trait nested_t { int f(self) { return 0; } } }",
+            "comptime trait counter_t { int declaration(self); }"
+        )
+
+        invalid.forEachIndexed { index, traitSource ->
+            val text = "$traitSource int afterTrait() { return 1; }"
+            val source = SourceFile(SourceFileId(910 + index), Path.of("invalid-trait-$index.cp"), text, 1)
+            val parsed = Parser(Lexer().lex(source)).parse()
+            assertTrue(parsed.diagnostics.isNotEmpty(), "expected a diagnostic for: $traitSource")
+            assertTrue(
+                parsed.syntax.declarations.any { it is SyntaxFunction && it.name == "afterTrait" },
+                "parser did not recover after: $traitSource; ${parsed.diagnostics.joinToString()}"
+            )
+        }
     }
 
     @Test

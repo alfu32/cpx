@@ -118,6 +118,7 @@ internal object ModuleTypeReferenceCollector {
                     declaration.fields.forEach { collectType(moduleName, it.type) }
                     declaration.methods.forEach { collectFunction(moduleName, it) }
                 }
+                is AstTrait -> Unit
                 is AstUnion -> declaration.fields.forEach { collectType(moduleName, it.type) }
                 is AstFunction -> collectFunction(moduleName, declaration)
                 is AstGlobalVariable -> {

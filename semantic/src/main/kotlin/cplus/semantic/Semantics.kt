@@ -511,6 +511,7 @@ fun buildDeclarationCatalogue(
                 parameters = declaration.arguments,
                 compileTime = true
             )
+            is AstTrait -> Unit
             is AstImport -> add(declaration.alias ?: declaration.module, "import", declaration.origin, moduleScope)
         }
     }
@@ -1342,6 +1343,11 @@ class SemanticAnalyzer(
                     }
                 }
                 is AstImport -> Unit
+                is AstTrait -> diagnostics.error(
+                    "compile-time trait methods are parsed but not supported by this compiler stage",
+                    rangeOf(declaration.origin),
+                    "SEM415"
+                )
                 is AstComptimeFunction, is AstCpxInvocation -> Unit
             }
         }

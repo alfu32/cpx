@@ -914,6 +914,8 @@ fun structuralFingerprint(program: SyntaxProgram): String = program.declarations
             is SyntaxEnum -> "enum:${declaration.name}:${declaration.values.joinToString { "${it.name}=${it.value}" }}"
             is SyntaxStruct -> "struct:${declaration.name}:${declaration.fields.joinToString { structuralField(it) }}:" +
                 declaration.methods.joinToString { structuralFunction(it) }
+            is SyntaxTrait -> "trait:${declaration.isPublic}:${declaration.targetName}:" +
+                declaration.methods.joinToString { structuralFunction(it) }
             is SyntaxGlobalVariable -> "global:${declaration.name}:${structuralType(declaration.type)}:${declaration.arrayDimensions}"
             is SyntaxFunction -> "function:${structuralFunction(declaration)}"
             is SyntaxComptimeFunction,
@@ -1581,6 +1583,11 @@ class CpxExpander(
             methods = node.methods.map { captureOriginFunction(it, origin) },
             origin = origin
         )
+        is AstTrait -> node.copy(
+            targetOrigin = origin,
+            methods = node.methods.map { captureOriginFunction(it, origin) },
+            origin = origin
+        )
         is AstField -> captureOriginField(node, origin)
         is AstGlobalVariable -> node.copy(
             type = captureOriginType(node.type, origin),
@@ -1866,6 +1873,11 @@ class CpxExpander(
             methods = declaration.methods.map { reorigin(it, origin) as SyntaxFunction },
             origin = origin
         )
+        is SyntaxTrait -> declaration.copy(
+            targetOrigin = origin,
+            methods = declaration.methods.map { reorigin(it, origin) as SyntaxFunction },
+            origin = origin
+        )
         is SyntaxGlobalVariable -> declaration.copy(
             type = reorigin(declaration.type, origin),
             initializer = declaration.initializer?.let { reorigin(it, origin) },
@@ -1896,6 +1908,9 @@ class CpxExpander(
             )
         }
         is SyntaxStruct -> declaration.copy(
+            methods = declaration.methods.map { method -> hygienize(method, key) as SyntaxFunction }
+        )
+        is SyntaxTrait -> declaration.copy(
             methods = declaration.methods.map { method -> hygienize(method, key) as SyntaxFunction }
         )
         else -> declaration

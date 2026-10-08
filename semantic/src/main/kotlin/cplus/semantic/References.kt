@@ -199,6 +199,7 @@ internal object ReferenceCollector {
                     declaration.fields.forEach { field -> id(field); collectType(field.type) }
                     declaration.methods.forEach { collectFunction(it, declaration.name) }
                 }
+                is AstTrait -> Unit
                 is AstGlobalVariable -> {
                     collectType(declaration.type)
                     declaration.initializer?.let { collectExpression(it, emptyMap()) }
