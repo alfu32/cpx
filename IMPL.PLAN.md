@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    101/128 accepted with recorded evidence; 27 TODO
+Roadmap leaf tasks:    102/128 accepted with recorded evidence; 26 TODO
 Phase gates:           10/12 complete; 1 active; 1 queued
-Current task:          R10.1.1.3.3 — header globals and safe constants
+Current task:          R10.1.1.3.4 — delivered SDK header coverage audit
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -36,10 +36,10 @@ R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
 R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
-R10 [DOING] 4/19 import discovery, completion and quick fixes
+R10 [DOING] 5/19 import discovery, completion and quick fixes
 R11 [TODO]  0/12 compile-time extension methods
 
-TOTAL       101/128 implementation tasks accepted; 10/12 phase gates complete,
+TOTAL       102/128 implementation tasks accepted; 10/12 phase gates complete,
             1 active, 1 queued
 ```
 
@@ -3783,7 +3783,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [10/12 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 101/128 accepted; R10.1.1.1–.3.2 accepted, R10 active, R11 queued
+Roadmap leaf tasks: 102/128 accepted; R10.1.1.1–.3.3 accepted, R10 active, R11 queued
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3795,7 +3795,7 @@ Roadmap leaf tasks: 101/128 accepted; R10.1.1.1–.3.2 accepted, R10 active, R11
 [DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
-[DOING] R10 — import discovery, completion and quick fixes (4/19 leaves)
+[DOING] R10 — import discovery, completion and quick fixes (5/19 leaves)
 [TODO]  R11 — compile-time extension methods (0/12 leaves)
 ```
 
@@ -5893,22 +5893,22 @@ The installable distribution runs from an unrelated project directory without
 manual SDK configuration; an explicit JVM property selects a development SDK;
 the CLI help identifies the JVM option.
 
-## R10 [DOING] [4/19] Discoverable imports and editor fixes
+## R10 [DOING] [5/19] Discoverable imports and editor fixes
 
 **Language:** LS §21 Imports; §22 Importing C; §41.1 Import assistance.
 **Technical:** TS §28 C import architecture; §54.1 Discoverable imports.
 
-R10.1.1.1–.3.2 are implemented; R10.1.1.3.3 is in progress. The implementation runbook is
+R10.1.1.1–.3.3 are implemented; R10.1.1.3.4 is in progress. The implementation runbook is
 [IMPL.HANDOFF.IMPORTS-TRAITS.md](IMPL.HANDOFF.IMPORTS-TRAITS.md).
 The existing R10/R11 IDs are retained as composites; only terminal children
 count. File paths using `...` are expanded in the runbook's repository map.
 
-### R10.1 [DOING] [4/10] Shared discovery foundations
+### R10.1 [DOING] [5/10] Shared discovery foundations
 
 **Language:** LS §21 Imports; §22 Importing C.
 **Technical:** TS §27 Import resolver; §28 C import architecture; §47 Incremental compilation model.
 
-#### R10.1.1 [DOING] [4/7] Source-driven C declarations
+#### R10.1.1 [DOING] [5/7] Source-driven C declarations
 
 **Language:** LS §22.1 C header import; §22.2 Foreign symbols; §22.3 Unsupported C preprocessor constructs.
 **Technical:** TS §28 C import architecture; §45 Compiler context.
@@ -5955,7 +5955,7 @@ and timeout diagnostics. MSVC/clang-cl command adapters are covered without
 claiming native execution; native Windows execution remains assigned to
 R10.3.2.3.
 
-##### R10.1.1.3 [DOING] [2/4] Parse supported C declarations into structured foreign records
+##### R10.1.1.3 [DOING] [3/4] Parse supported C declarations into structured foreign records
 
 **Language:** LS §22.2 Foreign symbols; §22.3 Unsupported C preprocessor constructs; §43.4 C-compatible type qualifiers and declarators.
 **Technical:** TS §28 C import architecture; §30 Reference index.
@@ -6006,7 +6006,7 @@ By-value use of incomplete tags and compiler-specific bit-fields are rejected
 rather than assigned guessed layouts. Header source offsets remain stable
 after preprocessor-line masking.
 
-###### R10.1.1.3.3 [DOING] Index globals and safely representable header constants
+###### R10.1.1.3.3 [DONE] Index globals and safely representable header constants
 
 **Language:** LS §22.2 Foreign symbols; §22.3 Unsupported C preprocessor constructs.
 **Technical:** TS §28 C import architecture; §54.1 Discoverable imports.
@@ -6020,7 +6020,19 @@ after preprocessor-line masking.
 
 **Verify:** `gradle :semantic:test :compiler:test` (global/constant/macro fixtures).
 
-###### R10.1.1.3.4 [TODO] Audit declaration coverage against the delivered SDK headers
+**Evidence:** Linux, 2026-10-08 — full `./gradlew :semantic:test` and
+`./gradlew :compiler:test` pass. Token-aware top-level scanning indexes extern
+globals and excludes static header state and function-body locals. C preprocessor
+events retain final active object-like definitions across `#undef` and
+redefinition, and ignore inactive branches; zero-argument function-like macros
+remain distinct from object-like constants. Safe numeric, floating, character,
+and string literals receive conservative types and retain their replacement,
+source path, and line through semantic symbols. Enum constant expressions are
+retained. Function-like macros and expression macros are not exposed as callable
+symbols or guessed constants. Existing EOF/SEEK static import coverage remains
+passing.
+
+###### R10.1.1.3.4 [DOING] Audit declaration coverage against the delivered SDK headers
 
 **Language:** LS §22.1 C header import; §22.3 Unsupported C preprocessor constructs; §28 Source provenance.
 **Technical:** TS §28 C import architecture; §63 Testing architecture.

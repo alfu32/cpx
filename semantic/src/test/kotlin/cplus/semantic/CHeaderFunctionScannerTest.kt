@@ -23,7 +23,7 @@ class CHeaderFunctionScannerTest {
                 int integer;
                 double real;
             } Number;
-            enum Color { RED, GREEN = 2 };
+            enum Color { RED = 1, GREEN = RED + 1 };
             """.trimIndent()
         )
 
@@ -39,6 +39,7 @@ class CHeaderFunctionScannerTest {
         assertEquals("union Number", declarations.getValue("Number").typeName)
         assertEquals(ForeignDeclarationKind.ENUM_VALUE, declarations.getValue("RED").kind)
         assertEquals(ForeignDeclarationKind.ENUM_VALUE, declarations.getValue("GREEN").kind)
+        assertEquals("RED+1", declarations.getValue("GREEN").constantExpression)
     }
 
     @Test
@@ -58,6 +59,57 @@ class CHeaderFunctionScannerTest {
         ).getValue("Flags")
 
         assertTrue(declaration.unsupportedReason?.contains("bit-field") == true)
+    }
+
+    @Test
+    fun exposesOnlySafeObjectLikeMacroConstantsWithInferredTypes() {
+        val source = java.nio.file.Path.of("constants.h").toAbsolutePath().normalize()
+        val declarations = CHeaderImportService().sourceDeclarations(
+            "",
+            listOf(
+                CHeaderMacro("ANSWER", null, "42", source, 4),
+                CHeaderMacro("LIMIT", null, "8ULL", source, 5),
+                CHeaderMacro("RATE", null, "1.5f", source, 6),
+                CHeaderMacro("TITLE", null, "\"hello\"", source, 7),
+                CHeaderMacro("EXPRESSION", null, "2 + 3", source, 8),
+                CHeaderMacro("FUNCTION_LIKE", "value", "(value + 1)", source, 9),
+                CHeaderMacro("ZERO_ARGUMENT_FUNCTION", "", "7", source, 10)
+            )
+        )
+
+        assertEquals("int", declarations.getValue("ANSWER").typeName)
+        assertEquals("unsigned long long", declarations.getValue("LIMIT").typeName)
+        assertEquals("float", declarations.getValue("RATE").typeName)
+        assertEquals("char*", declarations.getValue("TITLE").typeName)
+        assertEquals("\"hello\"", declarations.getValue("TITLE").constantExpression)
+        assertEquals(source, declarations.getValue("TITLE").externalSource)
+        assertEquals(7, declarations.getValue("TITLE").externalLine)
+        assertTrue("EXPRESSION" !in declarations)
+        assertTrue("FUNCTION_LIKE" !in declarations)
+        assertTrue("ZERO_ARGUMENT_FUNCTION" !in declarations)
+    }
+
+    @Test
+    fun indexesExternalGlobalsWithoutExportingStaticOrFunctionLocalVariables() {
+        val declarations = CHeaderImportService().sourceDeclarations(
+            """
+            extern const char *label;
+            extern int *global_pointer;
+            int global_count = 3;
+            static int private_header_state;
+            int helper(void) {
+                int function_local = 7;
+                return function_local;
+            }
+            """.trimIndent()
+        )
+
+        assertTrue("label" in declarations, "declarations were ${declarations.keys}")
+        assertEquals("const char*", declarations.getValue("label").typeName)
+        assertEquals("int*", declarations.getValue("global_pointer").typeName)
+        assertEquals("int", declarations.getValue("global_count").typeName)
+        assertTrue("private_header_state" !in declarations)
+        assertTrue("function_local" !in declarations)
     }
 
     @Test
@@ -113,6 +165,6 @@ class CHeaderFunctionScannerTest {
 
         val declarations = CHeaderImportService().sourceDeclarations(source)
 
-        assertEquals(setOf("real_function"), declarations.keys)
+        assertEquals(setOf("real_function", "message"), declarations.keys)
     }
 }

@@ -438,6 +438,64 @@ class SemanticTypeTest {
     }
 
     @Test
+    fun safeCObjectMacrosAreTypedForeignConstants() {
+        val cSource = SourceFile(SourceFileId(39), Path.of("values.h"), "", 1)
+        val source = SourceFile(
+            SourceFileId(40), Path.of("values.cp"),
+            "int main() { return ANSWER; }", 1
+        )
+        val result = SemanticAnalyzer().analyze(
+            AstBuilder().build(Parser(Lexer().lex(source)).parse().syntax),
+            foreignSources = listOf(
+                CSourceUnit(
+                    cSource,
+                    "c.values",
+                    listOf(
+                        CHeaderMacro("ANSWER", null, "42", cSource.path, 2),
+                        CHeaderMacro("RATE", null, "1.5", cSource.path, 3),
+                        CHeaderMacro("TITLE", null, "\"hello\"", cSource.path, 4)
+                    )
+                )
+            )
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = result.model!!
+        val answer = model.foreignGlobals.getValue("ANSWER")
+        assertEquals("int", answer.type.name)
+        assertEquals("42", answer.constantExpression)
+        assertEquals(cSource.path, answer.externalSource)
+        assertEquals(2, answer.externalLine)
+        assertEquals("double", model.foreignGlobals.getValue("RATE").type.name)
+        assertEquals("char*", model.foreignGlobals.getValue("TITLE").type.name)
+    }
+
+    @Test
+    fun cHeaderGlobalDeclarationsExcludeStaticAndFunctionLocalState() {
+        val cText = """
+            extern const char *label;
+            extern int *global_pointer;
+            int global_count = 3;
+            static int private_header_state;
+            int helper(void) { int function_local = 7; return function_local; }
+        """.trimIndent()
+        val cSource = SourceFile(SourceFileId(41), Path.of("globals.h"), cText, 1)
+        val source = SourceFile(SourceFileId(42), Path.of("globals.cp"), "int main() { return 0; }", 1)
+        val result = SemanticAnalyzer().analyze(
+            AstBuilder().build(Parser(Lexer().lex(source)).parse().syntax),
+            foreignSources = listOf(CSourceUnit(cSource, "c.globals"))
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val globals = result.model!!.foreignGlobals
+        assertEquals("char*", globals.getValue("label").type.name)
+        assertEquals("int*", globals.getValue("global_pointer").type.name)
+        assertEquals("int", globals.getValue("global_count").type.name)
+        assertTrue("private_header_state" !in globals)
+        assertTrue("function_local" !in globals)
+    }
+
+    @Test
     fun unsupportedHeaderPreprocessorContentRemainsDiagnostic() {
         val service = CHeaderImportService(mapOf("c.test" to "#define MAGIC 1\n"))
         val text = "import { MAGIC } from c.test; int main() { return 0; }"

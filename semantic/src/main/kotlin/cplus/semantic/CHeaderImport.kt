@@ -4,6 +4,7 @@ import cplus.core.SourceFile
 import cplus.core.Lexer
 import cplus.core.Token
 import cplus.core.TokenKind
+import java.nio.file.Path
 
 enum class ForeignDeclarationKind {
     TYPE,
@@ -22,6 +23,14 @@ data class CFunctionPointerType(
     val isVariadic: Boolean
 )
 
+data class CHeaderMacro(
+    val name: String,
+    val parameters: String?,
+    val replacement: String,
+    val source: Path? = null,
+    val line: Int? = null
+)
+
 data class CHeaderDeclaration(
     val name: String,
     val kind: ForeignDeclarationKind,
@@ -33,12 +42,16 @@ data class CHeaderDeclaration(
     val fields: List<CHeaderField> = emptyList(),
     val aggregateComplete: Boolean = false,
     val unsupportedReason: String? = null,
-    val functionPointerType: CFunctionPointerType? = null
+    val functionPointerType: CFunctionPointerType? = null,
+    val constantExpression: String? = null,
+    val externalSource: Path? = null,
+    val externalLine: Int? = null
 )
 
 data class CSourceUnit(
     val source: SourceFile,
-    val moduleName: String
+    val moduleName: String,
+    val macros: List<CHeaderMacro> = emptyList()
 )
 
 /**
@@ -54,8 +67,45 @@ class CHeaderImportService(
 
     fun isKnownModule(module: String): Boolean = module in configuredHeaders
 
-    fun sourceDeclarations(text: String): Map<String, CHeaderDeclaration> =
-        parse(text, allowFunctionDefinitions = true)
+    fun sourceDeclarations(text: String, macros: List<CHeaderMacro> = emptyList()): Map<String, CHeaderDeclaration> =
+        parse(text, allowFunctionDefinitions = true).toMutableMap().also { declarations ->
+            macros.forEach { macro ->
+                safeMacroDeclaration(macro)?.let { declarations[macro.name] = it }
+            }
+        }
+
+    private fun safeMacroDeclaration(macro: CHeaderMacro): CHeaderDeclaration? {
+        if (macro.parameters != null) return null
+        val value = macro.replacement.trim()
+        val type = when {
+            C_STRING_LITERAL.matches(value) -> "char*"
+            C_CHARACTER_LITERAL.matches(value) -> "int"
+            C_INTEGER_LITERAL.matches(value) -> when {
+                value.endsWith("ull", true) || value.endsWith("llu", true) -> "unsigned long long"
+                value.endsWith("ll", true) -> "long long"
+                value.endsWith("ul", true) || value.endsWith("lu", true) -> "unsigned long"
+                value.endsWith("u", true) -> "unsigned int"
+                value.endsWith("l", true) -> "long"
+                else -> value.removePrefix("-").removePrefix("+").toLongOrNull()?.let {
+                    if (it in Int.MIN_VALUE..Int.MAX_VALUE) "int" else return null
+                } ?: return null
+            }
+            C_FLOAT_LITERAL.matches(value) -> when (value.lastOrNull()?.lowercaseChar()) {
+                'f' -> "float"
+                'l' -> "long double"
+                else -> "double"
+            }
+            else -> return null
+        }
+        return CHeaderDeclaration(
+            macro.name,
+            ForeignDeclarationKind.ENUM_VALUE,
+            typeName = type,
+            constantExpression = value,
+            externalSource = macro.source,
+            externalLine = macro.line
+        )
+    }
 
     fun unsupportedPreprocessorLines(module: String): List<String> = configuredHeaders[module]
         .orEmpty()
@@ -68,21 +118,68 @@ class CHeaderImportService(
         val declarations = linkedMapOf<String, CHeaderDeclaration>()
         parseFunctions(text, allowFunctionDefinitions).forEach { declarations[it.name] = it }
         parseTypes(text).forEach { declarations[it.name] = it }
-        val globalPattern = Regex(
-            """(?m)^\s*(?:extern\s+)?([A-Za-z_][A-Za-z0-9_\s\*]*?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=\s*[^;]+)?\s*;"""
-        )
-        val globalText = if (allowFunctionDefinitions) stripBracedBodies(text) else text
-        globalPattern.findAll(globalText).forEach { match ->
-            if (match.groupValues[2] !in declarations) {
-                declarations[match.groupValues[2]] = CHeaderDeclaration(
-                    match.groupValues[2],
-                    ForeignDeclarationKind.GLOBAL,
-                    normalizeType(match.groupValues[1]),
-                    sourceRange = match.range
-                )
+        parseGlobals(text).forEach { if (it.name !in declarations) declarations[it.name] = it }
+        return declarations
+    }
+
+    private fun parseGlobals(text: String): List<CHeaderDeclaration> {
+        val tokens = lex(text)
+        val declarations = mutableListOf<CHeaderDeclaration>()
+        var start = 0
+        var index = 0
+        var parens = 0
+        var brackets = 0
+        while (index < tokens.size) {
+            when (tokens[index].lexeme) {
+                "(" -> parens++
+                ")" -> parens = (parens - 1).coerceAtLeast(0)
+                "[" -> brackets++
+                "]" -> brackets = (brackets - 1).coerceAtLeast(0)
+                "{" -> if (parens == 0 && brackets == 0) {
+                    val close = matchingBrace(tokens, index)
+                    if (close == null) break
+                    val prefix = tokens.subList(start, index)
+                    val functionBody = prefix.indices.any { open ->
+                        prefix[open].lexeme == "(" && candidateAt(prefix, 0, open) != null
+                    }
+                    index = close + 1
+                    if (functionBody) start = index
+                    // Aggregate and initializer braces stay attached to their top-level
+                    // declaration until its semicolon; function bodies do not.
+                    parens = 0
+                    brackets = 0
+                    continue
+                }
+                ";" -> if (parens == 0 && brackets == 0) {
+                    globalDeclaration(tokens, start, index)?.let(declarations::add)
+                    start = index + 1
+                }
             }
+            index++
         }
         return declarations
+    }
+
+    private fun globalDeclaration(tokens: List<Token>, start: Int, end: Int): CHeaderDeclaration? {
+        if (start >= end) return null
+        val declaration = tokens.subList(start, end)
+        if (declaration.any { it.lexeme in setOf("typedef", "struct", "union", "enum", "static") }) return null
+        if (declaration.any { it.lexeme == "(" || it.lexeme == ")" || it.lexeme == "{" || it.lexeme == "}" }) return null
+        val initializer = declaration.indexOfFirst { it.lexeme == "=" }.let { if (it < 0) declaration.size else it }
+        val declarator = declaration.subList(0, initializer)
+        if (declarator.any { it.lexeme == "," || it.lexeme == ":" }) return null
+        val nameIndex = declarator.indexOfLast { it.kind == TokenKind.IDENTIFIER }
+        if (nameIndex <= 0) return null
+        val name = declarator[nameIndex].lexeme
+        val typeTokens = declarator.filterIndexed { tokenIndex, _ -> tokenIndex != nameIndex }
+            .filterNot { it.lexeme in setOf("extern", "register", "_Thread_local") }
+        if (typeTokens.isEmpty()) return null
+        return CHeaderDeclaration(
+            name,
+            ForeignDeclarationKind.GLOBAL,
+            normalizeType(render(typeTokens)),
+            sourceRange = tokens[start].range.startOffset until tokens[end].range.endOffset
+        )
     }
 
     private fun parseTypes(text: String): List<CHeaderDeclaration> {
@@ -304,11 +401,14 @@ class CHeaderImportService(
             if (index == end || (tokens[index].lexeme == "," && nested == 0)) {
                 val name = tokens.subList(segmentStart, index).firstOrNull { it.kind == TokenKind.IDENTIFIER }
                 if (name != null) {
+                    val assignment = (segmentStart until index).firstOrNull { tokens[it].lexeme == "=" }
+                    val value = assignment?.let { render(tokens.subList(it + 1, index)) }
                     values += CHeaderDeclaration(
                         name.lexeme,
                         ForeignDeclarationKind.ENUM_VALUE,
                         "int",
-                        sourceRange = name.range.startOffset until name.range.endOffset
+                        sourceRange = tokens[segmentStart].range.startOffset until tokens[index - 1].range.endOffset,
+                        constantExpression = value
                     )
                 }
                 segmentStart = index + 1
@@ -523,25 +623,6 @@ class CHeaderImportService(
         "if", "while", "for", "switch", "return", "sizeof", "_Alignof", "__attribute__", "__declspec"
     )
 
-    private fun stripBracedBodies(text: String): String {
-        val characters = text.toCharArray()
-        var depth = 0
-        text.forEachIndexed { index, character ->
-            when {
-                character == '{' -> {
-                    depth++
-                    characters[index] = ' '
-                }
-                character == '}' && depth > 0 -> {
-                    depth--
-                    characters[index] = ' '
-                }
-                depth > 0 && character != '\n' -> characters[index] = ' '
-            }
-        }
-        return String(characters)
-    }
-
     private fun normalizeType(type: String): String = type
         .trim()
         .replace(Regex("\\s+"), " ")
@@ -549,6 +630,11 @@ class CHeaderImportService(
         .trim()
 
     companion object {
+        private val C_STRING_LITERAL = Regex("(?:u8|u|U|L)?\"(?:\\\\.|[^\"\\\\])*\"")
+        private val C_CHARACTER_LITERAL = Regex("(?:u|U|L)?'(?:\\\\.|[^'\\\\])'")
+        private val C_INTEGER_LITERAL = Regex("[+-]?(?:0[xX][0-9A-Fa-f]+|[0-9]+)(?:[uU](?:ll|LL|l|L)?|(?:ll|LL|l|L)[uU]?)?")
+        private val C_FLOAT_LITERAL = Regex("[+-]?(?:(?:[0-9]+\\.[0-9]*|\\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?)[fFlL]?")
+
         private fun complexHeaderDeclarations(): String = buildList {
             val complexResultFunctions = listOf(
                 "cacos", "casin", "catan", "ccos", "csin", "ctan", "cacosh", "casinh", "catanh",

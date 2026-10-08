@@ -43,6 +43,13 @@ class CHeaderDiscoveryTest {
             #ifndef DEMO_API_H
             #define DEMO_API_H
             #define HEADER_VALUE 33
+            #define REDEFINED_VALUE 1
+            #undef REDEFINED_VALUE
+            #define REDEFINED_VALUE 2
+            #define ZERO_ARGUMENT_MACRO() 7
+            #if 0
+            #define INACTIVE_MACRO 9
+            #endif
             #include "nested/detail.h"
             #if defined(__linux__)
             #define ACTIVE_PLATFORM 1
@@ -72,6 +79,15 @@ class CHeaderDiscoveryTest {
                 "$compiler did not retain the selected header macro origin"
             )
             assertTrue(output.macros.any { it.name == "DETAIL_VALUE" }, compiler)
+            assertEquals("2", output.macros.single { it.name == "REDEFINED_VALUE" }.replacement.trim(), compiler)
+            assertFalse(output.macros.any { it.name == "INACTIVE_MACRO" }, compiler)
+            assertEquals("", output.macros.single { it.name == "ZERO_ARGUMENT_MACRO" }.parameters, compiler)
+            val declarations = cplus.semantic.CHeaderImportService()
+                .sourceDeclarations(output.text, output.semanticMacros())
+            assertEquals("int", declarations.getValue("REDEFINED_VALUE").typeName, compiler)
+            assertEquals("2", declarations.getValue("REDEFINED_VALUE").constantExpression, compiler)
+            assertTrue("INACTIVE_MACRO" !in declarations, compiler)
+            assertTrue("ZERO_ARGUMENT_MACRO" !in declarations, compiler)
             assertTrue(output.command.none { it == "include root with spaces" }, "include paths must be one argv item")
         }
     }

@@ -2,6 +2,7 @@ package cplus.compiler
 
 import cplus.core.Diagnostic
 import cplus.core.DiagnosticSeverity
+import cplus.semantic.CHeaderMacro
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.file.Files
@@ -26,6 +27,10 @@ data class CHeaderPreprocessResult(
     val diagnostics: List<Diagnostic>
 ) {
     val isSuccessful: Boolean get() = diagnostics.none { it.severity == DiagnosticSeverity.ERROR }
+}
+
+fun CHeaderPreprocessResult.semanticMacros(): List<CHeaderMacro> = macros.map { macro ->
+    CHeaderMacro(macro.name, macro.parameters, macro.replacement, macro.source, macro.line)
 }
 
 /** Runs the selected C driver's real preprocessor; it does not interpret C itself. */
@@ -179,8 +184,9 @@ class CHeaderPreprocessor(
     private fun macroDefinitions(text: String, roots: List<Path>): List<HeaderMacroDefinition> {
         val marker = Regex("""^\s*#(?:line\s+)?\s*(\d+)\s+"((?:\\.|[^"])*)".*$""")
         val definition = Regex("""^\s*#\s*define\s+([A-Za-z_][A-Za-z0-9_]*)(?:\(([^)]*)\))?\s*(.*)$""")
+        val undefinition = Regex("""^\s*#\s*undef\s+([A-Za-z_][A-Za-z0-9_]*)\s*$""")
         val normalizedRoots = roots.map { it.toAbsolutePath().normalize() }
-        val output = mutableListOf<HeaderMacroDefinition>()
+        val output = linkedMapOf<String, HeaderMacroDefinition>()
         var currentPath: Path? = null
         var currentLine: Int? = null
         text.lineSequence().forEach { line ->
@@ -194,10 +200,12 @@ class CHeaderPreprocessor(
             }
             val source = currentPath
             if (source != null && normalizedRoots.any(source::startsWith)) {
+                undefinition.matchEntire(line)?.let { output.remove(it.groupValues[1]) }
                 definition.matchEntire(line)?.let { macro ->
-                    output += HeaderMacroDefinition(
-                        macro.groupValues[1],
-                        macro.groupValues[2].takeIf(String::isNotEmpty),
+                    val name = macro.groupValues[1]
+                    output[name] = HeaderMacroDefinition(
+                        name,
+                        macro.groups[2]?.value,
                         macro.groupValues[3],
                         source,
                         currentLine
@@ -206,7 +214,7 @@ class CHeaderPreprocessor(
             }
             currentLine = currentLine?.plus(1)
         }
-        return output
+        return output.values.toList()
     }
 
     private fun includedFiles(text: String, input: Path): Set<Path> {

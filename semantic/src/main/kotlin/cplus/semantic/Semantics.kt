@@ -144,7 +144,10 @@ data class Symbol(
     val moduleName: String? = null,
     val qualifiedName: QualifiedName = QualifiedName(name),
     val externalName: String? = null,
-    val abi: AbiKind = AbiKind.C
+    val abi: AbiKind = AbiKind.C,
+    val constantExpression: String? = null,
+    val externalSource: java.nio.file.Path? = null,
+    val externalLine: Int? = null
 )
 
 data class DeclarationCatalogueEntry(
@@ -842,7 +845,10 @@ class SemanticAnalyzer(
             moduleName: String? = null,
             visibility: Visibility = Visibility.PRIVATE,
             externalName: String? = null,
-            abi: AbiKind = AbiKind.C
+            abi: AbiKind = AbiKind.C,
+            constantExpression: String? = null,
+            externalSource: java.nio.file.Path? = null,
+            externalLine: Int? = null
         ): Symbol = Symbol(
             SymbolId(nextSymbolId.next()),
             name,
@@ -853,6 +859,9 @@ class SemanticAnalyzer(
             visibility = visibility,
             externalName = externalName,
             abi = abi,
+            constantExpression = constantExpression,
+            externalSource = externalSource,
+            externalLine = externalLine,
             qualifiedName = QualifiedName(
                 listOfNotNull(moduleName?.let { modulePackages[it] }, moduleName, name).joinToString("::")
             )
@@ -875,9 +884,36 @@ class SemanticAnalyzer(
             defineBinding(moduleName, name, symbol.id)
         }
 
-        fun registerForeignConstant(name: String, moduleName: String, origin: Origin, kind: SymbolKind) {
+        fun registerForeignConstant(
+            name: String,
+            moduleName: String,
+            origin: Origin,
+            kind: SymbolKind,
+            typeName: String = "int",
+            constantExpression: String? = null,
+            externalSource: java.nio.file.Path? = null,
+            externalLine: Int? = null
+        ) {
             if (foreignGlobals.containsKey(name)) return
-            val symbol = newSymbol(name, kind, primitive("int"), origin, moduleName, Visibility.PUBLIC, name)
+            val normalizedTypeName = typeName.removePrefix("const ").trim()
+            val pointer = normalizedTypeName.endsWith('*')
+            val constantType = if (pointer) {
+                PointerType(TypeId(nextTypeId.next()), primitive(normalizedTypeName.removeSuffix("*").trim()))
+            } else {
+                primitive(normalizedTypeName)
+            }
+            val symbol = newSymbol(
+                name,
+                kind,
+                constantType,
+                origin,
+                moduleName,
+                Visibility.PUBLIC,
+                name,
+                constantExpression = constantExpression,
+                externalSource = externalSource,
+                externalLine = externalLine
+            )
             globals[name] = symbol
             foreignGlobals[name] = symbol
             defineBinding(moduleName, name, symbol.id)
@@ -1091,7 +1127,16 @@ class SemanticAnalyzer(
                     foreignGlobals[declaration.name] = symbol
                     defineBinding(moduleName, declaration.name, symbol.id)
                 }
-                ForeignDeclarationKind.ENUM_VALUE -> registerForeignConstant(declaration.name, moduleName, origin, SymbolKind.FOREIGN_ENUM_VALUE)
+                ForeignDeclarationKind.ENUM_VALUE -> registerForeignConstant(
+                    declaration.name,
+                    moduleName,
+                    origin,
+                    SymbolKind.FOREIGN_ENUM_VALUE,
+                    declaration.typeName ?: "int",
+                    declaration.constantExpression,
+                    declaration.externalSource,
+                    declaration.externalLine
+                )
             }
             return true
         }
@@ -1128,7 +1173,7 @@ class SemanticAnalyzer(
         }
 
         foreignSources.forEach { sourceUnit ->
-            headerImportService.sourceDeclarations(sourceUnit.source.text).values.forEach { declaration ->
+            headerImportService.sourceDeclarations(sourceUnit.source.text, sourceUnit.macros).values.forEach { declaration ->
                 val origin = declaration.sourceRange?.let { range ->
                     Origin.Direct(SourceRange(sourceUnit.source.id, range.first, range.last + 1))
                 } ?: Origin.Synthetic(null)
