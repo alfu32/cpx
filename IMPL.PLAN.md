@@ -10,24 +10,24 @@ runtime, SDK, LSP, and release products.
 ### Release roadmap dashboard
 
 ```text
-Historical foundation: 143/146 evidenced; std.core, native services and stdio reopened
-Roadmap leaf tasks:    36/65 evidenced on Linux
+Historical foundation: 143/146 evidenced; target-aware core and native stdio audit remain open
+Roadmap leaf tasks:    37/65 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.3 — implement process arguments, environment and standard-stream services
-Current milestone:     R5 — native std and platform services
+Current task:          R4.4/R4.5 — audit the advertised C stdio surface and integrate stream fixtures into the libc report
+Current milestone:     R4 — runtime, allocator and libc behavior
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
-R4 [DOING] 3/5  Linux runtime/libc stream gaps reopened; Windows gate pending
-R5 [DOING] 6/21 native std and platform-service work remains open
+R4 [DOING] 3/5  C stdio implementation audit and conformance-report integration remain open
+R5 [DOING] 7/21 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       36/65 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       37/65 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,11 +35,11 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Implement R5.3.3's process arguments/environment and standard-stream PAL;
-   this is a newly recorded prerequisite for the reopened R4.4/R4.5 libc stream
-   behavior and conformance work.
-2. Close R4.4/R4.5 with executable stdin/stdout/stderr and stream-routing
-   fixtures, then continue R5.3.4–R5.5 and R6–R7.
+1. Audit the advertised C `FILE`/stdio surface against its implementations;
+   extend the independent C17 fixtures and `cplus libc test` report with real
+   stdin reads, stream-specific output, stable failures, and dependency checks.
+2. Close R4.4/R4.5 only when both the implementation audit and executable
+   report acceptance criteria pass; then continue R5.3.4–R5.5 and R6–R7.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
    execution remains deferred and receives no completion credit meanwhile.
 4. Final validation — run the deferred Windows ABI/caller and PAL checks (including the
@@ -67,6 +67,9 @@ Latest completed implementation commits:
 - `69bf852` — add portable filesystem and unbuffered stream facades (R5.2.4 Linux-verified; Windows execution deferred).
 - `2d24aed` — validate page-memory PAL failure cases (R5.3.1 Linux-verified; Windows execution deferred).
 - `4d253de` — add portable process spawn and wait adapters (R5.3.2 Linux-verified; Windows execution deferred).
+- `5ec70b7` — expose process context and standard streams (R5.3.3 Linux-verified; Windows execution deferred).
+- `bd26d05` — verify standard-channel error mapping and host-runtime isolation.
+- `c39c402` — preserve the target `size_t` ABI in stdio formatting functions.
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -3099,7 +3102,7 @@ they are explicitly reopened as R1.4 below.
 **Implementation**
 - Added stdio stream markers, a flush hook, time, math, locale, Unicode, and signal compatibility source/header contracts.
 - Normal runtime termination calls the libc-owned stream flush hook; immediate and abort paths do not.
-- Reopened after audit: `fgetc` is currently a hardcoded EOF stub and stream-directed `fprintf`/`fputc` writes are routed to stdout. Actual stdin/stdout/stderr PAL routing and behavior tests are tracked by R5.3.3 and R4.4/R4.5; contracts and markers do not meet the stdio acceptance gate.
+- Reopened after audit found that `fgetc` was a hardcoded EOF stub and stream-directed `fprintf`/`fputc` writes were routed to stdout. R5.3.3 now implements and tests the standard-channel behavior; this item remains open until the broader C `FILE` surface audit and R4.5 report gate are satisfied.
 
 **Depends**
 - 6.3.1.4
@@ -3378,7 +3381,7 @@ authoritative work queue for completing the working CLI transcoder and
 self-hosted SDK described by the specifications.
 
 ```text
-Foundation tasks: 143/146 (6.3.1.1, 6.3.1.4 and 6.3.2.3 reopened: target-aware core, executable native services and C stdio behavior remain active)
+Foundation tasks: 143/146 (6.3.1.1, 6.3.1.4 and 6.3.2.3 remain open: target-aware core, executable native services and the full C stdio surface audit)
 Completion phases: [DOING] [2/9 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -3964,10 +3967,10 @@ layout, source-map, and dependency audits.
   operations with overflow, double-free, and invalid-range diagnostics;
 - R4.3 [DONE] — implement the C+ memory/string/conversion core and thread-local
   errno boundary without importing host libc behavior into native APIs;
-- R4.4 [DOING] — implement the claimed Linux C17 compatibility families in dependency
-  order: stdio/varargs, time/math/locale, Unicode, signal, atomics, TLS, and
-  setjmp/longjmp; real standard-input reads and stream-specific stdout/stderr
-  routing remain incomplete;
+- R4.4 [DOING] — implement and audit the claimed Linux C17 compatibility
+  families in dependency order: stdio/varargs, time/math/locale, Unicode,
+  signal, atomics, TLS, and setjmp/longjmp; standard-channel routing is now
+  implemented, while the full advertised `FILE` surface still needs an audit;
 - R4.5 [DOING] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and ensure the report exercises every advertised stdio
   operation rather than treating declarations or stubs as complete.
@@ -3975,9 +3978,11 @@ layout, source-map, and dependency audits.
 The Linux x86_64 conformance command reports the individual header, runtime
 source, fixture execution, and binary dependency checks; it returns non-zero
 for missing, planned, or unsupported checks. R4.4/R4.5 were reopened after the
-audit found that `fgetc` always returns EOF and `fprintf`/`fputc` ignore their
-stream argument. The current 38-pass report does not exercise those behaviors
-and therefore is not evidence for complete Linux C17 stdio.
+audit found that `fgetc` always returned EOF and `fprintf`/`fputc` ignored
+their stream argument. R5.3.3 now implements and directly tests those
+standard-channel behaviors, but its focused fixture is not yet part of the
+38-pass `cplus libc test` report, and the complete advertised `FILE` surface
+has not been audited. Neither R4.4 nor R4.5 is closed by that focused test.
 
 ### R4.1/R4.2 completion record
 
@@ -4020,19 +4025,20 @@ Implemented and executed on Linux:
 
 - the self-hosted stdio layer has unbuffered formatted-output routines,
   `puts`, `fputc`, and explicit stream markers without host stdio calls;
-- `fgetc` currently returns EOF unconditionally, while `fprintf` and `fputc`
-  do not route to the selected stream; stdin and stderr PAL operations remain
-  to be implemented and tested;
+- at the time of this partial record, `fgetc` returned EOF unconditionally,
+  while `fprintf` and `fputc` ignored the selected stream; see the later
+  R5.3.3 implementation update below for the corrected standard-channel path;
 - the formatter and SDK `stdarg.h` provide the selected C ABI's varargs path;
 - monotonic platform ticks feed `clock` and `time`, with Linux syscall and
   Windows system-API adapters;
 - `sqrt`, `fabs`, character classification/case conversion, the C locale, and
   basic signal registration/raise behavior have executable Linux coverage.
 
-R4.4 remains open on Linux until actual stdin reads, stdout/stderr routing and
-their C stdio semantics pass executable fixtures. AArch64 and Windows
-`setjmp`/`longjmp` assembly, plus final cross-platform execution, also remain
-deferred.
+The standard-channel implementation and its freestanding Linux behavior test
+are recorded under R5.3.3 below. R4.4 remains open pending an audit of the full
+advertised C `FILE` surface and any implementation gaps that audit finds.
+AArch64 and Windows `setjmp`/`longjmp` execution, plus final cross-platform
+validation, remain deferred.
 
 ### R4.4.2 completion record
 
@@ -4106,7 +4112,7 @@ dependencies.
     file-stream read/write/seek/close adapters without exposing OS handles;
   - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
     matrix, error-normalization and dependency audit, and close platform gaps;
-- R5.3 [TODO] — implement and Linux-execute the remaining PAL services;
+- R5.3 [DOING] — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
@@ -4114,8 +4120,9 @@ dependencies.
   - R5.3.2 [DONE] — implement the specified process identity/spawn/wait ABI,
     UTF-8 argv, inherited environment/standard streams, synchronous launch
     errors and normalized exit status;
-  - R5.3.3 [TODO] — implement environment and argument access plus portable
-    standard-input/output/error service contracts;
+  - R5.3.3 [DONE] — implement environment and argument access plus portable
+    standard-input/output/error service contracts, with Linux execution and
+    Windows source/ABI checks;
   - R5.3.4 [TODO] — provide distinct wall, monotonic and process-CPU clocks
     with documented nanosecond units and overflow behavior;
   - R5.3.5 [TODO] — implement thread create/join/current/yield and runtime TLS
@@ -4227,7 +4234,21 @@ normalization. `AbiLayoutTest` verifies the opaque `long long` process handle
 and declarations across Linux/Windows x86_64/AArch64 descriptors. Linux x86_64
 runtime execution passes; Linux AArch64 and Windows adapters pass cross-target
 syntax compilation. Windows execution remains deferred. The full
-`./gradlew build --no-daemon` passes; R5.3.3 is next.
+`./gradlew build --no-daemon` passes.
+
+R5.3.3 acceptance evidence: `RuntimeEnvironmentAndStreamsTest` builds a static
+Linux executable from production startup, runtime, libc, allocator, and PAL
+sources with `-nostdlib`. It verifies `argc`/`argv`, indexed argument lookup,
+inherited `NAME=value` environment access, stdin bytes and EOF, stdout/stderr
+routing, zero-length and invalid-buffer contracts, and stable I/O errors after
+closing each standard descriptor. `nm -u` confirms no unresolved host-runtime
+symbols. `RuntimeProcessPalTest` also passes with the new explicit `envp`
+startup ABI. Linux AArch64 runtime/startup source checks and startup assembly
+compilation pass; Windows x86_64 adapter/startup sources pass strict MinGW
+syntax compilation. `./gradlew build --no-daemon` passes on Linux. No Windows
+execution is claimed. R4.4/R4.5 remain open: this focused fixture is not yet
+registered in the `cplus libc test` report, and the full advertised C `FILE`
+surface still requires audit.
 
 ### R5.1 status audit
 
