@@ -167,6 +167,40 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun windowsMinGWBuildProducesPeWithoutCrtOrOptionalAtomicImports() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val compiler = "x86_64-w64-mingw32-gcc"
+        val inspector = "x86_64-w64-mingw32-objdump"
+        assumeTrue(commandAvailable(compiler), "MinGW cross-compiler is not installed")
+        assumeTrue(commandAvailable(inspector), "MinGW PE inspection tools are not installed")
+
+        val directory = Files.createTempDirectory("cplus-cli-windows-pe")
+        val source = directory.resolve("main.cp").also { it.writeText("int main() { return 0; }") }
+        val executable = directory.resolve("program.exe")
+        val buildOutput = captureStdout {
+            assertEquals(
+                0,
+                Cli().run(
+                    listOf(
+                        "build", source.toString(), "--target", "windows-x86_64",
+                        "--c-compiler", compiler, "--output", executable.toString()
+                    )
+                )
+            )
+        }
+        assertTrue(executable.exists(), buildOutput)
+
+        val inspect = ProcessBuilder(inspector, "-p", executable.toString())
+            .redirectErrorStream(true).start()
+        val imports = inspect.inputStream.bufferedReader().readText()
+        assertEquals(0, inspect.waitFor(), imports)
+        assertEquals(1, Regex("DLL Name:").findAll(imports).count(), imports)
+        assertTrue("DLL Name: KERNEL32.dll" in imports, imports)
+        listOf("msvcrt", "ucrt", "WaitOnAddress", "WakeByAddress", "emutls", "chkstk")
+            .forEach { forbidden -> assertTrue(forbidden !in imports.lowercase(), imports) }
+    }
+
+    @Test
     fun linuxAarch64ClangBuildProducesStaticTlsProduct() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         assumeTrue(commandAvailable("clang"), "Clang is not installed")

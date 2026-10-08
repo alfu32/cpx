@@ -5546,9 +5546,14 @@ hard-coded CLI path.
   dependency. The first full-link attempt exposed MinGW's `___chkstk_ms`
   dependency from a 256-entry automatic socket-address buffer; the resolver
   now allocates that bounded temporary buffer through the C+ runtime allocator.
-  `RuntimeLinkerTest` verifies Windows TLS-adapter selection, and the complete
-  `examples/minimal.cp` PE product links locally. This is cross-link and import
-  evidence only—not Windows runtime execution. SSH to the requested Windows VM
+  `RuntimeLinkerTest` verifies Windows TLS-adapter selection, and
+  `CliIntegrationTest.windowsMinGWBuildProducesPeWithoutCrtOrOptionalAtomicImports`
+  now repeats the target build and PE import audit when MinGW tools are
+  installed. The complete `examples/minimal.cp` PE product links locally.
+  Wine 11.0 is installed, but first-time isolated-prefix initialization timed
+  out before the product launched, so it provides no execution evidence.
+  This is cross-link and import evidence only—not Windows runtime execution.
+  SSH to the requested Windows VM
   currently fails with `No route to host`; R8.3 remains open and receives no
   completion credit.
 - R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
