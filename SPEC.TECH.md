@@ -3018,10 +3018,7 @@ Portable synchronization algorithms are shared in `sdk/runtime/src/sync.c`:
 semaphores, and once initialization use compiler atomic intrinsics for their
 state transitions and memory ordering. Their blocking edge is the PAL's
 32-bit atomic wait/wake pair. Linux maps this pair to private futex syscalls;
-Windows maps it to `WaitOnAddress` and the address wake APIs (Windows 8+),
-resolving those exports from the loaded system `kernel32.dll` at runtime so
-older SDK import libraries do not introduce unresolved symbols. If a required
-export is unavailable, wait/wake returns the stable unsupported PAL status.
+Windows maps it to `WaitOnAddress` and the address wake APIs (Windows 8+).
 Successful wake returns zero consistently rather than exposing a
 platform-specific waiter count. The runtime link plan includes the shared
 algorithm source and exactly one target wait/wake adapter; ordinary atomic

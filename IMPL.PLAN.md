@@ -5392,19 +5392,11 @@ hard-coded CLI path.
   continues to report actual fixture compile/run, stream, and dependency-audit
   results. `./gradlew build --no-daemon` passes, including the focused matrix
   and Linux C17 executable-conformance tests. Commits: `34a0d5f`, `82172d8`.
-- R8.3 [DOING] — run Linux x86_64/AArch64 and Windows x86_64 (plus available
+- R8.3 [TODO] — run Linux x86_64/AArch64 and Windows x86_64 (plus available
   Windows AArch64/Darwin targets) product validation, including complete
-  self-hosted Windows PE cross-linking. Source work now resolves the Windows
-  8 address-wait APIs dynamically from system `kernel32.dll` and returns the
-  unsupported PAL status when exports are unavailable (`43558b9`); this
-  removes direct references to the three previously unresolved wait/wake
-  import symbols in source, but is not yet cross-link/runtime evidence.
-  Added a MinGW PE import-table test for the adapter, asserting those APIs are
-  not static imports and that runtime lookup dependencies remain present; the
-  test is intentionally not run before the final validation pass.
-  `__emutls_get_address` remains an open MinGW link failure. Per request,
-  target execution is deferred to the final validation pass; no R8.3 credit is
-  assigned until then.
+  self-hosted Windows PE cross-linking; the current local MinGW x86_64 attempt
+  fails on unresolved `__emutls_get_address`, `WaitOnAddress`,
+  `WakeByAddressSingle`, and `WakeByAddressAll` symbols;
 - R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
   builds, documented examples, and upgrade/ABI compatibility rules.
 
