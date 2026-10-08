@@ -11,10 +11,11 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    72/88 accepted with recorded evidence
+Roadmap leaf tasks:    73/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.2.5 — Linux filesystem-PAL conformance; Windows runtime/import gate remains deferred
-Current milestone:     R5 — native std and platform services
+Current task:          R4.6.2 — C17 complex math and type-generic dispatch
+Current milestone:     R4 — runtime, allocator and libc behavior
+Latest C17 Linux report: 46 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
                            __emutls_get_address and WaitOnAddress/wake imports
@@ -23,15 +24,19 @@ R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
-R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
+R4 [DOING] 6/7  Linux runtime/libc leaf tasks evidenced; complex math and Windows gates pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       72/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       73/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
+
+The latest Linux x86_64 C17 report is 46 pass, 0 fail, 0 unsupported, and 0
+planned. Per-leaf historical records below retain the report totals measured
+when those leaves were accepted; they are not claims about the latest count.
 
 The roadmap denominator increased from 65 to 67 during R5.3.7 planning when
 one broad socket work item was decomposed into three verifiable leaves. That
@@ -335,7 +340,9 @@ below. Its current execution sequence is:
    remains open for final target validation; R5.2.5 is DOING for Linux PAL
    conformance and remains open for final Windows runtime/import validation.
    Linux C17 stdio and report tasks R4.4/R4.5 pass their recorded checks;
-   R4.6 complex and type-generic math remain unimplemented.
+   R4.6.1 complex scalar/header support is accepted for its Linux x86_64
+   capability; R4.6.2 complex expression/math behavior and type-generic
+   dispatch are next. R4 remains open for Windows libc validation.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -394,6 +401,7 @@ Latest completed implementation commits:
 - `af1350f` — implement C17 trigonometric and hyperbolic function families (R5.4.5.8; Windows runtime execution deferred).
 - `bcd78d7` — implement C17 error and gamma functions (R5.4.5.9; Windows runtime execution deferred).
 - `cb7469e` — implement C17 extrema and exact fused multiply-add families (R5.4.5.10; Windows runtime execution deferred).
+- `a6ab00d` — add target-gated C17 complex scalar ABI, SDK header, and independent Linux x86_64 caller coverage (R4.6.1).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4301,16 +4309,29 @@ layout, source-map, and dependency audits.
 - R4.5 [DONE] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and ensure the report exercises every advertised stdio
   operation rather than treating declarations or stubs as complete.
-- R4.6 [TODO] [0/2] — complete the currently missing C17 complex and type-generic
-  math headers; the existing 42-pass Linux report covers its registered subset
+- R4.6 [DOING] [1/2] — complete the currently missing C17 complex and type-generic
+  math headers; the current 46-pass Linux report covers its registered subset
   and is not evidence that every header family listed in SPEC.STDLIB §18 is
   complete.
-  - R4.6.1 [TODO] — add target-described C complex types and the C17
+  - R4.6.1 [DONE] — add target-described C complex types and the C17
     `<complex.h>` declarations/macros, with semantic, layout, and independent
-    C-caller coverage.
-  - R4.6.2 [TODO] — implement the C17 complex math function families and
-    `<tgmath.h>` dispatch across real and complex argument types, with an
-    independent C17 fixture and no undeclared host `libm` dependency.
+    C-caller coverage. The `c17_complex` capability is initially limited to
+    Linux x86_64; other targets reject these types until separately probed.
+    `CPrimitiveTypesTest` verifies legal specifier order and rejects invalid
+    combinations; `ComplexAbiIntegrationTest` verifies all three semantic
+    identities/layouts, checks unsupported-target diagnostics, exercises the
+    `c.complex` import, and round-trips complex parameters/returns through an
+    independent C caller. The selected compiler probe and C17 fixture verify
+    component-based size/alignment, all construction macros, and `I`; the
+    fixture passes dependency audit. The Linux C17 report is 46/0/0/0 and
+    `./gradlew build --no-daemon` passes. No Windows or AArch64 complex support
+    or execution is claimed.
+  - R4.6.2 [TODO] — implement C+ complex arithmetic/conversion semantics, the
+    C17 complex math function families, and `<tgmath.h>` dispatch across real
+    and complex argument types, with independent C17 fixtures and no
+    undeclared host `libm` dependency. The `<complex.h>` declarations added by
+    R4.6.1 do not claim linked definitions; `cabs`/`csqrt` and the other math
+    families remain unimplemented.
     **Depends:** R4.6.1 and R5.4.5.2–R5.4.5.10.
 
 The Linux x86_64 conformance command reports the individual header, runtime
@@ -4319,10 +4340,11 @@ for missing, planned, or unsupported checks. R4.4/R4.5 were reopened after the
 audit found that `fgetc` always returned EOF and `fprintf`/`fputc` ignored
 their stream argument. R5.3.3 fixed those behaviors; the independent
 `c17-stdio.c` fixture now exercises every function declared by the SDK's
-`stdio.h`, and `cplus libc test --target linux-x86_64` reports 42 pass, 0 fail,
-0 unsupported, and 0 planned, including exact stdin/stdout/stderr checks and a
-binary dependency audit. These 42 registered checks do not cover the full C17
-header list: `<complex.h>` and `<tgmath.h>` remain open under R4.6. The R4.4/
+`stdio.h`, and `cplus libc test --target linux-x86_64` currently reports 46
+pass, 0 fail, 0 unsupported, and 0 planned, including exact stdin/stdout/stderr
+checks, complex type/header checks, and binary dependency audits. These
+registered checks do not cover the full C17 header list: `<tgmath.h>` and
+complex math function implementations remain open under R4.6. The R4.4/
 R4.5 Linux leaves pass their recorded acceptance checks; the R4 phase gate
 remains open for R4.6 and deferred Windows validation.
 
