@@ -24,6 +24,8 @@ class NativeStdTest {
         assertTrue("#include <stddef.h>" in publicHeader, publicHeader)
         assertTrue("typedef size_t usize;" in publicHeader, publicHeader)
         assertTrue("typedef ptrdiff_t isize;" in publicHeader, publicHeader)
+        listOf("std_error_t", "std_result_t", "std_option_t", "std_text_is_ascii")
+            .forEach { symbol -> assertTrue(symbol in publicHeader, publicHeader) }
         val directory = Files.createTempDirectory("cplus-native-std")
         val combined = directory.resolve("native_std.c").also {
             Files.writeString(it, generated + """
@@ -36,12 +38,15 @@ class NativeStdTest {
                     struct std_result_t ok = std_result_ok(7);
                     struct std_option_t some = std_option_some(11);
                     struct std_range_t range = std_range(2, 6);
+                    struct std_range_t crossing_zero = std_range(-1, 1);
+                    struct std_range_t full_range = std_range(std_isize_min(), std_isize_max());
                     struct std_slice_t slice = std_slice_of(source, 6);
                     usize maximum_size = std_usize_max();
                     isize maximum_index = std_isize_max();
                     if (!std_result_is_ok(ok) || ok.value != 7) return 1;
                     if (!std_option_is_some(some) || some.value != 11) return 2;
                     if (std_range_length(range) != 4 || !std_range_contains(range, 5)) return 3;
+                    if (std_range_length(crossing_zero) != 2 || std_range_length(full_range) != std_usize_max()) return 27;
                     if (std_slice_is_empty(slice)) return 4;
                     if (sizeof(usize) != sizeof(void*) || sizeof(isize) != sizeof(void*)) return 5;
                     if (std_size_width_bits() != 64 || std_pointer_width_bits() != 64) return 6;
@@ -65,6 +70,7 @@ class NativeStdTest {
                     if (std_string_compare(overlap, "aabcdef") != 0) return 20;
                     if (std_mem_compare(overlap + 1, "abcdef", 7) != 0) return 21;
                     if (std_string_length(copy) != 6 || std_string_compare(copy, "native") != 0) return 22;
+                    if (!std_text_is_ascii(copy) || std_text_is_ascii(utf8)) return 28;
                     if (std_text_byte_length(copy) != 6 || !std_text_has_ascii_prefix(copy, "nat")) return 23;
                     if (std_text_byte_length(utf8) != 2 || std_text_is_ascii(utf8)) return 24;
                     std_mem_set(high_bytes, 255, 2);
@@ -77,7 +83,9 @@ class NativeStdTest {
         }
         val executable = directory.resolve("native_std")
         val compile = ProcessBuilder(
-            "cc", "-std=c17", "-I", root.resolve("libc/include").toString(),
+            "cc", "-std=c17", "-fsanitize=signed-integer-overflow",
+            "-fno-sanitize-recover=signed-integer-overflow",
+            "-I", root.resolve("libc/include").toString(),
             combined.toString(), "-o", executable.toString()
         )
             .redirectErrorStream(true)

@@ -2,12 +2,12 @@
 /// these are views and ranges, not hidden heap allocations.
 import { usize, isize } from std.core;
 
-struct std_slice_t {
+pub struct std_slice_t {
     void* data;
     usize length;
 };
 
-struct std_range_t {
+pub struct std_range_t {
     isize start;
     isize end;
 };
@@ -38,7 +38,9 @@ pub std_range_t std_range(isize start, isize end) {
 }
 
 pub usize std_range_length(std_range_t range) {
-    return range.end > range.start ? range.end - range.start : 0;
+    return range.end > range.start
+        ? (usize)range.end - (usize)range.start
+        : 0;
 }
 
 pub int std_range_contains(std_range_t range, isize value) {

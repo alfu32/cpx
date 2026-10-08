@@ -1,7 +1,7 @@
 /// Explicit UTF-8 text façade. It intentionally exposes bytes, not wchar_t.
 import { usize } from std.core;
 
-int std_text_is_ascii(char* text) {
+pub int std_text_is_ascii(char* text) {
     usize index = 0;
     while (text[index] != 0) {
         if ((unsigned) text[index] > 127) return 0;

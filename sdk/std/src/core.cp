@@ -5,17 +5,17 @@ import { size_t, ptrdiff_t } from c.stddef;
 pub typedef size_t usize;
 pub typedef ptrdiff_t isize;
 
-struct std_error_t {
+pub struct std_error_t {
     int code;
 };
 
-struct std_result_t {
+pub struct std_result_t {
     int success;
     long long value;
     std_error_t error;
 };
 
-struct std_option_t {
+pub struct std_option_t {
     int present;
     long long value;
 };
