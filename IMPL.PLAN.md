@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    64/88 accepted with recorded evidence
+Roadmap leaf tasks:    65/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.5.6 — implement absolute value, power, roots, and hypotenuse families
+Current task:          R5.4.5.7 — implement exponential and logarithmic families
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
-R5 [DOING] 31/41 native std and platform-service leaf tasks evidenced
+R5 [DOING] 32/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       64/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       65/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -239,11 +239,25 @@ x86_64 and AArch64 target ABIs, and the full Gradle build passes. Commit
 `ad36e09` moves the roadmap from 63/88 to 64/88 and R5 from 30/41 to 31/41.
 Windows runtime execution remains deferred and receives no completion credit.
 
+R5.4.5.6 then implemented `fabs`, `sqrt`, `cbrt`, `pow`, and `hypot` for
+float, double, and long double. Roots use exponent normalization and bounded
+Newton iterations; `hypot` scales by the larger operand; integer powers use
+exponentiation by squaring; and non-integral powers use private range-reduced
+logarithm/exponential kernels. Those private kernels support `pow` only and do
+not count as the public R5.4.5.7 families. The production-linked Linux C17
+fixture covers all precisions, signed zero, subnormal roots and powers,
+infinity/NaN behavior, negative-base domain errors, zero-base poles, overflow
+and underflow errno, and host-symbol isolation. Strict warning-as-error C17
+checks pass for Linux/Windows x86_64 and AArch64 target ABIs, and the full
+Gradle build passes. Commit `2290d29` moves the roadmap from 64/88 to 65/88
+and R5 from 31/41 to 32/41. Windows runtime execution remains deferred and
+receives no completion credit.
+
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.4.5.6 onward, then R5.5; Linux C17 stdio and
+1. Continue R5.4.5.7 onward, then R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 pass their recorded Linux checks; R4.6 complex and
    type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
@@ -299,6 +313,7 @@ Latest completed implementation commits:
 - `7ce3908` — implement portable C17 rounding and checked integer conversions (R5.4.5.3; Windows runtime execution deferred).
 - `e2ba767` — implement portable C17 decomposition, scaling, sign, NaN, and adjacent-value functions (R5.4.5.4; Windows runtime execution deferred).
 - `ad36e09` — implement C17 remainder and quotient-remainder functions (R5.4.5.5; Windows runtime execution deferred).
+- `2290d29` — implement portable C17 power and root functions (R5.4.5.6; Windows runtime execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4624,7 +4639,7 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [DOING] [5/11] — implement the specified portable real `std.math` and
+  - R5.4.5 [DOING] [6/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
     - R5.4.5.1 [DONE] — declare all C17 real `<math.h>` functions and
       float/double/long-double `std.math` entry points. **Depends:** R3.1.3.
@@ -4668,9 +4683,17 @@ dependencies.
       The executable has no undefined host symbols; strict warning-as-error
       C17 checks pass for Linux/Windows x86_64 and AArch64 target ABIs; the
       full Gradle build passes. Windows runtime execution remains deferred.
-    - R5.4.5.6 [DOING] — implement absolute value, power, roots, and hypotenuse
-      families. **Depends:** R5.4.5.1.
-    - R5.4.5.7 [TODO] — implement exponential and logarithmic families.
+    - R5.4.5.6 [DONE] — implement absolute value, power, roots, and hypotenuse
+      families. **Depends:** R5.4.5.1. **Acceptance evidence:** production-linked
+      Linux C17 execution covers all three real precisions, signed zero,
+      subnormal square roots and powers, roots, integer and non-integral power,
+      special-value precedence, negative-base domain errors, zero-base poles,
+      and overflow/underflow errno. The executable has no undefined host
+      symbols; strict warning-as-error C17 checks pass for Linux/Windows
+      x86_64 and AArch64 target ABIs; the full Gradle build passes. Private
+      log/exp kernels used by `pow` do not complete the public R5.4.5.7 API.
+      Windows runtime execution remains deferred.
+    - R5.4.5.7 [DOING] — implement exponential and logarithmic families.
       **Depends:** R5.4.5.1.
     - R5.4.5.8 [TODO] — implement trigonometric and hyperbolic families.
       **Depends:** R5.4.5.1.
