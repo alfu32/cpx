@@ -2,6 +2,7 @@ package cplus.compiler
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.io.File
 import kotlin.io.path.deleteIfExists
 
 /**
@@ -183,6 +184,46 @@ object C17ConformanceFixtures {
     )
 }
 
+internal object C17TargetRunner {
+    fun commandPrefix(
+        targetTriple: String,
+        hostOs: String = System.getProperty("os.name"),
+        hostArch: String = System.getProperty("os.arch"),
+        searchPath: List<Path> = System.getenv("PATH").orEmpty()
+            .split(File.pathSeparator)
+            .filter(String::isNotBlank)
+            .map(Path::of)
+    ): List<String>? {
+        val targetParts = targetTriple.split('-', limit = 2)
+        if (targetParts.size != 2) return null
+        val targetOs = targetParts[0]
+        val targetArch = targetParts[1]
+        val normalizedHostOs = when {
+            hostOs.contains("linux", ignoreCase = true) -> "linux"
+            hostOs.contains("windows", ignoreCase = true) -> "windows"
+            hostOs.contains("mac", ignoreCase = true) || hostOs.contains("darwin", ignoreCase = true) -> "darwin"
+            else -> "unknown"
+        }
+        val normalizedHostArch = when (hostArch.lowercase()) {
+            "amd64", "x86_64" -> "x86_64"
+            "arm64", "aarch64" -> "aarch64"
+            else -> hostArch.lowercase()
+        }
+        if (targetOs == normalizedHostOs && targetArch == normalizedHostArch) return emptyList()
+
+        val emulator = when (targetTriple) {
+            "linux-aarch64" -> "qemu-aarch64"
+            "linux-x86_64" -> "qemu-x86_64"
+            else -> return null
+        }
+        val executable = searchPath.asSequence()
+            .map { it.resolve(emulator) }
+            .firstOrNull(Files::isExecutable)
+            ?: return null
+        return listOf(executable.toAbsolutePath().normalize().toString())
+    }
+}
+
 object C17ConformanceRunner {
     fun run(resolution: SdkResolution, target: TargetInfo): ConformanceReport {
         val initial = C17ConformanceAudit.inspect(resolution, target)
@@ -192,6 +233,7 @@ object C17ConformanceRunner {
         val cases = initial.cases.toMutableList()
         val plan = RuntimeLinker.plan(resolution, target).plan ?: return initial
         val fixtureRoot = resolution.layout.root.resolve("conformance/c17")
+        val runnerPrefix = C17TargetRunner.commandPrefix(target.targetTriple)
         val temporaryRoot = runCatching { Files.createTempDirectory("cplus-c17-conformance") }.getOrNull()
             ?: return initial.withCase(
                 ConformanceCase(
@@ -215,6 +257,27 @@ object C17ConformanceRunner {
                         "unsupported",
                         "fixture is outside the claimed target execution matrix"
                     )
+                    return@forEach
+                }
+                if (runnerPrefix == null) {
+                    cases += ConformanceCase(
+                        "fixture.execution.${fixture.id}",
+                        ConformanceArea.LIBC,
+                        descriptor.targetTriple,
+                        "c17",
+                        "unsupported",
+                        "no executable runner is available for target '${target.targetTriple}'"
+                    )
+                    if (fixture.expectedStdout != null || fixture.expectedStderr != null) {
+                        cases += ConformanceCase(
+                            "fixture.streams.${fixture.id}",
+                            ConformanceArea.LIBC,
+                            descriptor.targetTriple,
+                            "c17",
+                            "unsupported",
+                            "stream behavior requires executing the target fixture"
+                        )
+                    }
                     return@forEach
                 }
                 val source = fixtureRoot.resolve(fixture.sourceName)
@@ -247,7 +310,7 @@ object C17ConformanceRunner {
                     )
                     return@forEach
                 }
-                val process = runCatching { ProcessBuilder(executable.toString()).start() }
+                val process = runCatching { ProcessBuilder(runnerPrefix + executable.toString()).start() }
                     .getOrElse { error ->
                         cases += ConformanceCase(
                             "fixture.execution.${fixture.id}",

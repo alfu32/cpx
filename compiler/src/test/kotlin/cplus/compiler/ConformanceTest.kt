@@ -1,10 +1,35 @@
 package cplus.compiler
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import java.nio.file.Files
 
 class ConformanceTest {
+    @Test
+    fun targetRunnerDistinguishesUnavailableEmulatorFromExecutionFailure() {
+        assertEquals(
+            emptyList(),
+            C17TargetRunner.commandPrefix("linux-x86_64", "Linux", "amd64", emptyList())
+        )
+        assertNull(C17TargetRunner.commandPrefix("linux-aarch64", "Linux", "x86_64", emptyList()))
+
+        val directory = Files.createTempDirectory("cplus-target-runner")
+        val emulator = Files.createFile(directory.resolve("qemu-aarch64"))
+        assertTrue(emulator.toFile().setExecutable(true))
+        try {
+            assertEquals(
+                listOf(emulator.toAbsolutePath().normalize().toString()),
+                C17TargetRunner.commandPrefix("linux-aarch64", "Linux", "x86_64", listOf(directory))
+            )
+        } finally {
+            Files.deleteIfExists(emulator)
+            Files.deleteIfExists(directory)
+        }
+    }
+
     @Test
     fun initialMatrixHasRuntimeAbiAndNativeStdCoverage() {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!

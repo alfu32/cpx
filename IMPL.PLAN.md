@@ -352,9 +352,14 @@ below. Its current dependency sequence is:
 2. R8.1 and R8.2 are accepted. R8.3 is the active roadmap task: Linux x86_64
    runtime/product checks pass, and Linux AArch64 strict source checks and
    static cross-link checks pass; AArch64 runtime execution remains unverified.
-   Windows testing and patching are deferred to the final validation pass by
-   request. R8.3 receives no completion credit until its target-matrix gate is
-   satisfied.
+  Windows testing and patching are deferred to the final validation pass by
+  request. R8.3 receives no completion credit until its target-matrix gate is
+  satisfied. `C17ConformanceRunner` now distinguishes execution failure from
+  a missing target runner: it selects native execution or an installed Linux
+  QEMU user-mode runner and reports cross-target execution as `unsupported`
+  when none is available. The Linux AArch64 CLI audit reports 0 failures and
+  8 unsupported cases on this x86_64 host (including the unavailable runner);
+  this is an explicit capability result, not AArch64 execution evidence.
 3. R8.4 remains queued behind R8.3. R4, R5, R6, and R7 phase gates also remain
    open where their recorded Windows runtime/product checks are pending; Linux
    leaf acceptance does not imply cross-platform completion.
