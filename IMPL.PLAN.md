@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    47/69 evidenced on Linux
+Roadmap leaf tasks:    48/69 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.8.3 — integrate the Windows Unicode resolver
+Current task:          R5.4.1 — implement std.process over the verified PAL
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 15/25 native std and platform-service work remains open
+R5 [DOING] 16/25 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       47/69 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       48/69 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -50,14 +50,18 @@ triples, and C+ API/ABI target checks; commits `9a8532e` and `34d322f` brought
 the numerator to 46/69. R5.3.8.2 then passed the local UDP/TCP DNS fixture,
 resolver-configuration parsing, timeout/error and source/question checks,
 freestanding link audit, both Linux-architecture source checks, and the full
-Gradle build; commit `ff39ba6` brings the numerator to 47/69. Windows resolver
-integration remains open.
+Gradle build; commit `ff39ba6` brought the numerator to 47/69. R5.3.8.3 then
+passed strict Windows x86_64/AArch64 source checks, a freestanding PE link and
+import audit, and the focused network test plus full Gradle build; commit
+`3c1667e` brings the numerator to 48/69. This is source/link acceptance only:
+Windows resolver execution remains deferred to final validation, and full
+Windows runtime PE linking remains open in R8.3.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.3.8.3, then R5.4–R5.5; Linux C17 stdio and
+1. Continue R5.4–R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 now pass their stated acceptance checks.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
@@ -101,6 +105,7 @@ Latest completed implementation commits:
 - `9a8532e` — shared freestanding IPv4/IPv6 and UTF-8 hostname codecs.
 - `34d322f` — verify rejection at the DNS label-length boundary.
 - `ff39ba6` — implement bounded freestanding Linux DNS resolution.
+- `3c1667e` — integrate the Windows Unicode resolver (source/PE-import verified; Windows execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4169,7 +4174,7 @@ dependencies.
     file-stream read/write/seek/close adapters without exposing OS handles;
   - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
     matrix, error-normalization and dependency audit, and close platform gaps;
-- R5.3 [DOING] 11/12 — implement and Linux-execute the remaining PAL services;
+- R5.3 [DONE] 12/12 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
@@ -4230,7 +4235,7 @@ dependencies.
         Windows execution remains deferred. Whole-runtime Windows PE linking is
         tracked separately by R8.3.
       - **Depends:** R5.3.7.1.
-  - R5.3.8 [DOING] [2/3] — implement portable address text conversion and DNS
+  - R5.3.8 [DONE] [3/3] — implement portable address text conversion and DNS
     resolution with UTF-8 inputs and target-independent result ownership;
     - **Language:** SPEC.STDLIB §16.1 address parsing/formatting and name resolution.
     - **Technical:** SPEC.TECH §78 shared codecs and target resolver adapters.
@@ -4260,11 +4265,18 @@ dependencies.
         production-linked fixture has no undefined host-runtime symbols; strict
         warning-as-error C17 source checks pass for Linux x86_64/AArch64; the
         full Gradle build passes. Windows execution remains deferred.
-    - R5.3.8.3 [DOING] — integrate the Windows Unicode system resolver through
+    - R5.3.8.3 [DONE] — integrate the Windows Unicode system resolver through
       dynamically resolved Winsock APIs and copy results into caller storage.
-      - **Acceptance:** strict Windows x86_64/AArch64 source checks and a
-        freestanding PE import audit pass without `ws2_32.dll`; Windows runtime
-        execution remains deferred.
+      - **Acceptance evidence:** strict Windows x86_64 MinGW and AArch64 Clang
+        source checks pass with warnings as errors. The focused
+        `RuntimeNetworkPalTest` links the production resolver and shared codec
+        into a freestanding x86_64 PE fixture and confirms the required
+        kernel32 heap/loader/once imports while excluding static
+        `GetAddrInfoW`/`FreeAddrInfoW` and `ws2_32.dll` imports. The fixture
+        exercises argument validation and is not run on Windows. The focused
+        network test and full Gradle build pass. Successful Windows resolver
+        execution remains deferred to final validation; full-runtime PE linking
+        remains open in R8.3.
 - R5.4 [TODO] — connect native std façades to the verified PAL services;
   - R5.4.1 [TODO] — implement `std.process` identity, spawn/wait, exit,
     arguments, environment and standard-stream APIs;
@@ -4303,9 +4315,10 @@ CPU clocks; R5.3.5 exercises create/join/TLS; R5.3.6 exercises contended
 mutex/condition/semaphore/once and supported atomic wait/wake; R5.3.7 executes
 IPv4 TCP and UDP loopback transfers through the binary-address PAL, checks
 socket/error behavior, verifies no hidden host-runtime dependency, and
-cross-compiles/audits Windows imports; and R5.3.8.1–R5.3.8.3 parse/format
-valid and invalid addresses, resolve DNS names, and validate resolver ownership.
-Each service also needs stable error mapping and
+cross-compiles/audits Windows imports. R5.3.8.1 executes shared address and
+hostname codec vectors; R5.3.8.2 executes Linux DNS behavior and validates
+resolver ownership; R5.3.8.3 has strict Windows source and PE-import evidence,
+but no successful Windows resolver execution. Each service also needs stable error mapping and
 source/dependency isolation evidence. The Linux tests run on this machine;
 Windows runtime execution remains deferred. R5.3.7 does not include UTF-8
 address parsing/formatting or DNS, which remain exclusively in R5.3.8. The
@@ -4471,6 +4484,18 @@ runtime and does not execute on Windows; a full Windows runtime link using the
 available MinGW toolchain currently fails on pre-existing emulated-TLS and
 `WaitOnAddress`/wake imports and is tracked in R8.3. No Windows runtime behavior
 or Linux AArch64 runtime execution is claimed.
+
+R5.3.8.3 acceptance evidence: Windows x86_64 MinGW and Windows AArch64 Clang
+compile the production resolver adapter with warnings as errors. The focused
+`RuntimeNetworkPalTest` links the Windows adapter and shared address/hostname
+codec into a freestanding x86_64 PE image; import inspection confirms the
+kernel32 loader, once-initialization, and heap APIs are present, while static
+`GetAddrInfoW`, `FreeAddrInfoW`, and `ws2_32.dll` imports are absent. The PE
+fixture checks resolver argument validation but does not execute the successful
+Unicode resolver path. The focused test and full Gradle build pass. Windows
+resolver runtime behavior and the complete Windows runtime PE link remain
+unverified and receive no completion claim here; runtime execution is deferred
+to final validation and full-runtime linking is tracked by R8.3.
 
 ### R5.1 status audit
 
