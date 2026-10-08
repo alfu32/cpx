@@ -4836,7 +4836,10 @@ dependencies.
         results. `std_duration_t` is size/alignment checked across Linux and
         Windows x86_64/AArch64. Strict warning-as-error C17 checks pass for the
         runtime source on all four targets, the static Linux caller has no
-        undefined host-runtime symbols, and the full Gradle build passes.
+        undefined host-runtime symbols, and the full Gradle build passes. The
+        C+ fixture now executes natively on Windows x86_64, covering clocks,
+        checked duration arithmetic, calendar conversion, and invalid boundary
+        behavior; the PE passes `RuntimeDependencyAuditor`.
     - R5.4.2.2 [DONE] — define and implement proleptic-Gregorian UTC calendar
       conversion to/from signed Unix seconds plus nanoseconds;
       - **Acceptance evidence:** the C+ fixture round-trips epoch, leap day,
@@ -4846,8 +4849,9 @@ dependencies.
         specified statuses without modifying outputs. `std_calendar_time_t`
         size/alignment/offsets match 32/8/[0,8,12,16,20,24,28] across Linux and
         Windows x86_64/AArch64 descriptors. Strict warning-as-error C17 source
-        checks and the full Gradle build pass. Windows runtime execution remains
-        deferred.
+        checks and the full Gradle build pass. Native Windows x86_64 executes
+        the same C+ calendar round-trip and boundary fixture through
+        `RuntimeStdTimeTest`; its linked product passes the dependency audit.
   - R5.4.3 [DONE] [3/3] — implement public thread, synchronization, and atomic
     APIs over the existing PAL services;
     - R5.4.3.1 [DONE] — implement the `std.thread` façade for thread creation,

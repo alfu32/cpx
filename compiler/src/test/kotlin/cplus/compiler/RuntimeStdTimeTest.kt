@@ -9,10 +9,11 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 class RuntimeStdTimeTest {
     @Test
     fun cplusStdTimeExposesClocksAndCheckedNanosecondDurations() {
-        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val isWindows = System.getProperty("os.name").contains("windows", ignoreCase = true)
+        assumeTrue(isWindows || System.getProperty("os.name").contains("linux", ignoreCase = true))
         val manifestPath = SdkManifestLocator.defaultManifestPath()
         val manifest = requireNotNull(SdkManifestLoader.load(manifestPath).manifest)
-        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val target = TargetInfo(targetTriple = if (isWindows) "windows-x86_64" else "linux-x86_64")
         val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
         val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
         val root = manifestPath.toAbsolutePath().normalize().parent!!.parent!!
@@ -170,7 +171,7 @@ class RuntimeStdTimeTest {
             """.trimIndent())
         }
         val generatedC = directory.resolve("std-time.c")
-        val executable = directory.resolve("std-time")
+        val executable = directory.resolve(if (isWindows) "std-time.exe" else "std-time")
         try {
             val compilation = CPlusCompiler().compile(
                 CompileRequest(listOf(root.resolve("std/src/time.cp"), mainSource), target)
@@ -181,10 +182,17 @@ class RuntimeStdTimeTest {
 
             val link = LinkDriver.link(LinkRequest(generatedC, executable, target, resolution), plan)
             assertTrue(link.isSuccessful, link.output)
-            val undefinedSymbols = ProcessBuilder("nm", "-u", executable.toString()).start()
-            val undefinedOutput = undefinedSymbols.inputStream.bufferedReader().readText()
-            assertEquals(0, undefinedSymbols.waitFor(), undefinedOutput)
-            assertTrue(undefinedOutput.isBlank(), undefinedOutput)
+            if (isWindows) {
+                val descriptor = resolution.targetDescriptor
+                    ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+                val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+                assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            } else {
+                val undefinedSymbols = ProcessBuilder("nm", "-u", executable.toString()).start()
+                val undefinedOutput = undefinedSymbols.inputStream.bufferedReader().readText()
+                assertEquals(0, undefinedSymbols.waitFor(), undefinedOutput)
+                assertTrue(undefinedOutput.isBlank(), undefinedOutput)
+            }
             assertEquals(0, ProcessBuilder(executable.toString()).start().waitFor())
         } finally {
             Files.deleteIfExists(executable)
