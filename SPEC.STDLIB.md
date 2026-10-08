@@ -537,11 +537,17 @@ fixed-width integer or inferred from the compiler host. Raw byte APIs SHALL use
 module does not add a separate byte typedef. The module SHALL also provide
 pointer/null/equality/offset/distance utilities, signed and unsigned size
 comparisons, target-width queries, and `usize`/`isize` minimum and maximum
-queries. Pointer distance is defined only for pointers into the same array
-object (or one past it). The value carriers contain status and value data
-only; PAL handles, raw syscall numbers, and host `errno` values are not part of
-their representation. The unused `std_byte_t`, `std_size_t`, and
-`std_index_t` aliases are not part of the API.
+queries. Pointer offset is defined only when the input points into an object
+and the resulting byte pointer remains within that object or one past it;
+null pointers and offsets outside that range are invalid inputs. Pointer
+distance is defined only for pointers into the same array object (or one past
+it), and the mathematical byte difference MUST be representable as `isize`.
+The result is the signed distance from the first pointer to the second; equal
+pointers have distance zero. These preconditions match the representability
+and object-bound requirements of C pointer arithmetic. The value carriers
+contain status and value data only; PAL handles, raw syscall numbers, and host
+`errno` values are not part of their representation. The unused
+`std_byte_t`, `std_size_t`, and `std_index_t` aliases are not part of the API.
 The error, result, and option carrier structures SHALL be public declarations
 so callers can explicitly import and instantiate the value types returned by
 their public operations.

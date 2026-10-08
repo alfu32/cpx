@@ -157,8 +157,12 @@ class NativeStdTest {
                     if (std_usize_compare(2, 3) != -1 || std_isize_compare(-1, 0) != -1) return 8;
                     if (std_byte_compare(255, 1) != 1) return 9;
                     if (!std_pointer_is_null((void*)0) || std_pointer_equal(source, copy)) return 10;
-                    if (std_pointer_offset(source, 2) != source + 2) return 11;
-                    if (std_pointer_distance(source, source + 4) != 4) return 12;
+                    if (std_pointer_offset(source, 0) != source ||
+                        std_pointer_offset(source, 2) != source + 2 ||
+                        std_pointer_offset(source, 32) != source + 32) return 11;
+                    if (std_pointer_distance(source, source + 4) != 4 ||
+                        std_pointer_distance(source + 4, source) != -4 ||
+                        std_pointer_distance(source + 4, source + 4) != 0) return 12;
                     if (!std_mem_is_aligned(16, 8) || std_mem_is_aligned(17, 8)) return 13;
                     if (std_mem_align_up(13, 8) != 16 || std_mem_align_up(maximum_size, 2) != maximum_size) return 14;
                     if (std_mem_align_up(5, 3) != maximum_size) return 15;

@@ -5250,6 +5250,13 @@ Windows target descriptors and verify descriptor-sized layouts. The full
 `sizeof(variable)` alongside imported typedef handling. These checks do not
 claim Windows execution and do not change the R5 completion count.
 
+The pointer-utility contract now explicitly limits offsets to the originating
+object or one-past position, and requires same-array pointer differences to fit
+`isize`; the shared host/AArch64 fixture exercises zero, positive, and negative
+distances plus the one-past offset. Focused `NativeStdTest` passes with the host
+UBSan runs and Linux AArch64 QEMU execution. This is contract/test evidence
+only; no R5.1 completion credit is added.
+
 Additional target-matrix evidence: a QEMU-conditional `NativeStdTest` compiles
 the same C+ core/memory/string/text/collection modules for Linux AArch64, links
 them with the self-hosted runtime, audits the static product for undeclared
