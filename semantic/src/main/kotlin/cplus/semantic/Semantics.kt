@@ -54,19 +54,22 @@ data class StructType(
     override val id: TypeId,
     override val name: String,
     var fields: List<FieldSymbol>,
-    var methods: List<MethodSymbol> = emptyList()
+    var methods: List<MethodSymbol> = emptyList(),
+    val moduleName: String? = null
 ) : CType
 
 data class UnionType(
     override val id: TypeId,
     override val name: String,
-    var fields: List<FieldSymbol>
+    var fields: List<FieldSymbol>,
+    val moduleName: String? = null
 ) : CType
 
 data class EnumType(
     override val id: TypeId,
     override val name: String,
-    val values: List<String>
+    val values: List<String>,
+    val moduleName: String? = null
 ) : CType
 
 data class PointerType(
@@ -113,19 +116,20 @@ data class ForeignType(
     override val id: TypeId,
     override val name: String,
     val externalName: String = name,
-    var underlyingType: CType? = null
+    var underlyingType: CType? = null,
+    val moduleName: String? = null
 ) : CType
 
 private fun canonicalTypeKey(type: CType): String = when (type) {
     is PrimitiveType -> "primitive:${CPrimitiveTypes.canonicalName(type.name) ?: type.name}"
-    is StructType -> "struct:${type.name}"
-    is UnionType -> "union:${type.name}"
-    is EnumType -> "enum:${type.name}"
+    is StructType -> "struct:${type.id.value}"
+    is UnionType -> "union:${type.id.value}"
+    is EnumType -> "enum:${type.id.value}"
     is PointerType -> "pointer:${canonicalTypeKey(type.pointee)}"
     is ArrayType -> "array:${canonicalTypeKey(type.element)}:${type.dimensions.joinToString(",")}" 
     is FunctionType -> "function:${type.abi}:${canonicalTypeKey(type.returnType)}:${type.parameterTypes.joinToString(",") { canonicalTypeKey(it) }}:${type.isVariadic}"
     is AliasType -> canonicalTypeKey(type.target)
-    is ForeignType -> "foreign:${type.externalName}"
+    is ForeignType -> "foreign:${type.id.value}:${type.externalName}"
     is UnknownType -> "unknown:${type.id.value}"
 }
 
@@ -191,14 +195,81 @@ enum class ReceiverKind {
 
 data class MethodSymbol(
     val symbol: Symbol,
-    val owner: StructType,
+    val owner: CType,
+    val receiverIdentity: ReceiverIdentity,
+    val definingModule: String,
     val receiverKind: ReceiverKind,
     val returnType: CType,
     val parameters: List<Symbol>,
     val signature: FunctionType,
     val receiverType: CType,
-    val abi: AbiKind = AbiKind.C
+    val abi: AbiKind = AbiKind.C,
+    val isExtension: Boolean = false
 )
+
+/** Canonical identity of the receiver type, independent of its source spelling. */
+data class ReceiverIdentity(val canonicalTypeId: TypeId) {
+    companion object {
+        fun of(type: CType): ReceiverIdentity {
+            fun canonical(current: CType): CType = when (current) {
+                is AliasType -> canonical(current.target)
+                is PointerType -> canonical(current.pointee)
+                is ForeignType -> current.underlyingType?.let(::canonical) ?: current
+                else -> current
+            }
+            return ReceiverIdentity(canonical(type).id)
+        }
+    }
+}
+
+data class MethodLookupKey(val receiver: ReceiverIdentity, val name: String)
+
+/** Immutable, receiver-keyed method set shared by native and extension lookup. */
+class MethodRegistry private constructor(
+    private val methodsByKey: Map<MethodLookupKey, List<MethodSymbol>>
+) {
+    fun lookup(
+        receiver: ReceiverIdentity,
+        name: String,
+        visibleExtensionModules: Set<String> = emptySet()
+    ): List<MethodSymbol> = methodsByKey[MethodLookupKey(receiver, name)].orEmpty().filter { method ->
+        !method.isExtension || method.definingModule in visibleExtensionModules
+    }
+
+    fun forReceiver(
+        receiver: ReceiverIdentity,
+        visibleExtensionModules: Set<String> = emptySet()
+    ): List<MethodSymbol> = methodsByKey.asSequence()
+        .filter { (key, _) -> key.receiver == receiver }
+        .flatMap { (_, methods) -> methods.asSequence() }
+        .filter { method -> !method.isExtension || method.definingModule in visibleExtensionModules }
+        .toList()
+
+    class Builder {
+        private val methodsByKey = linkedMapOf<MethodLookupKey, MutableList<MethodSymbol>>()
+
+        /** Returns false rather than replacing an existing receiver/name entry. */
+        fun add(method: MethodSymbol): Boolean {
+            val entries = methodsByKey.getOrPut(MethodLookupKey(method.receiverIdentity, method.symbol.name)) { mutableListOf() }
+            if (entries.any { existing ->
+                    !existing.isExtension && !method.isExtension ||
+                        existing.isExtension && method.isExtension && existing.definingModule == method.definingModule
+                }
+            ) return false
+            entries += method
+            return true
+        }
+
+        fun build(): MethodRegistry = MethodRegistry(methodsByKey.mapValues { (_, methods) -> methods.toList() })
+    }
+
+    companion object {
+        fun from(methods: Iterable<MethodSymbol>): MethodRegistry = Builder().let { builder ->
+            methods.forEach(builder::add)
+            builder.build()
+        }
+    }
+}
 
 data class SourceTypeCatalogue(
     val declarationsByModule: Map<String, Map<String, Symbol>>,
@@ -269,7 +340,8 @@ data class SemanticModel(
     val referenceIndex: ReferenceIndex = ReferenceIndex(),
     val declarationCatalogue: DeclarationCatalogue = DeclarationCatalogue(emptyList()),
     val moduleTypeBindings: Map<String, Map<String, SourceTypeBinding>> = emptyMap(),
-    val moduleTypeAliases: Map<String, Map<String, String>> = emptyMap()
+    val moduleTypeAliases: Map<String, Map<String, String>> = emptyMap(),
+    val methodRegistry: MethodRegistry = MethodRegistry.from(methods.values.flatMap { it.values })
 ) {
     val sourceTypeCatalogue: SourceTypeCatalogue
         get() = SourceTypeCatalogue.from(symbols)
@@ -297,6 +369,12 @@ data class SemanticModel(
         ?: moduleFunctions.values.asSequence().mapNotNull { it[name] }.firstOrNull()
 
     fun canonicalTypeId(type: CType): TypeId = canonicalTypeIds[canonicalTypeKey(type)] ?: type.id
+
+    fun lookupMethods(
+        receiver: CType,
+        name: String,
+        visibleExtensionModules: Set<String> = emptySet()
+    ): List<MethodSymbol> = methodRegistry.lookup(ReceiverIdentity.of(receiver), name, visibleExtensionModules)
 
     fun resolveComptimeReferences(
         node: AstNode,
@@ -887,7 +965,7 @@ class SemanticAnalyzer(
                 if (existing.underlyingType == null && underlyingType != null) existing.underlyingType = underlyingType
                 return
             }
-            val type = ForeignType(TypeId(nextTypeId.next()), name, underlyingType = underlyingType)
+            val type = ForeignType(TypeId(nextTypeId.next()), name, underlyingType = underlyingType, moduleName = moduleName)
             foreignTypes[name] = type
             types += type
             val symbol = newSymbol(
@@ -1040,8 +1118,8 @@ class SemanticAnalyzer(
                             origin,
                             underlyingType = if (isAggregate) {
                                 if (declaration.aggregateKind == CHeaderAggregateKind.STRUCT) {
-                                    val owner = ForeignType(TypeId(nextTypeId.next()), declaration.name)
-                                    val structure = StructType(owner.id, declaration.name, mutableListOf())
+                                    val owner = ForeignType(TypeId(nextTypeId.next()), declaration.name, moduleName = moduleName)
+                                    val structure = StructType(owner.id, declaration.name, mutableListOf(), moduleName = moduleName)
                                     declaration.fields.forEach { field ->
                                         val fieldType = foreignTypeFromName(field.typeName, moduleName, origin)
                                         val fieldSymbol = newSymbol(
@@ -1057,8 +1135,8 @@ class SemanticAnalyzer(
                                     types += structure
                                     structure
                                 } else if (declaration.aggregateKind == CHeaderAggregateKind.UNION) {
-                                    val owner = ForeignType(TypeId(nextTypeId.next()), declaration.name)
-                                    val union = UnionType(owner.id, declaration.name, mutableListOf())
+                                    val owner = ForeignType(TypeId(nextTypeId.next()), declaration.name, moduleName = moduleName)
+                                    val union = UnionType(owner.id, declaration.name, mutableListOf(), moduleName = moduleName)
                                     declaration.fields.forEach { field ->
                                         val fieldType = foreignTypeFromName(field.typeName, moduleName, origin)
                                         val fieldSymbol = newSymbol(
@@ -1250,7 +1328,7 @@ class SemanticAnalyzer(
                 is AstUnion -> if (unions.containsKey(declaration.name)) {
                     diagnostics.error("duplicate union '${declaration.name}'", rangeOf(declaration.origin), "SEM005")
                 } else {
-                    val type = UnionType(TypeId(nextTypeId.next()), declaration.name, emptyList())
+                    val type = UnionType(TypeId(nextTypeId.next()), declaration.name, emptyList(), moduleName)
                     unions[declaration.name] = type
                     types += type
                     val symbol = newSymbol(declaration.name, SymbolKind.UNION, type, declaration.origin, moduleName, declarationVisibility(declaration))
@@ -1260,7 +1338,7 @@ class SemanticAnalyzer(
                 is AstEnum -> if (enums.containsKey(declaration.name)) {
                     diagnostics.error("duplicate enum '${declaration.name}'", rangeOf(declaration.origin), "SEM006")
                 } else {
-                    val type = EnumType(TypeId(nextTypeId.next()), declaration.name, declaration.values.map { it.name })
+                    val type = EnumType(TypeId(nextTypeId.next()), declaration.name, declaration.values.map { it.name }, moduleName)
                     enums[declaration.name] = type
                     types += type
                     val symbol = newSymbol(declaration.name, SymbolKind.ENUM, type, declaration.origin, moduleName, declarationVisibility(declaration))
@@ -1270,7 +1348,7 @@ class SemanticAnalyzer(
                 is AstStruct -> if (structs.containsKey(declaration.name)) {
                     diagnostics.error("duplicate structure '${declaration.name}'", rangeOf(declaration.origin), "SEM001")
                 } else {
-                    val type = StructType(TypeId(nextTypeId.next()), declaration.name, emptyList())
+                    val type = StructType(TypeId(nextTypeId.next()), declaration.name, emptyList(), moduleName = moduleName)
                     structs[declaration.name] = type
                     types += type
                     val symbol = newSymbol(declaration.name, SymbolKind.STRUCT, type, declaration.origin, moduleName, declarationVisibility(declaration))
@@ -1365,7 +1443,16 @@ class SemanticAnalyzer(
                 ownerScope?.let { scopes.define(it, field.name, symbol.id) }
                 FieldSymbol(symbol, struct)
             }
-            val methodSymbols = declaration.methods.associate { method ->
+            val methodSymbols = linkedMapOf<String, MethodSymbol>()
+            declaration.methods.forEach { method ->
+                if (method.name in methodSymbols) {
+                    diagnostics.error(
+                        "duplicate method '${method.name}' for '${declaration.name}'",
+                        rangeOf(method.origin),
+                        "SEM416"
+                    )
+                    return@forEach
+                }
                 val abi = abiOf(method.attributes, method.origin)
                 val returnType = resolve(method.returnType, moduleName)
                 val parameterSymbols = method.parameters.filterNot { it.isReceiver }.map { parameter ->
@@ -1394,11 +1481,22 @@ class SemanticAnalyzer(
                 } else {
                     struct
                 }
-                method.name to MethodSymbol(methodSymbol, struct, receiverKind, returnType, parameterSymbols, signature, receiverType, abi)
+                methodSymbols[method.name] = MethodSymbol(
+                    methodSymbol,
+                    struct,
+                    ReceiverIdentity.of(struct),
+                    moduleName,
+                    receiverKind,
+                    returnType,
+                    parameterSymbols,
+                    signature,
+                    receiverType,
+                    abi
+                )
             }
             struct.fields = fields
             struct.methods = methodSymbols.values.toList()
-            methods[declaration.name] = methodSymbols
+            methods[declaration.name] = methodSymbols.toMap()
         }
 
         program.declarations.filterIsInstance<AstUnion>().forEach { declaration ->

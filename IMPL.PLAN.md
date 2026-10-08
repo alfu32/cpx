@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    119/129 accepted with recorded evidence; 10 TODO
+Roadmap leaf tasks:    120/129 accepted with recorded evidence; 9 TODO
 Phase gates:           11/13 complete; 2 active; 0 queued
-Current task:          R11.1.2.1 — generalize method ownership without changing native methods
+Current task:          R11.1.2.2 — resolve targets, receivers and method bodies
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -37,10 +37,10 @@ R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
 R10 [DOING] 18/19 import discovery, completion and quick fixes
-R11 [DOING] 3/12 compile-time extension methods
+R11 [DOING] 4/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 
-TOTAL       119/129 implementation tasks accepted; 11/13 phase gates complete,
+TOTAL       120/129 implementation tasks accepted; 11/13 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3785,9 +3785,9 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [11/13 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 119/129 accepted; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 120/129 accepted; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (2/3) accepted/in progress;
-                     R11.1.1 (3/3); R10 and R11 active, R12 accepted
+                     R11.1.1 (3/3), R11.1.2 (1/3); R10 and R11 active, R12 accepted
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3800,7 +3800,7 @@ Roadmap leaf tasks: 119/129 accepted; R10.1 (10/10), R10.2 (4/4),
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
 [DOING] R10 — import discovery, completion and quick fixes (18/19 leaves)
-[DOING] R11 — compile-time extension methods (3/12 leaves)
+[DOING] R11 — compile-time extension methods (4/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 ```
 
@@ -6363,12 +6363,12 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle test :cli:fatJar :cli:installDist`; extension checks/host tests; native Windows equivalents at the final platform pass.
 
-## R11 [DOING] [3/12] Compile-time extension methods
+## R11 [DOING] [4/12] Compile-time extension methods
 
 **Language:** LS §6.3.1 Compile-time extension methods; §21 Imports.
 **Technical:** TS §13.1 Compile-time traits; §33 Method lowering; §54 Completion.
 
-### R11.1 [DOING] [3/6] Trait declarations and semantic ownership
+### R11.1 [DOING] [4/6] Trait declarations and semantic ownership
 
 **Language:** LS §6.3.1 Compile-time extension methods; §18 Type-universe barrier.
 **Technical:** TS §13.1 Compile-time traits; §24 Type-universe stabilization; §29 Semantic model.
@@ -6426,12 +6426,12 @@ that subsequently passes `cplus check`.
 
 **Evidence:** `./gradlew :comptime:test --tests cplus.comptime.CpxExpansionTest.generatedTraitRetainsOriginsHygieneAndStableExpansionIdentity --tests cplus.comptime.CpxExpansionTest.reflectiveExpansionCannotIntroduceTraitRegistrationAfterTheTypeBarrier --tests cplus.comptime.CpxExpansionTest.structuralFingerprintDistinguishesTraitReceiverStorageForms --tests cplus.comptime.CpxExpansionTest.reflectiveCpxRejectsStructuralDeclarationsButKeepsExecutableDeclarations --no-daemon` and the full `./gradlew :comptime:test :compiler:test --no-daemon` pass. CPX-generated traits retain target/method/receiver expansion origins; method locals and references are hygienically renamed while the target and receiver remain bound; equivalent replays retain expansion keys and structural fingerprint; receiver storage form affects fingerprints. Reflective CPX now classifies trait registration as phase-sensitive, reports `CPX008`, and excludes the trait, while `structuralTypeDescriptor` remains null for traits so no layout type is fabricated.
 
-#### R11.1.2 [TODO] [0/3] Canonical receiver and visibility resolution
+#### R11.1.2 [DOING] [1/3] Canonical receiver and visibility resolution
 
 **Language:** LS §6.3.1 Compile-time extension methods; §6.5 Member conflict; §21.2 Import semantics.
 **Technical:** TS §13.1 Compile-time traits; §14 Member-call resolution; §29 Semantic model.
 
-##### R11.1.2.1 [TODO] Generalize method ownership without changing native methods
+##### R11.1.2.1 [DONE] Generalize method ownership without changing native methods
 
 **Language:** LS §6 Structures and methods; §23 Symbol identity and C symbol generation.
 **Technical:** TS §12 Type system model; §13 Method model; §14 Member-call resolution.
@@ -6444,6 +6444,8 @@ that subsequently passes `cplus check`.
 **Acceptance:** All existing instance/static/pointer struct-method tests pass unchanged. Focused tests distinguish same-spelling types from different modules and equate imported/typedef aliases. Duplicate insertion is detected rather than overwritten by `associate`; no global struct mutation grants extension visibility.
 
 **Verify:** `gradle :semantic:test :compiler:test :c-backend:test :cli:test`.
+
+**Evidence:** `./gradlew :semantic:test --tests cplus.semantic.MethodRegistryTest :compiler:test --tests cplus.compiler.CompilerIntegrationTest.instanceAndStaticMethodsLowerToCallableCFunctions --tests cplus.compiler.CompilerIntegrationTest.pointerReceiversCanReadAndMutateTheUnderlyingObject :c-backend:test :cli:test --no-daemon` and the full `./gradlew :semantic:test :compiler:test :c-backend:test :cli:test --no-daemon` pass. `MethodSymbol` now carries a general `CType` owner, canonical `ReceiverIdentity`, and defining module. `MethodRegistry` centralizes native/extension lookup and direct-module visibility without mutating a type's native method list; duplicate native receiver/name registration is diagnosed as SEM416 instead of being overwritten. Canonical nominal type keys use type identity rather than spelling, so same-spelling nominal types remain distinct while aliases and pointer receiver expressions normalize to the target. C name mangling accepts the generalized owner and preserves existing struct output. Focused tests verify alias identity, distinct nominal IDs, module-scoped extension candidates, duplicate handling, and native owner/module retention.
 
 ##### R11.1.2.2 [TODO] Resolve targets, receivers and method bodies
 

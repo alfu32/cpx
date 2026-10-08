@@ -635,13 +635,25 @@ semantically as callable symbols associated with a canonical receiver type.
 
 ```kotlin
 data class MethodSymbol(
-    val symbol: SymbolId,
-    val owner: TypeId,
-    val receiver: ReceiverKind,
-    val functionType: TypeId,
-    val receiverType: TypeId
+    val symbol: Symbol,
+    val owner: CType,
+    val receiverIdentity: ReceiverIdentity,
+    val definingModule: String,
+    val receiverKind: ReceiverKind,
+    val functionType: FunctionType,
+    val receiverType: CType
 )
 ```
+
+`ReceiverIdentity` SHALL use canonical type identity rather than the receiver's
+spelling. Typedef aliases therefore share the target identity, while nominal
+types with the same spelling in different modules remain distinct. Method
+lookup SHALL be centralized in an immutable receiver-keyed registry. Native
+methods are always available through their type; extension candidates retain
+their defining module and are filtered by the caller's visible extension-module
+set. Registering an extension SHALL NOT mutate the target type's native method
+list. Duplicate native receiver/name entries SHALL be diagnosed instead of
+overwritten.
 
 ```kotlin
 enum class ReceiverKind {

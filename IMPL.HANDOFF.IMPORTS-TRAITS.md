@@ -3,7 +3,7 @@
 ## Start here
 
 This is the active implementation runbook. The current leaf is tracked in
-`IMPL.PLAN.md` (currently `R11.1.2.1`); consult that file for status and evidence.
+`IMPL.PLAN.md` (currently `R11.1.2.2`); consult that file for status and evidence.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
@@ -15,7 +15,7 @@ The requested outcomes are:
   `comptime trait type_identifier { ... }`.
 
 Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1–
-R10.1.2.3, R10.2, R10.3.1, R10.3.2.1, R10.3.2.2 and R11.1.1.1–R11.1.1.3 are accepted; resume at **R11.1.2.1**, not by restarting
+R10.1.2.3, R10.2, R10.3.1, R10.3.2.1, R10.3.2.2 and R11.1.1.1–R11.1.1.3 plus R11.1.2.1 are accepted; resume at **R11.1.2.2**, not by restarting
 the parser foundation or jumping ahead to the VS Code UI. Do not restart R0–R9
 or rewrite the compiler.
 
@@ -212,11 +212,12 @@ its source/configuration fingerprints still match.
   a new data-layout descriptor or bypass the stabilized type universe.
 - `compiler/AstRewrite.kt`, `ClosureLowering.kt`, `SdkMetadata.kt`, and
   `cli/Main.kt`'s `AstPrinter` must see trait method bodies.
-- `semantic/Semantics.kt`: `MethodSymbol.owner` is currently `StructType`;
-  method maps use owner-name strings, registration uses `associate`, and
-  calls inspect struct method lists. Generalize the receiver identity and
-  centralize lookup before adding extensions. Use module-aware nominal type
-  identity and canonical alias resolution, not a plain target spelling.
+- `semantic/Semantics.kt`: `MethodSymbol` now carries a general `CType` owner,
+  canonical `ReceiverIdentity`, and defining module. The immutable
+  `MethodRegistry` centralizes lookup and visibility filtering; native method
+  call validation still uses legacy struct maps and must be routed through the
+  registry as trait resolution is implemented. Nominal types retain module
+  identity and aliases canonicalize to the target identity.
 - Separate native methods from module-scoped extension visibility. A public
   extension's defining module may differ from the target type's module.
   Resolve free names inside its body in the defining module's scope.
@@ -264,7 +265,7 @@ Windows test. Their task dependencies permit this order.
 19. `R11.1.1.1` — Parse the exact singular trait syntax. (Accepted.)
 20. `R11.1.1.2` — Traverse trait bodies in ordinary compiler passes. (Accepted.)
 21. `R11.1.1.3` — Preserve traits through CPX and stabilization. (Accepted.)
-22. `R11.1.2.1` — Generalize method ownership without changing native methods.
+22. `R11.1.2.1` — Generalize method ownership without changing native methods. (Accepted.)
 23. `R11.1.2.2` — Resolve targets, receivers and method bodies.
 24. `R11.1.2.3` — Enforce extension import activation and collisions.
 25. `R11.2.1.1` — Emit one typed C function per extension definition.
@@ -389,7 +390,7 @@ Counting rules:
 Implement the next dependency-ready terminal task in IMPL.PLAN.md R10/R11.
 Read AGENTS.md and IMPL.PLAN.RULES.md, then
 IMPL.HANDOFF.IMPORTS-TRAITS.md and that task's referenced spec sections.
-Resume at R11.1.2.1, the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
+Resume at R11.1.2.2, the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
 especially sdk/libc/include/stdio.h. Use comptime trait type_identifier { ... }.
 Implement one leaf, add/run its acceptance tests, record evidence, update all
 counts honestly, and make a Conventional Commit before proceeding.
