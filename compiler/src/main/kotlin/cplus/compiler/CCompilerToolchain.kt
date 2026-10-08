@@ -54,7 +54,7 @@ object CCompilerToolchains {
         val candidates = when {
             target.targetTriple == "windows-x86_64" && !isWindowsHost() -> listOf("x86_64-w64-mingw32-gcc", "clang")
             target.targetTriple == "windows-aarch64" && !isWindowsHost() -> listOf("aarch64-w64-mingw32-gcc", "clang")
-            target.osName() == "windows" && isWindowsHost() -> listOf("clang-cl", "cl", "clang")
+            target.osName() == "windows" && isWindowsHost() -> listOf("gcc", "clang-cl", "cl", "clang")
             target.targetTriple == "linux-aarch64" -> listOf("aarch64-linux-gnu-gcc", "clang")
             else -> listOf("cc", "clang", "gcc")
         }

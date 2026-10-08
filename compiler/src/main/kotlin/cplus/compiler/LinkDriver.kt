@@ -115,7 +115,8 @@ object LinkDriver {
         val windows = request.target.targetTriple.substringBefore('-') == "windows"
         if (!windows) return listOf("-Wl,--gc-sections")
         val name = compiler.substringAfterLast('/').substringAfterLast('\\').lowercase()
-        val gnuWindowsDriver = name.contains("mingw") || name.contains("w64")
+        val gnuWindowsDriver = CCompilerToolchains.classify(compiler).kind == CCompilerKind.GCC ||
+            name.contains("mingw") || name.contains("w64")
         return if (gnuWindowsDriver) listOf("-Wl,--gc-sections") else listOf("-Wl,/OPT:REF")
     }
 

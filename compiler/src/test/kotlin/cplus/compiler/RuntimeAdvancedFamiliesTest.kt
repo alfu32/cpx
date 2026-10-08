@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 class RuntimeAdvancedFamiliesTest {
     @Test
     fun linuxX8664ProvidesAtomicsUtf8WideConversionsAndSetjmp() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val directory = Files.createTempDirectory("cplus-advanced-families-e2e")
         val source = directory.resolve("advanced_families_test.c").also {

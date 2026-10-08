@@ -158,7 +158,10 @@ internal class Cli {
 
     private fun build(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val executable = parsed.output ?: parsed.sources.first().resolveSibling(parsed.sources.first().nameWithoutExtension)
+        val executable = executablePath(
+            parsed.output ?: parsed.sources.first().resolveSibling(parsed.sources.first().nameWithoutExtension),
+            parsed.target
+        )
         return buildExecutable(
             parsed.sources,
             parsed.cSources,
@@ -184,7 +187,10 @@ internal class Cli {
                 return 2
             }
         } else null
-        val executable = parsed.output ?: temporaryDirectory!!.resolve(parsed.sources.first().nameWithoutExtension)
+        val executable = executablePath(
+            parsed.output ?: temporaryDirectory!!.resolve(parsed.sources.first().nameWithoutExtension),
+            parsed.target
+        )
         return try {
             val buildExitCode = buildExecutable(
                 parsed.sources,
@@ -211,6 +217,11 @@ internal class Cli {
             temporaryDirectory?.let(::deleteTemporaryProduct)
         }
     }
+
+    private fun executablePath(path: Path, target: TargetInfo): Path =
+        if (target.targetTriple.substringBefore('-') == "windows" &&
+            !path.fileName.toString().endsWith(".exe", ignoreCase = true)
+        ) path.resolveSibling("${path.fileName}.exe") else path
 
     private fun deleteTemporaryProduct(directory: Path) {
         try {
@@ -476,7 +487,9 @@ internal class Cli {
         val runtimeDiagnostics = RuntimeHelperCatalogue.validate(runtimeHelpers, runtime)
         printDiagnostics(runtimeDiagnostics, sources.first())
         if (runtimeDiagnostics.any { it.severity == DiagnosticSeverity.ERROR }) return 1
-        val cFile = executable.resolveSibling("${executable.fileName}.c")
+        val executableName = executable.fileName.toString()
+        val sourceStem = if (executableName.endsWith(".exe", ignoreCase = true)) executableName.dropLast(4) else executableName
+        val cFile = executable.resolveSibling("$sourceStem.c")
         cFile.parent?.let { Files.createDirectories(it) }
         executable.parent?.let { Files.createDirectories(it) }
         cFile.writeText(generated)

@@ -11,27 +11,26 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    87/92 accepted with recorded evidence
-Phase gates:           2/9 complete; 7 active; 0 queued
-Current task:          R8.3 — Linux/Windows target-matrix product validation
+Roadmap leaf tasks:    90/92 accepted with recorded evidence
+Phase gates:           3/9 complete; 6 active; 0 queued
+Current task:          R8.4 — release reproducibility and compatibility audit
 Current milestone:     R8 — SDK packaging, target matrix and release conformance
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
-Windows execution:     deferred until the final validation pass by request
-Windows full-runtime link: local MinGW PE link now passes; Windows execution
-                           remains open (VM currently unreachable)
+Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
+Windows full-runtime link: native Windows and local MinGW PE products pass
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
-R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
+R3 [DONE]  6/6  Linux and native Windows primitive source-to-ABI evidence
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
-R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
+R5 [DOING] 40/41 native std and platform-service leaf tasks evidenced
 R6 [DOING] 4/4  CLI transcoder/build-product leaves accepted; Windows gate pending
 R7 [DOING] 3/3  Linux extension product accepted; Windows gate pending
-R8 [DOING] 2/4  SDK packaging, target matrix and release conformance
+R8 [DOING] 3/4  SDK packaging, target matrix and release conformance
 
-TOTAL       87/92 implementation tasks complete; 2/9 phase gates complete,
-            7 active, 0 queued
+TOTAL       90/92 implementation tasks complete; 3/9 phase gates complete,
+            6 active, 0 queued
 ```
 
 The latest Linux x86_64 C17 report is 51 pass, 0 fail, 0 unsupported, and 0
@@ -4215,7 +4214,7 @@ reuses equivalent specializations, rejects cycles and post-stabilization
 structural mutations, and preserves source origins through every generated
 declaration.
 
-## R3 [DOING] C backend and ABI interoperability conformance
+## R3 [DONE] C backend and ABI interoperability conformance
 
 **Progress**
 
@@ -4228,10 +4227,10 @@ declaration.
   - R3.1.3 [DONE] — verify Linux primitive declarations through semantic
     identity, emitted C, target layout, compiler probe, and independent C17
     caller, including `long double`.
-  - R3.1.4 [DOING] — verify Windows LLP64 primitive declarations and
-    independent caller ABI; resolve the supported Windows x86_64 compiler
-    profile for GNU x87 versus MSVC binary64 `long double` before claiming
-    interchangeability. Windows execution is deferred to final validation.
+  - R3.1.4 [DONE] — verify Windows LLP64 primitive declarations and
+    independent caller ABI using the supported Windows x86_64 GNU/UCRT64
+    compiler profile; MSVC binary64 `long double` remains a distinct,
+    unsupported ABI profile until separately implemented.
 - R3.2 [DONE] — complete headers, dependencies, source maps, and external C
   diagnostic remapping as one audited product.
 - R3.3 [DONE] — identify compiler-generated runtime helpers and either provide
@@ -4275,29 +4274,22 @@ Implemented and tested on Linux:
   deliberately mismatched long-double descriptor is rejected.
 
 This completes the Linux-only acceptance scope of R3.1.3. Windows LLP64
-execution and compiler-profile selection are isolated in R3.1.4 and remain
-unverified; descriptor-only Windows assertions are not Windows test evidence.
+execution and compiler-profile selection are validated separately in R3.1.4;
+descriptor-only Windows assertions alone are not Windows test evidence.
 
-### R3.1.4 Windows ABI acceptance (DOING)
+### R3.1.4 Windows ABI acceptance (DONE)
 
-R3.1.4 remains open until final Windows validation compiles generated
-multiword-integer and floating declarations, executes independent Windows C17
-callers for scalar and aggregate parameters/returns, and verifies the selected
-compiler against the target descriptor. The Windows x86_64 descriptor
-currently describes MinGW/GNU x87 `long double`; an MSVC compiler's binary64
-`long double` is rejected by the probe. The implementation must either add a
-separate MSVC ABI profile or explicitly constrain the supported compiler for
-that target.
-
-**Progress evidence, not completion:** `WindowsAbiIntegrationTest` compiles
-generated C+ declarations and an independent C17 caller with
-`x86_64-w64-mingw32-gcc`, statically checks LLP64 `long`, 64-bit `long long`,
-and the descriptor's 16-byte/64-bit-mantissa GNU x87 `long double`, then
-executes scalar and integer/floating aggregate argument/return round trips
-under Wine. The fixture passes locally. This exercises the selected MinGW
-profile in Wine; it does not establish native Windows behavior or validate the
-separate MSVC profile. Native Windows execution remains required before R3.1.4
-can be marked done.
+`WindowsAbiIntegrationTest` compiled generated C+ declarations and an
+independent C17 caller using native Windows UCRT64 GCC, statically checked
+LLP64 `long`, 64-bit `long long`, and the descriptor's 16-byte/64-bit-mantissa
+GNU x87 `long double`, and executed scalar plus integer/floating aggregate
+argument/return round trips on Windows. The same fixture also passes locally
+with MinGW under Wine. Windows host toolchain discovery now prefers the GNU
+profile that matches the declared target descriptor, while the mismatched
+MSVC binary64 `long double` profile is rejected rather than silently treated
+as ABI-compatible. Native Windows `:compiler:test` and the complete Gradle
+build passed. This closes the supported GNU/UCRT64 Windows x86_64 ABI leaf;
+it does not claim MSVC ABI support.
 
 ### R3.2/R3.3 completion record
 
@@ -4314,9 +4306,8 @@ Implemented and tested on Linux:
   missing or unknown helper before linking instead of allowing an unresolved
   runtime dependency.
 
-The R3 gate remains `DOING` until the final Linux/Windows product validation
-executes the same fixtures on Windows. Darwin remains outside the claimed
-execution matrix.
+The R3 gate is complete for the supported Linux and Windows x86_64 profiles.
+Darwin remains outside the claimed execution matrix.
 
 **Deliverables**
 
@@ -4621,13 +4612,13 @@ dependencies.
     iteration in Linux and Windows adapters, with executable Linux checks;
   - R5.2.4 [DONE] — add target-independent `std.fs` wrappers and unbuffered
     file-stream read/write/seek/close adapters without exposing OS handles;
-  - R5.2.5 [DOING] — run the complete Linux/Windows filesystem-PAL conformance
+  - R5.2.5 [DONE] — complete the Linux/Windows filesystem-PAL conformance
     matrix, error-normalization and dependency audit, and close platform gaps.
     **Acceptance:** Linux and Windows runtime fixtures cover path/mode/handle
     validation, open/read/write/seek/close/rename, metadata, directory
     iteration and stable error mapping; linked products pass host/runtime
     dependency audits; strict source checks pass for supported target ABIs.
-    **Progress evidence, not completion:** commit `c067dd9` extends
+    Linux acceptance evidence: commit `c067dd9` extends
     `RuntimeFilePalTest` with invalid/empty/malformed-UTF-8 paths, unknown
     modes, truncation without write access, missing paths, negative and invalid
     nonnegative handles, zero-length I/O, and dependency inspection. The
@@ -4636,9 +4627,14 @@ dependencies.
     AArch64; `RuntimeEnvironmentAndStreamsTest` and the full
     `./gradlew build --no-daemon` pass. A suite-discovered regression from
     broadening shared EBADF normalization was fixed by isolating filesystem
-    handle mapping from standard-channel errors. Windows adapter changes have
-    not been executed or PE-audited. R5.2.5 remains DOING and receives no
-    completion count until final Windows runtime/error/import validation. A
+    handle mapping from standard-channel errors. Native Windows acceptance:
+    the production filesystem PAL fixture, complete `RuntimeFilePalTest`,
+    `RuntimeStdIoTest`, and the full compiler suite pass on the Windows VM
+    using UCRT64 GCC. The linked native executable exercises canonical slash
+    paths, file operations, seek/error normalization, rename, metadata,
+    directory iteration, and standard I/O. The Windows runtime plan selects
+    the PE TLS directory adapter, and the native freestanding product links
+    without host CRT defaults. A
     Linux production-linked fixture now verifies that metadata follows a
     symlink and file removal unlinks the symlink without deleting its target;
     it also passes the runtime dependency audit. A separate Linux fixture
@@ -4650,8 +4646,8 @@ dependencies.
     directory creation (without synthesizing missing parents) and confirms file
     removal rejects directories while preserving them. Null metadata outputs,
     null directory-read buffers, and invalid directory handles are checked for
-    stable argument errors. These checks extend Linux evidence only and do not
-    close the cross-platform leaf. `RuntimeFilePalTest` also repeats
+    stable argument errors. These additional cases extend Linux evidence only.
+    `RuntimeFilePalTest` also repeats
     warning-as-error C17 syntax checks for the production Linux adapter with
     Clang targeting x86_64 and AArch64. An AArch64 QEMU-linked filesystem
     fixture now exercises canonical slash-path write/read, metadata, rename,
@@ -5472,7 +5468,7 @@ hard-coded CLI path.
   continues to report actual fixture compile/run, stream, and dependency-audit
   results. `./gradlew build --no-daemon` passes, including the focused matrix
   and Linux C17 executable-conformance tests. Commits: `34a0d5f`, `82172d8`.
-- R8.3 [DOING] — run Linux x86_64/AArch64 and Windows x86_64 (plus available
+- R8.3 [DONE] — run Linux x86_64/AArch64 and Windows x86_64 (plus available
   Windows AArch64/Darwin targets) product validation, including complete
   self-hosted Windows PE cross-linking. Linux x86_64 C17 executable
   conformance and freestanding runtime fixtures for file I/O/rename,
@@ -5544,8 +5540,7 @@ hard-coded CLI path.
   attributes, and the fixture uses a volatile saved return value per the C
   setjmp/longjmp rules. This does not close R8.3 or claim Windows context
   support.
-  This execution evidence does not close R8.3;
-  the Windows target matrix remains pending. The prior x86_64 CLI run also
+  The prior x86_64 CLI run also
   exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows
   Windows runtime testing remains deferred to the final validation gate. A
   local MinGW x86_64 full-runtime CLI cross-build now emits a PE executable.
@@ -5573,9 +5568,19 @@ hard-coded CLI path.
   The first Wine prefix attempt stalled while
   installing optional components; initializing an isolated prefix with
   `WINEDLLOVERRIDES=mscoree,mshtml=` succeeded. This is Wine compatibility
-  execution evidence, not native Windows OS evidence. SSH to the requested
-  Windows VM currently fails with `No route to host`; native R8.3 execution
-  gates remain open and receive no completion credit.
+  execution evidence, not native Windows OS evidence. Native Windows
+  validation then passed on the requested VM with UCRT64 GCC: the Windows ABI
+  caller, full filesystem PAL and std.io fixtures, complete compiler suite,
+  and complete Gradle build all succeeded. CLI no-extension output produced
+  and ran the expected `.exe`; CLI build/audit and project-manifest integration
+  cases passed natively. Windows output paths are normalized to `.exe` for
+  `build` and `run`, while generated C remains `<stem>.c`. Together with Linux
+  x86_64/AArch64 validation and PE import audits, this closes R8.3 for the
+  available target matrix. Windows AArch64 and Darwin execution remain
+  unavailable and are not claimed. The packaged fat JAR was also invoked
+  natively as `java -jar ... run examples/module_main.cp`; it built a temporary
+  Windows PE, printed `Result: 12`, and returned successfully through
+  PowerShell.
 - R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
   builds, documented examples, and upgrade/ABI compatibility rules.
 

@@ -636,6 +636,7 @@ long long platform_file_seek(long long handle, long long offset, unsigned int or
     long long position = 0;
     if (handle < 0 || origin > CPLUS_SEEK_END) return CPLUS_PAL_INVALID_ARGUMENT;
     if (!SetFilePointerEx((__cplus_handle)handle, offset, &position, origin)) {
+        if (GetLastError() == 131UL) return CPLUS_PAL_INVALID_ARGUMENT;
         return cplus_normalize_windows_error();
     }
     return position < 0 ? CPLUS_PAL_INVALID_ARGUMENT : position;

@@ -1375,6 +1375,10 @@ class CompilerIntegrationTest {
 
     @Test
     fun everyCIntegerRankAndSignednessRoundTripsThroughAnIndependentCAbiCaller() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            System.getProperty("os.name").contains("linux", ignoreCase = true),
+            "This fixture asserts the Linux LP64 data model"
+        )
         val source = """
             pub struct parsed_integer_record {
                 char plain_char;

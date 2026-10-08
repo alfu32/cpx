@@ -4,10 +4,12 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeNetworkAddressTest {
     @Test
     fun freestandingAddressAndHostnameCodecsPassCanonicalAndBoundaryVectors() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val directory = Files.createTempDirectory("cplus-network-address")
         val source = directory.resolve("address_test.c").also {

@@ -166,5 +166,26 @@ class LinkDriverTest {
         assertFalse(command.any { it.startsWith("-l") })
     }
 
+    @Test
+    fun mingwWindowsDriverUsesGnuSectionGarbageCollectionFlag() {
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val command = LinkDriver.command(
+            LinkRequest(
+                generatedSource = java.nio.file.Path.of("main.c"),
+                output = java.nio.file.Path.of("main.exe"),
+                target = target,
+                sdk = resolution,
+                cCompiler = "x86_64-w64-mingw32-gcc"
+            ),
+            plan
+        )
+
+        assertTrue(command.contains("-Wl,--gc-sections"))
+        assertFalse(command.contains("-Wl,/OPT:REF"))
+    }
+
     private fun portablePath(value: String): String = value.replace('\\', '/')
 }

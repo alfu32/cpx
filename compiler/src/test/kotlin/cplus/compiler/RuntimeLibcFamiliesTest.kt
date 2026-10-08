@@ -3,10 +3,12 @@ package cplus.compiler
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeLibcFamiliesTest {
     @Test
     fun linuxC17FamiliesProvideFormattingClockMathClassificationLocaleAndSignals() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val directory = Files.createTempDirectory("cplus-libc-families-e2e")
         val source = directory.resolve("libc_families_test.c").also {

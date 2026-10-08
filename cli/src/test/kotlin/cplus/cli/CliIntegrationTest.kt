@@ -106,7 +106,8 @@ class CliIntegrationTest {
     fun auditInspectsTheExecutableProducedByBuild() {
         val directory = Files.createTempDirectory("cplus-cli-audit")
         val source = directory.resolve("main.cp").also { it.writeText("int main() { return 0; }") }
-        val executable = directory.resolve("program")
+        val windowsHost = System.getProperty("os.name").contains("windows", ignoreCase = true)
+        val executable = directory.resolve(if (windowsHost) "program.exe" else "program")
         val manifest = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
         assertEquals(0, Cli().run(listOf("build", source.toString(), "--output", executable.toString())))
 
@@ -115,7 +116,7 @@ class CliIntegrationTest {
                 0,
                 Cli().run(
                     listOf(
-                        "audit", executable.toString(), "--target", "LINUX-X86_64", "--sdk", manifest.toString(),
+                        "audit", executable.toString(), "--target", if (windowsHost) "WINDOWS-X86_64" else "LINUX-X86_64", "--sdk", manifest.toString(),
                         "--runtime", "cplus", "--libc", "c17"
                     )
                 )
@@ -637,7 +638,10 @@ class CliIntegrationTest {
                 """.trimIndent()
             )
         }
-        val executable = directory.resolve("program")
+        val requestedExecutable = directory.resolve("program")
+        val executable = if (System.getProperty("os.name").contains("windows", ignoreCase = true)) {
+            directory.resolve("program.exe")
+        } else requestedExecutable
         val header = directory.resolve("program.h")
 
         val exitCode = Cli().run(
@@ -645,7 +649,7 @@ class CliIntegrationTest {
                 "build",
                 source.toString(),
                 "--output",
-                executable.toString(),
+                requestedExecutable.toString(),
                 "--header",
                 header.toString()
             )
@@ -795,7 +799,9 @@ class CliIntegrationTest {
         assertTrue(generatedHeader.exists())
         assertTrue(sourceMap.readText().contains("app/main.cp"))
         assertTrue(sourceMap.readText().contains("modules/math.cp"))
-        val executable = directory.resolve("project-program")
+        val executable = directory.resolve(
+            if (System.getProperty("os.name").contains("windows", ignoreCase = true)) "project-program.exe" else "project-program"
+        )
         val buildMap = directory.resolve("build/project.map")
         assertEquals(
             0,
@@ -803,7 +809,9 @@ class CliIntegrationTest {
         )
         assertEquals(12, ProcessBuilder(executable.toString()).start().waitFor())
         assertTrue(buildMap.exists())
-        val runOutput = directory.resolve("run/project-program")
+        val runOutput = directory.resolve(
+            "run/${if (System.getProperty("os.name").contains("windows", ignoreCase = true)) "project-program.exe" else "project-program"}"
+        )
         assertEquals(12, Cli().run(listOf("run") + projectOption + listOf("--output", runOutput.toString())))
         assertTrue(runOutput.exists())
         assertEquals(0, Cli().run(listOf("check", "--workspace", workspace.toString())))

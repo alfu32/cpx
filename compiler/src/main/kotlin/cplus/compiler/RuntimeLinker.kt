@@ -88,6 +88,7 @@ object RuntimeLinker {
                 val networkFacade = resolution.layout.runtimeSource.resolve("net.c")
                 val platformRuntime = resolution.layout.platformSource.resolve("runtime.c")
                 val windowsEmulatedTls = resolution.layout.runtimeSource.resolve("emutls_windows.c")
+                val windowsStaticTls = resolution.layout.runtimeSource.resolve("tls_windows.c")
                 val setjmp = when {
                     descriptor.os != "linux" -> emptyList()
                     descriptor.architecture == "x86_64" -> listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S"))
@@ -109,7 +110,11 @@ object RuntimeLinker {
                 } else {
                     emptyList()
                 }
-                val targetSpecificRuntime = if (descriptor.os == "windows") listOf(windowsEmulatedTls) else emptyList()
+                val targetSpecificRuntime = if (descriptor.os == "windows") {
+                    listOf(windowsEmulatedTls, windowsStaticTls)
+                } else {
+                    emptyList()
+                }
                 val commonRuntime = listOf(
                     startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time,
                     math, ctype, locale, signal, wide, wctype, filesystem, synchronization,
