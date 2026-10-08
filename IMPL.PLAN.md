@@ -13,8 +13,8 @@ runtime, SDK, LSP, and release products.
 Historical foundation: 145/146 evidenced; one std.core task reopened
 Roadmap leaf tasks:    32/49 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R3.1.3 — finish the parsed primitive-to-ABI audit
-Current milestone:     R3 — compiler, C ABI, and native linking conformance
+Current task:          R5.1 — implement target-aware std.core byte/size/index types
+Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
@@ -35,12 +35,12 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R3.1.3 — verify parsed spellings, type imports, and aliases through emitted
-   C and independent ABI fixtures.
-2. R5.1 — complete the reopened target-aware std.core byte/size/index types.
-3. R5.2 onward — resume native std and platform work after the type boundary is
-   reliable, finish R6–R8, and perform the deferred Windows validation and patch
-   pass.
+1. R5.1 — implement target-aware std.core byte/size/index types using the
+   Linux-verified primitive and type-import contracts.
+2. R5.2–R5.5 and R6–R7 — continue Linux implementation and explicit target
+   capability gating without running Windows tests early.
+3. Final validation — run the deferred Windows ABI/caller checks (including the
+   open R3.1.3 LLP64 execution gate), patch platform issues, then close R8.
 
 Latest completed implementation commits:
 
@@ -54,7 +54,9 @@ Latest completed implementation commits:
 - `f8be29e` — self-hosted stdio/time/basic C17 families;
 - `3578f06` — bind selective source type imports;
 - `3043cdd` — resolve qualified and aliased source types;
-- `21c7979` — verify source-type import workflows and generated-C execution.
+- `21c7979` — verify source-type import workflows and generated-C execution;
+- `d51c9ce` — add capability-gated Linux x86_64 i128/u128 support;
+- `9c9ea94` — verify standard integer ranks through an independent Linux C ABI caller.
 - `d51c9ce` — add capability-gated Linux x86_64 i128/u128 support.
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
@@ -4077,9 +4079,12 @@ dependencies.
 - R5.5 [TODO] — record Darwin as either executablely supported or explicitly
   capability-gated, without claiming a partial adapter as complete.
 
-R5.2 is sequenced after R1.1.1–R1.2.5, R1.4, and R3.1.3 because it extends
-public SDK function signatures and must use the verified C primitive, type
-import, and alias boundaries.
+R5.2 implementation is sequenced after R1.1.1–R1.2.5 and R1.4 because it
+extends public SDK function signatures and must use the verified C primitive,
+type-import, and alias boundaries. Linux implementation may proceed while the
+R3.1.3 Windows LLP64 execution check remains explicitly deferred to final
+validation; that check is still required before claiming cross-platform ABI
+conformance or closing the release gate.
 
 ### R5.1 status audit
 
