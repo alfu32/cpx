@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    73/88 accepted with recorded evidence
+Roadmap leaf tasks:    73/92 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R4.6.2 — C17 complex math and type-generic dispatch
+Current task:          R4.6.2.1 — C+ complex arithmetic and conversion semantics
 Current milestone:     R4 — runtime, allocator and libc behavior
 Latest C17 Linux report: 46 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
@@ -24,19 +24,25 @@ R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
-R4 [DOING] 6/7  Linux runtime/libc leaf tasks evidenced; complex math and Windows gates pending
+R4 [DOING] 6/11 Linux runtime/libc leaf tasks evidenced; complex math and Windows gates pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       73/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       73/92 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
 The latest Linux x86_64 C17 report is 46 pass, 0 fail, 0 unsupported, and 0
 planned. Per-leaf historical records below retain the report totals measured
 when those leaves were accepted; they are not claims about the latest count.
+
+R4.6.2 was decomposed into five independently testable leaves for C+ complex
+operators, component/projection functions, exponential/root functions,
+trigonometric/hyperbolic functions, and `<tgmath.h>` dispatch. This increases
+the denominator from 88 to 92 and R4 from 7 to 11 without adding completion
+credit; the current aggregate is 73/92 overall and 6/11 for R4.
 
 The roadmap denominator increased from 65 to 67 during R5.3.7 planning when
 one broad socket work item was decomposed into three verifiable leaves. That
@@ -341,8 +347,9 @@ below. Its current execution sequence is:
    conformance and remains open for final Windows runtime/import validation.
    Linux C17 stdio and report tasks R4.4/R4.5 pass their recorded checks;
    R4.6.1 complex scalar/header support is accepted for its Linux x86_64
-   capability; R4.6.2 complex expression/math behavior and type-generic
-   dispatch are next. R4 remains open for Windows libc validation.
+   capability; R4.6.2.1 C+ complex operators/conversions are next, followed by
+   the four separately tracked function-family and type-generic leaves. R4
+   remains open for Windows libc validation.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -4309,7 +4316,7 @@ layout, source-map, and dependency audits.
 - R4.5 [DONE] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and ensure the report exercises every advertised stdio
   operation rather than treating declarations or stubs as complete.
-- R4.6 [DOING] [1/2] — complete the currently missing C17 complex and type-generic
+- R4.6 [DOING] [1/6] — complete the currently missing C17 complex and type-generic
   math headers; the current 46-pass Linux report covers its registered subset
   and is not evidence that every header family listed in SPEC.STDLIB §18 is
   complete.
@@ -4326,13 +4333,30 @@ layout, source-map, and dependency audits.
     fixture passes dependency audit. The Linux C17 report is 46/0/0/0 and
     `./gradlew build --no-daemon` passes. No Windows or AArch64 complex support
     or execution is claimed.
-  - R4.6.2 [TODO] — implement C+ complex arithmetic/conversion semantics, the
-    C17 complex math function families, and `<tgmath.h>` dispatch across real
-    and complex argument types, with independent C17 fixtures and no
-    undeclared host `libm` dependency. The `<complex.h>` declarations added by
-    R4.6.1 do not claim linked definitions; `cabs`/`csqrt` and the other math
-    families remain unimplemented.
+  - R4.6.2.1 [TODO] — implement C+ complex usual arithmetic conversions,
+    supported arithmetic/equality/logical operators, and invalid-operator
+    diagnostics. Verify result types, emitted C, and independent C caller
+    behavior without introducing undeclared compiler-runtime symbols.
+    **Depends:** R4.6.1.
+  - R4.6.2.2 [TODO] — implement and execute `cabs`, `carg`, `creal`, `cimag`,
+    `conj`, and `cproj` for all three complex precisions, including component,
+    projection, signed-zero, infinity, and NaN cases. Add independent C17
+    fixture and dependency audit.
     **Depends:** R4.6.1 and R5.4.5.2–R5.4.5.10.
+  - R4.6.2.3 [TODO] — implement and execute `cexp`, `clog`, `cpow`, and
+    `csqrt` for all three precisions, including branch cuts, signed zeros,
+    infinities, and NaNs. Add independent C17 fixture and dependency audit.
+    **Depends:** R4.6.2.2 and R5.4.5.2–R5.4.5.10.
+  - R4.6.2.4 [TODO] — implement and execute the C17 circular, inverse,
+    hyperbolic, and inverse-hyperbolic complex function families for all three
+    precisions, including their branch behavior. Add independent C17 fixture
+    and dependency audit.
+    **Depends:** R4.6.2.3 and R5.4.5.2–R5.4.5.10.
+  - R4.6.2.5 [TODO] — implement the complete `<tgmath.h>` dispatch surface
+    across real/complex and integer-promoted arguments, preserving result
+    types and single evaluation. Add independent C17 coverage and dependency
+    audit for every advertised generic macro.
+    **Depends:** R4.6.2.1–R4.6.2.4 and R5.4.5.2–R5.4.5.10.
 
 The Linux x86_64 conformance command reports the individual header, runtime
 source, fixture execution, and binary dependency checks; it returns non-zero
