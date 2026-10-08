@@ -4897,8 +4897,10 @@ dependencies.
       production-linked PAL on Linux; public type layouts and declarations
       compile for Linux/Windows x86_64/AArch64; strict warning-as-error C17
       checks pass for shared forwarding code on all four targets; production
-      Linux executables have no undefined host-runtime symbols. Windows runtime
-      execution remains deferred to final validation.
+      Linux executables have no undefined host-runtime symbols. Native Windows
+      x86_64 now executes the public TCP and UDP IPv4 loopback façades and the
+      resolver façade, with PE dependency audits; the complete Windows C+
+      networking matrix remains open.
     - R5.4.4.1 [DONE] — define public `std.net` address, socket, family,
       transport, shutdown, and error types/constants plus the façade
       declarations; verify the public ABI before transport implementation.
@@ -4921,7 +4923,10 @@ dependencies.
         symbols. Strict warning-as-error C17 checks pass for the OS-neutral
         façade on Linux/Windows x86_64 and AArch64; `RuntimeLinkerTest` confirms
         selection on both operating systems. The full Gradle build passes.
-        Windows runtime execution remains deferred.
+        The native Windows VM also executes this C+ TCP loopback fixture,
+        including bind/listen/connect/accept, address queries, bidirectional
+        transfer, shutdown EOF, invalid arguments, and close; the PE passes
+        `RuntimeDependencyAuditor`.
       - **Depends:** R5.4.4.1.
     - R5.4.4.3 [DONE] — implement and execute the public UDP datagram façade
       for open, bind, send-to, receive-from, and close.
@@ -4932,7 +4937,10 @@ dependencies.
         executable has no undefined host-runtime symbols. Strict
         warning-as-error C17 checks pass for the OS-neutral façade on
         Linux/Windows x86_64 and AArch64; the full Gradle build passes.
-        Windows runtime execution remains deferred.
+        Native Windows x86_64 also executes this C+ UDP loopback fixture,
+        covering empty and non-empty datagrams, source-address copy-out,
+        optional source storage, and invalid inputs; the PE passes
+        `RuntimeDependencyAuditor`.
       - **Depends:** R5.4.4.1.
     - R5.4.4.4 [DONE] — implement the public address parse/format and hostname
       resolution façade over the shared codec and platform resolver.
