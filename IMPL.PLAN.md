@@ -4795,8 +4795,16 @@ dependencies.
       symbols. All `RuntimeStdMath*` tests pass, including strict C17 checks
       for Linux/Windows x86_64 and AArch64; the full Gradle build passes.
       Windows runtime execution remains deferred.
-  - R5.4.6 [TODO] — propagate target capabilities and stable unavailable-service
-    diagnostics, and audit that unused modules add no platform dependencies;
+  - R5.4.6 [DOING] — propagate verified target platform-service capabilities,
+    produce stable unavailable-service diagnostics, and ensure unused runtime
+    services do not add platform dependencies. **Acceptance:** service
+    capabilities flow from the selected target descriptor/profile into
+    compile-time metadata; available and unavailable service checks have
+    stable diagnostics; unsupported self-hosted targets fail with a stable
+    compiler diagnostic; dependency inspection fails closed if required tools
+    are unavailable; production-linked minimal programs omit unreferenced
+    platform-service symbols/imports and pass the target dependency audit.
+    Linux execution is required; Windows runtime execution remains deferred.
 - R5.5 [TODO] — record Darwin as either executablely supported or explicitly
   capability-gated, without claiming a partial adapter as complete.
 

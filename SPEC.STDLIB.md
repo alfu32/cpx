@@ -1878,8 +1878,18 @@ Required capability queries:
 target.has_intrinsic(name)
 target.has_feature(name)
 target.has_libc_profile(name)
+target.has_service(name)
 target.supports_abi(name)
 ```
+
+`target.has_service(name)` SHALL query the selected C+ runtime's structured
+platform-service capabilities. Canonical service names are `memory`, `file`,
+`process`, `time`, `threads`, `sync`, `atomics`, `socket-transport`, and
+`dns`. A true result means the selected SDK provides that service adapter for
+the target; it does not promise success for an individual OS request or
+external resource. Unsupported services SHALL be reported through the stable
+compile-time capability diagnostic, and runtime calls that cannot be provided
+SHALL return `CPLUS_PAL_UNSUPPORTED`.
 
 Example:
 
@@ -1953,7 +1963,10 @@ comptime if (target.os == OS.LINUX) {
 }
 ```
 
-No C preprocessor conditionals are required.
+Service-dependent source SHALL query `target.has_service(name)` before
+selecting a platform adapter. The target service set SHALL be derived from
+verified SDK adapters, not inferred from the host running the compiler or from
+the OS name alone. No C preprocessor conditionals are required.
 
 ## 29.4 Type-layout introspection
 
@@ -2848,6 +2861,13 @@ only allowed OS/system dependencies
 ```
 
 Violations SHALL be reported.
+
+For self-hosted output, dependency inspection SHALL fail with a diagnostic if
+the required target-format or unresolved-symbol inspection tools are
+unavailable or fail. It SHALL report the observed and allowed system
+dependencies, reject undeclared host/compiler-runtime dependencies, and
+verify that optional platform-service imports not referenced by the program
+are not retained in the executable.
 
 ---
 
