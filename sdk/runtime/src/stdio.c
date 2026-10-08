@@ -1,5 +1,6 @@
 /* Minimal C17 stdio compatibility for the self-hosted profile. */
 #include "cplus_platform.h"
+#include <stddef.h>
 #if defined(_MSC_VER)
 #include <stdarg.h>
 typedef va_list __cplus_va_list;
@@ -17,8 +18,8 @@ extern long long platform_read_stdin(void* buffer, unsigned long long capacity);
 extern long long platform_write_stdout(const char* buffer, unsigned long long length);
 extern long long platform_write_stderr(const char* buffer, unsigned long long length);
 
-static unsigned long long __cplus_length(const char* text) {
-    unsigned long long length = 0;
+static size_t __cplus_length(const char* text) {
+    size_t length = 0;
     while (text[length] != 0) length++;
     return length;
 }
@@ -62,12 +63,12 @@ int vprintf(const char* format, __cplus_va_list arguments) {
     return __cplus_stdio_result(__cplus_write(stdout, text, __cplus_length(text)));
 }
 
-int vsnprintf(char* buffer, unsigned long long size, const char* format, __cplus_va_list arguments) {
+int vsnprintf(char* buffer, size_t size, const char* format, __cplus_va_list arguments) {
     const char* text = __cplus_vformat(format, arguments);
-    unsigned long long length = __cplus_length(text);
-    unsigned long long index;
+    size_t length = __cplus_length(text);
+    size_t index;
     if (buffer && size > 0) {
-        unsigned long long limit = length < size - 1 ? length : size - 1;
+        size_t limit = length < size - 1 ? length : size - 1;
         for (index = 0; index < limit; index++) buffer[index] = text[index];
         buffer[limit] = 0;
     }
@@ -75,7 +76,7 @@ int vsnprintf(char* buffer, unsigned long long size, const char* format, __cplus
 }
 
 int vsprintf(char* buffer, const char* format, __cplus_va_list arguments) {
-    return vsnprintf(buffer, ~0ULL, format, arguments);
+    return vsnprintf(buffer, (size_t)-1, format, arguments);
 }
 
 int vfprintf(FILE* stream, const char* format, __cplus_va_list arguments) {
@@ -107,7 +108,7 @@ int sprintf(char* buffer, const char* format, ...) {
     return result;
 }
 
-int snprintf(char* buffer, unsigned long long size, const char* format, ...) {
+int snprintf(char* buffer, size_t size, const char* format, ...) {
     __cplus_va_list arguments;
     __cplus_va_start(arguments, format);
     int result = vsnprintf(buffer, size, format, arguments);
