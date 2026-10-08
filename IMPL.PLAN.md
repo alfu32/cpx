@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    58/87 accepted with recorded evidence
+Roadmap leaf tasks:    59/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R3.1.3 — add target-aware long double ABI support
+Current task:          R5.4.5.1 — define the real C17 math API
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -22,14 +22,14 @@ Windows full-runtime link: open in R8.3; local MinGW reports unresolved
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
-R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
+R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
 R5 [DOING] 26/41 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       58/87 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       59/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -149,9 +149,9 @@ existing `RuntimeNetworkDnsTest` passes its deterministic local DNS fixture
 against the production resolver. Linked public C+ products have no undefined
 host-runtime symbols, strict warning-as-error C17 façade checks pass for all
 four Linux/Windows x86_64/AArch64 target triples, and the full Gradle build
-passes. Commit `9a154ae` brings the numerator to 58/75 and R5 to 26/31. Windows
-runtime execution remains deferred. R5.4.4 is now complete at 4/4; portable
-math remains queued behind the long-double ABI prerequisite.
+passes. Commit `9a154ae` brought the numerator to 58/75 and R5 to 26/31 at that
+point. Windows runtime execution remains deferred. R5.4.4 is complete at 4/4;
+portable math is now active after the Linux long-double ABI prerequisite.
 
 Audit of R5.4.5 found that the two-function math stub cannot meet C17: the
 standard real-math surface includes classification, rounding, decomposition,
@@ -162,12 +162,19 @@ to 85 and R5 from 31 to 41 by decomposing that parent into eleven independently
 testable leaves, with no completion credit. A separate audit of the already
 advertised C17 headers found that `<complex.h>` and `<tgmath.h>` are absent;
 R4.6 adds two leaves, increasing the total from 85 to 87 and R4 from 5/5 to
-5/7, also with no completion credit. `long double` is accepted syntactically
-but absent from semantic primitive and target ABI modeling. R3.1.3 is
-explicitly expanded to establish and probe target floating formats, size, and
-alignment before the C17 math declaration matrix is accepted. R5.4.5.1
-depends on that still-open ABI task; complex math additionally depends on the
-real math implementation.
+5/7, also with no completion credit. The audit found `long double` accepted
+syntactically but absent from semantic primitive and target ABI modeling; that
+gap is now addressed for Linux by R3.1.3. R5.4.5.1 depends on that verified
+Linux ABI leaf; Windows LLP64/compiler ABI
+validation remains separately open in R3.1.4. Complex math additionally
+depends on the real math implementation.
+
+R3.1.3 was split by execution environment so Linux evidence does not stand in
+for Windows validation. Its Linux primitive source-to-ABI leaf passed the
+integer and floating independent-caller checks, target descriptor layouts,
+and selected-compiler probe recorded below. This adds one verified leaf and
+one separately tracked Windows leaf: the roadmap changes from 58/87 to 59/88.
+R3.1.4 remains TODO; no Windows completion credit is included.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -181,7 +188,7 @@ below. Its current execution sequence is:
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
    execution remains deferred and receives no completion credit meanwhile.
 4. Final validation — run the deferred Windows ABI/caller and PAL checks (including the
-   open R3.1.3 LLP64 execution gate), patch platform issues, then close R8.
+   open R3.1.4 LLP64 execution gate), patch platform issues, then close R8.
 
 Latest completed implementation commits:
 
@@ -223,6 +230,7 @@ Latest completed implementation commits:
 - `f79c654` — verify synchronous not-found errors through `std.process`.
 - `141f393` — implement checked `std.time` clocks and durations (calendar conversion remains open).
 - `cc436ca` — implement proleptic-Gregorian UTC calendar conversion (Windows execution deferred).
+- `e7e480c` — model target floating layouts and verify Linux long-double calls (R3.1.3 Linux leaf only; Windows ABI gate remains open).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4012,10 +4020,13 @@ declaration.
     C+/C caller round trips on Linux.
   - R3.1.2 [DONE] — execute globals, TLS, export/link-name, and aggregate-return
     interoperability fixtures.
-  - R3.1.3 [DOING] — extend target ABI audit from descriptor-level layouts to
-    parsed primitive declarations, emitted C, and independent ABI fixtures,
-    including target-specific `long double` format, size, alignment, and call
-    compatibility required by the C17 math surface.
+  - R3.1.3 [DONE] — verify Linux primitive declarations through semantic
+    identity, emitted C, target layout, compiler probe, and independent C17
+    caller, including `long double`.
+  - R3.1.4 [TODO] — verify Windows LLP64 primitive declarations and
+    independent caller ABI; resolve the supported Windows x86_64 compiler
+    profile for GNU x87 versus MSVC binary64 `long double` before claiming
+    interchangeability. Windows execution is deferred to final validation.
 - R3.2 [DONE] — complete headers, dependencies, source maps, and external C
   diagnostic remapping as one audited product.
 - R3.3 [DONE] — identify compiler-generated runtime helpers and either provide
@@ -4037,12 +4048,7 @@ Implemented and executed on Linux:
 - ordinary function and method lowering preserve the variadic bit through the
   C model, so generated prototypes retain `...`.
 
-R3.1.3 is reopened: earlier checks validated descriptor-level primitive and
-aggregate layouts, but did not exercise every source spelling through parsing,
-semantic resolution, C emission, and an independent caller. Windows execution
-is deferred to the final cross-platform validation pass by project policy.
-
-### R3.1.3 earlier partial evidence
+### R3.1.3 Linux completion record
 
 Implemented and tested on Linux:
 
@@ -4050,54 +4056,33 @@ Implemented and tested on Linux:
   and Windows x86_64/AArch64 descriptor matrix without host-width assumptions;
 - pointer width, LP64/LLP64 `long`, `long long`, aggregate field offsets, and
   aggregate alignment are checked against each declared target descriptor;
-- generated C retains the selected C declarators and the ABI identity metadata
-  remains available for target validation.
+- an emitted public header and generated C unit round-trip every supported
+  standard integer rank and signedness through an independent Linux C17 caller;
+  runtime values exercise signed and unsigned argument/return ABI;
+- semantic assertions verify parsed integer declaration identities and keep
+  plain/signed/unsigned char and each integer rank distinct;
+- generated C retains the selected C declarators; an independent Linux C17
+  caller verifies float/double/long-double scalar calls, aggregate field
+  layout, and aggregate-by-value calls/returns;
+- all six target descriptors carry floating format, storage, alignment,
+  precision, and exponent data; target layout tests verify those values;
+- the selected Linux x86_64 C compiler passes the descriptor probe, and a
+  deliberately mismatched long-double descriptor is rejected.
 
-This is partial evidence only. R3.1.3 remains `DOING` until end-to-end fixtures
-prove that each supported multiword spelling preserves signedness, rank, and
-target width through the parser, semantic model, emitted C, and independent C
-caller. This specifically covers LP64 and LLP64 differences and the
-`char`/`signed char`/`unsigned char` distinction. The acceptance matrix now
-also includes `long double`: each target descriptor SHALL record its floating
-format, storage size, and alignment; the selected C compiler SHALL pass a
-matching probe, and emitted C plus an independent caller SHALL agree on scalar,
-aggregate-field, and function-parameter/return ABI. This is a prerequisite to
-accepting the C17 `<math.h>` declaration matrix in R5.4.5.1.
+This completes the Linux-only acceptance scope of R3.1.3. Windows LLP64
+execution and compiler-profile selection are isolated in R3.1.4 and remain
+unverified; descriptor-only Windows assertions are not Windows test evidence.
 
-Linux evidence added for the current pass:
+### R3.1.4 Windows ABI acceptance (TODO)
 
-- an emitted public header and generated C unit now round-trip every supported
-  standard integer rank and signedness through an independent C17 caller;
-  compile-time checks compare the caller's LP64 `long` size and aggregate
-  offsets, and runtime values exercise signed and unsigned argument/return ABI;
-- semantic assertions verify each parsed declaration's canonical type identity
-  and keep plain, signed, unsigned, `long`, and `long long` types distinct;
-- parsed multi-integer aggregate field sizes, alignments, offsets, and total
-  layout are checked against all four Linux/Windows x86_64/AArch64 descriptors.
-  Windows entries here are descriptor-model checks only, not Windows execution.
-
-Additional partial `long double` evidence from the current pass:
-
-- the canonical primitive catalog now gives `long double` a distinct floating
-  rank and semantic identity; the ABI layout engine reads format, size, and
-  alignment from the selected target descriptor;
-- all six checked-in target descriptors now record `float`, `double`, and
-  `long double` format fingerprints, storage sizes, alignments, precision, and
-  exponent bounds;
-- the selected C compiler is checked before linking against those descriptor
-  values, and the Linux x86_64 `cc` probe passes while a deliberately
-  mismatched long-double descriptor is rejected;
-- a Linux x86_64 generated-C fixture and independent C17 caller verify
-  float/double/long-double scalar calls, long-double aggregate-field layout,
-  and aggregate-by-value return/call behavior.
-
-R3.1.3 remains `DOING` with no aggregate completion credit: Windows LLP64
-compilation and independent-caller execution are deferred to the final
-validation pass. In particular, the current Windows x86_64 descriptor records
-the MinGW/GNU x87 `long double` ABI; an MSVC compiler's binary64 `long double`
-is rejected by the probe and is not yet a supported combination. A separate
-MSVC ABI profile or an explicit toolchain constraint remains to be resolved
-before claiming Windows x86_64 compiler interchangeability.
+R3.1.4 remains open until final Windows validation compiles generated
+multiword-integer and floating declarations, executes independent Windows C17
+callers for scalar and aggregate parameters/returns, and verifies the selected
+compiler against the target descriptor. The Windows x86_64 descriptor
+currently describes MinGW/GNU x87 `long double`; an MSVC compiler's binary64
+`long double` is rejected by the probe. The implementation must either add a
+separate MSVC ABI profile or explicitly constrain the supported compiler for
+that target. No Windows execution or compatibility is claimed here.
 
 ### R3.2/R3.3 completion record
 
@@ -4571,9 +4556,9 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [TODO] [0/11] — implement the specified portable real `std.math` and
+  - R5.4.5 [DOING] [0/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
-    - R5.4.5.1 [TODO] — define the complete real C17 `<math.h>` and `std.math`
+    - R5.4.5.1 [DOING] — define the complete real C17 `<math.h>` and `std.math`
       API, including declarations, macros, constants, and float/double/long
       double signatures. **Depends:** R3.1.3.
     - R5.4.5.2 [TODO] — implement floating classification and comparison
@@ -4607,7 +4592,7 @@ R5.2 implementation is sequenced after R1.1.1–R1.2.5 and R1.4 because it
 extends public SDK function signatures and must use the verified C primitive,
 type-import, and alias boundaries. R5.2.1 freezes the ABI before adapter work;
 R5.2.2–R5.2.4 may be implemented and Linux-tested while Windows execution,
-including the R3.1.3 LLP64 caller check, remains deferred to final validation.
+including the R3.1.4 LLP64 caller check, remains deferred to final validation.
 R5.2.5 is not complete until that deferred Windows execution and audit pass.
 The R5.3/R5.4 leaves may close on their explicitly listed Linux execution and
 target-model acceptance evidence, but no such leaf or aggregate closes the
