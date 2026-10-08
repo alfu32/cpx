@@ -2454,6 +2454,15 @@ remainder; power, roots, and magnitude; exponential and logarithmic;
 trigonometric and hyperbolic; error and gamma; positive-difference, extrema,
 and fused-multiply-add operations.
 
+The `<math.h>` header SHALL expose `float_t` and `double_t` according to
+`FLT_EVAL_METHOD`; the currently supported targets define
+`FLT_EVAL_METHOD` as zero, so these types are `float` and `double`. The SDK
+math-error policy is errno-only: `MATH_ERRNO` and `MATH_ERREXCEPT` SHALL have
+their C17 values, `math_errhandling` SHALL equal `MATH_ERRNO`, and required
+domain, pole, and range errors SHALL update the thread-local `errno` as
+specified by C17. This policy does not claim floating-point exception support
+or IEC 60559 / Annex F conformance.
+
 The SDK SHALL expose the supported real operations through `std.math` with
 explicit C+ declarations and types. It SHALL preserve the selected target's
 floating formats and ABI, including `long double`, and SHALL NOT silently

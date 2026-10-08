@@ -5,6 +5,7 @@ extern _Thread_local int errno;
 #define ENOMEM 12
 #define ENOSYS 38
 #define ERANGE 34
+#define EDOM 33
 #define ENOENT 2
 #define EACCES 13
 #endif

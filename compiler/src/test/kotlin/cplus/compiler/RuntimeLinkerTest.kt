@@ -111,7 +111,7 @@ class RuntimeLinkerTest {
         val executable = directory.resolve("termination")
         val process = ProcessBuilder(
             listOf("cc", "-std=c17") + plan.compilerFlags +
-                listOf("-I", resolution.layout.runtimeInclude.toString()) +
+                listOf("-I", resolution.layout.libcInclude.toString(), "-I", resolution.layout.runtimeInclude.toString()) +
                 listOf(source.toString()) + plan.runtimeSources.map { it.toString() } +
                 plan.startupSources.map { it.toString() } + plan.linkerFlags + listOf("-o", executable.toString())
         ).redirectErrorStream(true).start()

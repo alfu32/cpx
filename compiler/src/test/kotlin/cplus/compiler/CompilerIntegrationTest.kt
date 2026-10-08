@@ -706,9 +706,12 @@ class CompilerIntegrationTest {
     }
 
     @Test
-    fun cMathImportsExposeFloatDoubleAndLongDoubleFunctionVariants() {
+    fun cMathImportsExposeScalarTypesAndRealFunctionVariants() {
         val source = """
-            import { frexpf, lrintf, nanf, modf, ilogb, remquo, nexttowardl, fmal, llroundl } from c.math;
+            import { float_t, double_t, frexpf, lrintf, nanf, modf, ilogb, remquo, nexttowardl, fmal, llroundl } from c.math;
+
+            float_t preserve_float_t(float_t value) { return value; }
+            double_t preserve_double_t(double_t value) { return value; }
 
             float use_float_math(float value) {
                 int exponent;

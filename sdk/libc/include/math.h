@@ -1,5 +1,8 @@
 #ifndef CPLUS_SDK_MATH_H
 #define CPLUS_SDK_MATH_H
+#include <float.h>
+typedef float float_t;
+typedef double double_t;
 float acosf(float value);
 double acos(double value);
 long double acosl(long double value);
@@ -171,4 +174,77 @@ long double remquol(long double left, long double right, int* quotient);
 float fmaf(float first, float second, float third);
 double fma(double first, double second, double third);
 long double fmal(long double first, long double second, long double third);
+int cplus_math_fpclassifyf(float value);
+int cplus_math_fpclassify(double value);
+int cplus_math_fpclassifyl(long double value);
+int cplus_math_isfinitef(float value);
+int cplus_math_isfinite(double value);
+int cplus_math_isfinitel(long double value);
+int cplus_math_isinff(float value);
+int cplus_math_isinf(double value);
+int cplus_math_isinfl(long double value);
+int cplus_math_isnanf(float value);
+int cplus_math_isnan(double value);
+int cplus_math_isnanl(long double value);
+int cplus_math_isnormalf(float value);
+int cplus_math_isnormal(double value);
+int cplus_math_isnormall(long double value);
+int cplus_math_signbitf(float value);
+int cplus_math_signbit(double value);
+int cplus_math_signbitl(long double value);
+int cplus_math_isgreaterf(float left, float right);
+int cplus_math_isgreater(double left, double right);
+int cplus_math_isgreaterl(long double left, long double right);
+int cplus_math_isgreaterequalf(float left, float right);
+int cplus_math_isgreaterequal(double left, double right);
+int cplus_math_isgreaterequall(long double left, long double right);
+int cplus_math_islessf(float left, float right);
+int cplus_math_isless(double left, double right);
+int cplus_math_islessl(long double left, long double right);
+int cplus_math_islessequalf(float left, float right);
+int cplus_math_islessequal(double left, double right);
+int cplus_math_islessequall(long double left, long double right);
+int cplus_math_islessgreaterf(float left, float right);
+int cplus_math_islessgreater(double left, double right);
+int cplus_math_islessgreaterl(long double left, long double right);
+int cplus_math_isunorderedf(float left, float right);
+int cplus_math_isunordered(double left, double right);
+int cplus_math_isunorderedl(long double left, long double right);
+
+#if defined(__clang__) || defined(__GNUC__)
+#define HUGE_VALF (__builtin_huge_valf())
+#define HUGE_VAL (__builtin_huge_val())
+#define HUGE_VALL (__builtin_huge_vall())
+#define INFINITY (__builtin_inff())
+#define NAN (__builtin_nanf(""))
+#else
+#define HUGE_VALF (1.0F / 0.0F)
+#define HUGE_VAL (1.0 / 0.0)
+#define HUGE_VALL (1.0L / 0.0L)
+#define INFINITY (1.0F / 0.0F)
+#define NAN (0.0F / 0.0F)
+#endif
+#define FP_ILOGB0 (-2147483647 - 1)
+#define FP_ILOGBNAN 2147483647
+#define FP_ZERO 0
+#define FP_SUBNORMAL 1
+#define FP_NORMAL 2
+#define FP_INFINITE 3
+#define FP_NAN 4
+#define MATH_ERRNO 1
+#define MATH_ERREXCEPT 2
+#define math_errhandling MATH_ERRNO
+#define fpclassify(value) _Generic((value), float: cplus_math_fpclassifyf, double: cplus_math_fpclassify, long double: cplus_math_fpclassifyl)(value)
+#define isfinite(value) _Generic((value), float: cplus_math_isfinitef, double: cplus_math_isfinite, long double: cplus_math_isfinitel)(value)
+#define isinf(value) _Generic((value), float: cplus_math_isinff, double: cplus_math_isinf, long double: cplus_math_isinfl)(value)
+#define isnan(value) _Generic((value), float: cplus_math_isnanf, double: cplus_math_isnan, long double: cplus_math_isnanl)(value)
+#define isnormal(value) _Generic((value), float: cplus_math_isnormalf, double: cplus_math_isnormal, long double: cplus_math_isnormall)(value)
+#define signbit(value) _Generic((value), float: cplus_math_signbitf, double: cplus_math_signbit, long double: cplus_math_signbitl)(value)
+#define CPLUS_MATH_BINARY_DISPATCH(left, right, float_fn, double_fn, long_fn) _Generic(((left) + (right)), float: float_fn, double: double_fn, long double: long_fn)
+#define isgreater(left, right) CPLUS_MATH_BINARY_DISPATCH(left, right, cplus_math_isgreaterf, cplus_math_isgreater, cplus_math_isgreaterl)(left, right)
+#define isgreaterequal(left, right) CPLUS_MATH_BINARY_DISPATCH(left, right, cplus_math_isgreaterequalf, cplus_math_isgreaterequal, cplus_math_isgreaterequall)(left, right)
+#define isless(left, right) CPLUS_MATH_BINARY_DISPATCH(left, right, cplus_math_islessf, cplus_math_isless, cplus_math_islessl)(left, right)
+#define islessequal(left, right) CPLUS_MATH_BINARY_DISPATCH(left, right, cplus_math_islessequalf, cplus_math_islessequal, cplus_math_islessequall)(left, right)
+#define islessgreater(left, right) CPLUS_MATH_BINARY_DISPATCH(left, right, cplus_math_islessgreaterf, cplus_math_islessgreater, cplus_math_islessgreaterl)(left, right)
+#define isunordered(left, right) CPLUS_MATH_BINARY_DISPATCH(left, right, cplus_math_isunorderedf, cplus_math_isunordered, cplus_math_isunorderedl)(left, right)
 #endif

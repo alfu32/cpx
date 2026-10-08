@@ -59,7 +59,7 @@ object LinkDriver {
         }
         val libraries = request.libraries.map(::gnuLibrary)
         return listOf(compiler, "-std=${request.target.cDialect}") +
-            CCompilerToolchains.targetFlags(request.target, compiler) +
+            CCompilerToolchains.targetFlags(request.target, compiler) + targetAbiFlags(request, compiler) +
             plan.compilerFlags + includes +
             listOf(request.generatedSource.toString()) +
             plan.runtimeSources.map(Path::toString) +
@@ -86,6 +86,7 @@ object LinkDriver {
             emptyList()
         }
         return listOf(compiler, "/nologo", "/std:c17", "/GS-", "/Oi-", "/DCPLUS_RUNTIME_NO_WEAK") +
+            targetAbiFlags(request, compiler) +
             clangFlags + includes + sources.map(Path::toString) +
             listOf("/link", "/NODEFAULTLIB", "/ENTRY:mainCRTStartup", "/SUBSYSTEM:CONSOLE", "/OUT:${request.output}") +
             runtimeLibraries + libraries
@@ -99,5 +100,12 @@ object LinkDriver {
     private fun msvcLibrary(dependency: CLinkDependency): String = when (dependency.kind) {
         CLinkDependencyKind.LOCAL -> dependency.value
         CLinkDependencyKind.FOREIGN -> if (dependency.value.endsWith(".lib", ignoreCase = true)) dependency.value else "${dependency.value}.lib"
+    }
+
+    private fun targetAbiFlags(request: LinkRequest, compiler: String): List<String> {
+        val descriptor = request.sdk.targetDescriptor
+            ?: TargetRegistry.load(request.sdk.layout.abiDescriptor).descriptor
+            ?: return emptyList()
+        return CCompilerToolchains.targetAbiFlags(descriptor, compiler)
     }
 }

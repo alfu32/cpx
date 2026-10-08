@@ -15,11 +15,17 @@ class CHeaderImportMathTest {
             "round", "trunc", "lrint", "llrint", "lround", "llround", "fmod", "remainder", "remquo",
             "copysign", "nan", "nextafter", "nexttoward", "fdim", "fmax", "fmin", "fma"
         )
-        val expectedNames = baseNames.flatMap { name -> listOf("${name}f", name, "${name}l") }.toSet()
+        val expectedFunctionNames = baseNames.flatMap { name -> listOf("${name}f", name, "${name}l") }.toSet()
         val declarations = CHeaderImportService().declarations("c.math")
 
-        assertEquals(expectedNames, declarations.keys)
-        assertTrue(declarations.values.all { it.kind == ForeignDeclarationKind.FUNCTION })
+        assertEquals(expectedFunctionNames, declarations.values
+            .filter { it.kind == ForeignDeclarationKind.FUNCTION }
+            .map { it.name }
+            .toSet())
+        assertEquals(ForeignDeclarationKind.TYPE, declarations.getValue("float_t").kind)
+        assertEquals("float", declarations.getValue("float_t").typeName)
+        assertEquals(ForeignDeclarationKind.TYPE, declarations.getValue("double_t").kind)
+        assertEquals("double", declarations.getValue("double_t").typeName)
         assertEquals("long double", declarations.getValue("nexttowardl").parameterTypes[1])
         assertEquals("int*", declarations.getValue("frexpf").parameterTypes[1])
         assertEquals("long long int", declarations.getValue("llroundl").typeName)

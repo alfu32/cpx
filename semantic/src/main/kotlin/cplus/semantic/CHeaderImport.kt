@@ -135,6 +135,8 @@ class CHeaderImportService(
 
     companion object {
         private fun mathHeaderDeclarations(): String = buildList {
+            add("typedef float float_t;")
+            add("typedef double double_t;")
             val realTypes = listOf("float" to "f", "double" to "", "long double" to "l")
 
             fun variants(

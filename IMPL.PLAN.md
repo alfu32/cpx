@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    60/88 accepted with recorded evidence
+Roadmap leaf tasks:    61/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.5.2 — implement real classification and comparison macros
+Current task:          R5.4.5.3 — implement rounding and integer-conversion families
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
-R5 [DOING] 27/41 native std and platform-service work remains open
+R5 [DOING] 28/41 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       60/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       61/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -183,11 +183,24 @@ C+ import/lowering tests, SDK-header syntax checks, and the full build passed.
 This moves the roadmap from 59/88 to 60/88 and R5 from 26/41 to 27/41;
 classification constants/macros and every implementation family remain open.
 
+R5.4.5.2 then implemented the C17 real classification and comparison macros,
+their target-format runtime helpers, the `HUGE_VAL*`, `INFINITY`, `NAN`, `FP_*`,
+and `FP_ILOGB*` constants, the `float_t`/`double_t` aliases, and the errno-only
+math error indicator policy. `c.math` now explicitly imports `float_t` and
+`double_t` as types. Runtime checks execute all three real precisions on Linux,
+including signed zero, subnormal, infinity, NaN, unordered comparisons,
+single-evaluation behavior, and the `sqrt` domain-error `EDOM` path; a synthetic
+binary128 bit-pattern fixture covers zero/subnormal/normal/infinity/NaN. Strict
+warning-as-error C17 compilation passes for all four declared ABI targets, the
+linked Linux runtime has no undefined host symbols, and the full Gradle build
+passes. This moves the roadmap from 60/88 to 61/88 and R5 from 27/41 to 28/41.
+Windows runtime execution remains deferred and receives no completion credit.
+
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.4–R5.5; Linux C17 stdio and
+1. Continue R5.4.5.3 onward, then R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 pass their recorded Linux checks; R4.6 complex and
    type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
@@ -4563,7 +4576,7 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [DOING] [1/11] — implement the specified portable real `std.math` and
+  - R5.4.5 [DOING] [2/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
     - R5.4.5.1 [DONE] — declare all C17 real `<math.h>` functions and
       float/double/long-double `std.math` entry points. **Depends:** R3.1.3.
@@ -4571,10 +4584,17 @@ dependencies.
       171 function names and key pointer/integer/long-double signatures;
       compiler integration tests import the variants, compile the complete
       `std.math` module, and syntax-check generated C against the SDK header.
-    - R5.4.5.2 [DOING] — implement floating classification/comparison
-      functions, C17 classification and comparison macros, and math constants
-      for each supported real type. **Depends:** R5.4.5.1.
-    - R5.4.5.3 [TODO] — implement rounding and integer-conversion families.
+    - R5.4.5.2 [DONE] — implement floating classification/comparison
+      functions and C17 classification/comparison macros; expose the real
+      constants and scalar aliases, and define errno-only math error handling.
+      **Depends:** R5.4.5.1. **Acceptance evidence:** executable Linux C17
+      coverage across float/double/x87 long double for classification,
+      comparison, signed zero, constants, single evaluation, and `EDOM`; a
+      synthetic binary128 representation fixture; strict warning-as-error
+      source checks for all four target ABIs; C+ type-import coverage for
+      `float_t`/`double_t`; no undefined host symbols; and a passing full build.
+      Windows runtime execution is deferred.
+    - R5.4.5.3 [DOING] — implement rounding and integer-conversion families.
       **Depends:** R5.4.5.1.
     - R5.4.5.4 [TODO] — implement decomposition, scaling, sign, NaN, and
       adjacent-value manipulation families. **Depends:** R5.4.5.1.

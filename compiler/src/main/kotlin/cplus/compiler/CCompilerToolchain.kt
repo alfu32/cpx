@@ -72,6 +72,18 @@ object CCompilerToolchains {
         return emptyList()
     }
 
+    fun targetAbiFlags(target: TargetAbiDescriptor, compiler: String): List<String> {
+        val longDoubleFormat = target.floatingTypes["long double"]?.format ?: return emptyList()
+        val formatCode = when (longDoubleFormat) {
+            "binary64" -> 1
+            "x87-extended" -> 2
+            "binary128" -> 3
+            else -> return emptyList()
+        }
+        val prefix = if (isMsvcStyle(compiler)) "/D" else "-D"
+        return listOf("${prefix}CPLUS_LONG_DOUBLE_FORMAT=$formatCode")
+    }
+
     fun isMsvcStyle(compiler: String): Boolean = classify(compiler).kind in setOf(CCompilerKind.MSVC, CCompilerKind.CLANG_CL)
 
     /**
