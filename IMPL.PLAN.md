@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    68/88 accepted with recorded evidence
+Roadmap leaf tasks:    69/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.5.10 — implement positive-difference, extrema, and fused-multiply-add families
+Current task:          R5.4.5.11 — expose and verify the complete real-math façade
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
-R5 [DOING] 35/41 native std and platform-service leaf tasks evidenced
+R5 [DOING] 36/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       68/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       69/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -286,11 +286,21 @@ Windows x86_64/AArch64 target formats; the full Gradle build passes. Commit
 `bcd78d7` moves the roadmap from 67/88 to 68/88 and R5 from 34/41 to 35/41.
 Windows runtime execution remains deferred and receives no completion credit.
 
+R5.4.5.10 then implemented `fdim`, `fmax`, `fmin`, and `fma` for float,
+double, and long double. The production-linked Linux C17 fixture covers NaN
+selection and signed-zero extrema, exact single-rounding cancellation and
+ties-to-even, subnormal boundaries, overflow cancellation, errno cases, and
+invalid infinity/zero combinations. The linked executable has no undefined
+host symbols; strict warning-as-error C17 checks pass for Linux/Windows
+x86_64/AArch64 target formats; the full Gradle build passes. Commit `cb7469e`
+moves the roadmap from 68/88 to 69/88 and R5 from 35/41 to 36/41. Windows
+runtime execution remains deferred and receives no completion credit.
+
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.4.5.10 onward, then R5.5; Linux C17 stdio and
+1. Continue R5.4.5.11 onward, then R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 pass their recorded Linux checks; R4.6 complex and
    type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
@@ -350,6 +360,7 @@ Latest completed implementation commits:
 - `cc860ae` — implement C17 exponential and logarithmic function families (R5.4.5.7; Windows runtime execution deferred).
 - `af1350f` — implement C17 trigonometric and hyperbolic function families (R5.4.5.8; Windows runtime execution deferred).
 - `bcd78d7` — implement C17 error and gamma functions (R5.4.5.9; Windows runtime execution deferred).
+- `cb7469e` — implement C17 extrema and exact fused multiply-add families (R5.4.5.10; Windows runtime execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4675,7 +4686,7 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [DOING] [9/11] — implement the specified portable real `std.math` and
+  - R5.4.5 [DOING] [10/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
     - R5.4.5.1 [DONE] — declare all C17 real `<math.h>` functions and
       float/double/long-double `std.math` entry points. **Depends:** R3.1.3.
@@ -4754,8 +4765,15 @@ dependencies.
       undefined host symbols; strict warning-as-error C17 checks pass for
       Linux/Windows x86_64 and AArch64 target formats; the full Gradle build
       passes. Windows runtime execution remains deferred.
-    - R5.4.5.10 [TODO] — implement positive-difference, extrema, and
-      fused-multiply-add families. **Depends:** R5.4.5.1.
+    - R5.4.5.10 [DONE] — implement positive-difference, extrema, and
+      fused-multiply-add families. **Depends:** R5.4.5.1. **Acceptance
+      evidence:** production-linked Linux C17 execution covers NaN selection
+      and signed-zero extrema, exact single-rounding cancellation and
+      ties-to-even, subnormal boundaries, overflow cancellation, errno cases,
+      and invalid infinity/zero combinations. The linked executable has no
+      undefined host symbols; strict warning-as-error C17 checks pass for
+      Linux/Windows x86_64 and AArch64 target formats; the full Gradle build
+      passes. Windows runtime execution remains deferred.
     - R5.4.5.11 [TODO] — expose the implemented real operations through the
       self-hosted `std.math` façade and pass the complete real-math runtime,
       C17 fixture, and host-library dependency audits. **Depends:**

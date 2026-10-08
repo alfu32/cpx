@@ -2532,6 +2532,17 @@ quiet NaN result, and set `ERANGE` when a finite result overflows or
 underflows. NaN inputs SHALL produce NaN results without being converted into
 domain errors.
 
+The `fdim` family SHALL return positive zero when `x <= y` and otherwise
+return `x - y`; a finite subtraction overflow SHALL set `errno` to `ERANGE`.
+For `fmax` and `fmin`, a single NaN operand SHALL yield the numeric operand,
+while two NaN operands SHALL yield a NaN result. When both operands are zero,
+`fmax` SHALL prefer positive zero and `fmin` SHALL prefer negative zero.
+The `fma` family SHALL compute the exact product-plus-addend before a single
+rounding to the result type. Finite overflow or inexact underflow SHALL set
+`errno` to `ERANGE`; invalid infinity/zero combinations and opposite-signed
+infinite product/addend combinations SHALL set `errno` to `EDOM` and return a
+NaN result. The active profile's rounding mode is round-to-nearest, ties-to-even.
+
 The SDK SHALL expose the supported real operations through `std.math` with
 explicit C+ declarations and types. It SHALL preserve the selected target's
 floating formats and ABI, including `long double`, and SHALL NOT silently
