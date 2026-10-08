@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    80/92 accepted with recorded evidence
+Roadmap leaf tasks:    81/92 accepted with recorded evidence
 Phase gates:           2/9 complete; 5 active; 2 queued
-Current task:          R6.3 — reproducible fat-JAR and process/product handling
+Current task:          R6.4 — audit CLI artifact consistency
 Current milestone:     R6 — CLI transcoder and build-product completion
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
@@ -26,11 +26,11 @@ R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
-R6 [DOING] 2/4  CLI transcoder and build-product completion
+R6 [DOING] 3/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       80/92 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       81/92 implementation tasks complete; 2/9 phase gates complete,
             5 active, 2 queued
 ```
 
@@ -5265,9 +5265,15 @@ matrix reports platform services as `pass` rather than merely `planned`.
   retained run products, and the project/workspace command model. The complete
   `:cli:test` suite and `./gradlew build --no-daemon` pass. Implementation
   commit: `81aa251`.
-- R6.3 [DOING] — make fat-JAR assembly reproducible, clean temporary products,
-  preserve process failures, and emit stable diagnostics;
-- R6.4 [TODO] — make `sdk`, `target`, `abi`, `runtime`, `libc`, and `audit`
+- R6.3 [DONE] — make fat-JAR assembly reproducible, clean temporary products,
+  preserve process failures, and emit stable diagnostics. Two forced fat-JAR
+  builds (`:cli:fatJar --rerun-tasks`) produced identical SHA-256
+  `e3ff1c247bf8697b0726046706d159fb4053622f3024404e9e97f206e7556557`; the
+  packaged CLI passes `check examples/minimal.cp`. Integration coverage verifies
+  temporary-product cleanup after successful execution and compilation failure
+  and propagates child exit status 23. Focused CLI tests and
+  `./gradlew build --no-daemon` pass. Commit: `0548b95`.
+- R6.4 [DOING] — make `sdk`, `target`, `abi`, `runtime`, `libc`, and `audit`
   validate the exact artifacts consumed by a normal build.
 
 **Deliverables**
