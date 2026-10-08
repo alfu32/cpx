@@ -342,26 +342,25 @@ remains open for R5.1 and R5.2.5.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
-below. Its current execution sequence is:
+below. Its current dependency sequence is:
 
-1. R5.4.6 and R5.5 are accepted. R5.1 has public-surface/range fixes but
-   remains open for final target validation; R5.2.5 is DOING for Linux PAL
-   conformance and remains open for final Windows runtime/import validation.
-   Linux C17 stdio and report tasks R4.4/R4.5 pass their recorded checks;
-   R4.6.1 complex scalar/header support and R4.6.2.1 C+ complex
-   operators/conversions are accepted for the Linux x86_64 capability;
-   R4.6.2.2 component/projection functions are accepted; R4.6.2.3 complex
-   exponential/root, trigonometric/hyperbolic, and type-generic dispatch leaves
-   are accepted for Linux x86_64. R4 remains open for Windows libc validation;
-   R6.1–R6.4 implementation leaves are accepted on Linux; the R6 product gate
-   remains open for Windows execution/packaging validation. The active work
-   queue has advanced to R8.1 while those final platform gates remain deferred.
-2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
-   pass; Linux leaf completion does not imply cross-platform completion.
-3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
-   execution remains deferred and receives no completion credit meanwhile.
-4. Final validation — run the deferred Windows ABI/caller and PAL checks (including the
-   open R3.1.4 LLP64 execution gate), patch platform issues, then close R8.
+1. R5.1 has Linux implementation and execution evidence but remains open for
+   full acceptance and final target validation. R5.2.5 has Linux filesystem-PAL
+   conformance evidence but remains open for Windows runtime, import, and error
+   mapping validation. Neither leaf receives completion credit before its full
+   acceptance gate passes.
+2. R8.1 and R8.2 are accepted. R8.3 is the active roadmap task: Linux x86_64
+   runtime/product checks pass, and Linux AArch64 strict source checks and
+   static cross-link checks pass; AArch64 runtime execution remains unverified.
+   Windows testing and patching are deferred to the final validation pass by
+   request. R8.3 receives no completion credit until its target-matrix gate is
+   satisfied.
+3. R8.4 remains queued behind R8.3. R4, R5, R6, and R7 phase gates also remain
+   open where their recorded Windows runtime/product checks are pending; Linux
+   leaf acceptance does not imply cross-platform completion.
+4. Final validation — run the deferred Windows ABI/caller and PAL checks,
+   including the open R3.1.4 LLP64 execution gate; patch platform issues; then
+   update only the roadmap leaves whose complete acceptance evidence passes.
 
 Latest completed implementation commits:
 
