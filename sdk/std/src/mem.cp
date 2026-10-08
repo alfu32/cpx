@@ -41,7 +41,7 @@ pub int std_memory_span_is_empty(std_memory_span_t span) {
 }
 
 pub void* std_memory_span_at(std_memory_span_t span, usize index) {
-    if (index >= span.length) return (void*)0;
+    if (index >= span.length || span.data == (unsigned char*)0) return (void*)0;
     return span.data + index;
 }
 
@@ -60,7 +60,7 @@ pub std_memory_span_t std_raw_memory_as_bytes(std_raw_memory_t view) {
     return std_memory_span(view.data, view.size);
 }
 
-pub void* std_mem_copy(void* destination, void* source, usize size) {
+pub void* std_mem_copy(void* destination, const void* source, usize size) {
     usize index = 0;
     unsigned char* target = (unsigned char*) destination;
     unsigned char* origin = (unsigned char*) source;
@@ -71,11 +71,11 @@ pub void* std_mem_copy(void* destination, void* source, usize size) {
     return destination;
 }
 
-pub void* std_mem_move(void* destination, void* source, usize size) {
+pub void* std_mem_move(void* destination, const void* source, usize size) {
     usize index = 0;
     unsigned char* target = (unsigned char*) destination;
     unsigned char* origin = (unsigned char*) source;
-    if (target < origin) {
+    if ((unsigned long long)target < (unsigned long long)origin) {
         while (index < size) {
             target[index] = origin[index];
             index = index + 1;
@@ -104,7 +104,7 @@ pub void* std_mem_zero(void* destination, usize size) {
     return std_mem_set(destination, 0, size);
 }
 
-pub int std_mem_compare(void* left, void* right, usize size) {
+pub int std_mem_compare(const void* left, const void* right, usize size) {
     usize index = 0;
     unsigned char* a = (unsigned char*) left;
     unsigned char* b = (unsigned char*) right;
@@ -116,6 +116,6 @@ pub int std_mem_compare(void* left, void* right, usize size) {
     return 0;
 }
 
-pub int std_mem_equal(void* left, void* right, usize size) {
+pub int std_mem_equal(const void* left, const void* right, usize size) {
     return std_mem_compare(left, right, size) == 0;
 }

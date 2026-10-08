@@ -63,12 +63,16 @@ class NativeStdTest {
                     struct std_raw_memory_t raw = std_raw_memory_view(source, 6);
                     if (std_memory_span_is_empty(span) || std_memory_span_at(span, 5) != source + 5) return 16;
                     if (std_memory_span_at(span, 6) != (void*)0 || std_raw_memory_is_empty(raw)) return 17;
+                    if (std_memory_span_at(std_memory_span((void*)0, 2), 0) != (void*)0) return 29;
                     if (std_raw_memory_as_bytes(raw).length != 6) return 18;
                     std_mem_copy(copy, source, 7);
                     if (!std_mem_equal(copy, source, 7)) return 19;
                     std_mem_move(overlap + 1, overlap, 7);
                     if (std_string_compare(overlap, "aabcdef") != 0) return 20;
                     if (std_mem_compare(overlap + 1, "abcdef", 7) != 0) return 21;
+                    std_mem_move(overlap, overlap + 1, 7);
+                    if (std_string_compare(overlap, "abcdef") != 0) return 30;
+                    if (std_mem_move(overlap, overlap, 7) != overlap) return 31;
                     if (std_string_length(copy) != 6 || std_string_compare(copy, "native") != 0) return 22;
                     if (!std_text_is_ascii(copy) || std_text_is_ascii(utf8)) return 28;
                     if (std_text_byte_length(copy) != 6 || !std_text_has_ascii_prefix(copy, "nat")) return 23;
@@ -81,17 +85,31 @@ class NativeStdTest {
                 }
             """.trimIndent())
         }
-        val executable = directory.resolve("native_std")
-        val compile = ProcessBuilder(
-            "cc", "-std=c17", "-fsanitize=signed-integer-overflow",
-            "-fno-sanitize-recover=signed-integer-overflow",
-            "-I", root.resolve("libc/include").toString(),
-            combined.toString(), "-o", executable.toString()
-        )
-            .redirectErrorStream(true)
-            .start()
-        val output = compile.inputStream.bufferedReader().readText()
-        assertEquals(0, compile.waitFor(), output)
-        assertEquals(0, ProcessBuilder(executable.toString()).redirectErrorStream(true).start().waitFor())
+        val compilers = listOf("cc", "clang").filter { compiler ->
+            runCatching { ProcessBuilder(compiler, "--version").start().waitFor() == 0 }.getOrDefault(false)
+        }
+        assertTrue(compilers.isNotEmpty(), "neither cc nor clang is available")
+        try {
+            compilers.forEach { compiler ->
+                val executable = directory.resolve("native_std_${compiler.replace('/', '_')}")
+                val compile = ProcessBuilder(
+                    compiler, "-std=c17", "-fsanitize=signed-integer-overflow",
+                    "-fno-sanitize-recover=signed-integer-overflow",
+                    "-I", root.resolve("libc/include").toString(),
+                    combined.toString(), "-o", executable.toString()
+                )
+                    .redirectErrorStream(true)
+                    .start()
+                val output = compile.inputStream.bufferedReader().readText()
+                assertEquals(0, compile.waitFor(), "$compiler: $output")
+                val run = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+                val runOutput = run.inputStream.bufferedReader().readText()
+                assertEquals(0, run.waitFor(), "$compiler: $runOutput")
+                Files.deleteIfExists(executable)
+            }
+        } finally {
+            Files.list(directory).use { paths -> paths.forEach { Files.deleteIfExists(it) } }
+            Files.deleteIfExists(directory)
+        }
     }
 }

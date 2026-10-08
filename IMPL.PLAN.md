@@ -4588,6 +4588,15 @@ dependencies.
 - R5.1 [DOING] — complete `std.core`, `std.mem`, `std.string`, `std.text`,
   and collection value/error types, including target-aware byte/size/index
   types;
+  **Progress evidence, not completion:** `NativeStdTest` now checks overlap in
+  both directions and same-address `std_mem_move`, null-backed span lookup,
+  target-sized values, and the byte/text/value operations under each available
+  GCC and Clang compiler with signed-overflow sanitization. `std_mem_move`
+  compares integerized addresses instead of applying undefined relational
+  pointer comparison to unrelated objects; read-only memory/string/text
+  inputs now use `const`. The span contract now explicitly makes null-backed
+  spans have no addressable elements. These changes do not close R5.1 or change
+  roadmap counts.
 - R5.2 [DOING] — extend the file PAL with seek, metadata, create/remove,
   directory iteration, and stream adapters; its parent gate is represented by
   the five numbered leaves below and is not counted separately;

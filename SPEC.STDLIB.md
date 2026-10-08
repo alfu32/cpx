@@ -594,7 +594,9 @@ The module SHALL provide checked size alignment-up and alignment predicates,
 an unsigned-byte span view, and a raw untyped-memory view. Alignment-up SHALL
 require a nonzero power-of-two alignment and SHALL return `std_usize_max()` on
 invalid alignment or arithmetic overflow. An empty span/view has zero length;
-an out-of-range span lookup returns null and does not dereference memory.
+an out-of-range span lookup returns null and does not dereference memory. A
+span with a null data pointer has no addressable elements, so lookup SHALL
+return null even if its recorded length is nonzero.
 The span and raw-memory view types SHALL be public declarations.
 
 The native implementation also provides zeroing and unsigned-byte equality and
