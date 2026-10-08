@@ -425,6 +425,37 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun lspUsesWorkspaceRootsAndUnsavedImportedOverlayWithoutAddingUnrelatedMain() {
+        val project = Files.createTempDirectory("cplus-cli-lsp-workspace-root")
+        val sourceRoot = Files.createDirectories(project.resolve("src"))
+        val app = Files.createDirectories(sourceRoot.resolve("app"))
+        val modules = Files.createDirectories(sourceRoot.resolve("modules"))
+        val helper = modules.resolve("math.cp").also { it.writeText("pub int stale_name() { return 1; }") }
+        val main = app.resolve("main.cp")
+        val unrelated = app.resolve("other.cp").also { it.writeText("int main() { return 2; }") }
+        val mainUri = main.toUri().toString()
+        val helperUri = helper.toUri().toString()
+        val helperText = "pub int add(int left, int right) { return left + right; }"
+        val mainText = "import { add } from modules.math; int main() { return add(7, 5); }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"workspaceFolders":[{"uri":"${sourceRoot.toUri()}","name":"project-src"}]}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$helperUri","version":2,"text":"$helperText"}}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$mainUri","version":1,"text":"$mainText"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"textDocument/definition","params":{"textDocument":{"uri":"$mainUri"},"position":{"line":0,"character":${mainText.indexOf("add(7")}}}}""",
+            """{"jsonrpc":"2.0","id":3,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("\"uri\":\"$helperUri\""), responses)
+        assertTrue(!responses.contains("duplicate function 'main'"), responses)
+        assertTrue(unrelated.exists())
+    }
+
+    @Test
     fun lspMapsNavigationSymbolsTokensAndRenameAcrossImportedSources() {
         val directory = Files.createTempDirectory("cplus-cli-lsp-cross-source")
         val helper = directory.resolve("module_helpers.cp").also {

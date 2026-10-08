@@ -3,14 +3,10 @@ package cplus.cli
 import cplus.compiler.CPlusCompiler
 import cplus.compiler.SdkManifestLocator
 import cplus.compiler.TextSource
-import cplus.core.Lexer
 import cplus.core.DiagnosticSeverity
 import cplus.core.LineIndex
-import cplus.core.Parser
-import cplus.core.SourceFile
-import cplus.core.SourceFileId
 import cplus.core.SourceRange
-import cplus.core.SyntaxImport
+import cplus.compiler.ModuleSourceResolver
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
@@ -18,12 +14,13 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.ArrayDeque
 
 internal class LspServer(
     private val compiler: CPlusCompiler = CPlusCompiler()
 ) {
     private val workspace = LspWorkspace()
+    private val workspaceRoots = linkedSetOf<Path>()
+    private var sdkManifest: Path = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
     private var shutdownRequested = false
 
     fun run(input: InputStream, output: OutputStream): Int {
@@ -37,7 +34,7 @@ internal class LspServer(
             val params = message["params"] as? Map<*, *> ?: emptyMap<String, Any?>()
             when (method) {
                 "initialize" -> {
-                    writeMessage(outputStream, response(id, initializeResult()))
+                    writeMessage(outputStream, response(id, initializeResult(params)))
                 }
                 "initialized", "$/cancelRequest" -> Unit
                 "shutdown" -> {
@@ -157,7 +154,19 @@ internal class LspServer(
         writeMessage(output, publish(document.uri, diagnostics))
     }
 
-    private fun initializeResult(): Map<String, Any?> = linkedMapOf(
+    private fun initializeResult(params: Map<*, *>): Map<String, Any?> {
+        val roots = (params["workspaceFolders"] as? List<*>)
+            .orEmpty()
+            .mapNotNull { (it as? Map<*, *>)?.get("uri") as? String }
+            .mapNotNull(::pathForUri)
+        val rootUri = (params["rootUri"] as? String)?.let(::pathForUri)
+        val rootPath = (params["rootPath"] as? String)?.let { runCatching { Path.of(it) }.getOrNull() }
+        val requestedSdk = ((params["initializationOptions"] as? Map<*, *>)?.get("sdkManifest") as? String)
+            ?.let { runCatching { Path.of(it) }.getOrNull() }
+        if (requestedSdk != null) sdkManifest = requestedSdk.toAbsolutePath().normalize()
+        workspaceRoots.clear()
+        workspaceRoots += roots.ifEmpty { listOfNotNull(rootUri, rootPath) }.map { it.toAbsolutePath().normalize() }
+        return linkedMapOf(
         "capabilities" to linkedMapOf(
                 "textDocumentSync" to 1,
             "semanticTokensProvider" to linkedMapOf(
@@ -183,7 +192,8 @@ internal class LspServer(
             "name" to "cplus",
             "version" to "0.1.0"
         )
-    )
+        )
+    }
 
     private fun semanticTokens(params: Map<*, *>): Map<String, Any?> {
         val document = params["textDocument"] as? Map<*, *> ?: return linkedMapOf("data" to emptyList<Int>())
@@ -371,115 +381,24 @@ internal class LspServer(
     }
 
     private fun compileWorkspace(document: WorkspaceDocument): cplus.compiler.CompileResult {
-        val sources = linkedMapOf<Path, String>()
-        val activeDocuments = connectedOpenDocuments(document)
-        val openDocuments = activeDocuments.associateBy { it.path.toAbsolutePath().normalize() }
-        fun addSource(path: Path, text: String) {
-            sources[path.toAbsolutePath().normalize()] = text
-        }
-
-        addSource(document.path, document.text)
-        activeDocuments.forEach { open ->
-            if (open.path.toAbsolutePath().normalize() != document.path.toAbsolutePath().normalize()) {
-                addSource(open.path, open.text)
-            }
-        }
-
-        val pending = ArrayDeque(sources.keys)
-        while (pending.isNotEmpty()) {
-            val sourcePath = pending.removeFirst()
-            val sourceText = sources.getValue(sourcePath)
-            importReferences(sourcePath, sourceText).forEach { reference ->
-                if (reference.startsWith("c.") || reference.startsWith("std.")) return@forEach
-                val imported = resolveImportedSource(sourcePath, reference) ?: return@forEach
-                val normalized = imported.toAbsolutePath().normalize()
-                if (normalized !in sources && (normalized in openDocuments || Files.isRegularFile(normalized))) {
-                    sources[normalized] = openDocuments[normalized]?.text
-                        ?: runCatching { Files.readString(normalized) }.getOrNull()
-                        ?: return@forEach
-                    pending.addLast(normalized)
-                }
-            }
-        }
+        val overlays = workspace.snapshot().associate { it.path.toAbsolutePath().normalize() to it.text }
+        val resolution = moduleSourceResolver(document.path).resolveClosure(listOf(document.path), overlays)
         return compiler.compileTextWorkspace(
-            sources.map { (path, text) -> TextSource(path, text) }
+            resolution.modules.map { TextSource(it.path, it.text) },
+            sdkManifest = sdkManifest
         )
     }
 
     private fun connectedOpenDocuments(root: WorkspaceDocument): List<WorkspaceDocument> {
-        val openByPath = workspace.snapshot().associateBy { it.path.toAbsolutePath().normalize() }
-        val neighbors = openByPath.keys.associateWith { linkedSetOf<Path>() }.toMutableMap()
-        openByPath.values.forEach { document ->
-            importReferences(document.path, document.text).forEach { reference ->
-                if (reference.startsWith("c.") || reference.startsWith("std.")) return@forEach
-                val dependency = resolveImportedSource(document.path, reference)?.toAbsolutePath()?.normalize()
-                if (dependency != null && dependency in openByPath) {
-                    neighbors.getValue(document.path.toAbsolutePath().normalize()).add(dependency)
-                    neighbors.getValue(dependency).add(document.path.toAbsolutePath().normalize())
-                }
-            }
-        }
-        val start = root.path.toAbsolutePath().normalize()
-        val reached = linkedSetOf<Path>()
-        val pending = ArrayDeque<Path>()
-        pending.add(start)
-        while (pending.isNotEmpty()) {
-            val path = pending.removeFirst()
-            if (reached.add(path)) neighbors[path].orEmpty().forEach(pending::addLast)
-        }
-        return buildList {
-            add(root)
-            openByPath.values.filter { it.path.toAbsolutePath().normalize() in reached && it.uri != root.uri }
-                .forEach(::add)
-        }
+        val overlays = workspace.snapshot().associate { it.path.toAbsolutePath().normalize() to it.text }
+        val paths = moduleSourceResolver(root.path).resolveClosure(listOf(root.path), overlays).paths.toSet()
+        return workspace.snapshot().filter { it.path.toAbsolutePath().normalize() in paths }
     }
 
-    private fun importReferences(sourcePath: Path, sourceText: String): List<String> =
-        Parser(Lexer().lex(SourceFile(SourceFileId(-1), sourcePath, sourceText, 0))).parse()
-            .syntax.declarations.filterIsInstance<SyntaxImport>().map(SyntaxImport::module)
-
-    private fun resolveImportedSource(source: Path, reference: String): Path? {
-        val isPathImport = reference.startsWith("./") ||
-            reference.startsWith("../") ||
-            reference.startsWith("/") ||
-            reference.endsWith(".cp")
-        if (isPathImport) {
-            val path = runCatching { Path.of(reference) }.getOrNull() ?: return null
-            val candidates = listOfNotNull(
-                source.parent?.resolve(path),
-                Path.of("").toAbsolutePath().normalize().resolve(path)
-            )
-            return candidates.firstOrNull(::isKnownSource)
-        }
-        val moduleName = reference
-            .substringAfterLast('/')
-            .substringAfterLast('.')
-            .removeSuffix(".cp")
-        val sibling = source.parent?.resolve("$moduleName.cp")
-        if (sibling != null && isKnownSource(sibling)) return sibling
-        val directory = source.parent ?: return null
-        val openMatch = workspace.snapshot().map { it.path.toAbsolutePath().normalize() }
-            .filter { it.startsWith(directory.toAbsolutePath().normalize()) && it.fileName.toString() == "$moduleName.cp" }
-            .singleOrNull()
-        if (openMatch != null) return openMatch
-        return runCatching {
-            Files.walk(directory).use { paths ->
-                val matches = paths
-                    .filter { candidate ->
-                        Files.isRegularFile(candidate) && candidate.fileName.toString() == "$moduleName.cp"
-                    }
-                    .sorted()
-                    .toList()
-                matches.singleOrNull()
-            }
-        }.getOrNull()
-    }
-
-    private fun isKnownSource(path: Path): Boolean {
-        val normalized = path.toAbsolutePath().normalize()
-        return Files.isRegularFile(normalized) || workspace.snapshot().any {
-            it.path.toAbsolutePath().normalize() == normalized
-        }
+    private fun moduleSourceResolver(documentPath: Path): ModuleSourceResolver {
+        val sdkRoot = sdkManifest.parent?.parent
+        val roots = workspaceRoots + listOfNotNull(documentPath.toAbsolutePath().normalize().parent)
+        return ModuleSourceResolver(roots.toList(), sdkRoot)
     }
 
     private fun response(id: Any?, result: Any?): Map<String, Any?> = linkedMapOf(

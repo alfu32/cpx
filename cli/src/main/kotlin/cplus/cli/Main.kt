@@ -17,6 +17,7 @@ import cplus.compiler.TargetRegistry
 import cplus.compiler.IntrinsicRegistry
 import cplus.compiler.LinkDriver
 import cplus.compiler.LinkRequest
+import cplus.compiler.ModuleSourceResolver
 import cplus.compiler.SdkManifestLocator
 import cplus.compiler.TargetInfo
 import cplus.compiler.defaultHostTargetTriple
@@ -857,77 +858,7 @@ internal class Cli {
     }
 
     private fun discoverModuleSources(requested: List<Path>, sourceRoots: List<Path>, sdkRoot: Path?): List<Path> {
-        val discovered = linkedSetOf<Path>()
-
-        fun visit(path: Path) {
-            val normalized = path.toAbsolutePath().normalize()
-            if (!discovered.add(normalized) || !Files.isRegularFile(normalized)) return
-            val imports = runCatching {
-                MODULE_IMPORT.findAll(Files.readString(normalized))
-                    .map { match -> match.groupValues[1].ifEmpty { match.groupValues[2] } }
-                    .distinct()
-                    .toList()
-            }.getOrDefault(emptyList())
-            imports.forEach { moduleName ->
-                findModuleSource(normalized, moduleName, sourceRoots, sdkRoot)?.let(::visit)
-            }
-        }
-
-        requested.forEach(::visit)
-        return discovered.toList()
-    }
-
-    private fun findModuleSource(source: Path, moduleReference: String, sourceRoots: List<Path>, sdkRoot: Path?): Path? {
-        val reference = moduleReference.trim()
-        val isPathImport = reference.startsWith(".") ||
-            reference.startsWith("/") ||
-            reference.endsWith(".cp")
-        if (isPathImport) {
-            val path = Path.of(reference)
-            val relativeCandidates = listOfNotNull(
-                source.parent?.resolve(path),
-                Path.of("").toAbsolutePath().normalize().resolve(path)
-            )
-            relativeCandidates.firstOrNull { Files.isRegularFile(it) }?.let { return it }
-        }
-        val moduleName = reference
-            .substringAfterLast('/')
-            .substringAfterLast('.')
-            .removeSuffix(".cp")
-        if ((reference.startsWith("std.") || reference.startsWith("std/")) && sdkRoot != null) {
-            val standardModule = reference.removePrefix("std.").removePrefix("std/")
-                .replace('.', '/')
-                .removeSuffix(".cp")
-            val candidate = sdkRoot.resolve("std/src/$standardModule.cp").normalize()
-            if (candidate.startsWith(sdkRoot) && Files.isRegularFile(candidate)) return candidate
-        }
-        val sibling = source.parent?.resolve("$moduleName.cp")
-        if (sibling != null && Files.isRegularFile(sibling)) return sibling
-        for (root in sourceRoots) {
-            val normalizedRoot = root.toAbsolutePath().normalize()
-            val direct = normalizedRoot.resolve("$moduleName.cp")
-            if (Files.isRegularFile(direct)) return direct
-            val match = runCatching {
-                Files.walk(normalizedRoot).use { paths ->
-                    paths.filter { Files.isRegularFile(it) && it.fileName.toString() == "$moduleName.cp" }
-                        .sorted()
-                        .findFirst()
-                        .orElse(null)
-                }
-            }.getOrNull()
-            if (match != null) return match
-        }
-        val directory = source.parent ?: return null
-        return runCatching {
-            Files.walk(directory).use { paths ->
-                paths
-                    .filter { candidate ->
-                        Files.isRegularFile(candidate) && candidate.fileName.toString() == "$moduleName.cp"
-                    }
-                    .findFirst()
-                    .orElse(null)
-            }
-        }.getOrNull()
+        return ModuleSourceResolver(sourceRoots, sdkRoot).resolveClosure(requested).paths
     }
 
     private fun loadWorkspaceManifest(path: Path): WorkspaceManifest? {
@@ -1058,7 +989,6 @@ internal class Cli {
     )
 
     private companion object {
-        val MODULE_IMPORT = Regex("""\bfrom\s+(?:"([^"]+)"|([^\s;]+))""")
         val MANIFEST_ASSIGNMENT = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)""")
         val MANIFEST_STRING = Regex(""""([^"\\]*(?:\\.[^"\\]*)*)"""")
     }

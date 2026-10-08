@@ -2,8 +2,8 @@
 
 ## Start here
 
-This is the active implementation runbook. The current leaf is
-`R10.1.1.1`; consult its recorded status/evidence in `IMPL.PLAN.md`.
+This is the active implementation runbook. The current leaf is tracked in
+`IMPL.PLAN.md` (currently `R10.1.2.2`); consult that file for status and evidence.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
@@ -14,8 +14,10 @@ The requested outcomes are:
 - Define direct extension methods using exactly
   `comptime trait type_identifier { ... }`.
 
-Implement one terminal task at a time. Start with **R10.1.1.1**, not the parser
-or VS Code UI. Do not restart R0–R9 or rewrite the compiler.
+Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1
+resolver task are accepted; resume at **R10.1.2.2**, not by restarting the
+parser foundation or jumping ahead to the VS Code UI. Do not restart R0–R9 or
+rewrite the compiler.
 
 Before editing:
 
@@ -97,9 +99,9 @@ directory below. New files named by the plan do not yet exist.
 | Module | Kotlin production prefix | Existing test entry points |
 | --- | --- | --- |
 | language-core | `language-core/src/main/kotlin/cplus/core/` | `AstGoldenTest`, `CPrimitiveTypesTest` |
-| semantic | `semantic/src/main/kotlin/cplus/semantic/` | `SemanticTypeTest`, `CHeaderImportMathTest`, `ReferenceIndexTest` |
+| semantic | `semantic/src/main/kotlin/cplus/semantic/` | `SemanticTypeTest`, `CHeaderFunctionScannerTest`, `ReferenceIndexTest` |
 | comptime | `comptime/src/main/kotlin/cplus/comptime/` | `CpxExpansionTest` |
-| compiler | `compiler/src/main/kotlin/cplus/compiler/` | `CompilerIntegrationTest`, `IncrementalCompilerTest`, `SdkManifestTest`, `AstRewriteTest`, `ClosureLoweringTest` |
+| compiler | `compiler/src/main/kotlin/cplus/compiler/` | `ModuleSourceResolver`, `CompilerIntegrationTest`, `IncrementalCompilerTest`, `SdkManifestTest`, `AstRewriteTest`, `ClosureLoweringTest` |
 | c-backend | `c-backend/src/main/kotlin/cplus/backend/` | `CLowererModuleTypeTest`, `CSubsetValidatorTest` |
 | cli | `cli/src/main/kotlin/cplus/cli/` | `CliIntegrationTest`, `LspWorkspaceTest`, `CliGoldenFixtureTest` |
 
@@ -108,15 +110,18 @@ test classes when this keeps the already-large integration classes readable.
 
 ### C discovery: start with compiler context, not another whitelist
 
-- `semantic/CHeaderImport.kt`: `defaultHeaders` and generated math/complex
-  strings are currently the manually maintained catalogue. The existing reader
-  is regex-based and treats header definitions differently from C source
-  definitions; it is insufficient for nested declarators or active preprocessing.
+- `semantic/CHeaderImport.kt`: the default manual C declaration catalogue has
+  been removed. The service parses prepared source declarations; configured
+  header text remains only for focused semantic fixtures. Unsupported
+  declarators must remain explicit diagnostics.
 - `semantic/Semantics.kt`: inspect `registerHeaderDeclaration`,
   `foreignTypeFromName`, `foreignTypeModule`, `resolveImportedFunctions`,
   and the import loop. Library-specific branches such as `c.stdio.printf`
   bypass normal declaration typing. Audit both the catalogue and these branches.
   Keep genuinely compiler-owned `va_list`/ABI/intrinsic knowledge separate.
+- `compiler/ModuleSourceResolver.kt` is shared by CLI and LSP for entry/import
+  closures, live overlays, selected-SDK `std.*` paths, and bounded candidate
+  enumeration. The next tasks add the typed export index and its invalidation.
 - `compiler/Compiler.kt`: inspect `CompileRequest`, `CompilerContext`,
   `compile`, `compileIncremental`, `compileTextWorkspace` and **every**
   `SemanticAnalyzer(...)` construction, including provisional CPX analysis.
@@ -160,14 +165,13 @@ its source/configuration fingerprints still match.
 
 ### Shared modules and editor assistance
 
-- `cli/Main.kt`: `discoverModuleSources` and project configuration parsing
-  currently own substantial resolution logic. Extract reusable compiler
-  services rather than calling private CLI functions from LSP code.
-- `cli/LspServer.kt`: `compileWorkspace` skips `std.*`/`c.*` discovery;
-  `resolveImportedSource` searches relative to the current file. Initialization
-  currently does not provide a shared project-aware import environment.
-  Completion serialization is limited, and code-action dispatch/capabilities
-  are missing. These are separate tasks, not a single UI change.
+- `compiler/ModuleSourceResolver.kt` now owns import-closure discovery for CLI
+  and LSP, including initialization roots, SDK `std.*` references and live
+  overlays. It compiles only the directed closure from the requested entry.
+  `c.*` header discovery remains in the compiler header service.
+- `cli/LspServer.kt` now obtains roots and optional SDK manifest from initialize
+  parameters. Completion serialization is still limited, and code-action
+  dispatch/capabilities are missing; those remain separate planned tasks.
 - `cli/LspLanguageService.kt`: `CompletionItem` has only label/kind/detail;
   ordinary completion depends on semantic analysis and member lookup assumes
   aggregates. Add shared import context and edits without breaking existing
@@ -232,7 +236,9 @@ its source/configuration fingerprints still match.
 
 ## Execution order
 
-The following list is an execution order, not another status dashboard.
+The following list is an execution order, not another status dashboard. Items
+already accepted in `IMPL.PLAN.md` remain complete; resume at the current active
+leaf rather than restarting the list.
 Complete local work first. Leave the two final platform-evidence leaves
 unstarted until the final pass; do not block local trait work on an early
 Windows test. Their task dependencies permit this order.
@@ -244,8 +250,8 @@ Windows test. Their task dependencies permit this order.
 5. `R10.1.1.3.3` — Index globals and safely representable header constants.
 6. `R10.1.1.3.4` — Audit declaration coverage against the delivered SDK headers.
 7. `R10.1.1.4` — Bind discovered symbols and retire function whitelists.
-8. `R10.1.2.1` — Unify CLI and LSP source graph discovery.
-9. `R10.1.2.2` — Build a shared typed export inventory.
+8. `R10.1.2.1` — Unify CLI and LSP source graph discovery. (Accepted.)
+9. `R10.1.2.2` — Build a shared typed export inventory. (Active.)
 10. `R10.1.2.3` — Invalidate discovery and compilation consistently.
 11. `R10.2.1.1` — Identify incomplete import contexts from shared tokens.
 12. `R10.2.1.2` — Serialize provider and export completion through JSON-RPC.
@@ -383,7 +389,7 @@ Counting rules:
 Implement the next dependency-ready terminal task in IMPL.PLAN.md R10/R11.
 Read AGENTS.md and IMPL.PLAN.RULES.md, then
 IMPL.HANDOFF.IMPORTS-TRAITS.md and that task's referenced spec sections.
-Start at R10.1.1.1 if no new leaf is accepted. Preserve unrelated user edits,
+Resume the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
 especially sdk/libc/include/stdio.h. Use comptime trait type_identifier { ... }.
 Implement one leaf, add/run its acceptance tests, record evidence, update all
 counts honestly, and make a Conventional Commit before proceeding.
