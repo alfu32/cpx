@@ -11,10 +11,13 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class WindowsAbiIntegrationTest {
     @Test
-    fun mingwLlp64PrimitiveAndAggregateAbiRoundTripsUnderWine() {
-        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
-        assumeTrue(commandAvailable("x86_64-w64-mingw32-gcc"), "MinGW x86_64 compiler is not installed")
-        assumeTrue(commandAvailable("wine") && commandAvailable("wineboot"), "Wine is not installed")
+    fun windowsLlp64PrimitiveAndAggregateAbiRoundTrips() {
+        val isWindows = System.getProperty("os.name").contains("windows", ignoreCase = true)
+        val isLinux = System.getProperty("os.name").contains("linux", ignoreCase = true)
+        assumeTrue(isWindows || isLinux, "Windows ABI fixture requires Windows or Linux")
+        val compiler = if (isWindows) "gcc" else "x86_64-w64-mingw32-gcc"
+        assumeTrue(commandAvailable(compiler), "MinGW x86_64 compiler is not installed")
+        if (isLinux) assumeTrue(commandAvailable("wine") && commandAvailable("wineboot"), "Wine is not installed")
 
         val source = """
             pub struct integer_record_t {
@@ -89,11 +92,18 @@ class WindowsAbiIntegrationTest {
 
         val executable = directory.resolve("windows-abi.exe")
         val compile = ProcessBuilder(
-            "x86_64-w64-mingw32-gcc", "-std=c17", "-Wall", "-Wextra", "-Werror", "-static",
+            compiler, "-std=c17", "-Wall", "-Wextra", "-Werror", "-static",
             "-I", directory.toString(), generated.toString(), caller.toString(), "-o", executable.toString()
         ).redirectErrorStream(true).start()
         val compilerOutput = compile.inputStream.bufferedReader().readText()
         assertEquals(0, compile.waitFor(), compilerOutput)
+
+        if (isWindows) {
+            val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            val output = execution.inputStream.bufferedReader().readText()
+            assertEquals(0, execution.waitFor(), output)
+            return
+        }
 
         val prefix = directory.resolve("wine-prefix")
         val log = directory.resolve("wine.log")
