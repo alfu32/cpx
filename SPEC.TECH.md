@@ -2951,6 +2951,16 @@ it copies/frees the native result list before returning. Both implementations
 expose the same caller-owned address-array ABI and stable PAL error values;
 neither leaks native resolver structures or allocator ownership.
 
+The target-independent `sdk/runtime/src/net.c` implements the public
+`std.net` façade over these PAL operations. It marshals the public fixed-layout
+address record through local PAL records rather than aliasing distinct C
+struct types, copies address outputs only after successful operations, and
+bounds resolver scratch storage to the PAL's 256-result maximum. On
+buffer-too-small resolution it copies the permitted result prefix and reports
+the required count; on other errors it preserves caller outputs. The common
+facade is included in the self-hosted runtime plan for both OS families, while
+the PAL source remains target-selected.
+
 The C backend's ABI gate includes an independently compiled C17 caller fixture.
 The fixture MUST consume the generated public header and link against generated
 C, exercising scalar and object-pointer parameters, aggregate by-value

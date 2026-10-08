@@ -101,3 +101,56 @@ int std_net_shutdown(std_net_socket_t socket, enum std_net_shutdown_t direction)
 int std_net_close(std_net_socket_t socket) {
     return platform_socket_close(socket);
 }
+
+int std_net_parse_address(
+    enum std_net_family_t family,
+    const char* text,
+    struct std_net_address_t* address) {
+    cplus_socket_address_t pal_address;
+    int status;
+    if (!text || !address) return CPLUS_PAL_INVALID_ARGUMENT;
+    status = platform_network_parse_address((unsigned int)family, text, &pal_address);
+    if (status == 0) __cplus_net_copy_address_from_pal(&pal_address, address);
+    return status;
+}
+
+long long std_net_format_address(
+    const struct std_net_address_t* address,
+    char* output,
+    unsigned long long capacity) {
+    cplus_socket_address_t pal_address;
+    if (!address) return CPLUS_PAL_INVALID_ARGUMENT;
+    __cplus_net_copy_address_to_pal(address, &pal_address);
+    return platform_network_format_address(&pal_address, output, capacity);
+}
+
+int std_net_resolve(
+    const char* hostname,
+    enum std_net_family_t family,
+    unsigned short port,
+    struct std_net_address_t* addresses,
+    unsigned long long capacity,
+    unsigned long long* count) {
+    cplus_socket_address_t pal_addresses[256];
+    unsigned long long resolved_count = 0;
+    unsigned long long pal_capacity = capacity > 256ULL ? 256ULL : capacity;
+    unsigned long long index;
+    int status;
+    if (!hostname || !count || (capacity > 0 && !addresses)) {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
+    status = platform_network_resolve(
+        hostname,
+        (unsigned int)family,
+        port,
+        pal_addresses,
+        pal_capacity,
+        &resolved_count);
+    if (status == 0 || status == CPLUS_PAL_BUFFER_TOO_SMALL) {
+        for (index = 0; index < resolved_count && index < pal_capacity; index++) {
+            __cplus_net_copy_address_from_pal(&pal_addresses[index], &addresses[index]);
+        }
+        *count = resolved_count;
+    }
+    return status;
+}

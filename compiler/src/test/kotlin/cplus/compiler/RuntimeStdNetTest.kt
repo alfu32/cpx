@@ -273,6 +273,242 @@ class RuntimeStdNetTest {
     }
 
     @Test
+    fun cplusStdNetAddressFacadeParsesFormatsAndResolvesNumericAddresses() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            System.getProperty("os.name").contains("linux", ignoreCase = true)
+        )
+        val manifestPath = SdkManifestLocator.defaultManifestPath()
+        val manifest = requireNotNull(SdkManifestLoader.load(manifestPath).manifest)
+        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val root = manifestPath.toAbsolutePath().normalize().parent!!.parent!!
+        val directory = Files.createTempDirectory("cplus-std-net-address")
+        val mainSource = directory.resolve("main.cp").also {
+            Files.writeString(it, """
+                import {
+                    std_net_address_t,
+                    std_net_family_t,
+                    std_net_format_address,
+                    std_net_parse_address,
+                    std_net_resolve,
+                    STD_NET_BUFFER_TOO_SMALL,
+                    STD_NET_FAMILY_ANY,
+                    STD_NET_FAMILY_IPV4,
+                    STD_NET_FAMILY_IPV6,
+                    STD_NET_INVALID_ARGUMENT,
+                    STD_NET_UNSUPPORTED
+                } from std.net;
+                import { uint64_t } from c.stdint;
+
+                static int equals_text(const char* left, const char* right) {
+                    unsigned int index = 0;
+                    while (left[index] != '\0' && right[index] != '\0') {
+                        if (left[index] != right[index]) return 0;
+                        index++;
+                    }
+                    return left[index] == right[index];
+                }
+
+                int main() {
+                    std_net_address_t address;
+                    std_net_address_t results[2];
+                    char formatted[80];
+                    char short_buffer[8];
+                    uint64_t count = 99;
+                    int index;
+
+                    short_buffer[0] = 'Q';
+                    short_buffer[1] = 'R';
+                    short_buffer[2] = 'S';
+                    short_buffer[3] = 'T';
+                    short_buffer[4] = 'U';
+                    short_buffer[5] = 'V';
+                    short_buffer[6] = 'W';
+                    short_buffer[7] = 0;
+
+                    if (std_net_parse_address(STD_NET_FAMILY_IPV4, "192.0.2.1", &address) != 0 ||
+                        address.family != STD_NET_FAMILY_IPV4 || address.port != 0 ||
+                        address.reserved != 0 || address.scope_id != 0 ||
+                        address.address[0] != 192 || address.address[1] != 0 ||
+                        address.address[2] != 2 || address.address[3] != 1) return 1;
+                    if (std_net_format_address(&address, formatted, sizeof(formatted)) != 9) return 20;
+                    if (!equals_text(formatted, "192.0.2.1")) return 21;
+                    if (std_net_format_address(&address, short_buffer, 4) != STD_NET_BUFFER_TOO_SMALL ||
+                        short_buffer[0] != 'Q' || short_buffer[1] != 'R' ||
+                        short_buffer[2] != 'S' || short_buffer[3] != 'T') return 3;
+                    address.family = 77;
+                    address.port = 4321;
+                    address.scope_id = 123;
+                    for (index = 0; index < 16; index++) address.address[index] = 0x6b;
+                    if (std_net_parse_address(STD_NET_FAMILY_IPV4, "256.0.0.1", &address) !=
+                            STD_NET_INVALID_ARGUMENT || address.family != 77 || address.port != 4321 ||
+                        address.scope_id != 123 || address.address[0] != 0x6b || address.address[15] != 0x6b) return 4;
+                    if (std_net_parse_address(STD_NET_FAMILY_IPV6, "2001:0DB8:0:0:0:0:2:1", &address) != 0 ||
+                        std_net_format_address(&address, formatted, sizeof(formatted)) != 13 ||
+                        !equals_text(formatted, "2001:db8::2:1")) return 5;
+
+                    count = 99;
+                    if (std_net_resolve("192.0.2.9", STD_NET_FAMILY_IPV4, 8080, results, 2, &count) != 0 ||
+                        count != 1 || results[0].family != STD_NET_FAMILY_IPV4 || results[0].port != 8080 ||
+                        results[0].address[0] != 192 || results[0].address[2] != 2 ||
+                        results[0].address[3] != 9 || results[0].reserved != 0) return 6;
+                    count = 77;
+                    if (std_net_resolve("192.0.2.9", STD_NET_FAMILY_IPV4, 8080,
+                            (std_net_address_t*)0, 0, &count) != STD_NET_BUFFER_TOO_SMALL || count != 1) return 7;
+                    count = 77;
+                    results[0].family = 66;
+                    if (std_net_resolve("localhost", (std_net_family_t)99, 80, results, 1, &count) !=
+                            STD_NET_UNSUPPORTED || count != 77 || results[0].family != 66) return 8;
+                    if (std_net_resolve((const char*)0, STD_NET_FAMILY_ANY, 80, results, 1, &count) !=
+                            STD_NET_INVALID_ARGUMENT || count != 77 || results[0].family != 66) return 9;
+                    if (std_net_resolve("192.0.2.9", STD_NET_FAMILY_IPV4, 80,
+                            (std_net_address_t*)0, 1, &count) != STD_NET_INVALID_ARGUMENT ||
+                        count != 77 || results[0].family != 66) return 10;
+                    if (std_net_resolve("192.0.2.9", STD_NET_FAMILY_IPV4, 80,
+                            results, 1, (void*)0) != STD_NET_INVALID_ARGUMENT ||
+                        count != 77 || results[0].family != 66) return 11;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val generatedC = directory.resolve("std-net-address.c")
+        val executable = directory.resolve("std-net-address")
+        try {
+            val compilation = CPlusCompiler().compile(
+                CompileRequest(listOf(root.resolve("std/src/net.cp"), mainSource), target)
+            )
+            assertTrue(compilation.isSuccessful, compilation.diagnostics.joinToString())
+            Files.writeString(generatedC, compilation.generatedUnits.single().text)
+            val link = LinkDriver.link(LinkRequest(generatedC, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val undefined = ProcessBuilder("nm", "-u", executable.toString()).start()
+            val undefinedOutput = undefined.inputStream.bufferedReader().readText()
+            assertEquals(0, undefined.waitFor(), undefinedOutput)
+            assertTrue(undefinedOutput.isBlank(), "address façade product imports host symbols: $undefinedOutput")
+
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            if (!process.waitFor(20, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw AssertionError("C+ std.net address fixture timed out; artifacts at $directory")
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), "address façade fixture failed with output '$output'")
+        } finally {
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(generatedC)
+            Files.deleteIfExists(mainSource)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test
+    fun stdNetResolverFacadeCopiesBoundedResultsAndPreservesPalErrors() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            System.getProperty("os.name").contains("linux", ignoreCase = true)
+        )
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val directory = Files.createTempDirectory("cplus-std-net-resolver-bridge")
+        val source = directory.resolve("resolver_bridge_test.c").also {
+            Files.writeString(it, """
+                #include "cplus_std_net.h"
+
+                static int text_equals(const char* left, const char* right) {
+                    unsigned int index = 0;
+                    while (left[index] != '\0' && right[index] != '\0') {
+                        if (left[index] != right[index]) return 0;
+                        index++;
+                    }
+                    return left[index] == right[index];
+                }
+
+                int platform_network_resolve(
+                    const char* hostname,
+                    unsigned int family,
+                    unsigned short port,
+                    cplus_socket_address_t* addresses,
+                    unsigned long long capacity,
+                    unsigned long long* count) {
+                    cplus_socket_address_t records[2] = {{0}};
+                    unsigned int index;
+                    if (!hostname || !count || (capacity > 0 && !addresses)) return CPLUS_PAL_INVALID_ARGUMENT;
+                    if (family != CPLUS_SOCKET_ANY_FAMILY && family != CPLUS_SOCKET_IPV4 &&
+                        family != CPLUS_SOCKET_IPV6) return CPLUS_PAL_UNSUPPORTED;
+                    if (!text_equals(hostname, "fixture.test")) return CPLUS_PAL_NOT_FOUND;
+                    records[0].family = CPLUS_SOCKET_IPV4;
+                    records[0].port = port;
+                    records[0].address[0] = 192;
+                    records[0].address[2] = 2;
+                    records[0].address[3] = 10;
+                    records[1].family = CPLUS_SOCKET_IPV6;
+                    records[1].port = port;
+                    records[1].address[0] = 0x20;
+                    records[1].address[1] = 0x01;
+                    records[1].address[15] = 0x10;
+                    *count = 2;
+                    for (index = 0; index < 2 && (unsigned long long)index < capacity; index++) {
+                        addresses[index] = records[index];
+                    }
+                    return capacity < 2 ? CPLUS_PAL_BUFFER_TOO_SMALL : 0;
+                }
+
+                int main(void) {
+                    struct std_net_address_t addresses[2] = {{0}};
+                    unsigned long long count = 99;
+                    int status;
+                    status = std_net_resolve("fixture.test", STD_NET_FAMILY_ANY, 443, addresses, 2, &count);
+                    if (status != 0 || count != 2 || addresses[0].family != STD_NET_FAMILY_IPV4 ||
+                        addresses[0].port != 443 || addresses[0].address[3] != 10 ||
+                        addresses[1].family != STD_NET_FAMILY_IPV6 || addresses[1].port != 443 ||
+                        addresses[1].address[15] != 0x10) return 1;
+
+                    addresses[0].family = 55;
+                    addresses[1].family = 66;
+                    count = 77;
+                    status = std_net_resolve("fixture.test", STD_NET_FAMILY_ANY, 80, addresses, 1, &count);
+                    if (status != CPLUS_PAL_BUFFER_TOO_SMALL || count != 2 ||
+                        addresses[0].family != STD_NET_FAMILY_IPV4 || addresses[0].port != 80 ||
+                        addresses[1].family != 66) return 2;
+                    count = 88;
+                    status = std_net_resolve("fixture.test", STD_NET_FAMILY_ANY, 80,
+                        (struct std_net_address_t*)0, 0, &count);
+                    if (status != CPLUS_PAL_BUFFER_TOO_SMALL || count != 2) return 3;
+
+                    addresses[0].family = 99;
+                    count = 123;
+                    if (std_net_resolve("missing.test", STD_NET_FAMILY_ANY, 80, addresses, 2, &count) !=
+                            CPLUS_PAL_NOT_FOUND || count != 123 || addresses[0].family != 99) return 4;
+                    if (std_net_resolve("fixture.test", (enum std_net_family_t)99, 80,
+                            addresses, 2, &count) != CPLUS_PAL_UNSUPPORTED ||
+                        count != 123 || addresses[0].family != 99) return 5;
+                    if (std_net_resolve("fixture.test", STD_NET_FAMILY_ANY, 80,
+                            (struct std_net_address_t*)0, 2, &count) != CPLUS_PAL_INVALID_ARGUMENT ||
+                        count != 123 || addresses[0].family != 99) return 6;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("resolver-bridge-test")
+        try {
+            val compile = ProcessBuilder(
+                "cc", "-std=c17", "-Wall", "-Wextra", "-Werror", "-ffunction-sections", "-fdata-sections",
+                "-Wl,--gc-sections", "-I", root.resolve("runtime/include").toString(),
+                root.resolve("runtime/src/net.c").toString(), source.toString(), "-o", executable.toString()
+            ).redirectErrorStream(true).start()
+            val compileOutput = compile.inputStream.bufferedReader().readText()
+            assertEquals(0, compile.waitFor(), compileOutput)
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), "resolver facade fixture failed with output '$output'")
+        } finally {
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(source)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test
     fun stdNetTcpFacadePassesStrictC17ChecksOnFourTargetCompilers() {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val source = root.resolve("runtime/src/net.c")

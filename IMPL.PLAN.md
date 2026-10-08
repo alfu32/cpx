@@ -4490,12 +4490,15 @@ dependencies.
       - **Depends:** R5.4.4.1.
     - R5.4.4.4 [DOING] — implement the public address parse/format and hostname
       resolution façade over the shared codec and platform resolver.
-      - **Acceptance:** a C+ caller exercises IPv4/IPv6 parse and canonical
-        format, numeric-address resolver bypass, hostname resolution through a
-        deterministic local DNS fixture, caller-owned result capacity, and
-        unchanged outputs on errors; the linked Linux product has no undefined
-        host-runtime symbols; strict C17 checks pass for all four supported
-        target triples.
+      - **Acceptance:** a production-linked C+ caller exercises IPv4/IPv6
+        parse and canonical format, numeric-address resolver bypass, and
+        caller-owned results. A deterministic resolver-stub bridge test checks
+        bounded result copying, required-count reporting, and unchanged outputs
+        on lookup/validation errors. The existing `RuntimeNetworkDnsTest`
+        exercises hostname resolution against a deterministic local DNS fixture
+        through the production PAL. The linked C+ Linux product has no
+        undefined host-runtime symbols; strict C17 checks pass for all four
+        supported target triples.
       - **Depends:** R5.4.4.1 and R5.3.8.
   - R5.4.5 [TODO] — implement the specified portable `std.math` and C math
     surface without requiring a host `libm` dependency;
