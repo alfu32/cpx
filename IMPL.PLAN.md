@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    53/72 accepted with recorded evidence
+Roadmap leaf tasks:    54/72 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.3.3 — expose native atomic APIs
+Current task:          R5.4.4 — implement portable std.net APIs
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 21/28 native std and platform-service work remains open
+R5 [DOING] 22/28 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       53/72 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       54/72 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -104,6 +104,15 @@ host-runtime symbols; strict C17 checks pass on Linux/Windows x86_64/AArch64;
 the full Gradle build passes. Commit `93a12a4` brings the numerator to 53/72
 and R5 to 21/28. Windows runtime execution remains deferred; R5.4.3.3 is now
 the active task.
+R5.4.3.3 then passed a compiled C+ caller covering all six memory orders,
+load/store/exchange, strong compare-exchange success and failure, arithmetic
+and bitwise fetch operations, fences, and concurrent atomic wait/wake. The
+linked Linux executable has no unresolved host-runtime symbols. Public object
+and enum layouts pass Linux/Windows x86_64/AArch64 ABI checks. Warning-as-error
+C17 checks pass on all four target compilers; generated assembly for each
+target contains no atomic helper or `libatomic` references; the full Gradle
+build passes. Commit `6cb217a` brings the numerator to 54/72 and R5 to 22/28.
+Windows runtime execution remains deferred, and R5.4.4 is now active.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -4369,7 +4378,7 @@ dependencies.
         Windows x86_64/AArch64 descriptors. Strict warning-as-error C17 source
         checks and the full Gradle build pass. Windows runtime execution remains
         deferred.
-  - R5.4.3 [DOING] [2/3] — implement public thread, synchronization, and atomic
+  - R5.4.3 [DONE] [3/3] — implement public thread, synchronization, and atomic
     APIs over the existing PAL services;
     - R5.4.3.1 [DONE] — implement the `std.thread` façade for thread creation,
       joining, current-thread identity, and yielding with opaque handles;
@@ -4393,13 +4402,18 @@ dependencies.
         unresolved host-runtime symbols; strict warning-as-error C17 checks pass
         for the forwarding source on all four targets; the full Gradle build
         passes. Windows runtime execution remains deferred.
-    - R5.4.3.3 [TODO] — expose native atomic load/store/exchange/compare-exchange,
+    - R5.4.3.3 [DONE] — expose native atomic load/store/exchange/compare-exchange,
       arithmetic/fence operations, and supported wait/wake services;
-      - **Acceptance evidence:** C+ execution covers specified memory orders,
-        compare-exchange success/failure, fetch operations, fence, and atomic
-        wait/wake under concurrency. The runtime has no `libatomic` or other
-        host-runtime dependency, and the public ABI is checked across the four
-        target descriptors. Windows runtime execution remains deferred.
+      - **Acceptance evidence:** `RuntimeStdAtomicTest` compiles and executes a
+        C+ caller covering all six memory orders, load/store/exchange, strong
+        compare-exchange success/failure and expected update, arithmetic and
+        bitwise fetch operations, fences, and concurrent wait/wake. Its linked
+        Linux executable has no unresolved host-runtime symbols. Atomic object
+        and memory-order enum ABI checks pass for Linux/Windows x86_64/AArch64.
+        Warning-as-error C17 checks pass on all four target compilers, and
+        generated assembly contains no `__atomic_*`, `__sync_*`, or AArch64
+        atomic-helper calls. The full Gradle build passes. Windows runtime
+        execution remains deferred.
   - R5.4.4 [TODO] — implement portable `std.net` address, DNS, socket, TCP and
     UDP APIs with explicit partial/unavailable capability behavior;
   - R5.4.5 [TODO] — implement the specified portable `std.math` and C math
