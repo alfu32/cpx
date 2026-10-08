@@ -26,7 +26,8 @@ data class ImportExport(
     val visibility: ImportVisibility,
     val sourceUri: String,
     val sourceRange: SourceRange?,
-    val configurationFingerprint: String
+    val configurationFingerprint: String,
+    val topLevelBinding: Boolean = true
 )
 
 data class ImportIndexResult(
@@ -209,7 +210,14 @@ class ImportIndex(
         fingerprint: String
     ): List<ImportExport> {
         val result = mutableListOf<ImportExport>()
-        fun add(name: String, kind: ImportExportKind, signature: String, range: SourceRange, docOffset: Int = range.startOffset) {
+        fun add(
+            name: String,
+            kind: ImportExportKind,
+            signature: String,
+            range: SourceRange,
+            docOffset: Int = range.startOffset,
+            topLevelBinding: Boolean = true
+        ) {
             val documentation = leadingDocumentation(text, docOffset)
             result += ImportExport(
                 identity = "${path.toAbsolutePath().normalize()}:$kind:$name",
@@ -222,7 +230,8 @@ class ImportIndex(
                 visibility = ImportVisibility.PUBLIC,
                 sourceUri = path.toUri().toString(),
                 sourceRange = range,
-                configurationFingerprint = fingerprint
+                configurationFingerprint = fingerprint,
+                topLevelBinding = topLevelBinding
             )
         }
         program.declarations.filter(SyntaxDeclaration::isPublic).forEach { declaration ->
@@ -235,14 +244,14 @@ class ImportIndex(
                 is SyntaxStruct -> {
                     add(declaration.name, ImportExportKind.STRUCT, "struct ${declaration.name}", declaration.range)
                     declaration.fields.forEach { add(it.name, ImportExportKind.VALUE,
-                        "${typeText(it.type)} ${declaration.name}.${it.name}", it.range, declaration.range.startOffset) }
+                        "${typeText(it.type)} ${declaration.name}.${it.name}", it.range, declaration.range.startOffset, topLevelBinding = false) }
                     declaration.methods.filter(SyntaxFunction::isPublic).forEach { method -> add(method.name,
-                        ImportExportKind.FUNCTION, "${typeText(method.returnType)} ${declaration.name}.${method.name}(...)", method.range) }
+                        ImportExportKind.FUNCTION, "${typeText(method.returnType)} ${declaration.name}.${method.name}(...)", method.range, topLevelBinding = false) }
                 }
                 is SyntaxUnion -> {
                     add(declaration.name, ImportExportKind.UNION, "union ${declaration.name}", declaration.range)
                     declaration.fields.forEach { add(it.name, ImportExportKind.VALUE,
-                        "${typeText(it.type)} ${declaration.name}.${it.name}", it.range, declaration.range.startOffset) }
+                        "${typeText(it.type)} ${declaration.name}.${it.name}", it.range, declaration.range.startOffset, topLevelBinding = false) }
                 }
                 is SyntaxEnum -> {
                     add(declaration.name, ImportExportKind.ENUM, "enum ${declaration.name}", declaration.range)

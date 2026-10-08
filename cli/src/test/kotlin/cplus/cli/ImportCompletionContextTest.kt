@@ -68,6 +68,24 @@ class ImportCompletionContextTest {
         assertEquals("se", context.prefix)
     }
 
+    @Test
+    fun findsOnlyOrdinaryUnqualifiedIdentifierContextsForAutoImport() {
+        val (text, position) = marked("int main() { return std_fs_op|en; }")
+        val context = requireNotNull(ImportCompletionContextFinder.identifier(text, position))
+        assertEquals("std_fs_op", context.prefix)
+        assertEquals("std_fs_open", text.substring(context.replacementRange.startOffset, context.replacementRange.endOffset))
+
+        listOf(
+            "// std_fs_op|en",
+            "const char* text = \"std_fs_op|en\";",
+            "value.std_fs_op|en",
+            "pointer->std_fs_op|en"
+        ).forEach { source ->
+            val (plainText, plainPosition) = marked(source)
+            assertNull(ImportCompletionContextFinder.identifier(plainText, plainPosition), source)
+        }
+    }
+
     private data class Case(
         val source: String,
         val kind: ImportCompletionKind,

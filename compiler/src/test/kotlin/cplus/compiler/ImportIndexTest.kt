@@ -36,6 +36,7 @@ class ImportIndexTest {
         assertFalse(result.exports.any { it.name == "private_helper" })
         assertTrue(result.exports.any { it.name == "Pair" && it.kind == ImportExportKind.STRUCT })
         assertTrue(result.exports.any { it.name == "left" && it.signature == "int Pair.left" })
+        assertFalse(result.exports.single { it.name == "left" }.topLevelBinding)
         assertTrue(result.exports.any { it.name == "North" && it.kind == ImportExportKind.ENUM_VALUE })
         assertTrue(result.exports.any { it.name == "Number" && it.kind == ImportExportKind.TYPE_ALIAS })
     }

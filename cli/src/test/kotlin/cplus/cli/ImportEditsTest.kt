@@ -1,5 +1,7 @@
 package cplus.cli
 
+import cplus.compiler.SdkManifestLocator
+import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -58,6 +60,22 @@ class ImportEditsTest {
         val unaliased = requireNotNull(ImportEdits.build("import std.fs;\n", "std.fs", "std_fs_open"))
         assertNull(unaliased.importEdit)
         assertEquals("std.fs.std_fs_open", unaliased.symbolReplacement)
+    }
+
+    @Test
+    fun mergedFunctionAndTypeImportsPassTheCompiler() {
+        val path = Files.createTempDirectory("cplus-import-edits-check").resolve("main.cp")
+        Files.createDirectories(path.parent)
+        val original = "std_file_metadata_t metadata;\nint main() { std_fs_mode_read(); return 0; }\n"
+        val functionEdit = requireNotNull(ImportEdits.build(original, "std.fs", "std_fs_mode_read")).importEdit
+        val withFunction = apply(original, requireNotNull(functionEdit))
+        val typeEdit = requireNotNull(ImportEdits.build(withFunction, "std.fs", "std_file_metadata_t")).importEdit
+        val edited = apply(withFunction, requireNotNull(typeEdit))
+        Files.writeString(path, edited)
+        val exitCode = Cli().run(listOf("check", path.toString(), "--sdk", SdkManifestLocator.defaultManifestPath().toString()))
+
+        assertEquals(0, exitCode)
+        assertEquals(1, Regex("std\\.fs").findAll(edited).count())
     }
 
     @Test

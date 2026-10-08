@@ -668,6 +668,8 @@ class CliIntegrationTest {
     fun lspCompletesRealProvidersAndSelectiveExportsInsideIncompleteImports() {
         val root = Files.createTempDirectory("cplus-cli-lsp-import-completion")
         root.resolve("helper.cp").writeText("pub int helper_fn() { return 42; }\n")
+        root.resolve("one.cp").writeText("pub int shared_value() { return 1; }\n")
+        root.resolve("two.cp").writeText("pub int shared_value() { return 2; }\n")
         val main = root.resolve("main.cp")
         val uri = main.toUri().toString()
         val source = listOf(
@@ -675,7 +677,10 @@ class CliIntegrationTest {
             "import c.st;",
             "import { std_fs_open, std_fs_o } from std.fs;",
             "import { pri } from c.stdio;",
-            "import { helper_fn } from ./he;"
+            "import { helper_fn } from ./he;",
+            "int main() { return std_fs_cl; }",
+            "int duplicate_use() { return shared_value; }",
+            "std_file_me file_metadata;"
         ).joinToString("\n")
         fun completionRequest(id: Int, line: Int, marker: String): String {
             val character = source.lines()[line].lastIndexOf(marker) + marker.length
@@ -689,7 +694,10 @@ class CliIntegrationTest {
             completionRequest(4, 2, "std_fs_o"),
             completionRequest(5, 3, "pri"),
             completionRequest(6, 4, "./he"),
-            """{"jsonrpc":"2.0","id":7,"method":"shutdown","params":null}""",
+            completionRequest(7, 5, "std_fs_cl"),
+            completionRequest(8, 6, "shared_value"),
+            completionRequest(9, 7, "std_file_me"),
+            """{"jsonrpc":"2.0","id":10,"method":"shutdown","params":null}""",
             """{"jsonrpc":"2.0","method":"exit"}"""
         ).joinToString("") { frame(it) }
         val output = ByteArrayOutputStream()
@@ -702,7 +710,18 @@ class CliIntegrationTest {
         assertTrue(responses.contains("\"id\":4") && !responseFor(responses, 4).contains("\"label\":\"std_fs_open\""), responses)
         assertTrue(responseFor(responses, 5).contains("\"label\":\"printf\""), responses)
         assertTrue(responseFor(responses, 6).contains("\"label\":\"./helper.cp\""), responses)
-        assertTrue(responses.contains("\"textEdit\""), responses)
+        val standardAutoImport = responseFor(responses, 7)
+        assertTrue(standardAutoImport.contains("\"label\":\"std_fs_close\""), standardAutoImport)
+        assertTrue(standardAutoImport.contains("\"additionalTextEdits\""), standardAutoImport)
+        val competingProviders = responseFor(responses, 8)
+        assertEquals(2, Regex("\\\"label\\\":\\\"shared_value\\\"").findAll(competingProviders).count(), competingProviders)
+        assertTrue(competingProviders.contains("— one"), competingProviders)
+        assertTrue(competingProviders.contains("— two"), competingProviders)
+        assertTrue(competingProviders.contains("\"additionalTextEdits\""), competingProviders)
+        val typeAutoImport = responseFor(responses, 9)
+        assertTrue(typeAutoImport.contains("\"label\":\"std_file_metadata_t\""), typeAutoImport)
+        assertTrue(typeAutoImport.contains("\"kind\":7"), typeAutoImport)
+        assertTrue(typeAutoImport.contains("\"additionalTextEdits\""), typeAutoImport)
     }
 
     @Test

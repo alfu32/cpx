@@ -327,7 +327,15 @@ internal class LspServer(
             return linkedMapOf("isIncomplete" to false, "items" to items)
         }
         val result = compileWorkspace(request.document)
-        val items = LspLanguageService.completion(result, request.document.text, request.position).map { item ->
+        val ordinaryIdentifier = ImportCompletionContextFinder.identifier(request.document.text, request.position)
+        val indexedExports = if (ordinaryIdentifier != null) discoverImports(request.document) else null
+        val items = LspLanguageService.completion(
+            result,
+            request.document.text,
+            request.position,
+            indexedExports,
+            request.document.path
+        ).map { item ->
             completionItem(item, request.document.text)
         }
         return linkedMapOf("isIncomplete" to false, "items" to items)
@@ -339,6 +347,7 @@ internal class LspServer(
         "detail" to item.detail
     ).also { values ->
         item.documentation?.let { values["documentation"] = linkedMapOf("kind" to "markdown", "value" to it) }
+        item.sortText?.let { values["sortText"] = it }
         val range = item.replacementRange
         val insertText = item.insertText
         if (range != null && insertText != null) {
@@ -346,6 +355,17 @@ internal class LspServer(
                 "range" to lspRange(SourceRange(cplus.core.SourceFileId(0), range.startOffset, range.endOffset), text),
                 "newText" to insertText
             )
+        }
+        if (item.additionalTextEdits.isNotEmpty()) {
+            values["additionalTextEdits"] = item.additionalTextEdits.map { edit ->
+                linkedMapOf(
+                    "range" to lspRange(
+                        SourceRange(cplus.core.SourceFileId(0), edit.range.startOffset, edit.range.endOffset),
+                        text
+                    ),
+                    "newText" to edit.newText
+                )
+            }
         }
     }
 

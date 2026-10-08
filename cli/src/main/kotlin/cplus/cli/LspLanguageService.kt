@@ -32,7 +32,9 @@ internal data class CompletionItem(
     val detail: String,
     val documentation: String? = null,
     val replacementRange: ImportTextRange? = null,
-    val insertText: String? = null
+    val insertText: String? = null,
+    val additionalTextEdits: List<ImportTextEdit> = emptyList(),
+    val sortText: String? = null
 )
 
 internal data class HoverInfo(
@@ -65,7 +67,8 @@ internal object LspLanguageService {
     ): List<CompletionItem> {
         val candidates = when (context.kind) {
             ImportCompletionKind.PROVIDER -> {
-                val moduleItems = index.exports.groupBy(ImportExport::provider).map { (provider, exports) ->
+                val moduleItems = index.exports.filter(ImportExport::topLevelBinding)
+                    .groupBy(ImportExport::provider).map { (provider, exports) ->
                     CompletionItem(
                         label = provider,
                         kind = 9,
@@ -89,7 +92,7 @@ internal object LspLanguageService {
             ImportCompletionKind.SELECTIVE_NAME -> {
                 val provider = canonicalProvider ?: return emptyList()
                 index.exports.asSequence()
-                    .filter { it.provider == provider && it.name !in context.existingNames }
+                    .filter { it.topLevelBinding && it.provider == provider && it.name !in context.existingNames }
                     .filter { it.name.startsWith(context.prefix) }
                     .map { export ->
                         CompletionItem(
@@ -104,26 +107,74 @@ internal object LspLanguageService {
                     .toList()
             }
         }
-        return candidates.distinctBy { it.label to it.kind }.sortedBy { it.label }
+        return candidates.distinctBy { Triple(it.label, it.kind, it.detail) }.sortedBy { it.label }
     }
 
-    fun completion(result: CompileResult, text: String, position: LspPosition): List<CompletionItem> {
-        val model = result.semanticModel ?: return emptyList()
+    fun completion(
+        result: CompileResult,
+        text: String,
+        position: LspPosition,
+        importIndex: ImportIndexResult? = null,
+        sourcePath: Path? = null
+    ): List<CompletionItem> {
+        val model = result.semanticModel
         val offset = offsetAt(text, position) ?: return emptyList()
         val before = text.substring(0, offset)
         val member = Regex("([A-Za-z_][A-Za-z0-9_]*)\\s*(?:\\.|->)\\s*([A-Za-z_]\\w*)?$").find(before)
         val prefix = member?.groupValues?.getOrNull(2).orEmpty()
-        val candidates = if (member != null) {
+        val candidates = if (member != null && model != null) {
             memberCandidates(model, member.groupValues[1], prefix)
-        } else {
+        } else if (member == null && model != null) {
             val identifier = Regex("[A-Za-z_]\\w*$").find(before)?.value.orEmpty()
             model.symbols
                 .asSequence()
                 .filter { it.name.startsWith(identifier) }
-                .map { CompletionItem(it.name, completionKind(it.kind), it.type.name) }
+                .map { CompletionItem(it.name, completionKind(it.kind), it.type.name, sortText = "0_${it.name}") }
+                .toList()
+        } else emptyList()
+        val identifierContext = if (member == null) ImportCompletionContextFinder.identifier(text, position) else null
+        val unimported = if (identifierContext == null || importIndex == null) emptyList() else {
+            val visibleNames = visibleNames(result, model, sourcePath)
+            importIndex.exports.asSequence()
+                .filter { export -> export.topLevelBinding && export.name !in visibleNames }
+                .filter { export -> export.name.startsWith(identifierContext.prefix) }
+                .mapNotNull { export ->
+                    val editPlan = ImportEdits.build(text, export.importReference, export.name) ?: return@mapNotNull null
+                    CompletionItem(
+                        label = export.name,
+                        kind = exportCompletionKind(export.kind),
+                        detail = "${export.signature} — ${export.provider}",
+                        documentation = export.documentation,
+                        replacementRange = identifierContext.replacementRange,
+                        insertText = editPlan.symbolReplacement,
+                        additionalTextEdits = listOfNotNull(editPlan.importEdit),
+                        sortText = "1_${export.provider}_${export.name}"
+                    )
+                }
                 .toList()
         }
-        return candidates.distinctBy { it.label to it.kind }.sortedBy { it.label }
+        return (candidates + unimported)
+            .distinctBy { Triple(it.label, it.kind, it.detail) }
+            .sortedWith(compareBy({ it.sortText ?: "0_${it.label}" }, { it.label }, { it.detail }))
+    }
+
+    private fun visibleNames(result: CompileResult, model: cplus.semantic.SemanticModel?, sourcePath: Path?): Set<String> {
+        val artifact = artifactFor(result, sourcePath) ?: return emptySet()
+        val sourceId = artifact.source.id
+        val names = model?.symbols.orEmpty()
+            .filter { it.origin.primaryRange?.file == sourceId }
+            .map(Symbol::name)
+            .toMutableSet()
+        val declarations = model?.program?.modules?.firstOrNull { module ->
+            module.declarations.any { it.origin.primaryRange?.file == sourceId }
+        }?.declarations ?: model?.program?.declarations.orEmpty()
+        declarations.filterIsInstance<cplus.core.AstImport>().forEach { import ->
+            if (import.names.isNotEmpty()) {
+                import.names.forEach { name -> names += import.nameAliases[name] ?: name }
+            }
+            import.alias?.let(names::add)
+        }
+        return names
     }
 
     fun hover(result: CompileResult, text: String, position: LspPosition, sourcePath: Path? = null): HoverInfo? {

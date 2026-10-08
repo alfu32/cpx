@@ -23,6 +23,11 @@ internal data class ImportCompletionContext(
     val existingNames: Set<String> = emptySet()
 )
 
+internal data class IdentifierCompletionContext(
+    val prefix: String,
+    val replacementRange: ImportTextRange
+)
+
 /** Classifies import completion positions using the compiler's lexer tokens. */
 internal object ImportCompletionContextFinder {
     private val providerCharacter = { character: Char ->
@@ -75,6 +80,20 @@ internal object ImportCompletionContextFinder {
         val provider = if (selective) providerAfterFrom(completeSegment) else null
         val existingNames = if (selective) existingSelectiveNames(importTokens, offset) else emptySet()
         return ImportCompletionContext(kind, text.substring(range.startOffset, offset), range, provider, existingNames)
+    }
+
+    fun identifier(text: String, position: LspPosition): IdentifierCompletionContext? {
+        val offset = offsetAt(text, position) ?: return null
+        if (isInsideComment(text, offset)) return null
+        val source = SourceFile(SourceFileId(0), Path.of("<lsp-identifier-context>"), text, 0)
+        val tokens = Lexer().lex(source).tokens
+        val current = tokens.firstOrNull { it.range.startOffset <= offset && offset < it.range.endOffset }
+        if (current?.kind in setOf(TokenKind.STRING_LITERAL, TokenKind.CHARACTER_LITERAL)) return null
+        val before = text.substring(0, offset)
+        if (Regex("[A-Za-z_][A-Za-z0-9_]*\\s*(?:\\.|->)\\s*[A-Za-z_]*$").containsMatchIn(before)) return null
+        val range = rawWordRange(text, offset, identifierCharacter)
+        val prefix = text.substring(range.startOffset, offset)
+        return IdentifierCompletionContext(prefix, range).takeIf { prefix.isNotEmpty() }
     }
 
     private fun providerAfterFrom(tokens: List<Token>): String? {
