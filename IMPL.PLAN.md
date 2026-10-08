@@ -11,11 +11,11 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    77/92 accepted with recorded evidence
-Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R4.6.2.5 — C17 type-generic math dispatch
-Current milestone:     R4 — runtime, allocator and libc behavior
-Latest C17 Linux report: 47 pass, 0 fail, 0 unsupported, 0 planned
+Roadmap leaf tasks:    78/92 accepted with recorded evidence
+Phase gates:           2/9 complete; 5 active; 2 queued
+Current task:          R6.1 — project/workspace manifests and shared source model
+Current milestone:     R6 — CLI transcoder and build-product completion
+Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
                            __emutls_get_address and WaitOnAddress/wake imports
@@ -24,17 +24,17 @@ R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
-R4 [DOING] 10/11 Linux runtime/libc leaf tasks evidenced; complex math and Windows gates pending
+R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
-R6 [TODO]  0/4  CLI transcoder and build-product completion
+R6 [DOING] 0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       77/92 implementation tasks complete; 2/9 phase gates complete,
-            4 active, 3 queued
+TOTAL       78/92 implementation tasks complete; 2/9 phase gates complete,
+            5 active, 2 queued
 ```
 
-The latest Linux x86_64 C17 report is 47 pass, 0 fail, 0 unsupported, and 0
+The latest Linux x86_64 C17 report is 51 pass, 0 fail, 0 unsupported, and 0
 planned. Per-leaf historical records below retain the report totals measured
 when those leaves were accepted; they are not claims about the latest count.
 
@@ -42,8 +42,8 @@ R4.6.2 was decomposed into five independently testable leaves for C+ complex
 operators, component/projection functions, exponential/root functions,
 trigonometric/hyperbolic functions, and `<tgmath.h>` dispatch. This increases
 the denominator from 88 to 92 and R4 from 7 to 11 without adding completion
-credit; after R4.6.2.4 acceptance the current aggregate is 77/92 overall and
-10/11 for R4. The complex-function leaves are credited only after their
+credit; after R4.6.2.5 acceptance the current aggregate is 78/92 overall and
+11/11 for R4. The complex-function leaves are credited only after their
 independent C callers, runtime dependency audits, and full builds pass.
 
 The roadmap denominator increased from 65 to 67 during R5.3.7 planning when
@@ -351,9 +351,9 @@ below. Its current execution sequence is:
    R4.6.1 complex scalar/header support and R4.6.2.1 C+ complex
    operators/conversions are accepted for the Linux x86_64 capability;
    R4.6.2.2 component/projection functions are accepted; R4.6.2.3 complex
-   exponential/root and trigonometric/hyperbolic functions are accepted;
-   R4.6.2.5 type-generic dispatch is next. R4
-   remains open for Windows libc validation.
+   exponential/root, trigonometric/hyperbolic, and type-generic dispatch leaves
+   are accepted for Linux x86_64. R4 remains open for Windows libc validation;
+   R6.1 is now active while the R5 Windows-dependent leaves remain deferred.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -417,6 +417,7 @@ Latest completed implementation commits:
 - `d721f2b` — implement target-gated C17 complex component and projection functions (R4.6.2.2 Linux x86_64).
 - `0571de7` — implement C17 complex exponential, logarithm, power, and square-root functions for all three precisions (R4.6.2.3 Linux x86_64).
 - `6c89226` — implement C17 complex circular, inverse, hyperbolic, and inverse-hyperbolic functions for all three precisions (R4.6.2.4 Linux x86_64).
+- `37014e0` — implement C17 real/complex type-generic math dispatch and its audited fixture (R4.6.2.5 Linux x86_64).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4324,8 +4325,8 @@ layout, source-map, and dependency audits.
 - R4.5 [DONE] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and ensure the report exercises every advertised stdio
   operation rather than treating declarations or stubs as complete.
-- R4.6 [DOING] [5/6] — complete the currently missing C17 complex and type-generic
-  math headers; the current 47-pass Linux report covers its registered subset
+- R4.6 [DONE] [6/6] — complete the C17 complex and type-generic
+  math headers; the current 51-pass Linux report covers its registered subset
   and is not evidence that every header family listed in SPEC.STDLIB §18 is
   complete.
   - R4.6.1 [DONE] — add target-described C complex types and the C17
@@ -4401,10 +4402,21 @@ layout, source-map, and dependency audits.
     Implementation commit: `6c89226`. No Windows or AArch64 complex execution
     is claimed.
     **Depends:** R4.6.2.3 and R5.4.5.2–R5.4.5.10.
-  - R4.6.2.5 [DOING] — implement the complete `<tgmath.h>` dispatch surface
+  - R4.6.2.5 [DONE] — implement the complete `<tgmath.h>` dispatch surface
     across real/complex and integer-promoted arguments, preserving result
     types and single evaluation. Add independent C17 coverage and dependency
-    audit for every advertised generic macro.
+    audit for every advertised generic macro. Added all standard generic
+    macros for the SDK's C17 `<math.h>` and `<complex.h>` operations, with
+    usual arithmetic conversion selection, integer-to-double promotion,
+    complex counterparts, typed pointer-output functions, and single-evaluation
+    invocation. `c17-tgmath.c` checks result types, mixed real/complex ranks,
+    integer arguments, typed results, and argument evaluation count, and calls
+    every advertised macro in an executable fixture. The profile and header
+    catalogues now include `<tgmath.h>`; its fixture and linked product pass
+    the runtime dependency audit. GCC and Clang warning-as-error checks and
+    `./gradlew build --no-daemon` pass. The latest C17 report is 51/0/0/0.
+    Implementation commit: `37014e0`. No Windows or AArch64 complex/tgmath
+    execution is claimed.
     **Depends:** R4.6.2.1–R4.6.2.4 and R5.4.5.2–R5.4.5.10.
 
 The Linux x86_64 conformance command reports the individual header, runtime
@@ -5218,11 +5230,11 @@ Each native package has at least one executable Linux and Windows test (and a
 Darwin status), every selected adapter is source-isolated, and the conformance
 matrix reports platform services as `pass` rather than merely `planned`.
 
-## R6 [TODO] CLI transcoder and build-product completion
+## R6 [DOING] CLI transcoder and build-product completion
 
 **Dependency-ordered work queue**
 
-- R6.1 [TODO] — define project/workspace manifests and one source/import model
+- R6.1 [DOING] — define project/workspace manifests and one source/import model
   shared by `check`, `transcode`, `build`, and `run`, including SDK-rooted
   resolution of explicitly imported `std.*` source modules;
 - R6.2 [TODO] — normalize output, header, map, target, runtime, libc, SDK,
