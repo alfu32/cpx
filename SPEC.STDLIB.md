@@ -450,14 +450,19 @@ low-level numeric limits
 
 No operating-system dependency is permitted.
 
-`std.core` SHALL provide target-aware byte, size, and index aliases together
-with explicit `std_error_t`, `std_result_t`, and `std_option_t` value carriers.
-Size and index aliases SHALL follow the target C ABI (using the corresponding
-standard C types where available), rather than substituting a fixed-width
-integer. The value carriers contain status and value data only; PAL handles,
-raw syscall numbers, and host `errno` values are not part of their
-representation. Unused `std_byte_t`, `std_size_t`, and `std_index_t` aliases
-are not part of the API.
+`std.core` SHALL provide `usize` as an ordinary source alias of C `size_t` and
+`isize` as an ordinary source alias of C `ptrdiff_t`. Their width and alignment
+SHALL follow the selected target ABI; they SHALL NOT be replaced with a
+fixed-width integer or inferred from the compiler host. Raw byte APIs SHALL use
+`unsigned char` so byte values do not depend on plain-`char` signedness; the
+module does not add a separate byte typedef. The module SHALL also provide
+pointer/null/equality/offset/distance utilities, signed and unsigned size
+comparisons, target-width queries, and `usize`/`isize` minimum and maximum
+queries. Pointer distance is defined only for pointers into the same array
+object (or one past it). The value carriers contain status and value data
+only; PAL handles, raw syscall numbers, and host `errno` values are not part of
+their representation. The unused `std_byte_t`, `std_size_t`, and
+`std_index_t` aliases are not part of the API.
 
 `std.core` SHALL NOT add custom `i8`/`i16`/`i32`/`i64`, `u8`/`u16`/`u32`/`u64`,
 or 128-bit aliases to compiler built-ins or native SDK API signatures. Programs
@@ -499,6 +504,15 @@ memcmp
 ```
 
 where required by generated C or the downstream C compiler.
+
+Memory operation lengths and indexes SHALL use `usize`; memory data SHALL be
+read and written as unsigned bytes.
+
+The module SHALL provide checked size alignment-up and alignment predicates,
+an unsigned-byte span view, and a raw untyped-memory view. Alignment-up SHALL
+require a nonzero power-of-two alignment and SHALL return `std_usize_max()` on
+invalid alignment or arithmetic overflow. An empty span/view has zero length;
+an out-of-range span lookup returns null and does not dereference memory.
 
 The native implementation also provides zeroing and unsigned-byte equality and
 comparison. It SHALL preserve byte values independently of the signedness of
@@ -572,6 +586,10 @@ The target-neutral baseline provides byte length, empty-text, ASCII, and
 prefix operations. UTF-8 byte storage remains distinct from the C17 wide
 character compatibility layer; target-specific encoding conversion belongs at
 the documented PAL/libc boundary.
+
+String/text byte lengths and traversal indexes SHALL use `usize`. Collection
+slice lengths SHALL use `usize`, range endpoints and tested indexes SHALL use
+`isize`, and a non-negative range length SHALL be returned as `usize`.
 
 The initial `std.collections` value layer provides explicit non-owning slices
 and half-open ranges. These values do not imply ownership or hidden allocation;

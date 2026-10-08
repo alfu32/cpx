@@ -57,7 +57,6 @@ Latest completed implementation commits:
 - `21c7979` — verify source-type import workflows and generated-C execution;
 - `d51c9ce` — add capability-gated Linux x86_64 i128/u128 support;
 - `9c9ea94` — verify standard integer ranks through an independent Linux C ABI caller.
-- `d51c9ce` — add capability-gated Linux x86_64 i128/u128 support.
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -2944,12 +2943,13 @@ they are explicitly reopened as R1.4 below.
 **Implementation**
 - Added source-delivered `std.mem` copy/move/set/compare operations and compiler-runtime equivalents with overlap-safe behavior.
 - Added explicit byte/text source contracts without hosted OS dependencies.
-  Audit found that `std.core` had unused, fixed-width `std_byte_t`,
-  `std_size_t`, and `std_index_t` aliases but no required `usize`/`isize`
-  declarations. The dead aliases have been removed; target-aware replacements
-  remain open and are not counted complete. This does not implement the
-  opt-in `std.fixed_width` aliases tracked by R1.2.4–R1.2.5.
-- SDK libc/std source modules import their dependencies explicitly and all delivered `.cp` sources pass CLI semantic checking as individual package entry points.
+  The prior audit removed unused fixed-width `std_*` aliases; R5.1 now adds
+  target-sized `usize`/`isize` aliases and is not counted complete until its
+  entire acceptance gate passes. This remains separate from the opt-in
+  `std.fixed_width` aliases tracked by R1.2.4–R1.2.5.
+- SDK libc/std source modules import their dependencies explicitly. Source
+  modules with imports are compiled with their workspace dependencies; SDK-rooted
+  automatic `std.*` discovery for standalone CLI entry points remains in R6.1.
 
 **Depends**
 - 6.2.1.4
@@ -3364,7 +3364,7 @@ authoritative work queue for completing the working CLI transcoder and
 self-hosted SDK described by the specifications.
 
 ```text
-Foundation tasks: 145/146 (6.3.1.1 reopened: required target-aware size/index types are absent)
+Foundation tasks: 145/146 (6.3.1.1 reopened: target-aware size/index implementation and validation active)
 Completion phases: [DOING] [2/9 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -3372,7 +3372,7 @@ Completion phases: [DOING] [2/9 gates complete]
 [DONE]  R2 — CPX, generics and reflection conformance
 [DOING] R3 — C backend and ABI interoperability conformance
 [DOING] R4 — runtime, allocator and libc behavior
-[TODO]  R5 — complete native std and platform services
+[DOING] R5 — complete native std and platform services
 [TODO]  R6 — CLI transcoder and build-product completion
 [TODO]  R7 — LSP and VS Code product completion
 [TODO]  R8 — SDK packaging, target matrix and release conformance
@@ -3458,9 +3458,9 @@ of R1–R8 or deliberately recorded as a post-release extension.
       CPX resolves reordered multiword spellings to the canonical descriptor
       and exposes the target ABI layout.
     - Removed the unused `std_byte_t`, `std_size_t`, and `std_index_t`
-      declarations from `std.core`. The audit separately reopened R5.1 because
-      its required target-aware byte/size/index types, including `usize` and
-      `isize`, are absent; they are not optimistically counted as complete.
+      declarations from `std.core`. The audit reopened R5.1 because at that
+      point the required target-aware `usize`/`isize` aliases were absent;
+      replacement work remains tracked and counted only in R5.1.
     - `./gradlew test` passes on Linux. ABI layout checks cover Linux and
       Windows x86_64/AArch64 target descriptors; no Windows execution was
       performed. Compiler integration verifies reflected `unsigned long long`
@@ -4089,12 +4089,11 @@ conformance or closing the release gate.
 ### R5.1 status audit
 
 The memory, string, text, collection, and value/error carrier work below has
-Linux execution evidence. R5.1 is reopened because the normative target-aware
-byte/size/index type requirement is not implemented: `std.core` had only
-unused scalar aliases without target-derived underlying types and no
-`usize`/`isize` declarations. Those unused aliases were removed. This task is
-not counted complete until the required
-ABI-aware types and their target tests exist.
+Linux execution evidence. R5.1 remains `DOING` because its target-aware
+size/index and pointer/numeric-limit contracts were incomplete. This pass adds
+`usize`/`isize` over target-modeled `size_t`/`ptrdiff_t`, updates dependent
+collection and byte APIs, and adds core pointer/limit operations. The task is
+not counted complete until the full acceptance suite and final target gate pass.
 
 Verified completed portions:
 
@@ -4109,6 +4108,14 @@ Verified completed portions:
   values with length/containment operations;
 - an executable C harness generated from the C+ sources validates the values
   and operations without a hosted C library dependency.
+
+Current-pass evidence: the focused `NativeStdTest` executes the new size/index,
+pointer, comparison, numeric-limit, alignment, unsigned-byte, span, and raw-view
+operations on Linux. ABI tests compile the source aliases against Linux and
+Windows target descriptors and verify descriptor-sized layouts. The full
+`./gradlew build` passes on Linux, including the parser regression check for
+`sizeof(variable)` alongside imported typedef handling. These checks do not
+claim Windows execution and do not change the R5 completion count.
 
 **Deliverables**
 

@@ -593,6 +593,12 @@ active ABI descriptor. C standard typedefs such as `size_t` and `ptrdiff_t`
 remain distinct from built-in primitives and SHALL resolve through target C
 header metadata or the compiler's explicit target model.
 
+The semantic model SHALL treat imported `size_t` and `ptrdiff_t` as target-sized
+integer typedefs, not as the host's `long` spelling. The C backend SHALL retain
+their standard C names in emitted typedefs and signatures. `std.core` builds
+`usize`/`isize` on those types, allowing one source module to retain the correct
+width under both LP64 and LLP64 descriptors.
+
 The SDK's `std.fixed_width` module SHALL define `i8` through `i64` and `u8`
 through `u64` as ordinary source typedefs over the corresponding `intN_t` and
 `uintN_t` declarations. These aliases SHALL NOT be added to the primitive

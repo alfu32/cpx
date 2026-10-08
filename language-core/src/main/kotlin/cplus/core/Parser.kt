@@ -240,7 +240,6 @@ class Parser(private val lexed: LexedSource) {
     private fun parseStruct(structKeyword: Token, isPublic: Boolean): SyntaxStruct {
         val name = expectIdentifier("expected structure name")
             ?: syntheticToken("anonymous_struct", structKeyword.range)
-        candidateTypeNames += name.lexeme
         expect("{", "expected '{' after structure name")
         val fields = mutableListOf<SyntaxField>()
         val methods = mutableListOf<SyntaxFunction>()
@@ -275,7 +274,6 @@ class Parser(private val lexed: LexedSource) {
 
     private fun parseUnion(unionKeyword: Token, isPublic: Boolean): SyntaxUnion {
         val name = expectIdentifier("expected union name") ?: syntheticToken("anonymous_union", unionKeyword.range)
-        candidateTypeNames += name.lexeme
         expect("{", "expected '{' after union name")
         val fields = mutableListOf<SyntaxField>()
         while (!atEnd() && !peek().isLexeme("}")) {
@@ -304,7 +302,6 @@ class Parser(private val lexed: LexedSource) {
 
     private fun parseEnum(enumKeyword: Token, isPublic: Boolean): SyntaxEnum {
         val name = expectIdentifier("expected enum name") ?: syntheticToken("anonymous_enum", enumKeyword.range)
-        candidateTypeNames += name.lexeme
         expect("{", "expected '{' after enum name")
         val values = mutableListOf<SyntaxEnumValue>()
         while (!atEnd() && !peek().isLexeme("}")) {
@@ -900,7 +897,8 @@ class Parser(private val lexed: LexedSource) {
         return false
     }
 
-    private fun looksLikeTypeName(): Boolean = peek().lexeme in primitiveTypes || peek().lexeme in typeQualifiers ||
+    private fun looksLikeTypeName(): Boolean = peek().lexeme in primitiveTypes ||
+        peek().lexeme in candidateTypeNames || peek().lexeme in typeQualifiers ||
         peek().isLexeme("struct") || peek().isLexeme("union") || peek().isLexeme("enum") || looksLikeQualifiedType(0)
 
     private fun followsCastType(afterTypeOffset: Int): Boolean {

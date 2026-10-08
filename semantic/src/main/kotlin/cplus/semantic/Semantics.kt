@@ -881,7 +881,11 @@ class SemanticAnalyzer(
                 foreignTypeModule(baseName) != null -> {
                     val ownerModule = foreignTypeModule(baseName)!!
                     val declaration = headerImportService.declarations(ownerModule)[baseName]
-                    val underlying = declaration?.typeName?.let { foreignTypeFromName(it, ownerModule, origin) }
+                    val underlying = if (baseName in CPrimitiveTypes.standardIntegerTypedefNames) {
+                        primitive(baseName)
+                    } else {
+                        declaration?.typeName?.let { foreignTypeFromName(it, ownerModule, origin) }
+                    }
                     registerForeignType(baseName, ownerModule, origin, underlying)
                     foreignTypes.getValue(baseName)
                 }
@@ -921,7 +925,11 @@ class SemanticAnalyzer(
                     declaration.name,
                     moduleName,
                     origin,
-                    declaration.typeName?.let { foreignTypeFromName(it, moduleName, origin) }
+                    if (declaration.name in CPrimitiveTypes.standardIntegerTypedefNames) {
+                        primitive(declaration.name)
+                    } else {
+                        declaration.typeName?.let { foreignTypeFromName(it, moduleName, origin) }
+                    }
                 )
                 ForeignDeclarationKind.FUNCTION -> {
                     val existing = functions[declaration.name]

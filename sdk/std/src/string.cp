@@ -1,12 +1,14 @@
 /// C-independent byte-string helpers. Strings are UTF-8 byte sequences.
-pub long std_string_length(char* text) {
-    long length = 0;
+import { usize } from std.core;
+
+pub usize std_string_length(char* text) {
+    usize length = 0;
     while (text[length] != 0) length = length + 1;
     return length;
 }
 
 pub int std_string_equal(char* left, char* right) {
-    long index = 0;
+    usize index = 0;
     while (left[index] != 0 && right[index] != 0) {
         if (left[index] != right[index]) return 0;
         index = index + 1;
@@ -15,7 +17,7 @@ pub int std_string_equal(char* left, char* right) {
 }
 
 pub int std_string_compare(char* left, char* right) {
-    long index = 0;
+    usize index = 0;
     unsigned char* a = (unsigned char*) left;
     unsigned char* b = (unsigned char*) right;
     while (a[index] != 0 && a[index] == b[index]) index = index + 1;
@@ -25,13 +27,13 @@ pub int std_string_compare(char* left, char* right) {
 }
 
 pub char* std_string_copy(char* destination, char* source) {
-    long index = 0;
+    usize index = 0;
     while ((destination[index] = source[index]) != 0) index = index + 1;
     return destination;
 }
 
 pub char* std_string_append(char* destination, char* source) {
-    long offset = std_string_length(destination);
+    usize offset = std_string_length(destination);
     std_string_copy(destination + offset, source);
     return destination;
 }

@@ -90,11 +90,42 @@ class AbiLayoutTest {
 
         assertEquals(8, linuxLayouts.layout(model.foreignTypes.getValue("size_t")).size)
         assertEquals(8, linuxLayouts.layout(model.foreignTypes.getValue("ptrdiff_t")).size)
-        assertEquals(4, windowsLayouts.layout(model.foreignTypes.getValue("size_t")).size)
-        assertEquals(4, windowsLayouts.layout(model.foreignTypes.getValue("ptrdiff_t")).size)
+        assertEquals(8, windowsLayouts.layout(model.foreignTypes.getValue("size_t")).size)
+        assertEquals(8, windowsLayouts.layout(model.foreignTypes.getValue("ptrdiff_t")).size)
         assertEquals(4, windowsLayouts.layout(model.foreignTypes.getValue("uint32_t")).size)
         assertEquals(8, windowsLayouts.layout(model.foreignTypes.getValue("int64_t")).size)
         assertEquals(8, windowsLayouts.layout(model.foreignTypes.getValue("uint64_t")).size)
+    }
+
+    @Test
+    fun stdCoreSizeAndIndexAliasesFollowEveryDeclaredPointerWidth() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val coreModule = root.resolve("std/src/core.cp")
+        val main = java.nio.file.Files.createTempFile("std-core-size-types", ".cp").also {
+            java.nio.file.Files.writeString(
+                it,
+                """
+                    import { usize, isize } from std.core;
+                    pub usize size_identity(usize value) { return value; }
+                    pub isize index_identity(isize value) { return value; }
+                """.trimIndent()
+            )
+        }
+
+        listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { targetName ->
+            val result = CPlusCompiler().compile(
+                CompileRequest(listOf(main, coreModule), target = TargetInfo(targetTriple = targetName))
+            )
+            assertTrue(result.isSuccessful, "$targetName: ${result.diagnostics.joinToString()}")
+            val model = requireNotNull(result.semanticModel)
+            val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor)
+            val layouts = AbiLayoutEngine(descriptor)
+            val expectedSize = descriptor.pointerBits / 8
+            assertEquals(expectedSize, layouts.layout(model.aliases.getValue("usize")).size, "$targetName usize")
+            assertEquals(expectedSize, layouts.layout(model.aliases.getValue("isize")).size, "$targetName isize")
+            assertTrue("typedef size_t usize;" in result.generatedUnits.single().text)
+            assertTrue("typedef ptrdiff_t isize;" in result.generatedUnits.single().text)
+        }
     }
 
     @Test
