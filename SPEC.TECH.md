@@ -2676,6 +2676,15 @@ LSP client
 
 All intelligent behavior originates from the Kotlin language server.
 
+The extension SHALL launch the configured CLI JAR with the configured Java
+executable for both LSP and Run Main. Java executable, JAR, and working
+directory settings SHALL be passed as structured process arguments/paths so
+spaces are preserved. An optional SDK-manifest setting SHALL be passed as the
+`cplus.sdk.manifest` JVM property, allowing project working directories outside
+the CLI/SDK repository. Run Main SHALL pass the selected entry source to the
+CLI and SHALL rely on CLI source discovery for imports rather than maintaining
+a parallel extension-side module parser.
+
 ---
 
 # 76. Recommended first implementation milestones

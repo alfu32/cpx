@@ -22,6 +22,7 @@ function cliConfiguration(cliArguments) {
   const settings = vscode.workspace.getConfiguration('cplus');
   const workspace = workspaceDirectory();
   const configuredJarPath = settings.get('server.jarPath', '');
+  const configuredSdkManifest = settings.get('server.sdkManifest', '');
   const javaPath = settings.get('server.javaPath', 'java');
   const configuredCwd = settings.get('server.cwd', '${workspaceFolder}');
   const cwd = path.resolve(expandWorkspaceVariable(configuredCwd, workspace));
@@ -34,9 +35,12 @@ function cliConfiguration(cliArguments) {
     vscode.window.showErrorMessage(`C+ language server JAR was not found: ${jarPath}`);
     return undefined;
   }
+  const sdkManifest = configuredSdkManifest
+    ? path.resolve(expandWorkspaceVariable(configuredSdkManifest, workspace))
+    : undefined;
   return {
     command: javaPath,
-    args: ['-jar', jarPath, ...cliArguments],
+    args: [...(sdkManifest ? [`-Dcplus.sdk.manifest=${sdkManifest}`] : []), '-jar', jarPath, ...cliArguments],
     cwd
   };
 }
@@ -89,52 +93,6 @@ async function restartClient() {
   await startClient();
 }
 
-async function importedSources(entryPoint) {
-  const sources = [];
-  const visited = new Set();
-
-  async function visit(sourcePath) {
-    const normalized = path.resolve(sourcePath);
-    if (visited.has(normalized) || !fs.existsSync(normalized)) return;
-    visited.add(normalized);
-    sources.push(normalized);
-
-    const text = fs.readFileSync(normalized, 'utf8');
-    const imports = [...text.matchAll(/\bfrom\s+(?:"([^"]+)"|([^\s;]+))/g)]
-      .map((match) => match[1] || match[2])
-      .filter(Boolean);
-    for (const moduleReference of imports) {
-      const isPathImport = moduleReference.startsWith('.') ||
-        path.isAbsolute(moduleReference) ||
-        moduleReference.endsWith('.cp');
-      if (isPathImport) {
-        const pathCandidates = [
-          path.resolve(path.dirname(normalized), moduleReference),
-          path.resolve(workspaceDirectory() || process.cwd(), moduleReference)
-        ];
-        const importedPath = pathCandidates.find((candidate) => fs.existsSync(candidate));
-        if (importedPath) await visit(importedPath);
-        continue;
-      }
-      const moduleName = moduleReference
-        .split('/')
-        .pop()
-        .split('.')
-        .pop();
-      const sibling = path.join(path.dirname(normalized), `${moduleName}.cp`);
-      if (fs.existsSync(sibling)) {
-        await visit(sibling);
-        continue;
-      }
-      const matches = await vscode.workspace.findFiles(`**/${moduleName}.cp`, '**/{node_modules,build,dist}/**', 1);
-      if (matches.length > 0) await visit(matches[0].fsPath);
-    }
-  }
-
-  await visit(entryPoint);
-  return sources;
-}
-
 async function runMain() {
   const settings = vscode.workspace.getConfiguration('cplus');
   const configuredSource = expandFileVariable(
@@ -154,7 +112,7 @@ async function runMain() {
     return;
   }
 
-  const server = cliConfiguration(['run', ...(await importedSources(entryPoint))]);
+  const server = cliConfiguration(['run', entryPoint]);
   if (!server) return;
   const terminal = vscode.window.createTerminal({
     name: 'C+ Run',
@@ -179,5 +137,8 @@ function deactivate() {
 
 module.exports = {
   activate,
-  deactivate
+  deactivate,
+  configuration,
+  cliConfiguration,
+  runMain
 };

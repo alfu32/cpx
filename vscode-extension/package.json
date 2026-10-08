@@ -59,6 +59,11 @@
           "default": "${workspaceFolder}/cli/build/libs/cplus-cli-0.1.0-SNAPSHOT-all.jar",
           "description": "Path to the self-contained C+ CLI JAR used to start the language server."
         },
+        "cplus.server.sdkManifest": {
+          "type": "string",
+          "default": "",
+          "description": "Optional SDK manifest path used by the CLI, useful when the project working directory is outside the CLI repository."
+        },
         "cplus.server.javaPath": {
           "type": "string",
           "default": "java",
