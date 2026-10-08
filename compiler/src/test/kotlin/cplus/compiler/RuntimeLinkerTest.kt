@@ -69,6 +69,7 @@ class RuntimeLinkerTest {
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "net.c" })
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "emutls_windows.c" })
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "tls_windows.c" })
+        assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "setjmp-windows-x86_64.S" })
         assertTrue(result.plan.runtimeSources.none { it.fileName.toString() == "network_dns.c" })
         assertTrue(result.plan.runtimeSources.none { it.fileName.toString().startsWith("thread-") })
         assertTrue(result.plan.linkerFlags.none { it.contains("thread-tls.ld") })

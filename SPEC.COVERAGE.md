@@ -51,18 +51,19 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 - Linux and Windows PAL file open/read/write/seek/close/rename, metadata, and
   directory iteration with canonical UTF-8 slash paths, stable error mapping,
   and the `std_fs_*` forwarding façade; Windows execution is native x86_64.
-- independent C17 `basic` and `stdio` fixtures execute on native Windows
-  x86_64 and pass PE dependency audits; C17 context and complex/tgmath remain
-  explicitly unsupported on Windows.
+- independent C17 `basic`, `context`, and `stdio` fixtures execute on native
+  Windows x86_64 and pass PE dependency audits; the latest report is 46 pass,
+  0 fail, 3 unsupported, 0 planned. Complex types and tgmath remain explicitly
+  unsupported on Windows.
 
 ### Contracted but incomplete
 
 - `std.alloc` delegates to the page-backed runtime allocator; executable
   allocator coverage is Linux-only. Windows allocator behavior remains
   unverified.
-- Broad C17 conformance and target-specific context adapters remain
-  incomplete. Native Windows x86_64 ABI, CLI, file-PAL, std.io, and product
-  smoke tests pass, but this is not a claim that every runtime family has
+- Broad C17 conformance and non-Windows-x86_64 context adapters remain
+  incomplete. Native Windows x86_64 ABI, CLI, file-PAL, std.io, core C17, and
+  context fixtures pass, but this is not a claim that every runtime family has
   Windows execution coverage.
 - `cplus libc test` now aggregates the Linux x86_64 C17 header/source audit,
   independently compiled C fixtures, and post-link dependency checks; its

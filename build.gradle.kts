@@ -23,5 +23,9 @@ subprojects {
 
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
+        inputs.files(rootProject.fileTree("sdk") {
+            exclude("cache/**", "**/build/**")
+        }).withPropertyName("sdkTestSources-${project.name}")
+            .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
     }
 }

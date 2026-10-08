@@ -107,12 +107,16 @@ object C17ConformanceAudit {
             runtimePlan.diagnostics.joinToString("; ").ifBlank { "runtime source and startup plan is available" }
         )
 
-        val setjmpPath = when (descriptor.architecture) {
-            "x86_64" -> resolution.layout.runtimeSource.resolve("setjmp-x86_64.S")
-            "aarch64" -> resolution.layout.runtimeSource.resolve("setjmp-aarch64.S")
+        val setjmpPath = when {
+            descriptor.os == "linux" && descriptor.architecture == "x86_64" ->
+                resolution.layout.runtimeSource.resolve("setjmp-x86_64.S")
+            descriptor.os == "linux" && descriptor.architecture == "aarch64" ->
+                resolution.layout.runtimeSource.resolve("setjmp-aarch64.S")
+            descriptor.os == "windows" && descriptor.architecture == "x86_64" ->
+                resolution.layout.runtimeSource.resolve("setjmp-windows-x86_64.S")
             else -> null
         }
-        val supportsSetjmp = descriptor.os == "linux" && setjmpPath != null
+        val supportsSetjmp = setjmpPath != null
         val setjmpPresent = setjmpPath?.let(Files::isRegularFile) == true
         cases += ConformanceCase(
             "libc.setjmp-context",
@@ -125,8 +129,8 @@ object C17ConformanceAudit {
                 else -> "fail"
             },
             when {
-                supportsSetjmp && setjmpPresent -> "Linux ${descriptor.architecture} context adapter is present"
-                supportsSetjmp -> "Linux ${descriptor.architecture} context adapter is missing: $setjmpPath"
+                supportsSetjmp && setjmpPresent -> "${descriptor.os} ${descriptor.architecture} context adapter is present"
+                supportsSetjmp -> "${descriptor.os} ${descriptor.architecture} context adapter is missing: $setjmpPath"
                 else -> "target-specific setjmp/longjmp adapter is not implemented for this target"
             }
         )
@@ -169,7 +173,10 @@ object C17ConformanceFixtures {
         C17Fixture(
             "context",
             "c17-context.c",
-            { descriptor -> descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64") }
+            { descriptor ->
+                (descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64")) ||
+                    descriptor.targetTriple == "windows-x86_64"
+            }
         ),
         C17Fixture(
             "stdio",

@@ -6,6 +6,9 @@ typedef unsigned long jmp_buf[21];
 #elif defined(__linux__) && defined(__x86_64__)
 typedef unsigned long jmp_buf[8];
 #define CPLUS_SETJMP_LINUX_X86_64 1
+#elif defined(_WIN32) && (defined(_M_X64) || defined(__x86_64__))
+typedef unsigned long long jmp_buf[32];
+#define CPLUS_SETJMP_WINDOWS_X86_64 1
 #else
 #error "C+ SDK setjmp is unavailable for this target"
 #endif

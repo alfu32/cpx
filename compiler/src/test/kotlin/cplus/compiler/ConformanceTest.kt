@@ -75,21 +75,43 @@ class ConformanceTest {
         val report = C17ConformanceRunner.run(resolution, target)
 
         assertTrue(report.failed.isEmpty(), report.failed.joinToString())
-        listOf("basic", "stdio").forEach { fixture ->
+        listOf("basic", "stdio", "context").forEach { fixture ->
             assertTrue(report.cases.any { it.id == "fixture.execution.$fixture" && it.status == "pass" })
             assertTrue(report.cases.any { it.id == "fixture.dependencies.$fixture" && it.status == "pass" })
         }
         assertTrue(report.cases.any { it.id == "fixture.streams.stdio" && it.status == "pass" })
+        assertTrue(report.cases.any { it.id == "libc.setjmp-context" && it.status == "pass" })
         assertEquals(
             setOf(
                 "runtime.source.complex.arithmetic",
-                "libc.setjmp-context",
-                "fixture.execution.context",
                 "fixture.execution.complex-types",
                 "fixture.execution.tgmath"
             ),
             report.unsupported.map { it.id }.toSet()
         )
+
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-windows-setjmp-optimized")
+        val executable = directory.resolve("setjmp-optimized.exe")
+        try {
+            val source = root.resolve("conformance/c17/c17-context.c")
+            val request = LinkRequest(source, executable, target, resolution)
+            val compile = ProcessBuilder(LinkDriver.command(request, plan) + "-O2")
+                .redirectErrorStream(true)
+                .start()
+            val compileOutput = compile.inputStream.bufferedReader().readText()
+            assertEquals(0, compile.waitFor(), compileOutput)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val dependencyAudit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(dependencyAudit.isSuccessful, dependencyAudit.diagnostics.joinToString())
+            val run = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            val runOutput = run.inputStream.bufferedReader().readText()
+            assertEquals(0, run.waitFor(), runOutput)
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
     }
 
     @Test

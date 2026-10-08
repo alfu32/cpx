@@ -719,10 +719,11 @@ explicit capability failure until that stage is selected.
 
 The claimed Linux C17 profile also supplies UTF-8/wide conversion and
 comparison, basic wide classification, compiler-intrinsic atomic operations,
-thread-local `errno`, and an x86_64 context-switch implementation for
-`setjmp`/`longjmp`. Targets without a corresponding context-switch adapter
-SHALL report the facility as unavailable rather than link an unresolved
-declaration.
+thread-local `errno`, and context-switch implementations for `setjmp`/`longjmp`.
+The validated Windows x86_64 C17 subset provides the corresponding Windows
+ABI context adapter, together with the basic and stdio conformance families.
+Targets without a corresponding context-switch adapter SHALL report the
+facility as unavailable rather than link an unresolved declaration.
 
 ---
 
@@ -2434,11 +2435,11 @@ setjmp
 longjmp
 ```
 
-on top of these primitives according to the target ABI. The initial
-self-hosted Linux profile provides context adapters for x86_64 and AArch64;
-other targets MUST report the facility as unsupported until a matching ABI
-adapter is implemented and validated. Adapters SHALL preserve the target
-ABI's nonvolatile integer, stack, return-address, and floating-point register
+on top of these primitives according to the target ABI. The validated profiles
+provide context adapters for Linux x86_64/AArch64 and Windows x86_64. Other
+targets MUST report the facility as unsupported until a matching ABI adapter
+is implemented and validated. Adapters SHALL preserve the target ABI's
+nonvolatile integer, stack, return-address, and floating-point register
 state. `longjmp` SHALL make a zero resume value observable as one. Public
 declarations SHALL communicate the control-flow contract to optimizing C
 compilers (`setjmp` returns twice and `longjmp` does not return normally),

@@ -16,6 +16,7 @@ Phase gates:           4/9 complete; 5 active; 0 queued
 Current task:          R4 — native Windows runtime/libc conformance gate
 Current milestone:     R4 — native runtime and C17 compatibility
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
+Latest C17 Windows x86_64 report: 46 pass, 0 fail, 3 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
 Windows full-runtime link: native Windows and local MinGW PE products pass
 
@@ -4448,13 +4449,14 @@ families. The shared C17 runner now enables `basic` and `stdio` fixtures for
 Windows x86_64. `ConformanceTest.windowsX8664C17AuditExecutesSupportedCoreAndStdioFixtures`
 passes on the Windows VM: both fixtures execute, stdout/stderr and stdin
 contracts match, and each PE product passes the host/compiler-runtime import
-audit. The same report asserts that context, complex types, complex arithmetic,
-and tgmath are explicitly unsupported for Windows rather than counted as
-passing. The shared `basic` fixture also exercises Windows `malloc`, `calloc`,
+audit. The shared `basic` fixture also exercises Windows `malloc`, `calloc`,
 `realloc`, `aligned_alloc`, zeroing/alignment, `errno` on allocation overflow,
 memory/string operations, and integer/floating conversion. The expanded fixture
-passes on both Windows x86_64 and Linux x86_64. This is focused Windows C17
-evidence; R4 remains open for its other runtime/libc families.
+passes on both Windows x86_64 and Linux x86_64. The Windows `context` fixture
+now passes through a dedicated setjmp/longjmp adapter; complex arithmetic,
+complex types, and tgmath remain explicitly unsupported. The native Windows
+C17 report is 46 pass, 0 fail, 3 unsupported, and 0 planned. This is focused
+Windows C17 evidence; R4 remains open for its other runtime/libc families.
 
 ### R4.1/R4.2 completion record
 
@@ -4462,9 +4464,9 @@ Implemented and executed on Linux:
 
 - the PAL now exposes explicit-width page allocation and release operations;
 - Linux x86_64 and AArch64 syscall paths are catalogued in the platform
-adapter, while Windows has the corresponding VirtualAlloc/VirtualFree ABI
-implementation; the native Windows C17 basic fixture now executes allocation,
-zeroing, resize, alignment, and release paths through it;
+  adapter, while Windows uses the corresponding VirtualAlloc/VirtualFree ABI;
+  the native Windows C17 basic fixture executes allocation, zeroing, resize,
+  alignment, and release paths through it;
 - the runtime allocator obtains whole pages, stores allocation metadata outside
   the user span, validates overflow and alignment requests, and releases the
   original page range on free;
@@ -4473,8 +4475,9 @@ zeroing, resize, alignment, and release paths through it;
 - a Linux C fixture executes alignment, zeroing, data-preserving resize, and
   release behavior.
 
-R4.3 is complete on Linux. Windows execution remains deferred by project
-policy.
+R4.3 has complete Linux acceptance and focused native Windows execution through
+the shared C17 basic fixture. The remaining Windows R4 family validation is
+tracked by the phase gate above.
 
 ### R4.3 completion record
 
@@ -5608,7 +5611,7 @@ hard-coded CLI path.
   with the latest Linux and native Windows evidence; Linux/PE dependency audits
   and capability-gated unsupported targets are recorded under R8.2/R8.3. The
   R4 follow-up caught that SDK fixture files were read at test runtime but were
-  not Gradle test inputs; `compiler:test` now fingerprints the SDK source tree
+  not Gradle test inputs; every module's test task now fingerprints the SDK source tree
   (excluding caches/build output), and changing the shared C17 fixture reruns
   the Windows/Linux integration test instead of reporting `UP-TO-DATE`. The
   full Linux/Windows Gradle and extension verification passes. R8.4 closes the

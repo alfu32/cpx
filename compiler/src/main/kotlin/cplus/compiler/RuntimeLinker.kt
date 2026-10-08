@@ -90,9 +90,12 @@ object RuntimeLinker {
                 val windowsEmulatedTls = resolution.layout.runtimeSource.resolve("emutls_windows.c")
                 val windowsStaticTls = resolution.layout.runtimeSource.resolve("tls_windows.c")
                 val setjmp = when {
-                    descriptor.os != "linux" -> emptyList()
-                    descriptor.architecture == "x86_64" -> listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S"))
-                    descriptor.architecture == "aarch64" -> listOf(resolution.layout.runtimeSource.resolve("setjmp-aarch64.S"))
+                    descriptor.os == "linux" && descriptor.architecture == "x86_64" ->
+                        listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S"))
+                    descriptor.os == "linux" && descriptor.architecture == "aarch64" ->
+                        listOf(resolution.layout.runtimeSource.resolve("setjmp-aarch64.S"))
+                    descriptor.os == "windows" && descriptor.architecture == "x86_64" ->
+                        listOf(resolution.layout.runtimeSource.resolve("setjmp-windows-x86_64.S"))
                     else -> emptyList()
                 }
                 val threadStartup = if (descriptor.os == "linux") {

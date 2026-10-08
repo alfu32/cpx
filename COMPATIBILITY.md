@@ -55,8 +55,10 @@ alone.
 The validated native execution set is Linux x86_64, Linux AArch64 under QEMU,
 and Windows x86_64. Windows native validation uses the GCC/UCRT64 profile and
 the declared LLP64/GNU x87 `long double` ABI. The MSVC binary64 `long double`
-profile is not currently supported as ABI-compatible. Windows AArch64 and
-Darwin execution are not claimed. See [SPEC.COVERAGE.md](SPEC.COVERAGE.md) and
+profile is not currently supported as ABI-compatible. Windows C17 execution
+currently reports 46 pass, 0 fail, and 3 unsupported (complex arithmetic,
+complex types, and tgmath). Windows AArch64 and Darwin execution are not
+claimed. See [SPEC.COVERAGE.md](SPEC.COVERAGE.md) and
 the R1–R8 dashboard in [IMPL.PLAN.md](IMPL.PLAN.md) for subsystem-level
 evidence and remaining gates.
 
