@@ -9,6 +9,15 @@ typedef unsigned long jmp_buf[8];
 #else
 #error "C+ SDK setjmp is unavailable for this target"
 #endif
-int setjmp(jmp_buf context);
-void longjmp(jmp_buf context, int value);
+#if defined(__GNUC__) || defined(__clang__)
+#define CPLUS_SETJMP_RETURNS_TWICE __attribute__((returns_twice))
+#define CPLUS_LONGJMP_NORETURN __attribute__((noreturn))
+#else
+#define CPLUS_SETJMP_RETURNS_TWICE
+#define CPLUS_LONGJMP_NORETURN
+#endif
+int setjmp(jmp_buf context) CPLUS_SETJMP_RETURNS_TWICE;
+void longjmp(jmp_buf context, int value) CPLUS_LONGJMP_NORETURN;
+#undef CPLUS_SETJMP_RETURNS_TWICE
+#undef CPLUS_LONGJMP_NORETURN
 #endif

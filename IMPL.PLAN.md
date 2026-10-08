@@ -5524,8 +5524,13 @@ hard-coded CLI path.
   them after `setjmp`, and verifies `longjmp` restores every value; its linked
   image also passes the dependency audit. The AArch64 C17 report now records 46
   pass, 0 fail, 3 unsupported; only complex arithmetic, complex types, and
-  tgmath remain capability-gated. This does not close R8.3 or claim Windows
-  context support.
+  tgmath remain capability-gated. The shared context fixture is also compiled
+  with `-O2` and executed for Linux x86_64 using each available GCC/Clang and
+  for Linux AArch64 using Clang/QEMU; all optimized products pass dependency
+  audits. `setjmp.h` now declares returns-twice and no-return compiler
+  attributes, and the fixture uses a volatile saved return value per the C
+  setjmp/longjmp rules. This does not close R8.3 or claim Windows context
+  support.
   This execution evidence does not close R8.3;
   the Windows target matrix remains pending. The prior x86_64 CLI run also
   exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows

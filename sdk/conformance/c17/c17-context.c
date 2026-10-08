@@ -7,7 +7,7 @@ static void jump_now(int value) {
 }
 
 int main(void) {
-    int resumed = setjmp(context);
+    volatile int resumed = setjmp(context);
     if (resumed == 0) jump_now(7);
     if (resumed != 7) return 1;
 

@@ -67,6 +67,51 @@ class ConformanceTest {
     }
 
     @Test
+    fun linuxC17SetjmpFixturePassesWithOptimizationOnAvailableRunners() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val source = root.resolve("conformance/c17/c17-context.c")
+        val compilers = listOf("cc", "clang").filter { compiler ->
+            runCatching { ProcessBuilder(compiler, "--version").start().waitFor() == 0 }.getOrDefault(false)
+        }
+        assertTrue(compilers.isNotEmpty(), "neither cc nor clang is available")
+        val targets = buildList {
+            add("linux-x86_64" to emptyList<String>())
+            C17TargetRunner.commandPrefix("linux-aarch64")?.let { add("linux-aarch64" to it) }
+        }
+        val directory = Files.createTempDirectory("cplus-c17-setjmp-optimized")
+
+        try {
+            targets.forEach { (triple, runner) ->
+                val target = TargetInfo(targetTriple = triple)
+                val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+                val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+                val targetCompilers = if (triple == "linux-aarch64") listOf("clang") else compilers
+                targetCompilers.forEach { compiler ->
+                    val executable = directory.resolve("setjmp_${triple.replace('-', '_')}_${compiler.replace('/', '_')}")
+                    val request = LinkRequest(source, executable, target, resolution, cCompiler = compiler)
+                    val process = ProcessBuilder(LinkDriver.command(request, plan) + "-O2")
+                        .redirectErrorStream(true)
+                        .start()
+                    val compileOutput = process.inputStream.bufferedReader().readText()
+                    assertEquals(0, process.waitFor(), "$triple/$compiler optimized link: $compileOutput")
+                    val descriptor = resolution.targetDescriptor
+                        ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+                    val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+                    assertTrue(audit.isSuccessful, "$triple/$compiler: ${audit.diagnostics.joinToString()}")
+                    val run = ProcessBuilder(runner + executable.toString()).redirectErrorStream(true).start()
+                    val output = run.inputStream.bufferedReader().readText()
+                    assertEquals(0, run.waitFor(), "$triple/$compiler optimized run: $output")
+                    Files.deleteIfExists(executable)
+                }
+            }
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
+
+    @Test
     fun linuxAarch64C17AuditExecutesSupportedFixturesWhenRunnerIsAvailable() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         assumeTrue(C17TargetRunner.commandPrefix("linux-aarch64") != null, "AArch64 QEMU user-mode runner is unavailable")
