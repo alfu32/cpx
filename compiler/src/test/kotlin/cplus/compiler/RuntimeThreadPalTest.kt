@@ -1,12 +1,71 @@
 package cplus.compiler
 
 import java.nio.file.Files
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeThreadPalTest {
+    @Test
+    fun windowsCreatesJoinableThreadsWithIndependentRuntimeTls() {
+        assumeTrue(System.getProperty("os.name").contains("windows", ignoreCase = true))
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-windows-runtime-threads")
+        val source = directory.resolve("thread_test.c").also {
+            Files.writeString(it, """
+                #include "cplus_platform.h"
+                #include "cplus_runtime.h"
+
+                _Thread_local int thread_local_value = 23;
+
+                static void* thread_entry(void* context) {
+                    int* observed = (int*)context;
+                    if (!__cplus_runtime_thread_is_attached() || thread_local_value != 23) return (void*)1;
+                    thread_local_value = 71;
+                    *observed = thread_local_value;
+                    return (void*)0x12345;
+                }
+
+                int main(void) {
+                    int observed = 0;
+                    void* result = (void*)0;
+                    long long thread;
+                    if (!__cplus_runtime_thread_is_attached() || thread_local_value != 23) return 1;
+                    thread_local_value = 41;
+                    thread = platform_thread_create(thread_entry, &observed);
+                    if (thread <= 0 || platform_thread_join(thread, &result) != 0) return 2;
+                    if (result != (void*)0x12345 || observed != 71 || thread_local_value != 41) return 3;
+                    if (platform_thread_current_id() <= 0 || platform_thread_yield() != 0) return 4;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("thread_test.exe")
+        try {
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw AssertionError("Windows thread/TLS fixture timed out; artifacts at $directory")
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), output)
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
+
     @Test
     fun linuxAarch64ThreadPalCreatesJoinableThreadsWithIndependentTlsWhenRunnerIsAvailable() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))

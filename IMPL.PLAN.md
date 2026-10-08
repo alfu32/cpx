@@ -5172,10 +5172,13 @@ thread's TLS before common runtime initialization. Linux workers use raw clone,
 architecture helper and Linux TLS linker script are selected. ABI checks cover
 all four declared target descriptors. Linux x86_64 execution and the full
 `./gradlew build --no-daemon` pass. Linux AArch64 runtime/startup sources pass
-strict syntax and assembly checks, and Windows x86_64 runtime/startup sources
-pass strict MinGW syntax checking; neither target has runtime execution
-evidence here. The C17 report remains 42 pass, 0 fail, 0 unsupported, and 0
-planned.
+strict syntax and assembly checks. The native Windows VM also passes
+`RuntimeThreadPalTest.windowsCreatesJoinableThreadsWithIndependentRuntimeTls`:
+the full runtime creates and joins a worker, validates runtime attachment,
+thread identity, yield, return value, and independent initialized TLS, and
+passes the Windows executable dependency audit. Linux AArch64 runtime
+execution remains unverified. The C17 report remains 42 pass, 0 fail,
+0 unsupported, and 0 planned.
 
 R5.3.6 acceptance evidence: `RuntimeSyncPalTest` links and executes the
 production shared synchronization runtime and Linux x86_64 PAL into a
