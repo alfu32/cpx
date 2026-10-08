@@ -1,6 +1,7 @@
 package cplus.compiler
 
 import java.nio.file.Path
+import java.nio.file.Files
 
 /**
  * Immutable request-specific inputs used to discover C declarations. It is
@@ -21,7 +22,11 @@ data class HeaderEnvironment(
         add(sdkLibcInclude)
         add(sdkRuntimeInclude)
         addAll(includeDirectories)
-    }.map { it.toAbsolutePath().normalize() }.distinct()
+        externalSysroot?.let { sysroot ->
+            add(sysroot.resolve("usr/include").takeIf(Files::isDirectory))
+            add(sysroot.resolve("include").takeIf(Files::isDirectory))
+        }
+    }.filterNotNull().map { it.toAbsolutePath().normalize() }.distinct()
 
     init {
         require(abi.targetTriple == target.targetTriple) {

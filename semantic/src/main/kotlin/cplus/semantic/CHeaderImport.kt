@@ -1,6 +1,9 @@
 package cplus.semantic
 
 import cplus.core.SourceFile
+import cplus.core.Lexer
+import cplus.core.Token
+import cplus.core.TokenKind
 
 enum class ForeignDeclarationKind {
     TYPE,
@@ -48,27 +51,7 @@ class CHeaderImportService(
 
     private fun parse(text: String, allowFunctionDefinitions: Boolean = false): Map<String, CHeaderDeclaration> {
         val declarations = linkedMapOf<String, CHeaderDeclaration>()
-        val functionPattern = Regex(
-            """(?m)^\s*(?:extern\s+)?([A-Za-z_][A-Za-z0-9_\s\*]*?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*${if (allowFunctionDefinitions) "(?:;|\\{)" else ";"}"""
-        )
-        functionPattern.findAll(text).forEach { match ->
-            val returnType = normalizeType(match.groupValues[1])
-            val rawParameters = match.groupValues[3].trim()
-            val variadic = rawParameters.split(',').any { it.trim() == "..." }
-            val parameters = rawParameters
-                .split(',')
-                .map(String::trim)
-                .filter { it.isNotEmpty() && it != "..." && it != "void" }
-                .map(::parameterType)
-            declarations[match.groupValues[2]] = CHeaderDeclaration(
-                match.groupValues[2],
-                ForeignDeclarationKind.FUNCTION,
-                returnType,
-                parameters,
-                variadic,
-                match.range
-            )
-        }
+        parseFunctions(text, allowFunctionDefinitions).forEach { declarations[it.name] = it }
         val typedefPattern = Regex(
             """(?m)^\s*typedef\s+([A-Za-z_][A-Za-z0-9_\s\*]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*;"""
         )
@@ -97,6 +80,166 @@ class CHeaderImportService(
         return declarations
     }
 
+    /** Scans top-level C declaration boundaries so nested callback parameters and bodies are opaque. */
+    private fun parseFunctions(text: String, allowDefinitions: Boolean): List<CHeaderDeclaration> {
+        val source = SourceFile(cplus.core.SourceFileId(0), java.nio.file.Path.of("<c-header>"), text, 0)
+        val tokens = Lexer().lex(source).tokens.filter { it.kind != TokenKind.END_OF_FILE }
+        val parsed = mutableListOf<CHeaderDeclaration>()
+        var cursor = 0
+        while (cursor < tokens.size) {
+            var boundary = cursor
+            var parens = 0
+            var brackets = 0
+            var candidate: FunctionCandidate? = null
+            while (boundary < tokens.size) {
+                val token = tokens[boundary]
+                when (token.lexeme) {
+                    "(" -> {
+                        if (parens == 0 && brackets == 0) {
+                            candidate = candidateAt(tokens, cursor, boundary)
+                        }
+                        parens++
+                    }
+                    ")" -> parens = (parens - 1).coerceAtLeast(0)
+                    "[" -> brackets++
+                    "]" -> brackets = (brackets - 1).coerceAtLeast(0)
+                    ";" -> {
+                        if (parens == 0 && brackets == 0) {
+                            candidate?.takeIf { it.closeParen < boundary }?.let {
+                                parsed += declaration(it, tokens[boundary].range.endOffset)
+                            }
+                            cursor = boundary + 1
+                            break
+                        }
+                    }
+                    "{" -> {
+                        if (parens == 0 && brackets == 0) {
+                            val bodyEnd = matchingBrace(tokens, boundary)
+                            if (allowDefinitions && candidate != null && candidate.closeParen < boundary && bodyEnd != null) {
+                                parsed += declaration(candidate, tokens[bodyEnd].range.endOffset)
+                                cursor = bodyEnd + 1
+                            } else if (bodyEnd != null) {
+                                cursor = bodyEnd + 1
+                            } else {
+                                cursor = boundary + 1
+                            }
+                            break
+                        }
+                    }
+                }
+                boundary++
+            }
+            if (boundary >= tokens.size) cursor = tokens.size
+            else if (cursor <= boundary) cursor = boundary + 1
+        }
+        return parsed
+    }
+
+    private data class FunctionCandidate(
+        val name: String,
+        val returnType: String,
+        val parameters: List<String>,
+        val variadic: Boolean,
+        val startOffset: Int,
+        val closeParen: Int
+    )
+
+    private fun candidateAt(tokens: List<Token>, start: Int, open: Int): FunctionCandidate? {
+        val nameToken = tokens.getOrNull(open - 1) ?: return null
+        if (nameToken.kind !in setOf(TokenKind.IDENTIFIER, TokenKind.KEYWORD)) return null
+        val name = nameToken.lexeme
+        if (name in C_DECLARATION_KEYWORDS) return null
+        val close = matchingDelimiter(tokens, open, "(", ")") ?: return null
+        val prefix = tokens.subList(start, open - 1)
+        if (prefix.isEmpty()) return null
+        val returnType = render(prefix).removePrefix("extern ").trim()
+        if (returnType.isBlank() || returnType.contains("=")) return null
+        val parameterTokens = splitParameters(tokens, open + 1, close)
+        val rawParameters = parameterTokens.map(::render).map(String::trim)
+        val variadic = rawParameters.any { it == "..." }
+        val parameters = rawParameters.filter { it.isNotEmpty() && it != "..." && it != "void" }
+            .map(::parameterType)
+        return FunctionCandidate(name, normalizeType(returnType), parameters, variadic, tokens[start].range.startOffset, close)
+    }
+
+    private fun declaration(candidate: FunctionCandidate, end: Int) = CHeaderDeclaration(
+        candidate.name,
+        ForeignDeclarationKind.FUNCTION,
+        candidate.returnType,
+        candidate.parameters,
+        candidate.variadic,
+        candidate.startOffset until end
+    )
+
+    private fun splitParameters(tokens: List<Token>, start: Int, end: Int): List<List<Token>> {
+        if (start == end) return emptyList()
+        val result = mutableListOf<List<Token>>()
+        var segmentStart = start
+        var parens = 0
+        var brackets = 0
+        for (index in start until end) {
+            when (tokens[index].lexeme) {
+                "(" -> parens++
+                ")" -> parens--
+                "[" -> brackets++
+                "]" -> brackets--
+                "," -> if (parens == 0 && brackets == 0) {
+                    result += tokens.subList(segmentStart, index)
+                    segmentStart = index + 1
+                }
+            }
+        }
+        result += tokens.subList(segmentStart, end)
+        return result
+    }
+
+    private fun matchingDelimiter(tokens: List<Token>, start: Int, left: String, right: String): Int? {
+        var depth = 0
+        for (index in start until tokens.size) {
+            if (tokens[index].lexeme == left) depth++
+            if (tokens[index].lexeme == right && --depth == 0) return index
+        }
+        return null
+    }
+
+    private fun matchingBrace(tokens: List<Token>, start: Int): Int? = matchingDelimiter(tokens, start, "{", "}")
+
+    private fun render(tokens: List<Token>): String {
+        val output = StringBuilder()
+        tokens.forEachIndexed { index, token ->
+            val previous = tokens.getOrNull(index - 1)
+            val needsSpace = previous != null &&
+                (previous.kind in setOf(TokenKind.IDENTIFIER, TokenKind.KEYWORD, TokenKind.INTEGER_LITERAL) &&
+                    token.kind in setOf(TokenKind.IDENTIFIER, TokenKind.KEYWORD, TokenKind.INTEGER_LITERAL) ||
+                    previous.lexeme == "," ||
+                    previous.lexeme in setOf("const", "volatile", "restrict", "struct", "union", "enum"))
+            if (needsSpace) output.append(' ')
+            output.append(token.lexeme)
+        }
+        return output.toString()
+    }
+
+    private fun parameterType(parameter: String): String {
+        val tokens = Lexer().lex(
+            SourceFile(cplus.core.SourceFileId(0), java.nio.file.Path.of("<c-parameter>"), parameter, 0)
+        ).tokens
+            .filter { it.kind != TokenKind.END_OF_FILE }
+        if (tokens.size < 2) return normalizeType(parameter)
+        val lexemes = tokens.map(Token::lexeme)
+        val callbackName = lexemes.indices.firstOrNull { index ->
+            lexemes.getOrNull(index - 1) == "*" && index + 1 < lexemes.size && lexemes[index + 1] == ")"
+        }
+        val nameIndex = callbackName ?: tokens.lastIndex.takeIf {
+            tokens[it].kind == TokenKind.IDENTIFIER &&
+            tokens.size >= 2 && lexemes[it - 1] !in setOf("struct", "union", "enum", "const", "volatile")
+        } ?: return normalizeType(parameter)
+        return normalizeType(render(tokens.filterIndexed { index, _ -> index != nameIndex }))
+    }
+
+    private val C_DECLARATION_KEYWORDS = setOf(
+        "if", "while", "for", "switch", "return", "sizeof", "_Alignof", "__attribute__", "__declspec"
+    )
+
     private fun stripBracedBodies(text: String): String {
         val characters = text.toCharArray()
         var depth = 0
@@ -114,17 +257,6 @@ class CHeaderImportService(
             }
         }
         return String(characters)
-    }
-
-    private fun parameterType(parameter: String): String {
-        val normalized = normalizeType(parameter)
-        return Regex("^(.+?)(?:\\s+[A-Za-z_][A-Za-z0-9_]*)?$")
-            .matchEntire(normalized)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.trim()
-            ?.ifEmpty { normalized }
-            ?: normalized
     }
 
     private fun normalizeType(type: String): String = type
