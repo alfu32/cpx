@@ -1,6 +1,12 @@
 package cplus.compiler
 
 import cplus.semantic.*
+import cplus.core.AstBuilder
+import cplus.core.Lexer
+import cplus.core.Parser
+import cplus.core.SourceFile
+import cplus.core.SourceFileId
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -30,6 +36,26 @@ class AbiLayoutTest {
         assertEquals(0, layout.fields[0].offset)
         assertEquals(8, layout.fields[1].offset)
         assertTrue(layout.fields.all { it.alignment > 0 })
+    }
+
+    @Test
+    fun laysOutDiscoveredCStructsUsingSelectedLp64AndLlp64Targets() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val cText = "typedef struct Record { char tag; long count; void *next; } Record;"
+        val cSource = SourceFile(SourceFileId(801), Path.of("record.h"), cText, 1)
+        val cUnit = CSourceUnit(cSource, "c.record")
+        val cplusSource = SourceFile(SourceFileId(802), Path.of("record.cp"), "int main() { return 0; }", 1)
+        val program = AstBuilder().build(Parser(Lexer().lex(cplusSource)).parse().syntax)
+        val model = SemanticAnalyzer().analyze(program, foreignSources = listOf(cUnit)).model!!
+        val record = model.foreignTypes.getValue("Record")
+
+        val expected = mapOf("linux-x86_64" to 24, "windows-x86_64" to 16)
+        expected.forEach { (targetName, expectedSize) ->
+            val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor)
+            val layout = AbiLayoutEngine(descriptor).layout(record)
+            assertEquals(expectedSize, layout.size, targetName)
+            assertEquals(8, layout.alignment, targetName)
+        }
     }
 
     @Test

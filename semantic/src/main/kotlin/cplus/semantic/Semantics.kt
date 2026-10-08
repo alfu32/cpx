@@ -113,7 +113,7 @@ data class ForeignType(
     override val id: TypeId,
     override val name: String,
     val externalName: String = name,
-    val underlyingType: CType? = null
+    var underlyingType: CType? = null
 ) : CType
 
 private fun canonicalTypeKey(type: CType): String = when (type) {
@@ -520,6 +520,7 @@ class SemanticAnalyzer(
     private var nextSymbolId = generateSequence(1) { it + 1 }.iterator()
     private var nextTypeId = generateSequence(1) { it + 1 }.iterator()
     private var activeTypeEnvironment: Map<String, CType> = emptyMap()
+    private val incompleteForeignTypes = mutableSetOf<String>()
 
     fun analyze(
         program: AstProgram,
@@ -531,6 +532,7 @@ class SemanticAnalyzer(
         nextSymbolId = generateSequence(1) { it + 1 }.iterator()
         nextTypeId = generateSequence(1) { it + 1 }.iterator()
         activeTypeEnvironment = emptyMap()
+        incompleteForeignTypes.clear()
         val diagnostics = DiagnosticBag()
         val symbols = mutableListOf<Symbol>()
         val types = mutableListOf<CType>()
@@ -798,6 +800,14 @@ class SemanticAnalyzer(
                     resolveType(baseReference, structs, unions, enums, aliases, foreignTypes, ::primitive, diagnostics)
                 }
             }
+            val incompleteForeignBase = canonicalType(resolved) as? ForeignType
+            if (reference.pointerDepth == 0 && incompleteForeignBase != null && incompleteForeignBase.name in incompleteForeignTypes) {
+                diagnostics.error(
+                    "incomplete C type '${incompleteForeignBase.name}' cannot be used by value",
+                    rangeOf(reference.origin),
+                    "SEM414"
+                )
+            }
             repeat(reference.pointerDepth) {
                 resolved = PointerType(TypeId(nextTypeId.next()), resolved)
             }
@@ -854,7 +864,10 @@ class SemanticAnalyzer(
             origin: Origin,
             underlyingType: CType? = null
         ) {
-            if (foreignTypes.containsKey(name)) return
+            foreignTypes[name]?.let { existing ->
+                if (existing.underlyingType == null && underlyingType != null) existing.underlyingType = underlyingType
+                return
+            }
             val type = ForeignType(TypeId(nextTypeId.next()), name, underlyingType = underlyingType)
             foreignTypes[name] = type
             types += type
@@ -880,15 +893,28 @@ class SemanticAnalyzer(
             else -> null
         }
 
-        fun foreignTypeFromName(typeName: String, moduleName: String, origin: Origin): CType {
+        fun foreignTypeFromName(
+            typeName: String,
+            moduleName: String,
+            origin: Origin,
+            allowIncomplete: Boolean = false
+        ): CType {
             val normalized = typeName.trim().replace(Regex("\\s+"), " ")
             val pointerDepth = normalized.count { it == '*' }
-            val baseName = normalized
+            val writtenBaseName = normalized
                 .replace("*", " ")
                 .split(' ')
                 .filter { it.isNotEmpty() && it !in setOf("const", "volatile", "restrict") }
                 .joinToString(" ")
+            val taggedAggregate = Regex("^(struct|union|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)$").matchEntire(writtenBaseName)
+            val baseName = taggedAggregate?.groupValues?.get(2) ?: writtenBaseName
             var type = when {
+                taggedAggregate != null -> {
+                    foreignTypes[baseName] ?: run {
+                        registerForeignType(baseName, moduleName, origin)
+                        foreignTypes.getValue(baseName)
+                    }
+                }
                 foreignTypeModule(baseName) != null -> {
                     val ownerModule = foreignTypeModule(baseName)!!
                     val declaration = headerImportService.declarations(ownerModule)[baseName]
@@ -938,17 +964,86 @@ class SemanticAnalyzer(
             origin: Origin,
             exposeGlobally: Boolean = false
         ): Boolean {
+            declaration.unsupportedReason?.let { reason ->
+                diagnostics.error(reason, rangeOf(origin), "SEM413")
+                return false
+            }
             when (declaration.kind) {
-                ForeignDeclarationKind.TYPE -> registerForeignType(
-                    declaration.name,
-                    moduleName,
-                    origin,
-                    if (declaration.name in CPrimitiveTypes.standardIntegerTypedefNames) {
-                        primitive(declaration.name)
+                ForeignDeclarationKind.TYPE -> {
+                    val isAggregate = declaration.aggregateKind == CHeaderAggregateKind.STRUCT ||
+                        declaration.aggregateKind == CHeaderAggregateKind.UNION ||
+                        declaration.aggregateKind == CHeaderAggregateKind.ENUM
+                    if (isAggregate && !declaration.aggregateComplete) {
+                        incompleteForeignTypes += declaration.name
+                        registerForeignType(declaration.name, moduleName, origin)
                     } else {
-                        declaration.typeName?.let { foreignTypeFromName(it, moduleName, origin) }
+                        incompleteForeignTypes -= declaration.name
+                        registerForeignType(
+                            declaration.name,
+                            moduleName,
+                            origin,
+                            if (isAggregate) {
+                        val owner = ForeignType(TypeId(nextTypeId.next()), declaration.name)
+                        val aggregate: CType = if (declaration.aggregateKind == CHeaderAggregateKind.STRUCT) {
+                            StructType(owner.id, declaration.name, mutableListOf()).also { structure ->
+                                declaration.fields.forEach { field ->
+                                    val fieldType = foreignTypeFromName(field.typeName, moduleName, origin)
+                                    val fieldSymbol = newSymbol(
+                                        field.name,
+                                        SymbolKind.FIELD,
+                                        fieldType,
+                                        origin,
+                                        moduleName,
+                                        Visibility.PUBLIC
+                                    )
+                                    structure.fields = structure.fields + FieldSymbol(fieldSymbol, structure)
+                                }
+                            }
+                        } else if (declaration.aggregateKind == CHeaderAggregateKind.UNION) {
+                            UnionType(owner.id, declaration.name, mutableListOf()).also { union ->
+                                declaration.fields.forEach { field ->
+                                    val fieldType = foreignTypeFromName(field.typeName, moduleName, origin)
+                                    val fieldSymbol = newSymbol(
+                                        field.name,
+                                        SymbolKind.FIELD,
+                                        fieldType,
+                                        origin,
+                                        moduleName,
+                                        Visibility.PUBLIC
+                                    )
+                                    union.fields = union.fields + FieldSymbol(fieldSymbol, union)
+                                }
+                            }
+                        } else {
+                            primitive("int")
+                        }
+                        if (aggregate !is PrimitiveType || types.none { it.id == aggregate.id }) types += aggregate
+                        aggregate
+                            } else if (declaration.aggregateKind == CHeaderAggregateKind.ENUM) {
+                                primitive("int")
+                            } else if (declaration.functionPointerType != null) {
+                                val callback = declaration.functionPointerType
+                                val returnType = foreignTypeFromName(callback.returnType, moduleName, origin)
+                                val parameterTypes = callback.parameterTypes.map { parameterType ->
+                                    foreignTypeFromName(parameterType, moduleName, origin)
+                                }
+                                PointerType(
+                                    TypeId(nextTypeId.next()),
+                                    FunctionType(
+                                        TypeId(nextTypeId.next()),
+                                        returnType,
+                                        parameterTypes,
+                                        callback.isVariadic
+                                    ).also(types::add)
+                                )
+                            } else if (declaration.name in CPrimitiveTypes.standardIntegerTypedefNames) {
+                                primitive(declaration.name)
+                            } else {
+                                declaration.typeName?.let { foreignTypeFromName(it, moduleName, origin, allowIncomplete = true) }
+                            }
+                        )
                     }
-                )
+                }
                 ForeignDeclarationKind.FUNCTION -> {
                     val existing = functions[declaration.name]
                     if (existing?.symbol?.kind == SymbolKind.FOREIGN) {
@@ -2385,6 +2480,7 @@ class SemanticAnalyzer(
 
     private fun canonicalType(type: CType): CType = when (type) {
         is AliasType -> canonicalType(type.target)
+        is ForeignType -> type.underlyingType?.let(::canonicalType) ?: type
         else -> type
     }
 
@@ -2399,6 +2495,7 @@ class SemanticAnalyzer(
     private fun aggregateType(type: CType): CType = when (type) {
         is AliasType -> aggregateType(type.target)
         is PointerType -> aggregateType(type.pointee)
+        is ForeignType -> type.underlyingType?.let(::aggregateType) ?: type
         else -> type
     }
 

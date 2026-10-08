@@ -12,13 +12,28 @@ enum class ForeignDeclarationKind {
     ENUM_VALUE
 }
 
+enum class CHeaderAggregateKind { STRUCT, UNION, ENUM }
+
+data class CHeaderField(val name: String, val typeName: String)
+
+data class CFunctionPointerType(
+    val returnType: String,
+    val parameterTypes: List<String>,
+    val isVariadic: Boolean
+)
+
 data class CHeaderDeclaration(
     val name: String,
     val kind: ForeignDeclarationKind,
     val typeName: String? = null,
     val parameterTypes: List<String> = emptyList(),
     val isVariadic: Boolean = false,
-    val sourceRange: IntRange? = null
+    val sourceRange: IntRange? = null,
+    val aggregateKind: CHeaderAggregateKind? = null,
+    val fields: List<CHeaderField> = emptyList(),
+    val aggregateComplete: Boolean = false,
+    val unsupportedReason: String? = null,
+    val functionPointerType: CFunctionPointerType? = null
 )
 
 data class CSourceUnit(
@@ -52,17 +67,7 @@ class CHeaderImportService(
     private fun parse(text: String, allowFunctionDefinitions: Boolean = false): Map<String, CHeaderDeclaration> {
         val declarations = linkedMapOf<String, CHeaderDeclaration>()
         parseFunctions(text, allowFunctionDefinitions).forEach { declarations[it.name] = it }
-        val typedefPattern = Regex(
-            """(?m)^\s*typedef\s+([A-Za-z_][A-Za-z0-9_\s\*]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*;"""
-        )
-        typedefPattern.findAll(text).forEach { match ->
-            declarations[match.groupValues[2]] = CHeaderDeclaration(
-                match.groupValues[2],
-                ForeignDeclarationKind.TYPE,
-                normalizeType(match.groupValues[1]),
-                sourceRange = match.range
-            )
-        }
+        parseTypes(text).forEach { declarations[it.name] = it }
         val globalPattern = Regex(
             """(?m)^\s*(?:extern\s+)?([A-Za-z_][A-Za-z0-9_\s\*]*?)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=\s*[^;]+)?\s*;"""
         )
@@ -80,10 +85,288 @@ class CHeaderImportService(
         return declarations
     }
 
+    private fun parseTypes(text: String): List<CHeaderDeclaration> {
+        val tokens = lex(text)
+        val declarations = linkedMapOf<String, CHeaderDeclaration>()
+        var index = 0
+        while (index < tokens.size) {
+            val token = tokens[index]
+            val aggregateKind = when (token.lexeme) {
+                "struct" -> CHeaderAggregateKind.STRUCT
+                "union" -> CHeaderAggregateKind.UNION
+                "enum" -> CHeaderAggregateKind.ENUM
+                else -> null
+            }
+            if (aggregateKind != null) {
+                val tag = tokens.getOrNull(index + 1)?.takeIf { it.kind == TokenKind.IDENTIFIER }
+                val afterTag = if (tag == null) index + 1 else index + 2
+                val bodyOpen = tokens.getOrNull(afterTag)?.takeIf { it.lexeme == "{" }
+                if (aggregateKind == CHeaderAggregateKind.ENUM && bodyOpen != null) {
+                    val bodyClose = matchingBrace(tokens, afterTag)
+                    if (bodyClose != null) {
+                        parseEnumerators(tokens, afterTag + 1, bodyClose).forEach { declarations[it.name] = it }
+                    }
+                }
+                if (tag != null && (bodyOpen != null || tokens.getOrNull(afterTag)?.lexeme == ";")) {
+                    val bodyClose = bodyOpen?.let { matchingBrace(tokens, afterTag) }
+                    val unsupportedAggregate = if (bodyClose != null && aggregateKind != CHeaderAggregateKind.ENUM) {
+                        unsupportedAggregateLayout(tokens, afterTag + 1, bodyClose)
+                    } else null
+                    val endIndex = bodyClose ?: afterTag
+                    val endOffset = tokens.getOrNull(endIndex + 1)?.takeIf { it.lexeme == ";" }?.range?.endOffset
+                        ?: tokens[endIndex].range.endOffset
+                    declarations[tag.lexeme] = CHeaderDeclaration(
+                        tag.lexeme,
+                        ForeignDeclarationKind.TYPE,
+                        "${token.lexeme} ${tag.lexeme}",
+                        sourceRange = token.range.startOffset until endOffset,
+                        aggregateKind = aggregateKind,
+                        aggregateComplete = bodyClose != null,
+                        unsupportedReason = unsupportedAggregate,
+                        fields = if (bodyClose != null && aggregateKind != CHeaderAggregateKind.ENUM) {
+                            parseFields(tokens, afterTag + 1, bodyClose)
+                        } else emptyList()
+                    )
+                }
+            }
+            if (token.lexeme == "typedef") {
+                val end = findDeclarationEnd(tokens, index + 1) ?: break
+                val semicolon = end.first
+                val typedefTokens = tokens.subList(index + 1, semicolon)
+                val functionPointerName = (0 until typedefTokens.size - 4).firstNotNullOfOrNull { candidate ->
+                    candidate.takeIf {
+                        typedefTokens[it].lexeme == "(" && typedefTokens[it + 1].lexeme == "*" &&
+                            typedefTokens[it + 2].kind == TokenKind.IDENTIFIER && typedefTokens[it + 3].lexeme == ")" &&
+                            typedefTokens[it + 4].lexeme == "("
+                    }?.plus(2)
+                }
+                val aliasIndex = functionPointerName ?: typedefTokens.indexOfLast { it.kind == TokenKind.IDENTIFIER }
+                if (aliasIndex > 0) {
+                    val alias = typedefTokens[aliasIndex].lexeme
+                    val aggregateBody = typedefTokens.indexOfFirst { it.lexeme == "{" }
+                    val aliasTypeTokens = if (aggregateBody >= 0) {
+                        typedefTokens.subList(0, aggregateBody)
+                    } else {
+                        typedefTokens.filterIndexed { tokenIndex, _ -> tokenIndex != aliasIndex }
+                    }
+                    var typeName = normalizeType(render(aliasTypeTokens))
+                    if (aggregateBody >= 0 && typeName in setOf("struct", "union", "enum")) {
+                        typeName = "$typeName $alias"
+                    }
+                    val anonymousOrTypedefAggregateKind = typedefTokens.firstOrNull()?.lexeme?.let {
+                        when (it) {
+                            "struct" -> CHeaderAggregateKind.STRUCT
+                            "union" -> CHeaderAggregateKind.UNION
+                            "enum" -> CHeaderAggregateKind.ENUM
+                            else -> null
+                        }
+                    }
+                    val aggregateClose = if (aggregateBody >= 0) matchingBrace(typedefTokens, aggregateBody) else null
+                    val unsupportedAggregate = if (aggregateClose != null && anonymousOrTypedefAggregateKind != CHeaderAggregateKind.ENUM) {
+                        unsupportedAggregateLayout(typedefTokens, aggregateBody + 1, aggregateClose)
+                    } else null
+                    if (anonymousOrTypedefAggregateKind == CHeaderAggregateKind.ENUM && aggregateClose != null) {
+                        parseEnumerators(typedefTokens, aggregateBody + 1, aggregateClose)
+                            .forEach { declarations[it.name] = it }
+                    }
+                    val namedTag = aliasTypeTokens.firstOrNull()?.lexeme
+                        ?.takeIf { it in setOf("struct", "union", "enum") }
+                        ?.let { aliasTypeTokens.getOrNull(1)?.lexeme }
+                    val taggedDeclaration = namedTag?.let(declarations::get)
+                    val functionPointerType = parseFunctionPointerType(aliasTypeTokens)
+                    if (typeName.isNotBlank()) {
+                        declarations[alias] = CHeaderDeclaration(
+                            alias,
+                            ForeignDeclarationKind.TYPE,
+                            typeName,
+                            sourceRange = token.range.startOffset until tokens[semicolon].range.endOffset,
+                            aggregateKind = anonymousOrTypedefAggregateKind ?: taggedDeclaration?.aggregateKind,
+                            aggregateComplete = aggregateClose != null || taggedDeclaration?.aggregateComplete == true,
+                            unsupportedReason = unsupportedAggregate ?: taggedDeclaration?.unsupportedReason,
+                            functionPointerType = functionPointerType,
+                            fields = if (aggregateClose != null && anonymousOrTypedefAggregateKind != CHeaderAggregateKind.ENUM) {
+                                parseFields(typedefTokens, aggregateBody + 1, aggregateClose)
+                            } else taggedDeclaration?.fields.orEmpty()
+                        )
+                    }
+                }
+                index = semicolon + 1
+                continue
+            }
+            index++
+        }
+        val entries = declarations.values.toList()
+        val cyclicTypedefs = cyclicTypedefNames(entries)
+        return entries.map { declaration ->
+            if (declaration.name in cyclicTypedefs) {
+                declaration.copy(unsupportedReason = "cyclic C typedef dependency involving '${declaration.name}'")
+            } else declaration
+        }
+    }
+
+    private fun parseFunctionPointerType(tokens: List<Token>): CFunctionPointerType? {
+        val pointerOpen = (0 until tokens.size - 4).firstOrNull { index ->
+            tokens[index].lexeme == "(" && tokens[index + 1].lexeme == "*" &&
+                tokens[index + 2].lexeme == ")" && tokens[index + 3].lexeme == "("
+        } ?: return null
+        val parameterOpen = pointerOpen + 3
+        val parameterClose = matchingDelimiter(tokens, parameterOpen, "(", ")") ?: return null
+        val returnType = normalizeType(render(tokens.subList(0, pointerOpen)))
+        if (returnType.isBlank()) return null
+        val rawParameters = splitParameters(tokens, parameterOpen + 1, parameterClose).map(::render).map(String::trim)
+        val variadic = rawParameters.any { it == "..." }
+        val parameters = rawParameters.filter { it.isNotEmpty() && it != "..." && it != "void" }.map(::parameterType)
+        return CFunctionPointerType(returnType, parameters, variadic)
+    }
+
+    private fun cyclicTypedefNames(declarations: List<CHeaderDeclaration>): Set<String> {
+        val aliases = declarations.asSequence()
+            .filter { it.kind == ForeignDeclarationKind.TYPE && it.aggregateKind == null }
+            .mapNotNull { declaration ->
+                val target = declaration.typeName?.trim() ?: return@mapNotNull null
+                if (Regex("[A-Za-z_][A-Za-z0-9_]*").matches(target)) declaration.name to target else null
+            }
+            .toMap()
+        val cyclic = mutableSetOf<String>()
+        val visited = mutableSetOf<String>()
+        val active = mutableListOf<String>()
+        fun visit(name: String) {
+            val cycleStart = active.indexOf(name)
+            if (cycleStart >= 0) {
+                cyclic += active.subList(cycleStart, active.size)
+                return
+            }
+            if (!visited.add(name)) return
+            active += name
+            aliases[name]?.takeIf { it in aliases }?.let(::visit)
+            active.removeAt(active.lastIndex)
+        }
+        aliases.keys.forEach(::visit)
+        return cyclic
+    }
+
+    private fun parseFields(tokens: List<Token>, start: Int, end: Int): List<CHeaderField> {
+        val fields = mutableListOf<CHeaderField>()
+        var segmentStart = start
+        var parens = 0
+        var brackets = 0
+        for (index in start..end) {
+            if (index == end || (tokens[index].lexeme == ";" && parens == 0 && brackets == 0)) {
+                val declaration = tokens.subList(segmentStart, index)
+                val fieldNameIndex = declaration.indexOfLast { it.kind == TokenKind.IDENTIFIER }
+                if (fieldNameIndex > 0) {
+                    val fieldName = declaration[fieldNameIndex].lexeme
+                    val fieldType = normalizeType(render(declaration.filterIndexed { fieldIndex, _ -> fieldIndex != fieldNameIndex }))
+                    if (fieldType.isNotBlank()) fields += CHeaderField(fieldName, fieldType)
+                }
+                segmentStart = index + 1
+            } else {
+                when (tokens[index].lexeme) {
+                    "(" -> parens++
+                    ")" -> parens--
+                    "[" -> brackets++
+                    "]" -> brackets--
+                }
+            }
+        }
+        return fields
+    }
+
+    private fun unsupportedAggregateLayout(tokens: List<Token>, start: Int, end: Int): String? {
+        var parens = 0
+        var brackets = 0
+        for (index in start until end) {
+            when (tokens[index].lexeme) {
+                "(" -> parens++
+                ")" -> parens--
+                "[" -> {
+                    if (parens == 0) return "C aggregate array fields do not yet have a verified ABI layout"
+                    brackets++
+                }
+                "]" -> brackets--
+                ":" -> if (parens == 0 && brackets == 0) {
+                    return "C bit-field layouts are target/compiler-specific and are not supported"
+                }
+                "," -> if (parens == 0 && brackets == 0) {
+                    return "multiple C field declarators in one declaration are not supported"
+                }
+                "{" -> if (parens == 0) return "nested C aggregate field layouts are not supported"
+            }
+        }
+        return null
+    }
+
+    private fun parseEnumerators(tokens: List<Token>, start: Int, end: Int): List<CHeaderDeclaration> {
+        val values = mutableListOf<CHeaderDeclaration>()
+        var segmentStart = start
+        var nested = 0
+        for (index in start..end) {
+            if (index == end || (tokens[index].lexeme == "," && nested == 0)) {
+                val name = tokens.subList(segmentStart, index).firstOrNull { it.kind == TokenKind.IDENTIFIER }
+                if (name != null) {
+                    values += CHeaderDeclaration(
+                        name.lexeme,
+                        ForeignDeclarationKind.ENUM_VALUE,
+                        "int",
+                        sourceRange = name.range.startOffset until name.range.endOffset
+                    )
+                }
+                segmentStart = index + 1
+            } else if (tokens[index].lexeme in setOf("(", "[")) {
+                nested++
+            } else if (tokens[index].lexeme in setOf(")", "]")) {
+                nested--
+            }
+        }
+        return values
+    }
+
+    private fun findDeclarationEnd(tokens: List<Token>, start: Int): Pair<Int, Int>? {
+        var braces = 0
+        var parens = 0
+        for (index in start until tokens.size) {
+            when (tokens[index].lexeme) {
+                "{" -> braces++
+                "}" -> braces--
+                "(" -> parens++
+                ")" -> parens--
+                ";" -> if (braces == 0 && parens == 0) return index to index
+            }
+        }
+        return null
+    }
+
+    private fun lex(text: String): List<Token> = Lexer().lex(
+        SourceFile(cplus.core.SourceFileId(0), java.nio.file.Path.of("<c-header>"), maskPreprocessorLines(text), 0)
+    ).tokens.filter { it.kind != TokenKind.END_OF_FILE }
+
+    private fun maskPreprocessorLines(text: String): String {
+        val chars = text.toCharArray()
+        var lineStart = 0
+        while (lineStart < chars.size) {
+            val newline = text.indexOf('\n', lineStart).let { if (it < 0) chars.size else it }
+            var first = lineStart
+            while (first < newline && chars[first].isWhitespace()) first++
+            if (first < newline && chars[first] == '#') {
+                var continued: Boolean
+                do {
+                    var end = text.indexOf('\n', lineStart).let { if (it < 0) chars.size else it }
+                    var last = end - 1
+                    while (last >= lineStart && chars[last].isWhitespace()) last--
+                    continued = last >= lineStart && chars[last] == '\\'
+                    for (offset in lineStart until end) chars[offset] = ' '
+                    lineStart = if (end < chars.size) end + 1 else chars.size
+                } while (continued && lineStart < chars.size)
+            } else {
+                lineStart = if (newline < chars.size) newline + 1 else chars.size
+            }
+        }
+        return String(chars)
+    }
+
     /** Scans top-level C declaration boundaries so nested callback parameters and bodies are opaque. */
     private fun parseFunctions(text: String, allowDefinitions: Boolean): List<CHeaderDeclaration> {
-        val source = SourceFile(cplus.core.SourceFileId(0), java.nio.file.Path.of("<c-header>"), text, 0)
-        val tokens = Lexer().lex(source).tokens.filter { it.kind != TokenKind.END_OF_FILE }
+        val tokens = lex(text)
         val parsed = mutableListOf<CHeaderDeclaration>()
         var cursor = 0
         while (cursor < tokens.size) {

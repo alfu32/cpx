@@ -1,6 +1,7 @@
 package cplus.semantic
 
 import cplus.core.AstBuilder
+import cplus.core.AstFunction
 import cplus.core.AstModule
 import cplus.core.AstProgram
 import cplus.core.Lexer
@@ -12,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -338,6 +340,101 @@ class SemanticTypeTest {
         assertEquals(helper.symbol, model.lookup("helper_value"))
         assertEquals(cSource.id, helper.symbol.origin.primaryRange!!.file)
         assertEquals(cText.indexOf("int helper_value"), helper.symbol.origin.primaryRange!!.startOffset)
+    }
+
+    @Test
+    fun sourceCStructTypedefRetainsTargetLayoutFields() {
+        val cText = "typedef struct Node { int value; struct Node *next; } Node;"
+        val cSource = SourceFile(SourceFileId(28), Path.of("node.h"), cText, 1)
+        val text = "int read(Node* node) { return node->value; }"
+        val source = SourceFile(SourceFileId(29), Path.of("main.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = SemanticAnalyzer().analyze(
+            AstBuilder().build(parsed.syntax),
+            foreignSources = listOf(CSourceUnit(cSource, "c.model"))
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val type = result.model!!.foreignTypes.getValue("Node")
+        val structure = assertNotNull(type.underlyingType as? StructType)
+        assertEquals(listOf("value", "next"), structure.fields.map { it.symbol.name })
+        assertEquals("int", structure.fields.first().symbol.type.name)
+    }
+
+    @Test
+    fun opaqueCStructAllowsPointersButRejectsByValueUse() {
+        val cSource = SourceFile(SourceFileId(30), Path.of("opaque.h"), "struct Opaque;", 1)
+        val pointerSource = SourceFile(
+            SourceFileId(31), Path.of("pointer.cp"),
+            "int inspect(Opaque* value) { return 0; }", 1
+        )
+        val pointerProgram = AstBuilder().build(Parser(Lexer().lex(pointerSource)).parse().syntax)
+        assertEquals(1, (pointerProgram.declarations.filterIsInstance<AstFunction>().single().parameters.single().type).pointerDepth)
+        val pointerResult = SemanticAnalyzer().analyze(
+            pointerProgram,
+            foreignSources = listOf(CSourceUnit(cSource, "c.opaque"))
+        )
+        assertTrue(pointerResult.isSuccessful, pointerResult.diagnostics.joinToString())
+
+        val byValueSource = SourceFile(
+            SourceFileId(32), Path.of("by-value.cp"),
+            "int inspect(Opaque value) { return 0; }", 1
+        )
+        val byValueResult = SemanticAnalyzer().analyze(
+            AstBuilder().build(Parser(Lexer().lex(byValueSource)).parse().syntax),
+            foreignSources = listOf(CSourceUnit(cSource, "c.opaque"))
+        )
+        assertTrue(byValueResult.diagnostics.any { it.code == "SEM414" }, byValueResult.diagnostics.joinToString())
+    }
+
+    @Test
+    fun cCallbackTypedefBecomesAFunctionPointerType() {
+        val cSource = SourceFile(
+            SourceFileId(33), Path.of("callback.h"),
+            "typedef int (*callback_t)(const char *text, long count);", 1
+        )
+        val source = SourceFile(
+            SourceFileId(34), Path.of("callback.cp"),
+            "int invoke(callback_t callback) { return 0; }", 1
+        )
+        val result = SemanticAnalyzer().analyze(
+            AstBuilder().build(Parser(Lexer().lex(source)).parse().syntax),
+            foreignSources = listOf(CSourceUnit(cSource, "c.callback"))
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val callback = assertNotNull(result.model!!.foreignTypes.getValue("callback_t").underlyingType as? PointerType)
+        assertEquals(listOf("char*", "long"), (callback.pointee as FunctionType).parameterTypes.map { it.name })
+    }
+
+    @Test
+    fun cyclicCTypeAliasesReceiveUnsupportedDeclarationDiagnostic() {
+        val cSource = SourceFile(
+            SourceFileId(35), Path.of("cycle.h"),
+            "typedef second_t first_t; typedef first_t second_t;", 1
+        )
+        val source = SourceFile(SourceFileId(36), Path.of("cycle.cp"), "int main() { return 0; }", 1)
+        val result = SemanticAnalyzer().analyze(
+            AstBuilder().build(Parser(Lexer().lex(source)).parse().syntax),
+            foreignSources = listOf(CSourceUnit(cSource, "c.cycle"))
+        )
+
+        assertTrue(result.diagnostics.any { it.code == "SEM413" && it.message.contains("cyclic") })
+    }
+
+    @Test
+    fun compilerSpecificBitFieldLayoutIsRejectedExplicitly() {
+        val cSource = SourceFile(
+            SourceFileId(37), Path.of("bits.h"),
+            "struct Flags { unsigned int ready:1; };", 1
+        )
+        val source = SourceFile(SourceFileId(38), Path.of("bits.cp"), "int main() { return 0; }", 1)
+        val result = SemanticAnalyzer().analyze(
+            AstBuilder().build(Parser(Lexer().lex(source)).parse().syntax),
+            foreignSources = listOf(CSourceUnit(cSource, "c.bits"))
+        )
+
+        assertTrue(result.diagnostics.any { it.code == "SEM413" && it.message.contains("bit-field") })
     }
 
     @Test

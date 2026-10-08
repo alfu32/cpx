@@ -7,6 +7,60 @@ import kotlin.test.assertTrue
 
 class CHeaderFunctionScannerTest {
     @Test
+    fun recordsForwardTagsTypedefChainsAndAggregateFieldTypes() {
+        val declarations = CHeaderImportService().sourceDeclarations(
+            """
+            typedef unsigned long size_base;
+            typedef size_base size_alias;
+            typedef int (*callback_t)(const char *text, long count);
+            struct Node;
+            struct Node {
+                struct Node *next;
+                unsigned int value;
+            };
+            typedef struct Node Node;
+            typedef union {
+                int integer;
+                double real;
+            } Number;
+            enum Color { RED, GREEN = 2 };
+            """.trimIndent()
+        )
+
+        assertEquals("unsigned long", declarations.getValue("size_base").typeName)
+        assertEquals("size_base", declarations.getValue("size_alias").typeName)
+        assertEquals(
+            CFunctionPointerType("int", listOf("const char*", "long"), false),
+            declarations.getValue("callback_t").functionPointerType
+        )
+        val node = declarations.getValue("Node")
+        assertEquals("struct Node", node.typeName)
+        assertEquals(listOf(CHeaderField("next", "struct Node*"), CHeaderField("value", "unsigned int")), node.fields)
+        assertEquals("union Number", declarations.getValue("Number").typeName)
+        assertEquals(ForeignDeclarationKind.ENUM_VALUE, declarations.getValue("RED").kind)
+        assertEquals(ForeignDeclarationKind.ENUM_VALUE, declarations.getValue("GREEN").kind)
+    }
+
+    @Test
+    fun marksCyclicTypedefDependenciesUnsupported() {
+        val declarations = CHeaderImportService().sourceDeclarations(
+            "typedef second_t first_t; typedef first_t second_t;"
+        )
+
+        assertTrue(declarations.getValue("first_t").unsupportedReason?.contains("cyclic") == true)
+        assertTrue(declarations.getValue("second_t").unsupportedReason?.contains("cyclic") == true)
+    }
+
+    @Test
+    fun refusesToGuessCompilerSpecificBitFieldLayout() {
+        val declaration = CHeaderImportService().sourceDeclarations(
+            "struct Flags { unsigned int ready:1; };"
+        ).getValue("Flags")
+
+        assertTrue(declaration.unsupportedReason?.contains("bit-field") == true)
+    }
+
+    @Test
     fun parsesMultilineMultiwordAndNestedCallbackDeclarators() {
         val declarations = CHeaderImportService().sourceDeclarations(
             """
@@ -51,6 +105,7 @@ class CHeaderFunctionScannerTest {
     @Test
     fun ignoresFunctionLikeTokensInsideCommentsAndStrings() {
         val source = """
+            #include <stddef.h>
             /* int comment_only(int x); */
             const char *message = "int string_only(int x);";
             int real_function(int value);
