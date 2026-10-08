@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    79/92 accepted with recorded evidence
+Roadmap leaf tasks:    80/92 accepted with recorded evidence
 Phase gates:           2/9 complete; 5 active; 2 queued
-Current task:          R6.2 — deterministic output and toolchain option normalization
+Current task:          R6.3 — reproducible fat-JAR and process/product handling
 Current milestone:     R6 — CLI transcoder and build-product completion
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
@@ -26,11 +26,11 @@ R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
-R6 [DOING] 1/4  CLI transcoder and build-product completion
+R6 [DOING] 2/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       79/92 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       80/92 implementation tasks complete; 2/9 phase gates complete,
             5 active, 2 queued
 ```
 
@@ -353,8 +353,8 @@ below. Its current execution sequence is:
    R4.6.2.2 component/projection functions are accepted; R4.6.2.3 complex
    exponential/root, trigonometric/hyperbolic, and type-generic dispatch leaves
    are accepted for Linux x86_64. R4 remains open for Windows libc validation;
-   R6.1 is accepted and R6.2 is active while the R5 Windows-dependent leaves
-   remain deferred.
+   R6.1 and R6.2 are accepted; R6.3 is active while the R5
+   Windows-dependent leaves remain deferred.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -420,6 +420,7 @@ Latest completed implementation commits:
 - `6c89226` — implement C17 complex circular, inverse, hyperbolic, and inverse-hyperbolic functions for all three precisions (R4.6.2.4 Linux x86_64).
 - `37014e0` — implement C17 real/complex type-generic math dispatch and its audited fixture (R4.6.2.5 Linux x86_64).
 - `0ca174d` — add project/workspace manifests and SDK-rooted source imports across CLI source commands (R6.1).
+- `81aa251` — normalize CLI output, source-map, target, SDK, compiler, sysroot, and native-input options (R6.2).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -5234,7 +5235,7 @@ Each native package has at least one executable Linux and Windows test (and a
 Darwin status), every selected adapter is source-isolated, and the conformance
 matrix reports platform services as `pass` rather than merely `planned`.
 
-## R6 [DOING] [1/4] CLI transcoder and build-product completion
+## R6 [DOING] [2/4] CLI transcoder and build-product completion
 
 **Dependency-ordered work queue**
 
@@ -5251,9 +5252,20 @@ matrix reports platform services as `pass` rather than merely `planned`.
   source path. `./gradlew :cli:test --tests cplus.cli.CliIntegrationTest
   --no-daemon` and `./gradlew build --no-daemon` pass. Implementation commit:
   `0ca174d`.
-- R6.2 [DOING] — normalize output, header, map, target, runtime, libc, SDK,
-  compiler, sysroot, C-source, and library options with deterministic paths;
-- R6.3 [TODO] — make fat-JAR assembly reproducible, clean temporary products,
+- R6.2 [DONE] — normalize output, header, map, target, runtime, libc, SDK,
+  compiler, sysroot, C-source, and library options with deterministic paths.
+  Filesystem inputs become absolute normalized paths relative to the invocation
+  directory; manifest paths remain manifest-relative; target triples are
+  lowercased; compiler executable names and named libraries remain names while
+  path-shaped values normalize. Output parents are created, `run --output`
+  retains its executable, and `--map` writes deterministic generated/source
+  byte ranges with project-relative paths, including imported source modules.
+  CLI integration covers nested C/header/map outputs, imported source maps,
+  uppercase target selection, explicit SDK/runtime/libc/sysroot/native inputs,
+  retained run products, and the project/workspace command model. The complete
+  `:cli:test` suite and `./gradlew build --no-daemon` pass. Implementation
+  commit: `81aa251`.
+- R6.3 [DOING] — make fat-JAR assembly reproducible, clean temporary products,
   preserve process failures, and emit stable diagnostics;
 - R6.4 [TODO] — make `sdk`, `target`, `abi`, `runtime`, `libc`, and `audit`
   validate the exact artifacts consumed by a normal build.
