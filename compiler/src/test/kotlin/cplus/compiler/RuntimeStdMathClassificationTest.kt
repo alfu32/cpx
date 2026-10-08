@@ -60,6 +60,17 @@ class RuntimeStdMathClassificationTest {
                     if (cplus_math_classify_binary128(bits) != FP_INFINITE) return 4;
                     bits[0] = 1;
                     if (cplus_math_classify_binary128(bits) != FP_NAN) return 5;
+
+                    bits[0] = 0;
+                    bits[13] = 0x40;
+                    bits[14] = 0x00;
+                    bits[15] = 0x40;
+                    cplus_math_truncate_representation(bits, 0x4000, 16383, 112, 15);
+                    if (bits[13] != 0 || cplus_math_is_odd_representation(bits, 0x4000, 16383, 112, 0)) return 6;
+
+                    bits[13] = 0xc0;
+                    cplus_math_truncate_representation(bits, 0x4000, 16383, 112, 15);
+                    if (bits[13] != 0x80 || !cplus_math_is_odd_representation(bits, 0x4000, 16383, 112, 0)) return 7;
                     return 0;
                 }
             """.trimIndent())

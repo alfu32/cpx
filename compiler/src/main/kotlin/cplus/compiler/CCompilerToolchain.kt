@@ -81,7 +81,15 @@ object CCompilerToolchains {
             else -> return emptyList()
         }
         val prefix = if (isMsvcStyle(compiler)) "/D" else "-D"
-        return listOf("${prefix}CPLUS_LONG_DOUBLE_FORMAT=$formatCode")
+        val longBits = when (target.cIntegerModel.lowercase()) {
+            "lp64" -> 64
+            "llp64" -> 32
+            else -> null
+        }
+        return buildList {
+            add("${prefix}CPLUS_LONG_DOUBLE_FORMAT=$formatCode")
+            longBits?.let { add("${prefix}CPLUS_LONG_BITS=$it") }
+        }
     }
 
     fun isMsvcStyle(compiler: String): Boolean = classify(compiler).kind in setOf(CCompilerKind.MSVC, CCompilerKind.CLANG_CL)

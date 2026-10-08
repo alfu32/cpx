@@ -1,5 +1,6 @@
 #include <math.h>
 #include <errno.h>
+#include <limits.h>
 
 double fabs(double value) { return value < 0.0 ? -value : value; }
 
@@ -27,6 +28,26 @@ double sqrt(double value) {
 #else
 #error unsupported long double format for C+ math classification
 #endif
+#endif
+
+#ifndef CPLUS_LONG_BITS
+#if defined(__SIZEOF_LONG__)
+#define CPLUS_LONG_BITS (__SIZEOF_LONG__ * 8)
+#elif defined(_WIN32) || defined(_WIN64)
+#define CPLUS_LONG_BITS 32
+#else
+#error unsupported C long width for math conversions
+#endif
+#endif
+
+_Static_assert(sizeof(long) * CHAR_BIT == CPLUS_LONG_BITS, "target C long width disagrees with SDK ABI");
+_Static_assert(sizeof(long long) * CHAR_BIT == 64, "SDK math conversions require 64-bit long long");
+#if CPLUS_LONG_BITS == 32
+_Static_assert(LONG_MAX == 2147483647L, "LLP64 LONG_MAX");
+_Static_assert(LONG_MIN == (-2147483647L - 1L), "LLP64 LONG_MIN");
+#elif CPLUS_LONG_BITS == 64
+_Static_assert(LONG_MAX == 9223372036854775807L, "LP64 LONG_MAX");
+_Static_assert(LONG_MIN == (-9223372036854775807L - 1L), "LP64 LONG_MIN");
 #endif
 
 static int cplus_math_classify_binary32(const unsigned char* bytes) {
@@ -113,6 +134,120 @@ static int cplus_math_sign_long_double(long double value) {
     return (bytes[15] & 0x80) != 0;
 #else
 #error invalid CPLUS_LONG_DOUBLE_FORMAT
+#endif
+}
+
+static void cplus_math_clear_low_bits(unsigned char* bytes, unsigned int bit_count) {
+    unsigned int whole_bytes = bit_count / 8;
+    unsigned int remaining_bits = bit_count % 8;
+    unsigned int index;
+    for (index = 0; index < whole_bytes; index++) bytes[index] = 0;
+    if (remaining_bits != 0) bytes[whole_bytes] &= (unsigned char)(0xffu << remaining_bits);
+}
+
+static void cplus_math_set_signed_zero(unsigned char* bytes, unsigned int sign_byte) {
+    unsigned int index;
+    for (index = 0; index < sign_byte; index++) bytes[index] = 0;
+    bytes[sign_byte] &= 0x80;
+}
+
+static void cplus_math_truncate_representation(
+    unsigned char* bytes,
+    unsigned int exponent,
+    int exponent_bias,
+    unsigned int fraction_bits,
+    unsigned int sign_byte
+) {
+    int unbiased_exponent = exponent == 0 ? 1 - exponent_bias : (int)exponent - exponent_bias;
+    if (unbiased_exponent < 0) {
+        cplus_math_set_signed_zero(bytes, sign_byte);
+    } else if ((unsigned int)unbiased_exponent < fraction_bits) {
+        cplus_math_clear_low_bits(bytes, fraction_bits - (unsigned int)unbiased_exponent);
+    }
+}
+
+static int cplus_math_raw_bit(const unsigned char* bytes, unsigned int bit_index) {
+    return (bytes[bit_index / 8] & (unsigned char)(1u << (bit_index % 8))) != 0;
+}
+
+static int cplus_math_is_odd_representation(
+    const unsigned char* bytes,
+    unsigned int exponent,
+    int exponent_bias,
+    unsigned int fraction_bits,
+    int explicit_integer_bit
+) {
+    int unbiased_exponent;
+    unsigned int bit_index;
+    if (exponent == 0) return 0;
+    unbiased_exponent = (int)exponent - exponent_bias;
+    if (unbiased_exponent < 0 || (unsigned int)unbiased_exponent > fraction_bits) return 0;
+    bit_index = fraction_bits - (unsigned int)unbiased_exponent;
+    if (!explicit_integer_bit && bit_index == fraction_bits) return 1;
+    return cplus_math_raw_bit(bytes, bit_index);
+}
+
+static float cplus_math_truncate_float(float value) {
+    unsigned char* bytes = (unsigned char*)&value;
+    unsigned int exponent;
+    int kind = cplus_math_classify_float(value);
+    if (kind != FP_NORMAL && kind != FP_SUBNORMAL) return value;
+    exponent = ((unsigned int)(bytes[3] & 0x7f) << 1) | (bytes[2] >> 7);
+    cplus_math_truncate_representation(bytes, exponent, 127, 23, 3);
+    return value;
+}
+
+static double cplus_math_truncate_double(double value) {
+    unsigned char* bytes = (unsigned char*)&value;
+    unsigned int exponent;
+    int kind = cplus_math_classify_double(value);
+    if (kind != FP_NORMAL && kind != FP_SUBNORMAL) return value;
+    exponent = ((unsigned int)(bytes[7] & 0x7f) << 4) | (bytes[6] >> 4);
+    cplus_math_truncate_representation(bytes, exponent, 1023, 52, 7);
+    return value;
+}
+
+static long double cplus_math_truncate_long_double(long double value) {
+    unsigned char* bytes = (unsigned char*)&value;
+    unsigned int exponent;
+    int kind = cplus_math_classify_long_double(value);
+    if (kind != FP_NORMAL && kind != FP_SUBNORMAL) return value;
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+    exponent = ((unsigned int)(bytes[7] & 0x7f) << 4) | (bytes[6] >> 4);
+    cplus_math_truncate_representation(bytes, exponent, 1023, 52, 7);
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+    exponent = ((unsigned int)(bytes[9] & 0x7f) << 8) | bytes[8];
+    cplus_math_truncate_representation(bytes, exponent, 16383, 63, 9);
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+    exponent = ((unsigned int)(bytes[15] & 0x7f) << 8) | bytes[14];
+    cplus_math_truncate_representation(bytes, exponent, 16383, 112, 15);
+#endif
+    return value;
+}
+
+static int cplus_math_is_odd_float(float value) {
+    const unsigned char* bytes = (const unsigned char*)&value;
+    unsigned int exponent = ((unsigned int)(bytes[3] & 0x7f) << 1) | (bytes[2] >> 7);
+    return cplus_math_is_odd_representation(bytes, exponent, 127, 23, 0);
+}
+
+static int cplus_math_is_odd_double(double value) {
+    const unsigned char* bytes = (const unsigned char*)&value;
+    unsigned int exponent = ((unsigned int)(bytes[7] & 0x7f) << 4) | (bytes[6] >> 4);
+    return cplus_math_is_odd_representation(bytes, exponent, 1023, 52, 0);
+}
+
+static int cplus_math_is_odd_long_double(long double value) {
+    const unsigned char* bytes = (const unsigned char*)&value;
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+    unsigned int exponent = ((unsigned int)(bytes[7] & 0x7f) << 4) | (bytes[6] >> 4);
+    return cplus_math_is_odd_representation(bytes, exponent, 1023, 52, 0);
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+    unsigned int exponent = ((unsigned int)(bytes[9] & 0x7f) << 8) | bytes[8];
+    return cplus_math_is_odd_representation(bytes, exponent, 16383, 63, 1);
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+    unsigned int exponent = ((unsigned int)(bytes[15] & 0x7f) << 8) | bytes[14];
+    return cplus_math_is_odd_representation(bytes, exponent, 16383, 112, 0);
 #endif
 }
 
@@ -216,3 +351,104 @@ CPLUS_MATH_DEFINE_COMPARISONS(, double, cplus_math_classify_double)
 CPLUS_MATH_DEFINE_COMPARISONS(l, long double, cplus_math_classify_long_double)
 
 #undef CPLUS_MATH_DEFINE_COMPARISONS
+
+#define CPLUS_MATH_DEFINE_ROUNDING(suffix, type, classifier, truncate_value, is_odd) \
+    type trunc##suffix(type value) { \
+        return truncate_value(value); \
+    } \
+    type ceil##suffix(type value) { \
+        int kind = classifier(value); \
+        type integral; \
+        if (kind == FP_NAN || kind == FP_INFINITE || kind == FP_ZERO) return value; \
+        integral = truncate_value(value); \
+        return value > integral ? integral + (type)1 : integral; \
+    } \
+    type floor##suffix(type value) { \
+        int kind = classifier(value); \
+        type integral; \
+        if (kind == FP_NAN || kind == FP_INFINITE || kind == FP_ZERO) return value; \
+        integral = truncate_value(value); \
+        return value < integral ? integral - (type)1 : integral; \
+    } \
+    type round##suffix(type value) { \
+        int kind = classifier(value); \
+        type integral; \
+        type fraction; \
+        if (kind == FP_NAN || kind == FP_INFINITE || kind == FP_ZERO) return value; \
+        integral = truncate_value(value); \
+        fraction = value - integral; \
+        if (fraction >= (type)0.5) return integral + (type)1; \
+        if (fraction <= (type)-0.5) return integral - (type)1; \
+        return integral; \
+    } \
+    type rint##suffix(type value) { \
+        int kind = classifier(value); \
+        type integral; \
+        type fraction; \
+        if (kind == FP_NAN || kind == FP_INFINITE || kind == FP_ZERO) return value; \
+        integral = truncate_value(value); \
+        fraction = value - integral; \
+        if (fraction > (type)0.5) return integral + (type)1; \
+        if (fraction < (type)-0.5) return integral - (type)1; \
+        if (fraction == (type)0.5 && is_odd(integral)) return integral + (type)1; \
+        if (fraction == (type)-0.5 && is_odd(integral)) return integral - (type)1; \
+        return integral; \
+    } \
+    type nearbyint##suffix(type value) { \
+        return rint##suffix(value); \
+    }
+
+CPLUS_MATH_DEFINE_ROUNDING(f, float, cplus_math_classify_float, cplus_math_truncate_float, cplus_math_is_odd_float)
+CPLUS_MATH_DEFINE_ROUNDING(, double, cplus_math_classify_double, cplus_math_truncate_double, cplus_math_is_odd_double)
+CPLUS_MATH_DEFINE_ROUNDING(l, long double, cplus_math_classify_long_double, cplus_math_truncate_long_double, cplus_math_is_odd_long_double)
+
+#undef CPLUS_MATH_DEFINE_ROUNDING
+
+static long cplus_math_round_to_long(long double value) {
+    int kind = cplus_math_classify_long_double(value);
+    if (kind == FP_NAN || kind == FP_INFINITE) {
+        errno = EDOM;
+        return LONG_MIN;
+    }
+#if CPLUS_LONG_BITS == 32
+    if (value < -2147483648.0L || value >= 2147483648.0L) {
+#elif CPLUS_LONG_BITS == 64
+    if (value < -9223372036854775808.0L || value >= 9223372036854775808.0L) {
+#else
+#error unsupported C long width for math conversions
+#endif
+        errno = EDOM;
+        return LONG_MIN;
+    }
+    return (long)value;
+}
+
+static long long cplus_math_round_to_long_long(long double value) {
+    int kind = cplus_math_classify_long_double(value);
+    if (kind == FP_NAN || kind == FP_INFINITE ||
+        value < -9223372036854775808.0L || value >= 9223372036854775808.0L) {
+        errno = EDOM;
+        return LLONG_MIN;
+    }
+    return (long long)value;
+}
+
+#define CPLUS_MATH_DEFINE_INTEGER_ROUNDING(suffix, type, round_even, round_away) \
+    long lrint##suffix(type value) { \
+        return cplus_math_round_to_long((long double)round_even(value)); \
+    } \
+    long long llrint##suffix(type value) { \
+        return cplus_math_round_to_long_long((long double)round_even(value)); \
+    } \
+    long lround##suffix(type value) { \
+        return cplus_math_round_to_long((long double)round_away(value)); \
+    } \
+    long long llround##suffix(type value) { \
+        return cplus_math_round_to_long_long((long double)round_away(value)); \
+    }
+
+CPLUS_MATH_DEFINE_INTEGER_ROUNDING(f, float, rintf, roundf)
+CPLUS_MATH_DEFINE_INTEGER_ROUNDING(, double, rint, round)
+CPLUS_MATH_DEFINE_INTEGER_ROUNDING(l, long double, rintl, roundl)
+
+#undef CPLUS_MATH_DEFINE_INTEGER_ROUNDING

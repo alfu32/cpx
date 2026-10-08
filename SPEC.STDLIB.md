@@ -2440,6 +2440,11 @@ The implementation MAY use compiler intrinsics or platform support.
 
 Native C+ math code SHALL not implicitly depend on mutable floating-point-environment state unless required by the selected profile.
 
+Until a target advertises a mutable C17 floating-point environment, the active
+profile SHALL use round-to-nearest, ties-to-even for `rint` and `nearbyint`.
+The `round` and `lround` families SHALL round halfway values away from zero,
+independent of that environment.
+
 ---
 
 # 52. Math library

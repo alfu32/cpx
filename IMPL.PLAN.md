@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    61/88 accepted with recorded evidence
+Roadmap leaf tasks:    62/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.5.3 — implement rounding and integer-conversion families
+Current task:          R5.4.5.4 — implement decomposition, scaling, sign, NaN, and adjacent-value families
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
-R5 [DOING] 28/41 native std and platform-service work remains open
+R5 [DOING] 29/41 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       61/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       62/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -193,14 +193,29 @@ single-evaluation behavior, and the `sqrt` domain-error `EDOM` path; a synthetic
 binary128 bit-pattern fixture covers zero/subnormal/normal/infinity/NaN. Strict
 warning-as-error C17 compilation passes for all four declared ABI targets, the
 linked Linux runtime has no undefined host symbols, and the full Gradle build
-passes. This moves the roadmap from 60/88 to 61/88 and R5 from 27/41 to 28/41.
+passes. Commit `3817e8e` moves the roadmap from 60/88 to 61/88 and R5 from
+27/41 to 28/41. Windows runtime execution remains deferred and receives no
+completion credit.
+
+R5.4.5.3 then implemented the real rounding and integer-conversion families.
+The runtime performs bit-level truncation for binary32, binary64, x87, and
+binary128; implements floor/ceil, ties-away round, fixed ties-to-even
+rint/nearbyint, and checked lrint/lround conversions for `long` and `long
+long`. Target ABI flags now carry LP64/LLP64 `long` width, and the SDK limits
+header exposes matching long bounds. A production-linked Linux C17 fixture
+covers every precision and conversion family, signed zero, tie behavior,
+special values, integer-range boundaries, errno preservation/EDOM, and the
+no-host-symbol audit. Synthetic binary128 vectors cover representation
+truncation/parity; strict warning-as-error compilation and static ABI/range
+assertions pass for all four target descriptors; the full Gradle build passes.
+This moves the roadmap from 61/88 to 62/88 and R5 from 28/41 to 29/41.
 Windows runtime execution remains deferred and receives no completion credit.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.4.5.3 onward, then R5.5; Linux C17 stdio and
+1. Continue R5.4.5.4 onward, then R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 pass their recorded Linux checks; R4.6 complex and
    type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
@@ -251,6 +266,8 @@ Latest completed implementation commits:
 - `141f393` — implement checked `std.time` clocks and durations (calendar conversion remains open).
 - `cc436ca` — implement proleptic-Gregorian UTC calendar conversion (Windows execution deferred).
 - `e7e480c` — model target floating layouts and verify Linux long-double calls (R3.1.3 Linux leaf only; Windows ABI gate remains open).
+- `a8d1470` — declare the C17 real-math function surface (R5.4.5.1).
+- `3817e8e` — implement C17 floating classification, comparisons, and constants (R5.4.5.2; Windows runtime execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4576,7 +4593,7 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [DOING] [2/11] — implement the specified portable real `std.math` and
+  - R5.4.5 [DOING] [3/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
     - R5.4.5.1 [DONE] — declare all C17 real `<math.h>` functions and
       float/double/long-double `std.math` entry points. **Depends:** R3.1.3.
@@ -4594,9 +4611,15 @@ dependencies.
       source checks for all four target ABIs; C+ type-import coverage for
       `float_t`/`double_t`; no undefined host symbols; and a passing full build.
       Windows runtime execution is deferred.
-    - R5.4.5.3 [DOING] — implement rounding and integer-conversion families.
-      **Depends:** R5.4.5.1.
-    - R5.4.5.4 [TODO] — implement decomposition, scaling, sign, NaN, and
+    - R5.4.5.3 [DONE] — implement rounding and integer-conversion families.
+      **Depends:** R5.4.5.1. **Acceptance evidence:** production-linked Linux
+      C17 execution covers all float/double/long-double functions, ties-away
+      and ties-to-even behavior, signed zero, non-finite values, and checked
+      `long`/`long long` boundaries with errno policy. Synthetic binary128
+      vectors cover truncation/parity; strict C17 and ABI-width/range assertions
+      pass for all four targets; the linked product has no undefined host
+      symbols; the full build passes. Windows runtime execution is deferred.
+    - R5.4.5.4 [DOING] — implement decomposition, scaling, sign, NaN, and
       adjacent-value manipulation families. **Depends:** R5.4.5.1.
     - R5.4.5.5 [TODO] — implement remainder and quotient-remainder families.
       **Depends:** R5.4.5.1.
