@@ -311,6 +311,8 @@ class RuntimeNetworkPalTest {
                     long long ipv6_listener;
                     long long ipv6_client;
                     long long ipv6_accepted;
+                    long long ipv6_udp_server;
+                    long long ipv6_udp_client;
                     address.family = CPLUS_SOCKET_IPV4;
                     address.address[0] = 127;
                     address.address[3] = 1;
@@ -358,6 +360,18 @@ class RuntimeNetworkPalTest {
                         if (received[index] != payload[index]) return 13;
                     if (platform_socket_close(ipv6_client) != 0 || platform_socket_close(ipv6_accepted) != 0 ||
                         platform_socket_close(ipv6_listener) != 0) return 14;
+
+                    ipv6_udp_server = platform_socket_open(CPLUS_SOCKET_IPV6, CPLUS_SOCKET_DATAGRAM);
+                    if (ipv6_udp_server < 0 || platform_socket_bind(ipv6_udp_server, &ipv6_address) != 0 ||
+                        platform_socket_get_address(ipv6_udp_server, 0, &ipv6_bound) != 0 || ipv6_bound.port == 0) return 15;
+                    ipv6_udp_client = platform_socket_open(CPLUS_SOCKET_IPV6, CPLUS_SOCKET_DATAGRAM);
+                    if (ipv6_udp_client < 0 ||
+                        platform_socket_send_to(ipv6_udp_client, payload, sizeof(payload) - 1, &ipv6_bound) != sizeof(payload) - 1 ||
+                        platform_socket_receive_from(ipv6_udp_server, received, sizeof(received) - 1, &udp_source) != sizeof(payload) - 1 ||
+                        udp_source.family != CPLUS_SOCKET_IPV6) return 16;
+                    for (unsigned int index = 0; index < sizeof(payload) - 1; index++)
+                        if (received[index] != payload[index]) return 17;
+                    if (platform_socket_close(ipv6_udp_client) != 0 || platform_socket_close(ipv6_udp_server) != 0) return 18;
                     return 0;
                 }
             """.trimIndent())

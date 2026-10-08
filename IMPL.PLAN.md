@@ -5054,13 +5054,14 @@ CPU clocks; R5.3.5 exercises create/join/TLS; R5.3.6 exercises contended
 mutex/condition/semaphore/once and supported atomic wait/wake; R5.3.7 executes
 IPv4 TCP and UDP loopback transfers through the binary-address PAL, checks
 socket/error behavior, verifies no hidden host-runtime dependency, and executes
-Windows x86_64 IPv4 TCP/UDP plus IPv6 TCP loopback with dependency audits.
+Windows x86_64 IPv4 TCP/UDP plus IPv6 TCP/UDP loopback with dependency audits.
 R5.3.8.1 executes shared address and
 hostname codec vectors; R5.3.8.2 executes Linux DNS behavior and validates
 resolver ownership; R5.3.8.3 has strict Windows source and PE-import evidence,
-but no successful Windows resolver execution. Each service also needs stable error mapping and
-source/dependency isolation evidence. The Linux tests run on this machine;
-Windows runtime execution remains deferred. R5.3.7 does not include UTF-8
+plus successful native Windows `localhost` resolution through the production
+facade. Each service also needs stable error mapping and source/dependency
+isolation evidence. Remaining Linux AArch64 runtime execution is still open.
+R5.3.7 does not include UTF-8
 address parsing/formatting or DNS, which remain exclusively in R5.3.8. The
 socket and address/DNS work items were each decomposed into independently
 testable leaves, so the roadmap denominator is now 69 rather than 65; these
@@ -5243,8 +5244,8 @@ arguments preserve caller-owned output state. The linked executable passes the
 runtime dependency audit. Together with the existing PE import inspection,
 this verifies the successful Windows Unicode system-resolver path without a
 static Winsock import. The native Windows socket fixture also executes IPv4
-TCP and UDP plus IPv6 TCP through the complete production runtime and passes
-dependency audit. Windows IPv6 UDP remains unvalidated.
+TCP/UDP and IPv6 TCP/UDP loopback through the complete production runtime and
+passes dependency audit.
 
 ### R5.1 status audit
 
