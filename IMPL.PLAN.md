@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    70/88 accepted with recorded evidence
+Roadmap leaf tasks:    72/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.6 — propagate target capabilities, stable unavailable-service diagnostics, and unused-module dependency audit
+Current task:          R5.1 — complete the remaining target-aware standard type and collection conformance
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
-R5 [DOING] 37/41 native std and platform-service leaf tasks evidenced
+R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       70/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       72/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -307,13 +307,33 @@ AArch64 target formats; the full Gradle build passes. Commit `fa0eed7` moves the
 roadmap from 69/88 to 70/88 and R5 from 36/41 to 37/41. Windows runtime
 execution remains deferred and receives no completion credit.
 
+R5.4.6 completed in commit `3f6177d`. Target service capabilities now flow
+from the selected descriptor/profile into CPX metadata; `require_service`
+reports stable available/unavailable, malformed, and unknown cases; Darwin
+self-hosting fails with the documented `SDK013`; and the dependency auditor
+fails closed for missing inspection tools and malformed ELF, PE/COFF, or
+Mach-O products. Linux production-linked minimal-program execution confirms
+unused service symbols are discarded and the executable passes dependency
+inspection. Focused capability, audit, link-driver, unused-service, and math
+facade tests passed, followed by `./gradlew build --no-daemon`. The roadmap
+moves from 70/88 to 71/88 and R5 from 37/41 to 38/41. Windows runtime and
+real-PE import validation remain deferred with no completion credit.
+
+R5.5 is also evidenced by commit `3f6177d`: Darwin is explicitly
+capability-gated rather than represented as a partially implemented runtime.
+`PlatformAbiTest`, `TargetDescriptorTest`, and `RuntimeLinkerTest` verify the
+empty Darwin service set and stable unsupported-self-host diagnostic; the
+technical architecture records this boundary. No Darwin execution is claimed.
+This moves the roadmap from 71/88 to 72/88 and R5 from 38/41 to 39/41; R5
+remains open for R5.1 and R5.2.5.
+
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.4.6 onward, then R5.5; Linux C17 stdio and
-   report tasks R4.4/R4.5 pass their recorded Linux checks; R4.6 complex and
-   type-generic math remain unimplemented.
+1. R5.4.6 and R5.5 are accepted; continue with R5.1 and R5.2.5. Linux C17
+   stdio and report tasks R4.4/R4.5 pass their recorded checks; R4.6 complex
+   and type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -4795,18 +4815,30 @@ dependencies.
       symbols. All `RuntimeStdMath*` tests pass, including strict C17 checks
       for Linux/Windows x86_64 and AArch64; the full Gradle build passes.
       Windows runtime execution remains deferred.
-  - R5.4.6 [DOING] — propagate verified target platform-service capabilities,
+  - R5.4.6 [DONE] — propagate verified target platform-service capabilities,
     produce stable unavailable-service diagnostics, and ensure unused runtime
-    services do not add platform dependencies. **Acceptance:** service
-    capabilities flow from the selected target descriptor/profile into
-    compile-time metadata; available and unavailable service checks have
-    stable diagnostics; unsupported self-hosted targets fail with a stable
-    compiler diagnostic; dependency inspection fails closed if required tools
-    are unavailable; production-linked minimal programs omit unreferenced
-    platform-service symbols/imports and pass the target dependency audit.
-    Linux execution is required; Windows runtime execution remains deferred.
-- R5.5 [TODO] — record Darwin as either executablely supported or explicitly
-  capability-gated, without claiming a partial adapter as complete.
+    services do not add platform dependencies. **Acceptance:** supported
+    services flow from the selected descriptor/profile into CPX target
+    metadata, while system-runtime and unsupported target profiles expose no
+    C+ services; `require_service("name");` accepts exactly one canonical
+    service and reports unavailable, malformed, and unknown requirements with
+    stable `CPX603` diagnostics; unsupported self-hosted targets fail with
+    stable `SDK013`; the dependency auditor validates ELF class/machine,
+    PE/COFF, and Mach-O formats and fails closed on unrecognized products or
+    unavailable/invalid inspection output; a production-linked minimal Linux
+    program omits unreferenced platform-service symbols, passes the dependency
+    audit, and executes successfully. **Evidence:** `CpxExpansionTest`,
+    `TargetServiceCapabilityIntegrationTest`, `RuntimeLinkerTest`,
+    `RuntimeDependencyAuditorTest`, `RuntimeUnusedServicesTest`,
+    `RuntimeStdMathFacadeTest`, `LinkDriverTest`, and the full
+    `./gradlew build --no-daemon` pass. Windows runtime execution and real PE
+    import audit remain deferred to final Windows validation and receive no
+    completion credit. **Commit:** `3f6177d`.
+- R5.5 [DONE] — record Darwin as explicitly capability-gated, without
+  claiming a partial adapter as complete. `PlatformAbiTest` and
+  `TargetDescriptorTest` confirm Darwin exposes no platform services, while
+  `RuntimeLinkerTest` verifies stable `SDK013` rejection for self-hosted
+  runtime selection. **Commit:** `3f6177d`; Darwin execution is not claimed.
 
 R5.2 implementation is sequenced after R1.1.1–R1.2.5 and R1.4 because it
 extends public SDK function signatures and must use the verified C primitive,

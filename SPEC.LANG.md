@@ -132,6 +132,20 @@ A conforming compiler SHALL parse or otherwise structurally interpret a CPX befo
 
 A **CPX invocation** is the compile-time invocation of a function whose result is CPX or another compile-time language entity used to construct source.
 
+The built-in declaration `require_service("name");` is a target-capability
+assertion, not an ordinary runtime function call or user-defined CPX function.
+The compiler SHALL accept exactly one quoted canonical platform-service name
+and remove the declaration before runtime lowering. If the selected runtime
+does not provide that service, compilation SHALL fail with diagnostic `CPX603`
+and identify the target and unavailable service. Malformed arguments and
+unknown service names SHALL also fail with `CPX603`.
+
+For example:
+
+```c
+require_service("file");
+```
+
 ## 3.8 CPX expansion
 
 **CPX expansion** is the process of evaluating a CPX invocation and replacing or augmenting the invocation site according to the CPX result.

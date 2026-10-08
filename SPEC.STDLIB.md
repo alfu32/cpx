@@ -1887,9 +1887,10 @@ platform-service capabilities. Canonical service names are `memory`, `file`,
 `process`, `time`, `threads`, `sync`, `atomics`, `socket-transport`, and
 `dns`. A true result means the selected SDK provides that service adapter for
 the target; it does not promise success for an individual OS request or
-external resource. Unsupported services SHALL be reported through the stable
-compile-time capability diagnostic, and runtime calls that cannot be provided
-SHALL return `CPLUS_PAL_UNSUPPORTED`.
+external resource. Source that requires a service SHALL declare
+`require_service("name");`; unavailable services, malformed declarations, and
+unknown service names SHALL fail compilation with stable diagnostic `CPX603`.
+Runtime calls that cannot be provided SHALL return `CPLUS_PAL_UNSUPPORTED`.
 
 Example:
 
@@ -1897,6 +1898,8 @@ Example:
 comptime if (target.os == OS.LINUX) {
     ...
 }
+
+require_service("file");
 ```
 
 ---

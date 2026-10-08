@@ -2798,6 +2798,14 @@ word widths, integer model, alignment, symbol/TLS rules, linker/startup entry,
 system libraries, features, intrinsic availability, and supported ABI classes.
 `ComptimeTargetInfo` and the ABI layout engine consume this data; portable SDK
 source does not duplicate target facts in preprocessor branches.
+The compiler additionally projects the selected self-hosted target profile's
+implemented platform-service set into `ComptimeTargetInfo`; a system-runtime
+profile exposes no C+ adapter services. Darwin remains explicitly
+capability-gated until its self-hosted startup and adapters exist. The built-in
+`require_service("name");` declaration is checked during CPX expansion,
+removed before runtime lowering, and reports unavailable, malformed, or
+unknown service requirements as `CPX603`. Self-hosted targets without a
+startup adapter fail selection with stable diagnostic `SDK013`.
 
 ABI declarations carry semantic identity independently of their spelling. The
 compiler model stores ABI kind, source/linker name, export/library metadata,
@@ -2816,7 +2824,13 @@ target-capable C driver automatically and translates the plan for GNU/Clang or
 MSVC-style drivers; users do not choose a host libc profile.
 `RuntimeDependencyAuditor` checks ELF, PE/COFF, and Mach-O products for
 forbidden host libc, undeclared OS imports, dynamic interpreters, and
-unresolved compiler-runtime dependencies.
+unresolved compiler-runtime dependencies. Auditing is fail-closed: ELF class
+and machine identity, PE/COFF format, and Mach-O headers must be recognized;
+required inspection tools and dependency output must be available and valid.
+Self-hosted links enable per-function/per-data sections and section garbage
+collection (`--gc-sections` or `/OPT:REF`) so unused service adapters do not
+pull their platform dependencies into minimal products. The system profile
+does not enable this self-hosted dead stripping.
 
 Runtime memory is layered as `std.alloc` → compiler-owned allocator →
 `platform_page_allocate/release`. The allocator is page-backed and exposes
