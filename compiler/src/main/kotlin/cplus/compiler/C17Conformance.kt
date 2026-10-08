@@ -161,7 +161,10 @@ object C17ConformanceFixtures {
         C17Fixture(
             "basic",
             "c17-basic.c",
-            { descriptor -> descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64") }
+            { descriptor ->
+                (descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64")) ||
+                    descriptor.targetTriple == "windows-x86_64"
+            }
         ),
         C17Fixture(
             "context",
@@ -171,7 +174,10 @@ object C17ConformanceFixtures {
         C17Fixture(
             "stdio",
             "c17-stdio.c",
-            { descriptor -> descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64") },
+            { descriptor ->
+                (descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64")) ||
+                    descriptor.targetTriple == "windows-x86_64"
+            },
             byteArrayOf('A'.code.toByte(), 0xff.toByte()),
             "P:ok\nV:8\nline\n>",
             "F:9\nW:ok\n!"

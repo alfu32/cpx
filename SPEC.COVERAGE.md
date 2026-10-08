@@ -51,6 +51,9 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 - Linux and Windows PAL file open/read/write/seek/close/rename, metadata, and
   directory iteration with canonical UTF-8 slash paths, stable error mapping,
   and the `std_fs_*` forwarding façade; Windows execution is native x86_64.
+- independent C17 `basic` and `stdio` fixtures execute on native Windows
+  x86_64 and pass PE dependency audits; C17 context and complex/tgmath remain
+  explicitly unsupported on Windows.
 
 ### Contracted but incomplete
 

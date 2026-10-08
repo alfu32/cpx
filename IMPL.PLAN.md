@@ -4443,7 +4443,15 @@ checks, complex type/header checks, and binary dependency audits. These
 registered checks do not cover the full C17 header list: `<tgmath.h>` and
 complex math function implementations remain open under R4.6. The R4.4/
 R4.5 Linux leaves pass their recorded acceptance checks; the R4 phase gate
-remains open for R4.6 and deferred Windows validation.
+remains open for the native Windows family matrix and its deferred-runtime
+families. The shared C17 runner now enables `basic` and `stdio` fixtures for
+Windows x86_64. `ConformanceTest.windowsX8664C17AuditExecutesSupportedCoreAndStdioFixtures`
+passes on the Windows VM: both fixtures execute, stdout/stderr and stdin
+contracts match, and each PE product passes the host/compiler-runtime import
+audit. The same report asserts that context, complex types, complex arithmetic,
+and tgmath are explicitly unsupported for Windows rather than counted as
+passing. This is focused Windows C17 evidence; R4 remains open for its other
+runtime/libc families.
 
 ### R4.1/R4.2 completion record
 

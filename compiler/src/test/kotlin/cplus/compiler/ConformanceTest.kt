@@ -67,6 +67,32 @@ class ConformanceTest {
     }
 
     @Test
+    fun windowsX8664C17AuditExecutesSupportedCoreAndStdioFixtures() {
+        assumeTrue(System.getProperty("os.name").contains("windows", ignoreCase = true))
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val report = C17ConformanceRunner.run(resolution, target)
+
+        assertTrue(report.failed.isEmpty(), report.failed.joinToString())
+        listOf("basic", "stdio").forEach { fixture ->
+            assertTrue(report.cases.any { it.id == "fixture.execution.$fixture" && it.status == "pass" })
+            assertTrue(report.cases.any { it.id == "fixture.dependencies.$fixture" && it.status == "pass" })
+        }
+        assertTrue(report.cases.any { it.id == "fixture.streams.stdio" && it.status == "pass" })
+        assertEquals(
+            setOf(
+                "runtime.source.complex.arithmetic",
+                "libc.setjmp-context",
+                "fixture.execution.context",
+                "fixture.execution.complex-types",
+                "fixture.execution.tgmath"
+            ),
+            report.unsupported.map { it.id }.toSet()
+        )
+    }
+
+    @Test
     fun linuxC17SetjmpFixturePassesWithOptimizationOnAvailableRunners() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
