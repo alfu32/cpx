@@ -33,3 +33,4 @@ longjmp:
 1:
     jmp *56(%rdi)
 .size longjmp, .-longjmp
+.section .note.GNU-stack,"",@progbits
