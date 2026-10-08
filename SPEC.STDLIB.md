@@ -2468,6 +2468,14 @@ domain, pole, and range errors SHALL update the thread-local `errno` as
 specified by C17. This policy does not claim floating-point exception support
 or IEC 60559 / Annex F conformance.
 
+The SDK `nan`, `nanf`, and `nanl` functions SHALL return quiet NaNs. For a
+non-null tag, the SDK SHALL compute its 64-bit FNV-1a hash over the tag's bytes
+and place the low available payload bits into the result: 22 bits for
+binary32, 51 for binary64, 62 for x87 extended precision, and 64 for
+binary128. This deterministic tag-to-payload mapping is the SDK's
+implementation-defined interpretation of the C `NAN(tag)` form; it does not
+imply support for signaling NaNs or payload preservation by other operations.
+
 The SDK SHALL expose the supported real operations through `std.math` with
 explicit C+ declarations and types. It SHALL preserve the selected target's
 floating formats and ABI, including `long double`, and SHALL NOT silently

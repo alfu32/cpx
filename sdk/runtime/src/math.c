@@ -452,3 +452,561 @@ CPLUS_MATH_DEFINE_INTEGER_ROUNDING(, double, rint, round)
 CPLUS_MATH_DEFINE_INTEGER_ROUNDING(l, long double, rintl, roundl)
 
 #undef CPLUS_MATH_DEFINE_INTEGER_ROUNDING
+
+static int cplus_math_highest_set_bit(const unsigned char* bytes, int bit_count) {
+    int bit_index;
+    for (bit_index = bit_count - 1; bit_index >= 0; bit_index--) {
+        if (cplus_math_raw_bit(bytes, (unsigned int)bit_index)) return bit_index;
+    }
+    return -1;
+}
+
+static int cplus_math_ilogb_float(float value) {
+    const unsigned char* bytes = (const unsigned char*)&value;
+    int kind = cplus_math_classify_float(value);
+    unsigned int exponent = ((unsigned int)(bytes[3] & 0x7f) << 1) | (bytes[2] >> 7);
+    if (kind == FP_NAN) {
+        errno = EDOM;
+        return FP_ILOGBNAN;
+    }
+    if (kind == FP_ZERO) {
+        errno = EDOM;
+        return FP_ILOGB0;
+    }
+    if (kind == FP_INFINITE) return INT_MAX;
+    if (exponent != 0) return (int)exponent - 127;
+    return cplus_math_highest_set_bit(bytes, 23) - 149;
+}
+
+static int cplus_math_ilogb_double(double value) {
+    const unsigned char* bytes = (const unsigned char*)&value;
+    int kind = cplus_math_classify_double(value);
+    unsigned int exponent = ((unsigned int)(bytes[7] & 0x7f) << 4) | (bytes[6] >> 4);
+    if (kind == FP_NAN) {
+        errno = EDOM;
+        return FP_ILOGBNAN;
+    }
+    if (kind == FP_ZERO) {
+        errno = EDOM;
+        return FP_ILOGB0;
+    }
+    if (kind == FP_INFINITE) return INT_MAX;
+    if (exponent != 0) return (int)exponent - 1023;
+    return cplus_math_highest_set_bit(bytes, 52) - 1074;
+}
+
+static int cplus_math_ilogb_long_double(long double value) {
+    const unsigned char* bytes = (const unsigned char*)&value;
+    int kind = cplus_math_classify_long_double(value);
+    unsigned int exponent;
+    if (kind == FP_NAN) {
+        errno = EDOM;
+        return FP_ILOGBNAN;
+    }
+    if (kind == FP_ZERO) {
+        errno = EDOM;
+        return FP_ILOGB0;
+    }
+    if (kind == FP_INFINITE) return INT_MAX;
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+    exponent = ((unsigned int)(bytes[7] & 0x7f) << 4) | (bytes[6] >> 4);
+    if (exponent != 0) return (int)exponent - 1023;
+    return cplus_math_highest_set_bit(bytes, 52) - 1074;
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+    exponent = ((unsigned int)(bytes[9] & 0x7f) << 8) | bytes[8];
+    if (exponent != 0) return (int)exponent - 16383;
+    return cplus_math_highest_set_bit(bytes, 63) - 16445;
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+    exponent = ((unsigned int)(bytes[15] & 0x7f) << 8) | bytes[14];
+    if (exponent != 0) return (int)exponent - 16383;
+    return cplus_math_highest_set_bit(bytes, 112) - 16494;
+#endif
+}
+
+int ilogbf(float value) {
+    return cplus_math_ilogb_float(value);
+}
+
+int ilogb(double value) {
+    return cplus_math_ilogb_double(value);
+}
+
+int ilogbl(long double value) {
+    return cplus_math_ilogb_long_double(value);
+}
+
+#define CPLUS_MATH_DEFINE_FREXP(suffix, type, classifier, ilogb_value) \
+    type frexp##suffix(type value, int* exponent_output) { \
+        int kind = classifier(value); \
+        int exponent; \
+        if (kind == FP_ZERO || kind == FP_INFINITE || kind == FP_NAN) { \
+            if (exponent_output != (int*)0) *exponent_output = 0; \
+            return value; \
+        } \
+        exponent = ilogb_value(value) + 1; \
+        if (exponent > 0) { \
+            int step; \
+            for (step = 0; step < exponent; step++) value *= (type)0.5; \
+        } else { \
+            int step; \
+            for (step = exponent; step < 0; step++) value *= (type)2; \
+        } \
+        if (exponent_output != (int*)0) *exponent_output = exponent; \
+        return value; \
+    }
+
+CPLUS_MATH_DEFINE_FREXP(f, float, cplus_math_classify_float, cplus_math_ilogb_float)
+CPLUS_MATH_DEFINE_FREXP(, double, cplus_math_classify_double, cplus_math_ilogb_double)
+CPLUS_MATH_DEFINE_FREXP(l, long double, cplus_math_classify_long_double, cplus_math_ilogb_long_double)
+
+#undef CPLUS_MATH_DEFINE_FREXP
+
+#define CPLUS_MATH_DEFINE_MODF(suffix, type, classifier, truncate_value, copy_sign) \
+    type modf##suffix(type value, type* integral_output) { \
+        int kind = classifier(value); \
+        type integral; \
+        type fraction; \
+        if (kind == FP_NAN || kind == FP_INFINITE) { \
+            if (integral_output != (type*)0) *integral_output = value; \
+            if (kind == FP_INFINITE) return copy_sign((type)0, value); \
+            return value; \
+        } \
+        if (kind == FP_ZERO) { \
+            if (integral_output != (type*)0) *integral_output = value; \
+            return value; \
+        } \
+        integral = truncate_value(value); \
+        if (integral == value) fraction = copy_sign((type)0, value); \
+        else fraction = value - integral; \
+        if (integral_output != (type*)0) *integral_output = integral; \
+        return fraction; \
+    }
+
+static float cplus_math_copysign_float(float magnitude, float sign) {
+    unsigned char* magnitude_bytes = (unsigned char*)&magnitude;
+    const unsigned char* sign_bytes = (const unsigned char*)&sign;
+    magnitude_bytes[3] = (unsigned char)((magnitude_bytes[3] & 0x7f) | (sign_bytes[3] & 0x80));
+    return magnitude;
+}
+
+static double cplus_math_copysign_double(double magnitude, double sign) {
+    unsigned char* magnitude_bytes = (unsigned char*)&magnitude;
+    const unsigned char* sign_bytes = (const unsigned char*)&sign;
+    magnitude_bytes[7] = (unsigned char)((magnitude_bytes[7] & 0x7f) | (sign_bytes[7] & 0x80));
+    return magnitude;
+}
+
+static long double cplus_math_copysign_long_double(long double magnitude, long double sign) {
+    unsigned char* magnitude_bytes = (unsigned char*)&magnitude;
+    const unsigned char* sign_bytes = (const unsigned char*)&sign;
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+    magnitude_bytes[7] = (unsigned char)((magnitude_bytes[7] & 0x7f) | (sign_bytes[7] & 0x80));
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+    magnitude_bytes[9] = (unsigned char)((magnitude_bytes[9] & 0x7f) | (sign_bytes[9] & 0x80));
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+    magnitude_bytes[15] = (unsigned char)((magnitude_bytes[15] & 0x7f) | (sign_bytes[15] & 0x80));
+#endif
+    return magnitude;
+}
+
+CPLUS_MATH_DEFINE_MODF(f, float, cplus_math_classify_float, cplus_math_truncate_float, cplus_math_copysign_float)
+CPLUS_MATH_DEFINE_MODF(, double, cplus_math_classify_double, cplus_math_truncate_double, cplus_math_copysign_double)
+CPLUS_MATH_DEFINE_MODF(l, long double, cplus_math_classify_long_double, cplus_math_truncate_long_double, cplus_math_copysign_long_double)
+
+#undef CPLUS_MATH_DEFINE_MODF
+
+float copysignf(float magnitude, float sign) {
+    return cplus_math_copysign_float(magnitude, sign);
+}
+
+double copysign(double magnitude, double sign) {
+    return cplus_math_copysign_double(magnitude, sign);
+}
+
+long double copysignl(long double magnitude, long double sign) {
+    return cplus_math_copysign_long_double(magnitude, sign);
+}
+
+static unsigned long long cplus_math_nan_payload(const char* tag) {
+    unsigned long long hash = 14695981039346656037ULL;
+    if (tag == (const char*)0) return hash;
+    while (*tag != '\0') {
+        hash ^= (unsigned char)*tag++;
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
+static float cplus_math_make_nan_float(const char* tag) {
+    float value = 0.0f;
+    unsigned char* bytes = (unsigned char*)&value;
+    unsigned long long payload = cplus_math_nan_payload(tag) & 0x3fffffULL;
+    bytes[0] = (unsigned char)payload;
+    bytes[1] = (unsigned char)(payload >> 8);
+    bytes[2] = (unsigned char)(0xc0 | ((payload >> 16) & 0x3f));
+    bytes[3] = 0x7f;
+    return value;
+}
+
+static double cplus_math_make_nan_double(const char* tag) {
+    double value = 0.0;
+    unsigned char* bytes = (unsigned char*)&value;
+    unsigned long long payload = cplus_math_nan_payload(tag) & 0x7ffffffffffffULL;
+    unsigned int index;
+    for (index = 0; index < 6; index++) bytes[index] = (unsigned char)(payload >> (index * 8));
+    bytes[6] = (unsigned char)(0xf8 | ((payload >> 48) & 0x07));
+    bytes[7] = 0x7f;
+    return value;
+}
+
+static long double cplus_math_make_nan_long_double(const char* tag) {
+    long double value = 0.0L;
+    unsigned char* bytes = (unsigned char*)&value;
+    unsigned long long payload = cplus_math_nan_payload(tag);
+    unsigned int index;
+    for (index = 0; index < sizeof(value); index++) bytes[index] = 0;
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+    for (index = 0; index < 6; index++) bytes[index] = (unsigned char)(payload >> (index * 8));
+    bytes[6] = (unsigned char)(0xf8 | ((payload >> 48) & 0x07));
+    bytes[7] = 0x7f;
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+    for (index = 0; index < 7; index++) bytes[index] = (unsigned char)(payload >> (index * 8));
+    bytes[7] = (unsigned char)(0xc0 | ((payload >> 56) & 0x3f));
+    bytes[8] = 0xff;
+    bytes[9] = 0x7f;
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+    for (index = 0; index < 8; index++) bytes[index] = (unsigned char)(payload >> (index * 8));
+    bytes[13] = 0x80;
+    bytes[14] = 0xff;
+    bytes[15] = 0x7f;
+#endif
+    return value;
+}
+
+float nanf(const char* tag) {
+    return cplus_math_make_nan_float(tag);
+}
+
+double nan(const char* tag) {
+    return cplus_math_make_nan_double(tag);
+}
+
+long double nanl(const char* tag) {
+    return cplus_math_make_nan_long_double(tag);
+}
+
+static float cplus_math_scale_float(float value, long exponent) {
+    int kind = cplus_math_classify_float(value);
+    int current_exponent;
+    if (kind == FP_ZERO || kind == FP_INFINITE || kind == FP_NAN) return value;
+    current_exponent = cplus_math_ilogb_float(value);
+    if (exponent > (long)(127 - current_exponent)) {
+        errno = ERANGE;
+        return cplus_math_copysign_float(HUGE_VALF, value);
+    }
+    if (exponent < (long)(-149 - 1 - current_exponent)) {
+        errno = ERANGE;
+        return cplus_math_copysign_float(0.0f, value);
+    }
+    while (exponent > 0) {
+        value *= 2.0f;
+        exponent--;
+        if (cplus_math_classify_float(value) == FP_INFINITE) {
+            errno = ERANGE;
+            return value;
+        }
+    }
+    while (exponent < 0) {
+        value *= 0.5f;
+        exponent++;
+        if (cplus_math_classify_float(value) == FP_ZERO) {
+            errno = ERANGE;
+            return value;
+        }
+    }
+    return value;
+}
+
+static double cplus_math_scale_double(double value, long exponent) {
+    int kind = cplus_math_classify_double(value);
+    int current_exponent;
+    if (kind == FP_ZERO || kind == FP_INFINITE || kind == FP_NAN) return value;
+    current_exponent = cplus_math_ilogb_double(value);
+    if (exponent > (long)(1023 - current_exponent)) {
+        errno = ERANGE;
+        return cplus_math_copysign_double(HUGE_VAL, value);
+    }
+    if (exponent < (long)(-1074 - 1 - current_exponent)) {
+        errno = ERANGE;
+        return cplus_math_copysign_double(0.0, value);
+    }
+    while (exponent > 0) {
+        value *= 2.0;
+        exponent--;
+        if (cplus_math_classify_double(value) == FP_INFINITE) {
+            errno = ERANGE;
+            return value;
+        }
+    }
+    while (exponent < 0) {
+        value *= 0.5;
+        exponent++;
+        if (cplus_math_classify_double(value) == FP_ZERO) {
+            errno = ERANGE;
+            return value;
+        }
+    }
+    return value;
+}
+
+static long double cplus_math_scale_long_double(long double value, long exponent) {
+    int kind = cplus_math_classify_long_double(value);
+    int current_exponent;
+    int maximum_exponent;
+    int minimum_subnormal_exponent;
+    if (kind == FP_ZERO || kind == FP_INFINITE || kind == FP_NAN) return value;
+    current_exponent = cplus_math_ilogb_long_double(value);
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+    maximum_exponent = 1023;
+    minimum_subnormal_exponent = -1074;
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+    maximum_exponent = 16383;
+    minimum_subnormal_exponent = -16445;
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+    maximum_exponent = 16383;
+    minimum_subnormal_exponent = -16494;
+#endif
+    if (exponent > (long)(maximum_exponent - current_exponent)) {
+        errno = ERANGE;
+        return cplus_math_copysign_long_double(HUGE_VALL, value);
+    }
+    if (exponent < (long)(minimum_subnormal_exponent - 1 - current_exponent)) {
+        errno = ERANGE;
+        return cplus_math_copysign_long_double(0.0L, value);
+    }
+    while (exponent > 0) {
+        value *= 2.0L;
+        exponent--;
+        if (cplus_math_classify_long_double(value) == FP_INFINITE) {
+            errno = ERANGE;
+            return value;
+        }
+    }
+    while (exponent < 0) {
+        value *= 0.5L;
+        exponent++;
+        if (cplus_math_classify_long_double(value) == FP_ZERO) {
+            errno = ERANGE;
+            return value;
+        }
+    }
+    return value;
+}
+
+#define CPLUS_MATH_DEFINE_SCALING(suffix, type, scale) \
+    type ldexp##suffix(type value, int exponent) { \
+        return scale(value, (long)exponent); \
+    } \
+    type scalbn##suffix(type value, int exponent) { \
+        return scale(value, (long)exponent); \
+    } \
+    type scalbln##suffix(type value, long int exponent) { \
+        return scale(value, exponent); \
+    }
+
+CPLUS_MATH_DEFINE_SCALING(f, float, cplus_math_scale_float)
+CPLUS_MATH_DEFINE_SCALING(, double, cplus_math_scale_double)
+CPLUS_MATH_DEFINE_SCALING(l, long double, cplus_math_scale_long_double)
+
+#undef CPLUS_MATH_DEFINE_SCALING
+
+static void cplus_math_increment_magnitude(unsigned char* bytes, unsigned int sign_byte) {
+    unsigned int index;
+    for (index = 0; index < sign_byte; index++) {
+        bytes[index]++;
+        if (bytes[index] != 0) return;
+    }
+    bytes[sign_byte] = (unsigned char)((bytes[sign_byte] & 0x80) | ((bytes[sign_byte] + 1) & 0x7f));
+}
+
+static void cplus_math_decrement_magnitude(unsigned char* bytes, unsigned int sign_byte) {
+    unsigned int index;
+    for (index = 0; index < sign_byte; index++) {
+        if (bytes[index] != 0) {
+            bytes[index]--;
+            return;
+        }
+        bytes[index] = 0xff;
+    }
+    bytes[sign_byte] = (unsigned char)((bytes[sign_byte] & 0x80) | ((bytes[sign_byte] - 1) & 0x7f));
+}
+
+static void cplus_math_make_smallest_subnormal(unsigned char* bytes, unsigned int sign_byte, int negative) {
+    unsigned int index;
+    for (index = 0; index < sign_byte; index++) bytes[index] = 0;
+    bytes[0] = 1;
+    bytes[sign_byte] = negative ? 0x80 : 0;
+}
+
+#if CPLUS_LONG_DOUBLE_FORMAT == 2
+static unsigned int cplus_math_x87_exponent(const unsigned char* bytes) {
+    return ((unsigned int)(bytes[9] & 0x7f) << 8) | bytes[8];
+}
+
+static void cplus_math_set_x87_exponent(unsigned char* bytes, unsigned int exponent) {
+    bytes[8] = (unsigned char)(exponent & 0xff);
+    bytes[9] = (unsigned char)((bytes[9] & 0x80) | ((exponent >> 8) & 0x7f));
+}
+
+static int cplus_math_x87_significand_is_integer_bit(const unsigned char* bytes) {
+    unsigned int index;
+    if (bytes[7] != 0x80) return 0;
+    for (index = 0; index < 7; index++) if (bytes[index] != 0) return 0;
+    return 1;
+}
+
+static void cplus_math_step_x87(unsigned char* bytes, int increase_magnitude) {
+    unsigned int exponent = cplus_math_x87_exponent(bytes);
+    unsigned int index;
+    if (increase_magnitude) {
+        for (index = 0; index < 8; index++) {
+            bytes[index]++;
+            if (bytes[index] != 0) break;
+        }
+        if (index == 8) {
+            exponent++;
+            for (index = 0; index < 7; index++) bytes[index] = 0;
+            bytes[7] = 0x80;
+            cplus_math_set_x87_exponent(bytes, exponent);
+        } else if (exponent == 0 && (bytes[7] & 0x80) != 0) {
+            cplus_math_set_x87_exponent(bytes, 1);
+        }
+        return;
+    }
+
+    if (exponent == 0x7fff) {
+        for (index = 0; index < 8; index++) bytes[index] = 0xff;
+        cplus_math_set_x87_exponent(bytes, 0x7ffe);
+        return;
+    }
+    if (cplus_math_x87_significand_is_integer_bit(bytes)) {
+        if (exponent <= 1) {
+            exponent = 0;
+            for (index = 0; index < 7; index++) bytes[index] = 0xff;
+            bytes[7] = 0x7f;
+        } else {
+            exponent--;
+            for (index = 0; index < 8; index++) bytes[index] = 0xff;
+        }
+        cplus_math_set_x87_exponent(bytes, exponent);
+        return;
+    }
+    for (index = 0; index < 8; index++) {
+        if (bytes[index] != 0) {
+            bytes[index]--;
+            return;
+        }
+        bytes[index] = 0xff;
+    }
+}
+#endif
+
+static float cplus_math_nextafter_float(float value, long double direction) {
+    int value_kind = cplus_math_classify_float(value);
+    int direction_kind = cplus_math_classify_long_double(direction);
+    int negative;
+    int increase_magnitude;
+    if (value_kind == FP_NAN) return value;
+    if (direction_kind == FP_NAN) return (float)direction;
+    if ((long double)value == direction) return (float)direction;
+    if (value_kind == FP_ZERO) {
+        unsigned char* bytes = (unsigned char*)&value;
+        cplus_math_make_smallest_subnormal(bytes, 3, cplus_math_sign_long_double(direction));
+        return value;
+    }
+    negative = cplus_math_sign_float(value);
+    increase_magnitude = (((long double)value < direction) != negative);
+    if (increase_magnitude) cplus_math_increment_magnitude((unsigned char*)&value, 3);
+    else cplus_math_decrement_magnitude((unsigned char*)&value, 3);
+    if (value_kind != FP_INFINITE && cplus_math_classify_float(value) == FP_INFINITE) errno = ERANGE;
+    return value;
+}
+
+static double cplus_math_nextafter_double(double value, long double direction) {
+    int value_kind = cplus_math_classify_double(value);
+    int direction_kind = cplus_math_classify_long_double(direction);
+    int negative;
+    int increase_magnitude;
+    if (value_kind == FP_NAN) return value;
+    if (direction_kind == FP_NAN) return (double)direction;
+    if ((long double)value == direction) return (double)direction;
+    if (value_kind == FP_ZERO) {
+        unsigned char* bytes = (unsigned char*)&value;
+        cplus_math_make_smallest_subnormal(bytes, 7, cplus_math_sign_long_double(direction));
+        return value;
+    }
+    negative = cplus_math_sign_double(value);
+    increase_magnitude = (((long double)value < direction) != negative);
+    if (increase_magnitude) cplus_math_increment_magnitude((unsigned char*)&value, 7);
+    else cplus_math_decrement_magnitude((unsigned char*)&value, 7);
+    if (value_kind != FP_INFINITE && cplus_math_classify_double(value) == FP_INFINITE) errno = ERANGE;
+    return value;
+}
+
+static long double cplus_math_nextafter_long_double(long double value, long double direction) {
+    int value_kind = cplus_math_classify_long_double(value);
+    int direction_kind = cplus_math_classify_long_double(direction);
+    int negative;
+    int increase_magnitude;
+    if (value_kind == FP_NAN) return value;
+    if (direction_kind == FP_NAN) return direction;
+    if (value == direction) return direction;
+    if (value_kind == FP_ZERO) {
+        unsigned char* bytes = (unsigned char*)&value;
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+        cplus_math_make_smallest_subnormal(bytes, 7, cplus_math_sign_long_double(direction));
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+        cplus_math_make_smallest_subnormal(bytes, 9, cplus_math_sign_long_double(direction));
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+        cplus_math_make_smallest_subnormal(bytes, 15, cplus_math_sign_long_double(direction));
+#endif
+        return value;
+    }
+    negative = cplus_math_sign_long_double(value);
+    increase_magnitude = ((value < direction) != negative);
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+    if (increase_magnitude) cplus_math_increment_magnitude((unsigned char*)&value, 7);
+    else cplus_math_decrement_magnitude((unsigned char*)&value, 7);
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+    cplus_math_step_x87((unsigned char*)&value, increase_magnitude);
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+    if (increase_magnitude) cplus_math_increment_magnitude((unsigned char*)&value, 15);
+    else cplus_math_decrement_magnitude((unsigned char*)&value, 15);
+#endif
+    if (value_kind != FP_INFINITE && cplus_math_classify_long_double(value) == FP_INFINITE) errno = ERANGE;
+    return value;
+}
+
+float nextafterf(float value, float direction) {
+    return cplus_math_nextafter_float(value, (long double)direction);
+}
+
+double nextafter(double value, double direction) {
+    return cplus_math_nextafter_double(value, (long double)direction);
+}
+
+long double nextafterl(long double value, long double direction) {
+    return cplus_math_nextafter_long_double(value, direction);
+}
+
+float nexttowardf(float value, long double direction) {
+    return cplus_math_nextafter_float(value, direction);
+}
+
+double nexttoward(double value, long double direction) {
+    return cplus_math_nextafter_double(value, direction);
+}
+
+long double nexttowardl(long double value, long double direction) {
+    return cplus_math_nextafter_long_double(value, direction);
+}
