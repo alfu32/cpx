@@ -1108,6 +1108,83 @@ address/socket ABI.
 APIs SHALL remain below the PAL; programs that do not use networking SHALL
 NOT acquire a Winsock dependency merely because the SDK provides it.
 
+### 16.1 Address text and DNS resolution
+
+The PAL SHALL provide locale-independent address conversion and hostname
+resolution through these additive version-four declarations:
+
+```c
+int platform_network_parse_address(
+    unsigned int family,
+    const char* text,
+    cplus_socket_address_t* address);
+long long platform_network_format_address(
+    const cplus_socket_address_t* address,
+    char* output,
+    unsigned long long capacity);
+int platform_network_resolve(
+    const char* hostname,
+    unsigned int family,
+    unsigned short port,
+    cplus_socket_address_t* addresses,
+    unsigned long long capacity,
+    unsigned long long* count);
+```
+
+Address parsing SHALL accept an explicit IPv4 or IPv6 family and a bare
+address literal (without URI brackets or a port). IPv4 text SHALL contain
+exactly four decimal octets in the range 0 through 255. IPv6 text SHALL follow
+the accepted literal forms in RFC 4291, including `::` compression and an
+optional dotted-decimal IPv4 tail. An IPv6 scope suffix MAY be supplied as
+`%` followed by an unsigned decimal scope identifier; named interfaces and URI
+zone escaping are outside this PAL operation. Parsing SHALL set the family,
+zero the port and reserved fields, and preserve the scope identifier. Invalid
+text SHALL return `CPLUS_PAL_INVALID_ARGUMENT`.
+
+Address formatting SHALL accept the binary address record and return the
+number of output bytes excluding the terminating NUL. The caller SHALL provide
+capacity for the NUL byte. A short output buffer SHALL return
+`CPLUS_PAL_BUFFER_TOO_SMALL` without modifying the output. IPv4 SHALL use
+dotted-decimal text. IPv6 SHALL use the canonical lowercase form, longest-zero
+run compression, and leftmost tie-breaking specified by RFC 5952; a nonzero
+scope identifier SHALL be appended as `%` plus decimal digits. Formatting
+SHALL not include a port or brackets and SHALL not allocate memory.
+
+Hostname input and all PAL text buffers SHALL be UTF-8, independent of the
+Windows active code page. A hostname SHALL be a fully qualified DNS name; a
+final root dot MAY be omitted and SHALL not cause search-suffix expansion.
+ASCII labels SHALL use DNS hostname syntax. A non-ASCII label SHALL be a valid,
+NFC-normalized IDNA2008 U-label supplied by the caller; the PAL SHALL encode it
+to its DNS A-label form and SHALL reject malformed UTF-8 and labels that
+exceed DNS wire limits. The PAL is not required to normalize Unicode or
+provide Unicode-table-based IDNA validity checking.
+
+Resolution family SHALL be IPv4, IPv6, or zero for both. Successful results
+SHALL be copied into caller-owned `cplus_socket_address_t` elements, with the
+requested host-order port and zero reserved fields; no native resolver list or
+allocator ownership SHALL escape the PAL. Duplicate address records SHALL be
+removed. Result order is unspecified. `count` SHALL be required and report the
+number of unique results required or produced. If `capacity` is too small, the
+PAL MAY write the first `capacity` results and SHALL return
+`CPLUS_PAL_BUFFER_TOO_SMALL`; no result memory is retained by the PAL. A null
+result array is valid only when capacity is zero. A numeric address SHALL be
+resolved without a DNS transaction when it matches the requested family.
+
+The Linux resolver SHALL read up to three numeric `nameserver` entries from
+`/etc/resolv.conf`, use a randomized DNS transaction identifier and ephemeral
+source port, query A and/or AAAA records, verify the response question and
+source, follow bounded CNAME chains, and use TCP when a UDP reply is truncated
+(RFC 1035 and RFC 7766). Each DNS exchange SHALL have a finite timeout; native
+resolver, socket, and DNS response codes SHALL be translated to stable PAL
+results. The Windows resolver SHALL use the Unicode Winsock resolver API via
+the dynamically loaded `ws2_32.dll` module and SHALL copy and release its
+native result list before returning. Neither resolver SHALL require a host C
+runtime or expose native error codes. A name with no address result SHALL
+return `CPLUS_PAL_NOT_FOUND`; unsupported families SHALL return
+`CPLUS_PAL_UNSUPPORTED`; other resolver or transport failures SHALL return
+`CPLUS_PAL_NETWORK_ERROR`. DNSSEC validation and search-list expansion are
+outside this API contract.
+
 ---
 
 # 17. libc conformance profiles

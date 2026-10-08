@@ -2907,9 +2907,16 @@ Winsock 2.2, and cache only stable PAL status values. A successful startup SHALL
 be balanced by `WSACleanup` during process termination. The runtime linker
 includes the Windows socket adapter only for Windows targets. Both adapters
 expose blocking lifecycle, TCP stream, UDP datagram, local/peer address, and
-shutdown operations with stable PAL error results. The subsequent address/DNS
-stage adds text conversion and name resolution above this binary transport
-ABI.
+shutdown operations with stable PAL error results. The address/DNS layer sits
+above this binary transport ABI. A shared freestanding runtime source parses
+and formats IPv4/IPv6 text, performs UTF-8 validation and IDNA A-label encoding,
+and returns canonical text without locale or host-library dependencies. Linux
+uses the configured numeric nameservers, direct PAL sockets, bounded UDP
+queries, and TCP fallback for truncated DNS messages. Windows uses the Unicode
+Winsock resolver after lazy module initialization and copies/frees the native
+result list before returning. Both implementations expose the same caller-owned
+address-array ABI and stable PAL error values; neither leaks native resolver
+structures or allocator ownership.
 
 The C backend's ABI gate includes an independently compiled C17 caller fixture.
 The fixture MUST consume the generated public header and link against generated
