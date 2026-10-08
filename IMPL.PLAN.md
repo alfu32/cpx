@@ -5550,12 +5550,15 @@ hard-coded CLI path.
   `CliIntegrationTest.windowsMinGWBuildProducesPeWithoutCrtOrOptionalAtomicImports`
   now repeats the target build and PE import audit when MinGW tools are
   installed. The complete `examples/minimal.cp` PE product links locally.
-  Wine 11.0 is installed, but first-time isolated-prefix initialization timed
-  out before the product launched, so it provides no execution evidence.
-  This is cross-link and import evidence only—not Windows runtime execution.
-  SSH to the requested Windows VM
-  currently fails with `No route to host`; R8.3 remains open and receives no
-  completion credit.
+  The MinGW integration fixture also declares initialized C+ `thread_local`
+  storage and executes the resulting PE under Wine 11.0 when Wine is present.
+  The fixture passes, exercising process startup, emulated TLS initialization,
+  TLS reads, and TLS writes. The first Wine prefix attempt stalled while
+  installing optional components; initializing an isolated prefix with
+  `WINEDLLOVERRIDES=mscoree,mshtml=` succeeded. This is Wine compatibility
+  execution evidence, not native Windows OS evidence. SSH to the requested
+  Windows VM currently fails with `No route to host`; native R8.3 execution
+  gates remain open and receive no completion credit.
 - R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
   builds, documented examples, and upgrade/ABI compatibility rules.
 

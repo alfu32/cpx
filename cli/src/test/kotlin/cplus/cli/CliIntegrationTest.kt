@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -167,7 +168,7 @@ class CliIntegrationTest {
     }
 
     @Test
-    fun windowsMinGWBuildProducesPeWithoutCrtOrOptionalAtomicImports() {
+    fun windowsMinGWBuildProducesPeWithoutCrtAndRunsTlsUnderWineWhenAvailable() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val compiler = "x86_64-w64-mingw32-gcc"
         val inspector = "x86_64-w64-mingw32-objdump"
@@ -175,7 +176,18 @@ class CliIntegrationTest {
         assumeTrue(commandAvailable(inspector), "MinGW PE inspection tools are not installed")
 
         val directory = Files.createTempDirectory("cplus-cli-windows-pe")
-        val source = directory.resolve("main.cp").also { it.writeText("int main() { return 0; }") }
+        val source = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    thread_local int tls_value = 41;
+                    int main() {
+                        if (tls_value != 41) return 1;
+                        tls_value = 73;
+                        return tls_value == 73 ? 0 : 2;
+                    }
+                """.trimIndent()
+            )
+        }
         val executable = directory.resolve("program.exe")
         val buildOutput = captureStdout {
             assertEquals(
@@ -198,6 +210,35 @@ class CliIntegrationTest {
         assertTrue("DLL Name: KERNEL32.dll" in imports, imports)
         listOf("msvcrt", "ucrt", "WaitOnAddress", "WakeByAddress", "emutls", "chkstk")
             .forEach { forbidden -> assertTrue(forbidden !in imports.lowercase(), imports) }
+
+        if (commandAvailable("wine") && commandAvailable("wineboot")) {
+            val winePrefix = directory.resolve("wine-prefix")
+            val wineLog = directory.resolve("wine.log")
+            fun wineProcess(command: String): Process = ProcessBuilder(command, "--init")
+                .redirectErrorStream(true)
+                .redirectOutput(wineLog.toFile())
+                .apply {
+                    environment()["WINEPREFIX"] = winePrefix.toString()
+                    environment()["WINEDLLOVERRIDES"] = "mscoree,mshtml="
+                    environment()["WINEDEBUG"] = "-all"
+                }
+                .start()
+
+            val initialize = wineProcess("wineboot")
+            assertTrue(initialize.waitFor(60, TimeUnit.SECONDS), wineLog.readText())
+            assertEquals(0, initialize.exitValue(), wineLog.readText())
+            val execute = ProcessBuilder("wine", executable.toString())
+                .redirectErrorStream(true)
+                .redirectOutput(wineLog.toFile())
+                .apply {
+                    environment()["WINEPREFIX"] = winePrefix.toString()
+                    environment()["WINEDLLOVERRIDES"] = "mscoree,mshtml="
+                    environment()["WINEDEBUG"] = "-all"
+                }
+                .start()
+            assertTrue(execute.waitFor(30, TimeUnit.SECONDS), wineLog.readText())
+            assertEquals(0, execute.exitValue(), wineLog.readText())
+        }
     }
 
     @Test
