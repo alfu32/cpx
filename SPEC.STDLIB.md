@@ -961,6 +961,21 @@ int std_time_duration_subtract(
 int std_time_duration_compare(
     const std_duration_t* left, const std_duration_t* right, int* ordering);
 int std_time_duration_get_nanoseconds(const std_duration_t* duration, long long* nanoseconds);
+
+typedef struct std_calendar_time_t {
+    long long year;
+    unsigned int month;
+    unsigned int day;
+    unsigned int hour;
+    unsigned int minute;
+    unsigned int second;
+    unsigned int nanosecond;
+} std_calendar_time_t;
+
+int std_time_calendar_from_unix_timestamp(
+    long long unix_seconds, unsigned int nanosecond, std_calendar_time_t* result);
+int std_time_calendar_to_unix_timestamp(
+    const std_calendar_time_t* calendar, long long* unix_seconds, unsigned int* nanosecond);
 ```
 
 `std_duration_t` SHALL be an eight-byte signed nanosecond quantity. Duration
@@ -972,6 +987,17 @@ two for arithmetic overflow. The status accessors
 return one and two respectively. Comparison SHALL set `ordering` to -1, 0, or 1
 and return the same pointer-validation status. Nanosecond construction cannot
 overflow its representation but SHALL still validate the output pointer.
+
+The calendar type SHALL have a 32-byte size and 8-byte alignment. It SHALL use
+the proleptic Gregorian calendar with astronomical year numbering (including
+year zero), UTC, months 1–12, days 1–31 as valid for the selected month, hours
+0–23, minutes and seconds 0–59, and nanoseconds 0–999,999,999. Leap seconds
+are not represented. Conversion from a timestamp SHALL accept every signed
+64-bit Unix second value and preserve the supplied fractional nanoseconds.
+Conversion to a timestamp SHALL accept only calendar values whose resulting
+Unix seconds fit in signed 64 bits. Both conversions SHALL return zero on
+success, one for null pointers or invalid fields, and two for timestamp range
+overflow; on failure, output objects and scalars SHALL remain unchanged.
 
 ---
 

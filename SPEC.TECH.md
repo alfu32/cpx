@@ -2876,9 +2876,11 @@ FILETIME sources respectively. Overflow and native clock failures map to
 stable PAL errors. The C `time()` and `clock()` façades consume wall and
 process-CPU time rather than aliasing both to a monotonic timer.
 The target-independent `sdk/runtime/src/time.c` also forwards `std.time` clock
-values and implements signed, overflow-checked nanosecond duration conversion
-and arithmetic. C `time()` and `clock()` map negative PAL results to their
-standard -1 sentinel rather than leaking PAL error values.
+values, implements signed overflow-checked nanosecond duration conversion and
+arithmetic, and converts between timestamps and the fixed-layout proleptic
+Gregorian UTC calendar type without libc or timezone-database dependencies.
+C `time()` and `clock()` map negative PAL results to their standard -1
+sentinel rather than leaking PAL error values.
 
 The version-4 thread adapter creates runtime-managed threads without pthreads.
 Linux uses an architecture-specific raw `clone` entry, `CLONE_SETTLS`, the
