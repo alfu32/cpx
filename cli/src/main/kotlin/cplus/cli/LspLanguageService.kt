@@ -47,6 +47,12 @@ internal data class NavigationInfo(
     val references: List<SourceRange>
 )
 
+internal data class ImportQuickFix(
+    val title: String,
+    val provider: String,
+    val edits: List<ImportTextEdit>
+)
+
 internal data class SignatureParameterInfo(
     val label: String,
     val documentation: String? = null
@@ -59,6 +65,57 @@ internal data class SignatureInfo(
 )
 
 internal object LspLanguageService {
+    fun importQuickFixes(
+        result: CompileResult,
+        text: String,
+        sourcePath: Path,
+        importIndex: ImportIndexResult
+    ): List<ImportQuickFix> {
+        val model = result.semanticModel ?: return emptyList()
+        val artifact = artifactFor(result, sourcePath) ?: return emptyList()
+        val sourceDiagnostics = result.diagnostics.filter { it.range?.file == artifact.source.id }
+        if (sourceDiagnostics.any { it.code?.startsWith("PARSE") == true || it.code?.startsWith("LEX") == true }) {
+            return emptyList()
+        }
+        val actions = mutableListOf<ImportQuickFix>()
+        sourceDiagnostics.forEach { diagnostic ->
+            val unresolved = unresolvedImportName(diagnostic.code, diagnostic.message) ?: return@forEach
+            val range = diagnostic.range ?: return@forEach
+            val token = artifact.lexed.tokens.singleOrNull { candidate ->
+                candidate.kind == TokenKind.IDENTIFIER && candidate.lexeme == unresolved &&
+                    candidate.range.startOffset >= range.startOffset && candidate.range.endOffset <= range.endOffset
+            } ?: return@forEach
+            val callable = diagnostic.code == "SEM301" && model.nodeIds.values
+                .filterIsInstance<cplus.core.AstCall>()
+                .any { call -> call.callee is AstIdentifier && call.callee.origin.primaryRange == token.range }
+            val compatibleKinds = when {
+                diagnostic.code in TYPE_DIAGNOSTICS -> TYPE_EXPORTS
+                diagnostic.code == "SEM301" && callable -> CALLABLE_EXPORTS
+                diagnostic.code == "SEM301" -> VALUE_EXPORTS
+                else -> return@forEach
+            }
+            importIndex.exports.asSequence()
+                .filter { it.topLevelBinding && it.name == unresolved && it.kind in compatibleKinds }
+                .forEach { export ->
+                    val plan = ImportEdits.build(text, export.importReference, export.name) ?: return@forEach
+                    val edits = buildList {
+                        plan.importEdit?.let(::add)
+                        if (plan.symbolReplacement != unresolved) {
+                            add(ImportTextEdit(ImportTextRange(token.range.startOffset, token.range.endOffset), plan.symbolReplacement))
+                        }
+                    }
+                    if (edits.isNotEmpty()) {
+                        actions += ImportQuickFix(
+                            "Import '$unresolved' from ${export.provider}",
+                            export.provider,
+                            edits
+                        )
+                    }
+                }
+        }
+        return actions.distinctBy { it.provider to it.edits }.sortedBy { it.provider }
+    }
+
     fun importCompletion(
         context: ImportCompletionContext,
         index: ImportIndexResult,
@@ -347,4 +404,21 @@ internal object LspLanguageService {
         ImportExportKind.STRUCT, ImportExportKind.UNION, ImportExportKind.ENUM,
         ImportExportKind.TYPE_ALIAS, ImportExportKind.C_TYPE -> 7
     }
+
+    private fun unresolvedImportName(code: String?, message: String): String? {
+        if (code !in TYPE_DIAGNOSTICS && code != "SEM301") return null
+        val expectedPrefix = if (code == "SEM301") "unknown identifier" else "unknown"
+        if (!message.startsWith(expectedPrefix)) return null
+        return Regex("'([^']+)'").find(message)?.groupValues?.getOrNull(1)
+    }
+
+    private val TYPE_DIAGNOSTICS = setOf("SEM101", "SEM102", "SEM105", "SEM106")
+    private val TYPE_EXPORTS = setOf(
+        ImportExportKind.STRUCT, ImportExportKind.UNION, ImportExportKind.ENUM,
+        ImportExportKind.TYPE_ALIAS, ImportExportKind.C_TYPE
+    )
+    private val CALLABLE_EXPORTS = setOf(ImportExportKind.FUNCTION, ImportExportKind.C_FUNCTION)
+    private val VALUE_EXPORTS = setOf(
+        ImportExportKind.VALUE, ImportExportKind.ENUM_VALUE, ImportExportKind.C_VALUE
+    )
 }

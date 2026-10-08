@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    112/129 accepted with recorded evidence; 17 TODO
+Roadmap leaf tasks:    113/129 accepted with recorded evidence; 16 TODO
 Phase gates:           11/13 complete; 1 active; 1 queued
-Current task:          R10.3.1.1 — map unresolved-symbol diagnostics to compatible providers
+Current task:          R10.3.1.2 — expose import quick fixes through the LSP server
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -36,11 +36,11 @@ R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
 R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
-R10 [DOING] 14/19 import discovery, completion and quick fixes
+R10 [DOING] 15/19 import discovery, completion and quick fixes
 R11 [TODO]  0/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 
-TOTAL       112/129 implementation tasks accepted; 11/13 phase gates complete,
+TOTAL       113/129 implementation tasks accepted; 11/13 phase gates complete,
             1 active, 1 queued
 ```
 
@@ -51,7 +51,7 @@ denominator to 128. R12 adds one independently accepted generated-version
 task, bringing the current denominator to 129. Their broader existing task IDs
 are retained as composites, not double-counted as leaves.
 The recorded Linux/Windows results above apply to the prior R0–R9 baseline, not
-these features. Fourteen R10 leaves now have recorded Linux evidence; R10 remains
+these features. Fifteen R10 leaves now have recorded Linux evidence; R10 remains
 active and R11 remains queued.
 
 R9 adds four independently accepted distribution leaves to the prior 93-task
@@ -3785,7 +3785,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [11/13 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 112/129 accepted; R10.1 (10/10) and R10.2 (4/4) accepted;
+Roadmap leaf tasks: 113/129 accepted; R10.1 (10/10) and R10.2 (4/4) accepted;
                      R10 active,
                      R11 queued, R12 accepted
 
@@ -3799,7 +3799,7 @@ Roadmap leaf tasks: 112/129 accepted; R10.1 (10/10) and R10.2 (4/4) accepted;
 [DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
-[DOING] R10 — import discovery, completion and quick fixes (14/19 leaves)
+[DOING] R10 — import discovery, completion and quick fixes (15/19 leaves)
 [TODO]  R11 — compile-time extension methods (0/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 ```
@@ -6271,12 +6271,12 @@ access; export metadata marks aggregate members as non-top-level bindings.
 **Language:** LS §41.1 Import assistance; §43 C interoperability.
 **Technical:** TS §50 LSP architecture; §54.1 Discoverable imports; §63 Testing architecture.
 
-#### R10.3.1 [TODO] [0/2] Import code actions
+#### R10.3.1 [DOING] [1/2] Import code actions
 
 **Language:** LS §41.1 Import assistance.
 **Technical:** TS §50 LSP architecture; §54.1 Discoverable imports.
 
-##### R10.3.1.1 [DOING] Map unresolved-symbol diagnostics to compatible providers
+##### R10.3.1.1 [DONE] Map unresolved-symbol diagnostics to compatible providers
 
 **Language:** LS §21.2 Import semantics; §41.1 Import assistance.
 **Technical:** TS §46 Diagnostic system; §54.1 Discoverable imports.
@@ -6290,7 +6290,13 @@ access; export metadata marks aggregate members as non-top-level bindings.
 
 **Verify:** `gradle :cli:test` (quick-fix logic and apply/recheck fixtures).
 
-##### R10.3.1.2 [TODO] Expose import quick fixes through the LSP server
+**Evidence:** `./gradlew :cli:test --tests cplus.cli.ImportQuickFixTest --no-daemon`
+passes. Fixtures map unresolved function/type/value names, retain ambiguous
+providers as choices, exclude private exports and SEM303/SEM306 known-call
+errors, suppress fixes on malformed source, and apply a callable import edit
+that subsequently passes `cplus check`.
+
+##### R10.3.1.2 [DOING] Expose import quick fixes through the LSP server
 
 **Language:** LS §41.1 Import assistance.
 **Technical:** TS §50 LSP architecture; §51 Workspace model.
