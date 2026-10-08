@@ -8,6 +8,67 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeThreadPalTest {
     @Test
+    fun linuxAarch64ThreadPalCreatesJoinableThreadsWithIndependentTlsWhenRunnerIsAvailable() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val runner = C17TargetRunner.commandPrefix("linux-aarch64")
+        assumeTrue(runner != null, "AArch64 QEMU user-mode runner is unavailable")
+
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-aarch64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-aarch64-runtime-threads")
+        val source = directory.resolve("thread_test.c").also {
+            Files.writeString(it, """
+                #include "cplus_platform.h"
+                #include "cplus_runtime.h"
+
+                _Thread_local int thread_local_value = 23;
+
+                static void* thread_entry(void* context) {
+                    int* observed = (int*)context;
+                    if (!__cplus_runtime_thread_is_attached() || thread_local_value != 23) return (void*)1;
+                    thread_local_value = 71;
+                    *observed = thread_local_value;
+                    return (void*)0x12345;
+                }
+
+                int main(void) {
+                    int observed = 0;
+                    void* result = (void*)0;
+                    long long thread;
+                    if (!__cplus_runtime_thread_is_attached() || thread_local_value != 23) return 1;
+                    thread_local_value = 41;
+                    thread = platform_thread_create(thread_entry, &observed);
+                    if (thread <= 0) return 2;
+                    if (platform_thread_join(thread, &result) != 0) return 3;
+                    if (result != (void*)0x12345 || observed != 71) return 4;
+                    if (thread_local_value != 41) return 5;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("thread_test")
+
+        try {
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+
+            val process = ProcessBuilder(runner!! + executable.toString()).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), output)
+        } finally {
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(source)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test
     fun linuxCloneCreatesJoinableThreadWithIndependentStaticTls() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
