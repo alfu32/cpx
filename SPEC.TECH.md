@@ -2895,6 +2895,17 @@ platform-specific waiter count. The runtime link plan includes the shared
 algorithm source and exactly one target wait/wake adapter; ordinary atomic
 load/store/RMW operations do not become OS services.
 
+Socket transport uses a fixed 28-byte binary address record independent of
+`sockaddr` layouts. Linux adapters translate that record and use the
+architecture's direct socket syscalls, setting close-on-exec on created and
+accepted descriptors. Windows adapters translate it to Winsock structures and
+resolve Winsock entry points from `ws2_32.dll` on first use through the already
+required kernel API; the executable's PE import table therefore does not gain
+an unconditional `ws2_32` dependency. Both adapters expose blocking lifecycle,
+TCP stream, UDP datagram, local/peer address, and shutdown operations with
+stable PAL error results. The subsequent address/DNS stage adds text
+conversion and name resolution above this binary transport ABI.
+
 The C backend's ABI gate includes an independently compiled C17 caller fixture.
 The fixture MUST consume the generated public header and link against generated
 C, exercising scalar and object-pointer parameters, aggregate by-value

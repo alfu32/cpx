@@ -247,8 +247,9 @@ be represented as valid UTF-8 SHALL return `CPLUS_PAL_UNSUPPORTED`. Directory
 handles are opaque and SHALL be closed with `platform_directory_close`.
 
 PAL version 4 SHALL preserve every version-3 operation and add the clock
-services specified in §14 and the thread/synchronization services specified in
-§15. `CPLUS_PAL_API_VERSION` SHALL be 4.
+services specified in §14, thread/synchronization services specified in §15,
+and socket transport services specified in §16. `CPLUS_PAL_API_VERSION` SHALL
+be 4.
 
 Portable runtime and standard-library code SHALL call these PAL operations and
 SHALL NOT contain Linux syscall instructions, Windows DLL declarations, host
@@ -1031,18 +1032,79 @@ The implementation SHALL NOT require pthreads on non-POSIX targets.
 
 Networking is part of the native C+ standard library but not the ISO libc compatibility contract.
 
-It SHALL provide portable:
+The version-four PAL socket surface SHALL use this target-independent address
+record and constants:
 
-```text
-socket
-TCP
-UDP
-address
-DNS
-basic network stream
+```c
+typedef long long cplus_socket_handle_t;
+
+typedef struct cplus_socket_address_t {
+    unsigned int family;       /* 4 for IPv4, 6 for IPv6 */
+    unsigned short port;       /* host byte order */
+    unsigned short reserved;   /* must be zero */
+    unsigned char address[16]; /* network-order address bytes */
+    unsigned int scope_id;     /* IPv6 scope; zero for IPv4 */
+} cplus_socket_address_t;
+
+#define CPLUS_SOCKET_IPV4 4U
+#define CPLUS_SOCKET_IPV6 6U
+#define CPLUS_SOCKET_STREAM 1U
+#define CPLUS_SOCKET_DATAGRAM 2U
+#define CPLUS_SOCKET_SHUTDOWN_RECEIVE 0U
+#define CPLUS_SOCKET_SHUTDOWN_SEND 1U
+#define CPLUS_SOCKET_SHUTDOWN_BOTH 2U
+#define CPLUS_PAL_NETWORK_ERROR (-8L)
+
+cplus_socket_handle_t platform_socket_open(unsigned int family, unsigned int kind);
+int platform_socket_bind(cplus_socket_handle_t socket, const cplus_socket_address_t* address);
+int platform_socket_listen(cplus_socket_handle_t socket, int backlog);
+cplus_socket_handle_t platform_socket_accept(cplus_socket_handle_t socket, cplus_socket_address_t* peer);
+int platform_socket_connect(cplus_socket_handle_t socket, const cplus_socket_address_t* address);
+int platform_socket_get_address(cplus_socket_handle_t socket, int peer, cplus_socket_address_t* address);
+long long platform_socket_send(cplus_socket_handle_t socket, const void* buffer, unsigned long long length);
+long long platform_socket_receive(cplus_socket_handle_t socket, void* buffer, unsigned long long capacity);
+long long platform_socket_send_to(cplus_socket_handle_t socket, const void* buffer, unsigned long long length, const cplus_socket_address_t* destination);
+long long platform_socket_receive_from(cplus_socket_handle_t socket, void* buffer, unsigned long long capacity, cplus_socket_address_t* source);
+int platform_socket_shutdown(cplus_socket_handle_t socket, unsigned int direction);
+int platform_socket_close(cplus_socket_handle_t socket);
 ```
 
-Platform-specific socket APIs belong below the PAL.
+Family is one of IPv4 or IPv6 and kind is stream or datagram; the adapter SHALL
+select the native protocol. The record has a 28-byte, four-byte-aligned ABI on
+all supported targets. IPv4 uses the first four address bytes and SHALL zero
+the remaining twelve bytes and `scope_id`; IPv6 uses all sixteen address
+bytes. The port is an unsigned host-order number. `reserved` SHALL be zero.
+
+Socket operations SHALL be blocking. `accept` MAY omit the peer address;
+`get_address` uses `peer == 0` for the local address and `peer == 1` for the
+remote address. `send`/`receive` operate on connected streams, while
+`send_to`/`receive_from` operate on datagrams; a transfer MAY be partial and
+SHALL accept at most `INT_MAX` bytes per call. A zero-length send returns zero.
+A zero-capacity stream receive returns zero without waiting; with nonzero
+capacity, a zero-byte stream receive indicates orderly peer shutdown. A
+zero-byte datagram receive may represent an empty datagram, and its source
+address remains valid. A buffer SHALL
+be non-null when its transfer length is nonzero; the `receive_from` source
+address MAY be null. Linux stream sends SHALL suppress SIGPIPE-style process
+termination and report the failure through the PAL result. Shutdown direction
+values select receive, send, or both. Successful lifecycle/control operations
+return zero; open/accept return a non-negative opaque handle, and transfer
+operations return the byte count.
+
+Invalid arguments SHALL return `CPLUS_PAL_INVALID_ARGUMENT`. Unsupported
+families/kinds SHALL return `CPLUS_PAL_UNSUPPORTED`. Native network failures
+SHALL return `CPLUS_PAL_NETWORK_ERROR`; raw errno, WSA errors, and native
+socket values SHALL NOT cross the PAL boundary. Linux adapters SHALL use
+target-catalogued syscalls and close-on-exec sockets. Windows adapters SHALL
+use documented Winsock APIs without requiring a host C runtime or an
+unconditional `ws2_32` link dependency; Winsock MAY be loaded and initialized
+on first socket use. Address text conversion and DNS resolution are specified
+as a separate capability layer and are not prerequisites for this binary
+address/socket ABI.
+
+`std.net` SHALL build portable TCP and UDP APIs over this PAL. Platform socket
+APIs SHALL remain below the PAL; programs that do not use networking SHALL
+NOT acquire a Winsock dependency merely because the SDK provides it.
 
 ---
 

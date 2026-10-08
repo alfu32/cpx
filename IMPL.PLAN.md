@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    42/65 evidenced on Linux
+Roadmap leaf tasks:    42/67 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.7 — implement portable sockets and TCP/UDP transport
+Current task:          R5.3.7.1 — declare and verify the portable socket ABI
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,20 +22,25 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 10/21 native std and platform-service work remains open
+R5 [DOING] 10/23 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       42/65 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       42/67 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
+
+The roadmap denominator increased from 65 to 67 during R5.3.7 planning when
+one broad socket work item was decomposed into three verifiable leaves; the
+completion numerator remains 42, so this planning change credits no work as
+done.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5 with R5.3.7 sockets, then R5.3.8–R5.5; Linux C17 stdio and
+1. Continue R5.3.7.1–R5.3.7.3, then R5.3.8–R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 now pass their stated acceptance checks.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
@@ -4141,7 +4146,7 @@ dependencies.
     file-stream read/write/seek/close adapters without exposing OS handles;
   - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
     matrix, error-normalization and dependency audit, and close platform gaps;
-- R5.3 [DOING] 6/8 — implement and Linux-execute the remaining PAL services;
+- R5.3 [DOING] 6/10 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
@@ -4160,8 +4165,44 @@ dependencies.
   - R5.3.6 [DONE] — implement mutex, condition, semaphore, once and supported
     atomic wait/wake services; ordinary atomic operations remain compiler/runtime
     intrinsics, not OS calls;
-  - R5.3.7 [TODO] — implement portable socket lifecycle and TCP/UDP transport
-    operations with stable PAL errors;
+  - R5.3.7 [DOING] [0/3] — define and implement the fixed-layout binary
+    socket-address ABI and blocking IPv4/IPv6 socket lifecycle, TCP stream, and
+    UDP datagram operations with stable errors;
+    - **Language:** SPEC.STDLIB §2.5 Platform Abstraction Layer and §16 `std.net`.
+    - **Technical:** SPEC.TECH §78 SDK, ABI, runtime and platform architecture.
+    - **Acceptance:** the shared C+/C ABI is layout-checked across all four
+      supported Linux/Windows x86_64/AArch64 targets; Linux executes TCP and UDP
+      loopback transfers from the production freestanding runtime with no host
+      runtime dependency; Windows source compiles and the PE import table has no
+      unconditional `ws2_32` dependency. Windows runtime execution remains part
+      of final validation.
+    - R5.3.7.1 [DOING] — declare the binary socket address and operation ABI;
+      verify signatures, fixed layout, and target C+ compilation.
+      - **Language:** SPEC.STDLIB §16 binary address and socket PAL contract.
+      - **Technical:** SPEC.TECH §78 target ABI declarations and layout engine.
+      - **Deliverable:** matching C header and C+ platform API declarations.
+      - **Acceptance:** address size/alignment/member offsets and all function
+        signatures agree across Linux/Windows x86_64/AArch64 ABI descriptors.
+    - R5.3.7.2 [TODO] — implement Linux x86_64/AArch64 socket operations with
+      direct syscalls, stable errors, and freestanding TCP/UDP loopback tests.
+      - **Language:** SPEC.STDLIB §16 blocking lifecycle and transport behavior.
+      - **Technical:** SPEC.TECH §78 Linux syscall adapters and runtime isolation.
+      - **Deliverable:** Linux socket open/bind/listen/accept/connect/address,
+        stream/datagram transfer, shutdown, and close adapters.
+      - **Acceptance:** warning-as-error source checks pass for both Linux
+        architectures; Linux x86_64 tests TCP and UDP roundtrips, invalid
+        arguments/error normalization, and `nm -u` host-runtime isolation.
+      - **Depends:** R5.3.7.1.
+    - R5.3.7.3 [TODO] — implement Windows Winsock lifecycle and transport
+      without an unconditional `ws2_32` import.
+      - **Language:** SPEC.STDLIB §16 Windows PAL and stable socket error contract.
+      - **Technical:** SPEC.TECH §78 Windows documented API and dependency policy.
+      - **Deliverable:** lazy Winsock initialization and Windows socket/address
+        adapters over documented Winsock entry points.
+      - **Acceptance:** warning-as-error Windows x86_64/AArch64 source checks
+        pass and a linked PE product imports the required kernel APIs without
+        statically importing `ws2_32`; Windows execution remains deferred.
+      - **Depends:** R5.3.7.1.
   - R5.3.8 [TODO] — implement portable network address conversion and DNS
     resolution with UTF-8 inputs and target-independent result ownership;
 - R5.4 [TODO] — connect native std façades to the verified PAL services;
@@ -4200,10 +4241,16 @@ R5.3.3 checks current-process arguments, environment and standard streams;
 R5.3.4 distinguishes wall, monotonic and
 CPU clocks; R5.3.5 exercises create/join/TLS; R5.3.6 exercises contended
 mutex/condition/semaphore/once and supported atomic wait/wake; R5.3.7 executes
-TCP and UDP loopback transfers; and R5.3.8 resolves and converts valid and
-invalid addresses/names. Each service also needs stable error mapping and
+IPv4 TCP and UDP loopback transfers through the binary-address PAL, checks
+socket/error behavior, verifies no hidden host-runtime dependency, and
+cross-compiles/audits Windows imports; and R5.3.8 resolves and converts valid
+and invalid addresses/names. Each service also needs stable error mapping and
 source/dependency isolation evidence. The Linux tests run on this machine;
-Windows runtime execution remains deferred.
+Windows runtime execution remains deferred. R5.3.7 does not include UTF-8
+address parsing/formatting or DNS, which remain exclusively in R5.3.8. Its
+original single work item was decomposed into three independently testable
+leaves, so the roadmap denominator is now 67 rather than 65; no completion
+credit was added by that decomposition.
 
 R5.4 leaf acceptance requires C+ caller execution over the corresponding PAL
 surface, not just successful parsing or generated declarations. The process,
