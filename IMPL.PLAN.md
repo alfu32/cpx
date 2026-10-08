@@ -11,10 +11,10 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    81/92 accepted with recorded evidence
+Roadmap leaf tasks:    82/92 accepted with recorded evidence
 Phase gates:           2/9 complete; 5 active; 2 queued
-Current task:          R6.4 — audit CLI artifact consistency
-Current milestone:     R6 — CLI transcoder and build-product completion
+Current task:          R7.1 — authoritative workspace and imported-source indexing
+Current milestone:     R7 — LSP and VS Code product completion
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -26,11 +26,11 @@ R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
-R6 [DOING] 3/4  CLI transcoder and build-product completion
+R6 [DOING] 4/4  CLI transcoder/build-product leaves accepted; Windows gate pending
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       81/92 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       82/92 implementation tasks complete; 2/9 phase gates complete,
             5 active, 2 queued
 ```
 
@@ -353,8 +353,9 @@ below. Its current execution sequence is:
    R4.6.2.2 component/projection functions are accepted; R4.6.2.3 complex
    exponential/root, trigonometric/hyperbolic, and type-generic dispatch leaves
    are accepted for Linux x86_64. R4 remains open for Windows libc validation;
-   R6.1 and R6.2 are accepted; R6.3 is active while the R5
-   Windows-dependent leaves remain deferred.
+   R6.1–R6.4 implementation leaves are accepted on Linux; the R6 product gate
+   remains open for Windows execution/packaging validation. The active work
+   queue advances to R7.1 while that final platform gate remains deferred.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -378,6 +379,8 @@ Latest completed implementation commits:
 - `d51c9ce` — add capability-gated Linux x86_64 i128/u128 support;
 - `9c9ea94` — verify standard integer ranks through an independent Linux C ABI caller;
 - `679fa85` — add target-aware std.core and memory APIs (Linux evidence; R5.1 remains open).
+- `0548b95` — make fat-JAR output reproducible and clean temporary run products (R6.3).
+- `95e18a0` — validate selected SDK artifacts and target-specific CLI inspection plans (R6.4).
 - `4efd2f7` — define the version-three filesystem PAL contract (R5.2.1 verified; adapters remain open).
 - `da60b85` — add seek and file-metadata adapters (R5.2.2 Linux-verified; Windows execution deferred).
 - `b6bc355` — add portable directory PAL services (R5.2.3 Linux-verified; Windows execution deferred).
@@ -5235,7 +5238,7 @@ Each native package has at least one executable Linux and Windows test (and a
 Darwin status), every selected adapter is source-isolated, and the conformance
 matrix reports platform services as `pass` rather than merely `planned`.
 
-## R6 [DOING] [2/4] CLI transcoder and build-product completion
+## R6 [DOING] [4/4 leaves; Linux accepted; Windows gate pending] CLI transcoder and build-product completion
 
 **Dependency-ordered work queue**
 
@@ -5273,8 +5276,21 @@ matrix reports platform services as `pass` rather than merely `planned`.
   temporary-product cleanup after successful execution and compilation failure
   and propagates child exit status 23. Focused CLI tests and
   `./gradlew build --no-daemon` pass. Commit: `0548b95`.
-- R6.4 [DOING] — make `sdk`, `target`, `abi`, `runtime`, `libc`, and `audit`
-  validate the exact artifacts consumed by a normal build.
+- R6.4 [DONE] — make `sdk`, `target`, `abi`, `runtime`, `libc`, and `audit`
+  validate the exact artifacts consumed by a normal build. Inspection commands
+  accept a selected SDK manifest; `sdk doctor` verifies profile compatibility
+  and a target-specific runtime link plan; `runtime inspect` reports the actual
+  `RuntimeLinker` startup/runtime inputs and flags; target/ABI/libc commands
+  resolve from the selected SDK; and `audit` validates the selected manifest,
+  target, and build profile before inspecting a normalized binary path. CLI
+  integration covers selected-manifest SDK packaging, malformed manifest
+  rejection, Windows target/ABI/runtime-plan selection, and auditing a binary
+  built by the CLI. `./gradlew :cli:test --no-daemon` and
+  `./gradlew build --no-daemon` pass. The packaged JAR passes
+  `check examples/minimal.cp`; Windows-target `sdk doctor` and runtime-plan
+  inspection pass; Linux `libc test` reports 51 pass, 0 fail, 0 unsupported,
+  and 0 planned. This is not Windows runtime execution or final product
+  validation. Commit: `95e18a0`.
 
 **Deliverables**
 
