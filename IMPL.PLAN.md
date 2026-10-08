@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    41/65 evidenced on Linux
+Roadmap leaf tasks:    42/65 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.6 — implement portable synchronization and atomic wait/wake
+Current task:          R5.3.7 — implement portable sockets and TCP/UDP transport
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,12 +22,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 9/21 native std and platform-service work remains open
+R5 [DOING] 10/21 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       41/65 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       42/65 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,7 +35,7 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5 with R5.3.6 synchronization, then R5.3.7–R5.5; Linux C17 stdio and
+1. Continue R5 with R5.3.7 sockets, then R5.3.8–R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 now pass their stated acceptance checks.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
@@ -69,6 +69,7 @@ Latest completed implementation commits:
 - `5ec70b7` — expose process context and standard streams (R5.3.3 Linux-verified; Windows execution deferred).
 - `61326a8` — add checked version-four wall, monotonic, and process-CPU clocks (R5.3.4 Linux-verified; Windows execution deferred).
 - `753fc14` — add runtime-managed threads and static TLS (R5.3.5 Linux x86_64-verified; Windows/AArch64 runtime execution deferred).
+- `283c355` — implement portable synchronization primitives (R5.3.6 Linux x86_64-verified; Windows/AArch64 runtime execution deferred).
 - `bd26d05` — verify standard-channel error mapping and host-runtime isolation.
 - `c39c402` — preserve the target `size_t` ABI in stdio formatting functions.
 - `4952b4d` — verify declared stdio channels in the independent C17 report (Linux x86_64).
@@ -4140,7 +4141,7 @@ dependencies.
     file-stream read/write/seek/close adapters without exposing OS handles;
   - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
     matrix, error-normalization and dependency audit, and close platform gaps;
-- R5.3 [DOING] 5/8 — implement and Linux-execute the remaining PAL services;
+- R5.3 [DOING] 6/8 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
@@ -4156,7 +4157,7 @@ dependencies.
     C `time()`/`clock()` mappings;
   - R5.3.5 [DONE] — implement thread create/join/current/yield and runtime TLS
     setup without requiring pthreads on Windows;
-  - R5.3.6 [TODO] — implement mutex, condition, semaphore, once and supported
+  - R5.3.6 [DONE] — implement mutex, condition, semaphore, once and supported
     atomic wait/wake services; ordinary atomic operations remain compiler/runtime
     intrinsics, not OS calls;
   - R5.3.7 [TODO] — implement portable socket lifecycle and TCP/UDP transport
@@ -4311,6 +4312,22 @@ strict syntax and assembly checks, and Windows x86_64 runtime/startup sources
 pass strict MinGW syntax checking; neither target has runtime execution
 evidence here. The C17 report remains 42 pass, 0 fail, 0 unsupported, and 0
 planned.
+
+R5.3.6 acceptance evidence: `RuntimeSyncPalTest` links and executes the
+production shared synchronization runtime and Linux x86_64 PAL into a
+freestanding static binary. It stresses four concurrent workers through
+contended mutex updates and once initialization; exercises semaphore wait/post
+and overflow, condition signal/broadcast with mutex reacquisition, and atomic
+wait/wake; verifies invalid argument/alignment handling; and confirms `nm -u`
+reports no host-runtime dependencies. The synchronization C+ API compiles and
+its 32-bit state/value and pointer ABI is modeled across Linux/Windows
+x86_64/AArch64. Strict warning-as-error C syntax checks pass for Linux x86_64,
+Linux AArch64, Windows x86_64, and Windows AArch64. `RuntimeLinkerTest`
+confirms the common algorithm source is selected for both Linux and Windows
+runtime plans. `./gradlew build --no-daemon` passes, and the C17 report remains
+42 pass, 0 fail, 0 unsupported, and 0 planned. Windows runtime execution and
+Linux AArch64 runtime execution are still deferred; no completion credit is
+claimed for those gates.
 
 ### R5.1 status audit
 
