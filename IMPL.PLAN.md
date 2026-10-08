@@ -56,7 +56,8 @@ Latest completed implementation commits:
 - `3043cdd` — resolve qualified and aliased source types;
 - `21c7979` — verify source-type import workflows and generated-C execution;
 - `d51c9ce` — add capability-gated Linux x86_64 i128/u128 support;
-- `9c9ea94` — verify standard integer ranks through an independent Linux C ABI caller.
+- `9c9ea94` — verify standard integer ranks through an independent Linux C ABI caller;
+- `679fa85` — add target-aware std.core and memory APIs (Linux evidence; R5.1 remains open).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
