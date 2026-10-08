@@ -4622,8 +4622,10 @@ dependencies.
     exercises permission-denied normalization for open, metadata, directory
     open, and directory creation as an unprivileged user; a non-directory path
     component is also checked for `NOT_FOUND` normalization across open,
-    metadata, and directory-open operations. These checks extend Linux evidence
-    only and do not close the cross-platform leaf.
+    metadata, and directory-open operations. The fixture also checks one-level
+    directory creation (without synthesizing missing parents) and confirms file
+    removal rejects directories while preserving them. These checks extend
+    Linux evidence only and do not close the cross-platform leaf.
 - R5.3 [DONE] 12/12 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for

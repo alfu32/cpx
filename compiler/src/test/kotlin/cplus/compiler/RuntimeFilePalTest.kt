@@ -127,6 +127,8 @@ class RuntimeFilePalTest {
         val renamedPath = nestedPath.resolve("renamed.txt").toAbsolutePath().normalize()
         val missingPath = nestedPath.resolve("missing.txt").toAbsolutePath().normalize()
         val notDirectoryPath = sourcePath.resolve("child").toAbsolutePath().normalize()
+        val missingParentPath = nestedPath.resolve("absent").resolve("child").toAbsolutePath().normalize()
+        val absentParentPath = nestedPath.resolve("absent").toAbsolutePath().normalize()
         val source = directory.resolve("file-pal.c")
         val executable = directory.resolve(if (target.targetTriple.startsWith("windows-")) "file-pal.exe" else "file-pal")
         val nestedName = cString(nestedPath.toString().replace('\\', '/'))
@@ -134,6 +136,8 @@ class RuntimeFilePalTest {
         val renamedName = cString(renamedPath.toString().replace('\\', '/'))
         val missingName = cString(missingPath.toString().replace('\\', '/'))
         val notDirectoryName = cString(notDirectoryPath.toString().replace('\\', '/'))
+        val missingParentName = cString(missingParentPath.toString().replace('\\', '/'))
+        val absentParentName = cString(absentParentPath.toString().replace('\\', '/'))
         Files.writeString(source, """
             #include "cplus_platform.h"
             #include <stddef.h>
@@ -151,6 +155,8 @@ class RuntimeFilePalTest {
                 const char* nested = "$nestedName";
                 const char* missing = "$missingName";
                 const char* not_directory = "$notDirectoryName";
+                const char* missing_parent = "$missingParentName";
+                const char* absent_parent = "$absentParentName";
                 const char* text = "portable";
                 char buffer[8];
                 char entry[32];
@@ -183,6 +189,8 @@ class RuntimeFilePalTest {
                 if (platform_file_close(0x7fffffffffffffffLL) != CPLUS_PAL_INVALID_ARGUMENT) return 57;
                 if (platform_file_seek(0x7fffffffffffffffLL, 0, CPLUS_SEEK_BEGIN) != CPLUS_PAL_INVALID_ARGUMENT) return 58;
                 if (platform_directory_create(nested) != 0) return 28;
+                if (platform_directory_create(missing_parent) != CPLUS_PAL_NOT_FOUND) return 62;
+                if (platform_file_metadata(absent_parent, &metadata) != CPLUS_PAL_NOT_FOUND) return 63;
                 handle = std_fs_open(source, CPLUS_FILE_WRITE | CPLUS_FILE_CREATE | CPLUS_FILE_TRUNCATE);
                 if (handle < 0) return 11;
                 if (platform_file_read(handle, (void*)0, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 52;
@@ -223,7 +231,9 @@ class RuntimeFilePalTest {
                     entry[8] != 't' || entry[9] != 'x' || entry[10] != 't' || entry[11] != '\0') return 32;
                 if (platform_directory_read(directory_handle, entry, sizeof(entry)) != 0) return 33;
                 if (platform_directory_close(directory_handle) != 0) return 34;
-                if (platform_directory_remove(nested) >= 0) return 35;
+                if (platform_file_remove(nested) != CPLUS_PAL_IO_ERROR) return 64;
+                if (platform_file_metadata(nested, &metadata) != 0 || metadata.kind != CPLUS_FILE_KIND_DIRECTORY) return 65;
+                if (platform_directory_remove(nested) != CPLUS_PAL_IO_ERROR) return 35;
                 if (platform_file_remove(renamed) != 0) return 36;
                 if (platform_directory_remove(nested) != 0) return 37;
                 return 0;
