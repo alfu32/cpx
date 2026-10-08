@@ -20,7 +20,9 @@ class CPrimitiveTypesTest {
         assertEquals("__int128", CPrimitiveTypes.canonicalName("signed __int128"))
         assertEquals("unsigned __int128", CPrimitiveTypes.canonicalName("unsigned __int128"))
         assertEquals(CIntegerRank.INT128, CPrimitiveTypes.typeInfo("__int128")?.rank)
-        assertNull(CPrimitiveTypes.typeInfo("long double"))
+        assertEquals("long double", CPrimitiveTypes.canonicalName("long double"))
+        assertEquals(CFloatingRank.LONG_DOUBLE, CPrimitiveTypes.typeInfo("long double")?.floatingRank)
+        assertTrue(CPrimitiveTypes.isNumeric("long double"))
     }
 
     @Test

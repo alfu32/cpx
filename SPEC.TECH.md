@@ -585,23 +585,25 @@ Type equality SHALL rely on semantic identity/canonical form rather than textual
 
 `language-core` SHALL own one canonical C primitive catalog containing
 supported spellings, legal specifier-sequence normalization, integer rank and
-signedness, floating category and type identity, and numeric category. Parsing, semantic resolution and identity,
-CPX type resolution, closure lowering, ABI layout, reflection, and C lowering
-SHALL consume this catalog rather than maintain independent primitive-name
-tables. Target-dependent widths (notably `long`) SHALL be selected from the
-active ABI descriptor. C standard typedefs such as `size_t` and `ptrdiff_t`
-remain distinct from built-in primitives and SHALL resolve through target C
-header metadata or the compiler's explicit target model.
+signedness, floating category and type identity, and numeric category.
+Parsing, semantic resolution and identity, CPX type resolution, closure
+lowering, ABI layout, reflection, and C lowering SHALL consume this catalog
+rather than maintain independent primitive-name tables. Target-dependent
+widths (notably `long`) SHALL be selected from the active ABI descriptor. C
+standard typedefs such as `size_t` and `ptrdiff_t` remain distinct from
+built-in primitives and SHALL resolve through target C header metadata or the
+compiler's explicit target model.
 
 Target ABI descriptors SHALL record the floating format, storage size, and
 alignment of `float`, `double`, and `long double`; the target driver SHALL
-verify these fields against the selected C compiler before code generation or
-linking. Primitive semantic identity remains distinct even when two formats
-share a representation. `long double` is therefore not a parser-only spelling:
-the semantic type model, aggregate layout engine, emitted C, and independent
-caller checks SHALL all retain its target ABI. If C17 complex support is
-advertised, the descriptor and ABI probe SHALL likewise cover the target's
-complex representations and calling conventions.
+verify these fields against the selected C compiler before linking. Semantic
+analysis and C generation SHALL use the target descriptor. Primitive semantic
+identity remains distinct even when two formats share a representation.
+`long double` is therefore not a parser-only spelling: the semantic type model,
+aggregate layout engine, emitted C, and independent caller checks SHALL all
+retain its target ABI. If C17 complex support is advertised, the descriptor
+and ABI probe SHALL likewise cover the target's complex representations and
+calling conventions.
 
 The semantic model SHALL treat imported `size_t` and `ptrdiff_t` as target-sized
 integer typedefs, not as the host's `long` spelling. The C backend SHALL retain

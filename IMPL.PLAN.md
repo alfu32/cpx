@@ -4076,9 +4076,28 @@ Linux evidence added for the current pass:
   layout are checked against all four Linux/Windows x86_64/AArch64 descriptors.
   Windows entries here are descriptor-model checks only, not Windows execution.
 
-R3.1.3 remains `DOING`: the Linux source-to-C and independent-caller checks are
-now present, but Windows LLP64 compilation and independent-caller execution are
-still deferred to the final validation pass.
+Additional partial `long double` evidence from the current pass:
+
+- the canonical primitive catalog now gives `long double` a distinct floating
+  rank and semantic identity; the ABI layout engine reads format, size, and
+  alignment from the selected target descriptor;
+- all six checked-in target descriptors now record `float`, `double`, and
+  `long double` format fingerprints, storage sizes, alignments, precision, and
+  exponent bounds;
+- the selected C compiler is checked before linking against those descriptor
+  values, and the Linux x86_64 `cc` probe passes while a deliberately
+  mismatched long-double descriptor is rejected;
+- a Linux x86_64 generated-C fixture and independent C17 caller verify
+  float/double/long-double scalar calls, long-double aggregate-field layout,
+  and aggregate-by-value return/call behavior.
+
+R3.1.3 remains `DOING` with no aggregate completion credit: Windows LLP64
+compilation and independent-caller execution are deferred to the final
+validation pass. In particular, the current Windows x86_64 descriptor records
+the MinGW/GNU x87 `long double` ABI; an MSVC compiler's binary64 `long double`
+is rejected by the probe and is not yet a supported combination. A separate
+MSVC ABI profile or an explicit toolchain constraint remains to be resolved
+before claiming Windows x86_64 compiler interchangeability.
 
 ### R3.2/R3.3 completion record
 

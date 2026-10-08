@@ -6,6 +6,15 @@ import cplus.core.DiagnosticSeverity
 import java.nio.file.Files
 import java.nio.file.Path
 
+data class FloatingAbiDescriptor(
+    val format: String,
+    val sizeBytes: Int,
+    val alignmentBytes: Int,
+    val mantissaDigits: Int,
+    val minExponent: Int,
+    val maxExponent: Int
+)
+
 data class TargetAbiDescriptor(
     val targetTriple: String,
     val os: String,
@@ -17,6 +26,7 @@ data class TargetAbiDescriptor(
     val pointerBits: Int,
     val wordBits: Int,
     val cIntegerModel: String,
+    val floatingTypes: Map<String, FloatingAbiDescriptor>,
     val stackAlignment: Int,
     val symbolPrefix: String,
     val tlsModel: String,
@@ -57,13 +67,22 @@ data class TargetDescriptorResult(
 
 object TargetRegistry {
     private val scalarPattern = Regex("^([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*\\\"([^\\\"]*)\\\"$")
-    private val integerPattern = Regex("^([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([0-9]+)$")
+    private val integerPattern = Regex("^([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*(-?[0-9]+)$")
     private val arrayPattern = Regex("^([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*\\[(.*)]$")
+    private val floatingTypePrefixes = linkedMapOf(
+        "float" to "float",
+        "double" to "double",
+        "long double" to "long_double"
+    )
     private val requiredScalars = listOf(
         "target", "os", "architecture", "vendor", "abi", "object_format", "endianness",
         "c_integer_model", "symbol_prefix", "tls_model", "linker", "startup_entry"
     )
-    private val requiredIntegers = listOf("pointer_bits", "word_bits", "stack_alignment")
+    private val requiredIntegers = listOf("pointer_bits", "word_bits", "stack_alignment") +
+        floatingTypePrefixes.values.flatMap { prefix ->
+            listOf("${prefix}_size", "${prefix}_alignment", "${prefix}_mant_dig", "${prefix}_min_exp", "${prefix}_max_exp")
+        }
+    private val requiredFloatingFormats = floatingTypePrefixes.values.map { "${it}_format" }
 
     fun load(resolution: SdkResolution): TargetDescriptorResult = load(resolution.layout.abiDescriptor)
 
@@ -92,7 +111,26 @@ object TargetRegistry {
             }
         }
         requiredScalars.filterNot(scalars::containsKey).forEach { diagnostics += diagnostic("ABI descriptor is missing '$it'", "ABI003") }
+        requiredFloatingFormats.filterNot(scalars::containsKey).forEach { diagnostics += diagnostic("ABI descriptor is missing '$it'", "ABI003") }
         requiredIntegers.filterNot(integers::containsKey).forEach { diagnostics += diagnostic("ABI descriptor is missing '$it'", "ABI003") }
+        val floatingTypes = floatingTypePrefixes.map { (typeName, prefix) ->
+            val floatingAbi = FloatingAbiDescriptor(
+                format = scalars["${prefix}_format"].orEmpty(),
+                sizeBytes = integers["${prefix}_size"] ?: 0,
+                alignmentBytes = integers["${prefix}_alignment"] ?: 0,
+                mantissaDigits = integers["${prefix}_mant_dig"] ?: 0,
+                minExponent = integers["${prefix}_min_exp"] ?: 0,
+                maxExponent = integers["${prefix}_max_exp"] ?: 0
+            )
+            if (floatingAbi.format.isNotBlank() &&
+                (floatingAbi.sizeBytes <= 0 || floatingAbi.alignmentBytes <= 0 ||
+                    floatingAbi.alignmentBytes and (floatingAbi.alignmentBytes - 1) != 0 ||
+                    floatingAbi.mantissaDigits <= 0 || floatingAbi.minExponent >= floatingAbi.maxExponent)
+            ) {
+                diagnostics += diagnostic("ABI descriptor has invalid floating ABI for '$typeName'", "ABI005")
+            }
+            typeName to floatingAbi
+        }.toMap()
         if (diagnostics.isNotEmpty()) return TargetDescriptorResult(null, diagnostics)
         val target = scalars.getValue("target")
         return TargetDescriptorResult(
@@ -107,6 +145,7 @@ object TargetRegistry {
                 integers.getValue("pointer_bits"),
                 integers.getValue("word_bits"),
                 scalars.getValue("c_integer_model"),
+                floatingTypes,
                 integers.getValue("stack_alignment"),
                 scalars.getValue("symbol_prefix"),
                 scalars.getValue("tls_model"),

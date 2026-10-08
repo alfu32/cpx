@@ -1415,6 +1415,66 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun floatingPrimitivesAndLongDoubleRoundTripThroughAnIndependentCCaller() {
+        val source = """
+            pub struct floating_abi_record {
+                float single_value;
+                double double_value;
+                long double extended_value;
+            };
+
+            pub float round_trip_float(float value) { return value; }
+            pub double round_trip_double(double value) { return value; }
+            pub long double round_trip_long_double(long double value) { return value; }
+            pub floating_abi_record round_trip_floating_record(floating_abi_record value) { return value; }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-floating-abi", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = requireNotNull(result.semanticModel)
+        assertEquals("float", model.functions.getValue("round_trip_float").returnType.name)
+        assertEquals("double", model.functions.getValue("round_trip_double").returnType.name)
+        assertEquals("long double", model.functions.getValue("round_trip_long_double").returnType.name)
+        assertEquals("long double", model.structs.getValue("floating_abi_record").fields.last().symbol.type.name)
+
+        val directory = Files.createTempDirectory("cplus-floating-abi-caller")
+        val header = directory.resolve("floating_api.h").also { it.writeText(result.generatedHeaders.single().text) }
+        val generated = directory.resolve("generated.c").also { it.writeText(result.generatedUnits.single().text) }
+        val caller = directory.resolve("caller.c").also {
+            it.writeText(
+                """
+                    #include <stddef.h>
+                    #include "${header.fileName}"
+                    _Static_assert(sizeof(float) == 4 && _Alignof(float) == 4, "float ABI");
+                    _Static_assert(sizeof(double) == 8 && _Alignof(double) == 8, "double ABI");
+                    _Static_assert(sizeof(long double) == 16 && _Alignof(long double) == 16, "long double ABI");
+                    _Static_assert(sizeof(struct floating_abi_record) == 32, "aggregate size");
+                    _Static_assert(offsetof(struct floating_abi_record, extended_value) == 16, "long double field offset");
+                    int main(void) {
+                        struct floating_abi_record value = { 1.25f, 2.5, 19.25L };
+                        long double scalar = 123456789.125L;
+                        if (round_trip_float(value.single_value) != value.single_value) return 1;
+                        if (round_trip_double(value.double_value) != value.double_value) return 2;
+                        if (round_trip_long_double(scalar) != scalar) return 3;
+                        value = round_trip_floating_record(value);
+                        if (value.single_value != 1.25f || value.double_value != 2.5 || value.extended_value != 19.25L) return 4;
+                        return 0;
+                    }
+                """.trimIndent()
+            )
+        }
+        val executable = directory.resolve("floating-abi-caller")
+        val compile = ProcessBuilder(
+            "cc", "-std=c17", "-I", directory.toString(), generated.toString(), caller.toString(), "-o", executable.toString()
+        ).redirectErrorStream(true).start()
+        val compilerOutput = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), compilerOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(0, execution.waitFor(), executionOutput)
+    }
+
+    @Test
     fun instanceAndStaticMethodsLowerToCallableCFunctions() {
         val source = """
             struct point_t {

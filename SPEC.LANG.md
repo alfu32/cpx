@@ -1625,11 +1625,11 @@ it SHALL NOT be treated as an unknown user-defined type or as an alias for
 
 Floating representation is target-ABI dependent. Each supported target ABI
 descriptor SHALL identify the format, storage size, and alignment of `float`,
-`double`, and `long double`. The selected C toolchain SHALL be probed for those
-properties before code generation or linking. If its results disagree with
-the selected descriptor, the compiler SHALL reject the target/toolchain
-combination with an ABI diagnostic rather than emitting a product with an
-unverified layout or calling convention.
+`double`, and `long double`; semantic analysis and code generation SHALL use
+that descriptor. The selected C toolchain SHALL be probed for those properties
+before linking. If its results disagree with the selected descriptor, the
+compiler SHALL reject the target/toolchain combination with an ABI diagnostic
+rather than emitting a product with an unverified layout or calling convention.
 
 The semantic and ABI models SHALL preserve each floating type through
 declarations, expressions, aggregate fields, function parameters and returns,

@@ -1,5 +1,8 @@
 package cplus.compiler
 
+import java.nio.file.Files
+import java.util.concurrent.ConcurrentHashMap
+
 enum class CCompilerKind { GCC, CLANG, CLANG_CL, MSVC, TCC, UNKNOWN }
 
 data class CCompilerCapabilities(
@@ -10,6 +13,8 @@ data class CCompilerCapabilities(
 )
 
 object CCompilerToolchains {
+    private val floatingAbiProbeCache = ConcurrentHashMap<String, Boolean>()
+
     private val INT128_PROBE_SOURCE = """
         #if !defined(__SIZEOF_INT128__)
         #error compiler does not define a 128-bit integer type
@@ -102,7 +107,82 @@ object CCompilerToolchains {
         }
     }
 
+    /** Verifies the selected compiler's real floating formats and object ABI against the target. */
+    fun supportsFloatingAbi(target: TargetAbiDescriptor, compiler: String): Boolean {
+        val compilerKind = classify(compiler).kind
+        if (compilerKind == CCompilerKind.UNKNOWN) return false
+        val key = buildString {
+            append(compiler)
+            append('|')
+            append(target.targetTriple)
+            target.floatingTypes.toSortedMap().forEach { (name, abi) ->
+                append('|').append(name).append(':').append(abi)
+            }
+        }
+        return floatingAbiProbeCache.computeIfAbsent(key) {
+            runFloatingAbiProbe(target, compiler, compilerKind)
+        }
+    }
+
+    private fun runFloatingAbiProbe(
+        target: TargetAbiDescriptor,
+        compiler: String,
+        compilerKind: CCompilerKind
+    ): Boolean {
+        val directory = try {
+            Files.createTempDirectory("cplus-floating-abi")
+        } catch (_: Exception) {
+            return false
+        }
+        val source = directory.resolve("floating_abi_probe.c")
+        return try {
+            Files.writeString(source, floatingAbiProbeSource(target))
+            val command = when (compilerKind) {
+                CCompilerKind.MSVC, CCompilerKind.CLANG_CL ->
+                    listOf(compiler, "/nologo", "/std:c17", "/Zs", "/Tc${source}")
+                else -> listOf(compiler) + targetFlags(TargetInfo(targetTriple = target.targetTriple), compiler) +
+                    listOf("-std=c17", "-Werror", "-fsyntax-only", source.toString())
+            }
+            val process = ProcessBuilder(command).redirectErrorStream(true).start()
+            if (!process.waitFor(15, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                false
+            } else {
+                process.inputStream.bufferedReader().use { it.readText() }
+                process.exitValue() == 0
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            runCatching { Files.deleteIfExists(source) }
+            runCatching { Files.deleteIfExists(directory) }
+        }
+    }
+
+    private fun floatingAbiProbeSource(target: TargetAbiDescriptor): String = buildString {
+        appendLine("#include <float.h>")
+        val macroPrefix = mapOf("float" to "FLT", "double" to "DBL", "long double" to "LDBL")
+        target.floatingTypes.forEach { (typeName, abi) ->
+            val tag = typeName.replace(' ', '_')
+            val macro = requireNotNull(macroPrefix[typeName])
+            appendLine("_Static_assert(sizeof($typeName) == ${abi.sizeBytes}, \"$tag size\");")
+            appendLine("_Static_assert(_Alignof($typeName) == ${abi.alignmentBytes}, \"$tag alignment\");")
+            appendLine("_Static_assert(${macro}_MANT_DIG == ${abi.mantissaDigits}, \"$tag precision\");")
+            appendLine("_Static_assert(${macro}_MIN_EXP == ${abi.minExponent}, \"$tag minimum exponent\");")
+            appendLine("_Static_assert(${macro}_MAX_EXP == ${abi.maxExponent}, \"$tag maximum exponent\");")
+        }
+        appendLine("float cplus_float_abi_probe(float value) { return value; }")
+        appendLine("double cplus_double_abi_probe(double value) { return value; }")
+        appendLine("long double cplus_long_double_abi_probe(long double value) { return value; }")
+    }
+
     fun validateTargetFeatures(target: TargetAbiDescriptor, compiler: String): List<String> = buildList {
+        if (!supportsFloatingAbi(target, compiler)) {
+            add(
+                "target '${target.targetTriple}' floating ABI descriptor does not match " +
+                    "or cannot be verified by C compiler '$compiler'"
+            )
+        }
         if ("int128" in target.features && !supportsInt128(target, compiler)) {
             add(
                 "target '${target.targetTriple}' advertises int128, but C compiler '$compiler' " +

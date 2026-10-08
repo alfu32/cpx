@@ -22,11 +22,18 @@ enum class CIntegerSignedness {
     UNSIGNED
 }
 
+enum class CFloatingRank {
+    FLOAT,
+    DOUBLE,
+    LONG_DOUBLE
+}
+
 data class CPrimitiveTypeInfo(
     val name: String,
     val kind: CPrimitiveKind,
     val rank: CIntegerRank? = null,
-    val signedness: CIntegerSignedness? = null
+    val signedness: CIntegerSignedness? = null,
+    val floatingRank: CFloatingRank? = null
 )
 
 /** Canonical C primitive spellings shared by parsing, semantic analysis, and backends. */
@@ -54,8 +61,9 @@ object CPrimitiveTypes {
         CPrimitiveTypeInfo("unsigned long long", CPrimitiveKind.INTEGER, CIntegerRank.LONG_LONG, CIntegerSignedness.UNSIGNED),
         CPrimitiveTypeInfo("__int128", CPrimitiveKind.INTEGER, CIntegerRank.INT128, CIntegerSignedness.SIGNED),
         CPrimitiveTypeInfo("unsigned __int128", CPrimitiveKind.INTEGER, CIntegerRank.INT128, CIntegerSignedness.UNSIGNED),
-        CPrimitiveTypeInfo("float", CPrimitiveKind.FLOATING),
-        CPrimitiveTypeInfo("double", CPrimitiveKind.FLOATING)
+        CPrimitiveTypeInfo("float", CPrimitiveKind.FLOATING, floatingRank = CFloatingRank.FLOAT),
+        CPrimitiveTypeInfo("double", CPrimitiveKind.FLOATING, floatingRank = CFloatingRank.DOUBLE),
+        CPrimitiveTypeInfo("long double", CPrimitiveKind.FLOATING, floatingRank = CFloatingRank.LONG_DOUBLE)
     )
 
     private val typesByName = types.associateBy(CPrimitiveTypeInfo::name)
@@ -86,10 +94,7 @@ object CPrimitiveTypes {
     fun isNumeric(name: String): Boolean = canonicalName(name)?.let { it in numericNames } == true ||
         name in standardIntegerTypedefNames
 
-    /**
-     * Canonicalizes the full sequence of C primitive type specifiers. `long double` remains
-     * syntactically recognized, while semantic/ABI support is intentionally not implied here.
-     */
+    /** Canonicalizes the full sequence of C primitive type specifiers. */
     fun canonicalizeSpecifierSequence(specifiers: List<String>): String? {
         if (specifiers.isEmpty() || specifiers.any { it !in specifierKeywords }) return null
         val signCount = specifiers.count { it == "signed" || it == "unsigned" }

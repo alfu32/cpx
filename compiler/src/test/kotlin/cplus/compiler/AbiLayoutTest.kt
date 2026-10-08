@@ -48,6 +48,41 @@ class AbiLayoutTest {
     }
 
     @Test
+    fun usesTargetFloatingFormatsSizesAndAlignmentsForPrimitiveLayouts() {
+        data class ExpectedLongDouble(val format: String, val size: Int, val alignment: Int, val mantissaDigits: Int)
+
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val expectedLongDouble = mapOf(
+            "linux-x86_64" to ExpectedLongDouble("x87-extended", 16, 16, 64),
+            "linux-aarch64" to ExpectedLongDouble("binary128", 16, 16, 113),
+            "windows-x86_64" to ExpectedLongDouble("x87-extended", 16, 16, 64),
+            "windows-aarch64" to ExpectedLongDouble("binary64", 8, 8, 53),
+            "darwin-x86_64" to ExpectedLongDouble("x87-extended", 16, 16, 64),
+            "darwin-aarch64" to ExpectedLongDouble("binary64", 8, 8, 53)
+        )
+        expectedLongDouble.forEach { (targetName, expected) ->
+            val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor)
+            val layouts = AbiLayoutEngine(descriptor)
+            val floatAbi = descriptor.floatingTypes.getValue("float")
+            val doubleAbi = descriptor.floatingTypes.getValue("double")
+            val longDoubleAbi = descriptor.floatingTypes.getValue("long double")
+
+            assertEquals("binary32", floatAbi.format, "$targetName float format")
+            assertEquals(4, layouts.layout(PrimitiveType(TypeId(51), "float")).size, "$targetName float size")
+            assertEquals(4, layouts.layout(PrimitiveType(TypeId(51), "float")).alignment, "$targetName float alignment")
+            assertEquals("binary64", doubleAbi.format, "$targetName double format")
+            assertEquals(8, layouts.layout(PrimitiveType(TypeId(52), "double")).size, "$targetName double size")
+            assertEquals(8, layouts.layout(PrimitiveType(TypeId(52), "double")).alignment, "$targetName double alignment")
+            assertEquals(expected.format, longDoubleAbi.format, "$targetName long double format")
+            assertEquals(expected.size, longDoubleAbi.sizeBytes, "$targetName long double descriptor size")
+            assertEquals(expected.alignment, longDoubleAbi.alignmentBytes, "$targetName long double descriptor alignment")
+            assertEquals(expected.mantissaDigits, longDoubleAbi.mantissaDigits, "$targetName long double precision")
+            assertEquals(expected.size, layouts.layout(PrimitiveType(TypeId(53), "long double")).size, "$targetName long double size")
+            assertEquals(expected.alignment, layouts.layout(PrimitiveType(TypeId(53), "long double")).alignment, "$targetName long double alignment")
+        }
+    }
+
+    @Test
     fun exposesInt128LayoutOnlyForTheVerifiedTarget() {
         val int128 = PrimitiveType(TypeId(40), "__int128")
         val unsignedInt128 = PrimitiveType(TypeId(41), "unsigned __int128")

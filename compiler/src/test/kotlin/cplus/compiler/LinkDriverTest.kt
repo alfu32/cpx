@@ -2,7 +2,6 @@ package cplus.compiler
 
 import kotlin.test.Test
 import kotlin.test.assertFalse
-import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import java.nio.file.Files
 
@@ -47,9 +46,23 @@ class LinkDriverTest {
         val windows = requireNotNull(TargetRegistry.load(root.resolve("abi/windows-x86_64.toml")).descriptor)
 
         assertTrue(CCompilerToolchains.supportsInt128(linux, "cc"))
+        assertTrue(CCompilerToolchains.supportsFloatingAbi(linux, "cc"))
         assertTrue(CCompilerToolchains.validateTargetFeatures(linux, "cc").isEmpty())
-        assertEquals(1, CCompilerToolchains.validateTargetFeatures(linux, "cl.exe").size)
-        assertTrue(CCompilerToolchains.validateTargetFeatures(windows, "cl.exe").isEmpty())
+        assertTrue(CCompilerToolchains.validateTargetFeatures(linux, "cl.exe").any { "128-bit" in it })
+        assertFalse(CCompilerToolchains.supportsInt128(windows, "cl.exe"))
+    }
+
+    @Test
+    fun rejectsACompilerWhoseLongDoubleAbiDiffersFromTheTargetDescriptor() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val linux = requireNotNull(TargetRegistry.load(root.resolve("abi/linux-x86_64.toml")).descriptor)
+        val wrongFloatingTypes = linux.floatingTypes.toMutableMap().apply {
+            put("long double", getValue("double"))
+        }
+        val mismatched = linux.copy(floatingTypes = wrongFloatingTypes)
+
+        assertFalse(CCompilerToolchains.supportsFloatingAbi(mismatched, "cc"))
+        assertTrue(CCompilerToolchains.validateTargetFeatures(mismatched, "cc").any { "floating ABI" in it })
     }
 
     @Test
