@@ -75,7 +75,8 @@ internal class Cli {
                 cIncludeDirectories = parsed.includeDirectories,
                 sdkManifest = parsed.sdkManifest,
                 externalSysroot = parsed.externalSysroot,
-                target = parsed.target
+                target = parsed.target,
+                cCompiler = parsed.cCompiler
             )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
@@ -167,7 +168,8 @@ internal class Cli {
                 cIncludeDirectories = parsed.includeDirectories,
                 sdkManifest = parsed.sdkManifest,
                 externalSysroot = parsed.externalSysroot,
-                target = parsed.target
+                target = parsed.target,
+                cCompiler = parsed.cCompiler
             )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
@@ -185,7 +187,8 @@ internal class Cli {
                 cIncludeDirectories = parsed.includeDirectories,
                 sdkManifest = parsed.sdkManifest,
                 externalSysroot = parsed.externalSysroot,
-                target = parsed.target
+                target = parsed.target,
+                cCompiler = parsed.cCompiler
             )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
@@ -204,7 +207,8 @@ internal class Cli {
                 cIncludeDirectories = parsed.includeDirectories,
                 sdkManifest = parsed.sdkManifest,
                 externalSysroot = parsed.externalSysroot,
-                target = parsed.target
+                target = parsed.target,
+                cCompiler = parsed.cCompiler
             )
         )
         printDiagnostics(result.diagnostics, parsed.sources.first())
@@ -530,7 +534,8 @@ internal class Cli {
                 cIncludeDirectories = includeDirectories,
                 sdkManifest = sdkManifest,
                 externalSysroot = externalSysroot,
-                target = target
+                target = target,
+                cCompiler = cCompiler
             )
         )
         printDiagnostics(result.diagnostics, sources.first())

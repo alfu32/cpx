@@ -16,7 +16,7 @@ below.
 
 | Requirement | Authoritative implementation tasks | Current evidence |
 | --- | --- | --- |
-| LS §22.1–22.3; TS §28; source-driven, target-aware C declarations | R10.1.1 and its terminal children | Planned; current catalogue is still hand-maintained |
+| LS §22.1–22.3; TS §28; source-driven, target-aware C declarations | R10.1.1 and its terminal children | In progress; immutable target/SDK/compiler/include environment is implemented and tested (R10.1.1.1); declaration discovery remains pending |
 | LS §21, §41.1; TS §27, §47, §54.1; shared resolution, export index and invalidation; SPEC.STDLIB §58 | R10.1.2 and its terminal children | Planned; CLI/LSP resolution parity and fresh index tests required |
 | LS §41.1; TS §54.1; import completion, auto-import edits and quick fixes | R10.2–R10.3 and their terminal children | Planned; protocol, applied-edit, installed-product and packaged-editor tests required |
 | LS §6.3.1; TS §13.1; direct compile-time extensions | R11.1–R11.2 and their terminal children | Planned; parser/CPX/semantic/C execution, visibility and tooling tests required |

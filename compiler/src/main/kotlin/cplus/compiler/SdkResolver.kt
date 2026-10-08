@@ -26,7 +26,8 @@ data class SdkResolution(
     val externalSysroot: Path?,
     val metadata: SdkSemanticMetadata? = null,
     val targetDescriptor: TargetAbiDescriptor? = null,
-    val intrinsics: List<IntrinsicDefinition> = emptyList()
+    val intrinsics: List<IntrinsicDefinition> = emptyList(),
+    val headerEnvironment: HeaderEnvironment? = null
 )
 
 data class SdkResolutionResult(

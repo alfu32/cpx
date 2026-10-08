@@ -55,7 +55,8 @@ data class CompileRequest(
     val cLibraries: List<String> = emptyList(),
     val cIncludeDirectories: List<Path> = emptyList(),
     val sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
-    val externalSysroot: Path? = null
+    val externalSysroot: Path? = null,
+    val cCompiler: String? = null
 )
 
 data class TextSource(
@@ -119,12 +120,17 @@ class CompilerContext(
     val lexer: Lexer = Lexer(),
     val astBuilder: AstBuilder = AstBuilder(),
     val semanticAnalyzer: SemanticAnalyzer = SemanticAnalyzer(),
+    val semanticAnalyzerFactory: ((HeaderEnvironment) -> SemanticAnalyzer)? = null,
     val target: TargetInfo = TargetInfo(),
     val cpxExpander: CpxExpander = CpxExpander(lexer, target = BuildProfileValidator.toComptimeTarget(target)),
     val closureLowerer: AstClosureLowerer = AstClosureLowerer(),
     val cLowererFactory: (SemanticModel) -> CLowerer = ::CLowerer,
     val cEmitter: CEmitter = CEmitter()
-)
+) {
+    fun analyzerFor(environment: HeaderEnvironment, provisional: Boolean = false): SemanticAnalyzer =
+        semanticAnalyzerFactory?.invoke(environment)
+            ?: if (provisional) SemanticAnalyzer() else semanticAnalyzer
+}
 
 internal data class FrontendCacheEntry(
     val fingerprint: String,
@@ -172,13 +178,21 @@ class CPlusCompiler(
         if (!intrinsics.isSuccessful) return sdkFailure(intrinsics.diagnostics)
         val metadata = SdkMetadataCache.loadOrBuild(sdkResolution.resolution!!)
         if (!metadata.isSuccessful) return sdkFailure(metadata.diagnostics)
-        val resolvedSdk = sdkResolution.resolution.copy(metadata = metadata.metadata, targetDescriptor = descriptor.descriptor, intrinsics = intrinsics.definitions)
+        val headerEnvironment = HeaderEnvironment.create(request, sdkResolution.resolution, descriptor.descriptor!!)
+        val resolvedSdk = sdkResolution.resolution.copy(
+            metadata = metadata.metadata,
+            targetDescriptor = descriptor.descriptor,
+            intrinsics = intrinsics.definitions,
+            headerEnvironment = headerEnvironment
+        )
         context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(request.target, descriptor.descriptor))
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
         val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
         if (request.sources.size <= 1) {
-            val artifacts = request.sources.map { compileOne(it, request.options, foreignInputs.units) }
+            val artifacts = request.sources.map {
+                compileOne(it, request.options, foreignInputs.units, headerEnvironment)
+            }
             return resultOf(
                 artifacts,
                 cSourceDependencies = dependencies(request.cSources),
@@ -222,7 +236,13 @@ class CPlusCompiler(
         if (!intrinsics.isSuccessful) return IncrementalPipeline(sdkFailure(intrinsics.diagnostics), emptyMap())
         val metadata = SdkMetadataCache.loadOrBuild(sdkResolution.resolution!!)
         if (!metadata.isSuccessful) return IncrementalPipeline(sdkFailure(metadata.diagnostics), emptyMap())
-        val resolvedSdk = sdkResolution.resolution.copy(metadata = metadata.metadata, targetDescriptor = descriptor.descriptor, intrinsics = intrinsics.definitions)
+        val headerEnvironment = HeaderEnvironment.create(request, sdkResolution.resolution, descriptor.descriptor!!)
+        val resolvedSdk = sdkResolution.resolution.copy(
+            metadata = metadata.metadata,
+            targetDescriptor = descriptor.descriptor,
+            intrinsics = intrinsics.definitions,
+            headerEnvironment = headerEnvironment
+        )
         context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(request.target, descriptor.descriptor))
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
@@ -234,7 +254,7 @@ class CPlusCompiler(
             val reusable = cached[path]
             path in recompute || reusable?.fingerprint != fingerprint
         }
-        val computed = prepareFrontends(pathsToCompute, request.options.parallelism)
+        val computed = prepareFrontends(pathsToCompute, request.options.parallelism, headerEnvironment)
         val units = paths.map { path ->
             val fingerprint = fingerprints.getValue(path)
             val reusable = cached[path]
@@ -247,7 +267,9 @@ class CPlusCompiler(
             entry.frontend
         }
         val result = if (request.sources.size <= 1) {
-            val artifacts = units.map { compileFrontend(it, request.options, foreignInputs.units) }
+            val artifacts = units.map {
+                compileFrontend(it, request.options, foreignInputs.units, headerEnvironment)
+            }
             resultOf(
                 artifacts,
                 cSourceDependencies = dependencies(request.cSources),
@@ -273,22 +295,31 @@ class CPlusCompiler(
         text: String,
         options: CompilerOptions = CompilerOptions(),
         sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
-        target: TargetInfo = TargetInfo()
+        target: TargetInfo = TargetInfo(),
+        cCompiler: String? = null,
+        cIncludeDirectories: List<Path> = emptyList(),
+        externalSysroot: Path? = null
     ): CompileResult {
-        return compileTextWorkspace(listOf(TextSource(path, text)), options, sdkManifest, target)
+        return compileTextWorkspace(
+            listOf(TextSource(path, text)), options, sdkManifest, target,
+            cCompiler, cIncludeDirectories, externalSysroot
+        )
     }
 
     fun compileTextWorkspace(
         sources: List<TextSource>,
         options: CompilerOptions = CompilerOptions(),
         sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
-        target: TargetInfo = TargetInfo()
+        target: TargetInfo = TargetInfo(),
+        cCompiler: String? = null,
+        cIncludeDirectories: List<Path> = emptyList(),
+        externalSysroot: Path? = null
     ): CompileResult {
         val sdk = SdkManifestLoader.load(sdkManifest)
         if (!sdk.isSuccessful) return sdkFailure(sdk.diagnostics)
         val profileDiagnostics = BuildProfileValidator.validate(target.buildProfile, sdk.manifest!!)
         if (profileDiagnostics.isNotEmpty()) return sdkFailure(profileDiagnostics)
-        val sdkResolution = SdkResolver.resolve(sdk.manifest, target, null)
+        val sdkResolution = SdkResolver.resolve(sdk.manifest, target, externalSysroot)
         if (!sdkResolution.isSuccessful) return sdkFailure(sdkResolution.diagnostics)
         val descriptor = TargetRegistry.load(sdkResolution.resolution!!)
         if (!descriptor.isSuccessful) return sdkFailure(descriptor.diagnostics)
@@ -297,18 +328,36 @@ class CPlusCompiler(
         if (!intrinsics.isSuccessful) return sdkFailure(intrinsics.diagnostics)
         val metadata = SdkMetadataCache.loadOrBuild(sdkResolution.resolution!!)
         if (!metadata.isSuccessful) return sdkFailure(metadata.diagnostics)
-        val resolvedSdk = sdkResolution.resolution.copy(metadata = metadata.metadata, targetDescriptor = descriptor.descriptor, intrinsics = intrinsics.definitions)
+        val request = CompileRequest(
+            sources = sources.map { it.path },
+            target = target,
+            options = options,
+            sdkManifest = sdkManifest,
+            cIncludeDirectories = cIncludeDirectories,
+            externalSysroot = externalSysroot,
+            cCompiler = cCompiler
+        )
+        val headerEnvironment = HeaderEnvironment.create(request, sdkResolution.resolution, descriptor.descriptor!!)
+        val resolvedSdk = sdkResolution.resolution.copy(
+            metadata = metadata.metadata,
+            targetDescriptor = descriptor.descriptor,
+            intrinsics = intrinsics.definitions,
+            headerEnvironment = headerEnvironment
+        )
         context.cpxExpander.configureTarget(BuildProfileValidator.toComptimeTarget(target, descriptor.descriptor))
         val sourceFiles = sources
             .distinctBy { it.path.toAbsolutePath().normalize() }
             .map { source -> context.sourceRepository.put(source.path, source.text) }
-        val frontends = sourceFiles.map(::frontend)
+        val frontends = sourceFiles.map { frontend(it, headerEnvironment) }
         if (frontends.size <= 1) {
-            return resultOf(frontends.map { compileFrontend(it, options) }, sdkResolution = resolvedSdk)
+            return resultOf(
+                frontends.map { compileFrontend(it, options, headerEnvironment = headerEnvironment) },
+                sdkResolution = resolvedSdk
+            )
         }
-        val request = CompileRequest(sourceFiles.map { it.path }, target = target, options = options, sdkManifest = sdkManifest)
+        val workspaceRequest = request.copy(sources = sourceFiles.map { it.path })
         return compileWorkspace(
-            request,
+            workspaceRequest,
             ForeignInputs(emptyList(), emptyList()),
             emptyList(),
             emptyList(),
@@ -326,21 +375,27 @@ class CPlusCompiler(
         artifacts = emptyList()
     )
 
-    private fun compileOne(path: Path, options: CompilerOptions, foreignSources: List<CSourceUnit>): CompilationArtifacts {
-        return compileFrontend(frontend(path), options, foreignSources)
+    private fun compileOne(
+        path: Path,
+        options: CompilerOptions,
+        foreignSources: List<CSourceUnit>,
+        headerEnvironment: HeaderEnvironment
+    ): CompilationArtifacts {
+        return compileFrontend(frontend(path, headerEnvironment), options, foreignSources, headerEnvironment)
     }
 
     private fun compileFrontend(
         frontend: FrontendUnit,
         options: CompilerOptions,
-        foreignSources: List<CSourceUnit> = emptyList()
+        foreignSources: List<CSourceUnit> = emptyList(),
+        headerEnvironment: HeaderEnvironment
     ): CompilationArtifacts {
         val source = frontend.source
         val lexed = frontend.lexed
         val parsed = frontend.parsed
         val expanded = frontend.expanded
         val ast = frontend.ast
-        val semantic = context.semanticAnalyzer.analyze(
+        val semantic = context.analyzerFor(headerEnvironment).analyze(
             ast,
             foreignSources = foreignSources,
             targetFeatures = activeTargetAbiDescriptor?.features.orEmpty(),
@@ -373,13 +428,17 @@ class CPlusCompiler(
         foreignInputs: ForeignInputs,
         cLinkDependencies: List<CLinkDependency>,
         linkDiagnostics: List<Diagnostic>,
-        units: List<FrontendUnit> = request.sources.map { frontend(it) },
+        units: List<FrontendUnit>? = null,
         sdkResolution: SdkResolution? = null
     ): CompileResult {
+        val headerEnvironment = requireNotNull(sdkResolution?.headerEnvironment) {
+            "workspace compilation requires its resolved header environment"
+        }
+        val resolvedUnits = units ?: request.sources.map { frontend(it, headerEnvironment) }
         val moduleGraph = ModuleGraphBuilder().build(
-            units.map { ModuleSource(it.source, it.expanded?.program ?: it.parsed.syntax) }
+            resolvedUnits.map { ModuleSource(it.source, it.expanded?.program ?: it.parsed.syntax) }
         )
-        val first = units.firstOrNull()
+        val first = resolvedUnits.firstOrNull()
         val cSourceDependencies = dependencies(request.cSources)
         if (first == null) {
             return CompileResult(
@@ -396,20 +455,20 @@ class CPlusCompiler(
 
         val mergedOrigin = first.ast.origin
         val mergedAst = AstProgram(
-            units.flatMap { it.ast.declarations },
+            resolvedUnits.flatMap { it.ast.declarations },
             mergedOrigin,
-            units.map { unit ->
+            resolvedUnits.map { unit ->
                 AstModule(unit.source.path.fileName.toString().substringBeforeLast('.'), unit.ast.declarations)
             }
         )
-        val semantic = context.semanticAnalyzer.analyze(
+        val semantic = context.analyzerFor(headerEnvironment).analyze(
             mergedAst,
             moduleGraph.moduleNames,
             foreignInputs.units,
             activeTargetAbiDescriptor?.features.orEmpty(),
             activeTargetAbiDescriptor?.targetTriple ?: "selected target"
         )
-        val additionalDiagnostics = first.closureDiagnostics + units.drop(1).flatMap { it.diagnostics() } +
+        val additionalDiagnostics = first.closureDiagnostics + resolvedUnits.drop(1).flatMap { it.diagnostics() } +
             unresolvedImportCycleDiagnostics(moduleGraph, semantic.diagnostics) +
             foreignInputs.diagnostics +
             linkDiagnostics
@@ -457,7 +516,7 @@ class CPlusCompiler(
                 sdkResolution = sdkResolution
             )
         }
-        if (units.any { unit -> unit.diagnostics().any { it.severity == DiagnosticSeverity.ERROR } }) {
+        if (resolvedUnits.any { unit -> unit.diagnostics().any { it.severity == DiagnosticSeverity.ERROR } }) {
             return resultOf(
                 listOf(
                     CompilationArtifacts(
@@ -647,16 +706,20 @@ class CPlusCompiler(
         }
     }
 
-    private fun frontend(path: Path): FrontendUnit {
+    private fun frontend(path: Path, headerEnvironment: HeaderEnvironment): FrontendUnit {
         if (!Files.exists(path)) {
             val source = context.sourceRepository.put(path, "")
             return missingFrontend(source)
         }
         val source = context.sourceRepository.put(path, path.readText())
-        return frontend(source)
+        return frontend(source, headerEnvironment)
     }
 
-    private fun prepareFrontends(paths: List<Path>, parallelism: Int): Map<Path, FrontendUnit> {
+    private fun prepareFrontends(
+        paths: List<Path>,
+        parallelism: Int,
+        headerEnvironment: HeaderEnvironment
+    ): Map<Path, FrontendUnit> {
         if (paths.isEmpty()) return emptyMap()
         // Register every source in request order before workers start. This
         // keeps SourceFileId assignment independent of worker scheduling.
@@ -670,7 +733,7 @@ class CPlusCompiler(
         fun compute(preparedSource: PreparedSource): FrontendUnit = if (preparedSource.missing) {
             missingFrontend(preparedSource.source)
         } else {
-            frontend(preparedSource.source)
+            frontend(preparedSource.source, headerEnvironment)
         }
         if (parallelism == 1 || paths.size == 1) {
             return paths.associateWith { path -> compute(prepared.getValue(path)) }
@@ -704,10 +767,10 @@ class CPlusCompiler(
         return FrontendUnit(source, lexed, parsed, null, AstProgram(emptyList(), parsed.syntax.origin))
     }
 
-    private fun frontend(source: SourceFile): FrontendUnit {
+    private fun frontend(source: SourceFile, headerEnvironment: HeaderEnvironment): FrontendUnit {
         val lexed = context.lexer.lex(source)
         val parsed = Parser(lexed).parse()
-        val provisionalSemantic = SemanticAnalyzer().analyze(
+        val provisionalSemantic = context.analyzerFor(headerEnvironment, provisional = true).analyze(
             context.astBuilder.build(parsed.syntax),
             targetFeatures = activeTargetAbiDescriptor?.features.orEmpty(),
             targetName = activeTargetAbiDescriptor?.targetTriple ?: "selected target"

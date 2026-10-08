@@ -2,8 +2,8 @@
 
 ## Start here
 
-This is an implementation runbook for a subsequent coding session, not a claim
-that these features already work. The current change is documentation only.
+This is the active implementation runbook. The current leaf is
+`R10.1.1.1`; consult its recorded status/evidence in `IMPL.PLAN.md`.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
