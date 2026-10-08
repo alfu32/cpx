@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    75/92 accepted with recorded evidence
+Roadmap leaf tasks:    76/92 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R4.6.2.3 — C17 complex exponential and root functions
+Current task:          R4.6.2.4 — C17 complex trigonometric and hyperbolic functions
 Current milestone:     R4 — runtime, allocator and libc behavior
 Latest C17 Linux report: 47 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
@@ -24,13 +24,13 @@ R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
-R4 [DOING] 8/11 Linux runtime/libc leaf tasks evidenced; complex math and Windows gates pending
+R4 [DOING] 9/11 Linux runtime/libc leaf tasks evidenced; complex math and Windows gates pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       75/92 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       76/92 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -42,8 +42,8 @@ R4.6.2 was decomposed into five independently testable leaves for C+ complex
 operators, component/projection functions, exponential/root functions,
 trigonometric/hyperbolic functions, and `<tgmath.h>` dispatch. This increases
 the denominator from 88 to 92 and R4 from 7 to 11 without adding completion
-credit; after R4.6.2.2 acceptance the current aggregate is 75/92 overall and
-8/11 for R4. The complex-function leaves are credited only after their
+credit; after R4.6.2.3 acceptance the current aggregate is 76/92 overall and
+9/11 for R4. The complex-function leaves are credited only after their
 independent C callers, runtime dependency audits, and full builds pass.
 
 The roadmap denominator increased from 65 to 67 during R5.3.7 planning when
@@ -351,8 +351,8 @@ below. Its current execution sequence is:
    R4.6.1 complex scalar/header support and R4.6.2.1 C+ complex
    operators/conversions are accepted for the Linux x86_64 capability;
    R4.6.2.2 component/projection functions are accepted; R4.6.2.3 complex
-   exponential/root functions are next, followed by the two remaining
-   trigonometric/hyperbolic and type-generic leaves. R4
+   exponential/root functions are accepted; R4.6.2.4 trigonometric/hyperbolic
+   functions are next, followed by type-generic dispatch. R4
    remains open for Windows libc validation.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
@@ -415,6 +415,7 @@ Latest completed implementation commits:
 - `a6ab00d` — add target-gated C17 complex scalar ABI, SDK header, and independent Linux x86_64 caller coverage (R4.6.1).
 - `6af6820` — implement target-gated C+ complex conversions/operators and compiler-owned multiply/divide helper ABIs (R4.6.2.1 Linux x86_64).
 - `d721f2b` — implement target-gated C17 complex component and projection functions (R4.6.2.2 Linux x86_64).
+- `0571de7` — implement C17 complex exponential, logarithm, power, and square-root functions for all three precisions (R4.6.2.3 Linux x86_64).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4322,7 +4323,7 @@ layout, source-map, and dependency audits.
 - R4.5 [DONE] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and ensure the report exercises every advertised stdio
   operation rather than treating declarations or stubs as complete.
-- R4.6 [DOING] [3/6] — complete the currently missing C17 complex and type-generic
+- R4.6 [DOING] [4/6] — complete the currently missing C17 complex and type-generic
   math headers; the current 47-pass Linux report covers its registered subset
   and is not evidence that every header family listed in SPEC.STDLIB §18 is
   complete.
@@ -4369,13 +4370,22 @@ layout, source-map, and dependency audits.
     47/0/0/0 because the existing registered fixture was extended. No Windows
     or AArch64 complex execution is claimed.
     **Depends:** R4.6.1 and R5.4.5.2–R5.4.5.10.
-  - R4.6.2.3 [DOING] — implement and execute `cexp`, `clog`, `cpow`, and
+  - R4.6.2.3 [DONE] — implement and execute `cexp`, `clog`, `cpow`, and
     `csqrt` for all three precisions, including branch cuts, signed zeros,
-    infinities, and NaNs. Add independent C17 fixture and dependency audit.
-    Work is active; no completion credit is assigned until all three-precision
-    edge cases, independent callers, dependency checks, and the full build pass.
+    infinities, and NaNs, with independent C17 fixture and dependency audit.
+    Implemented overflow-aware exponential products, scaled log
+    magnitude, principal-branch power, and scaled square root for float,
+    double, and long double. The executable C17 fixture checks finite values,
+    branch cuts and signed zeros, infinities/NaNs, overflow recovery, and large
+    finite logarithm inputs across all three precisions. C+ wrappers for all
+    twelve precision-specific imports were executed through independent C
+    callers under both available Linux compilers; every linked product passed
+    the runtime dependency audit. Strict GCC/Clang warning-as-error C17 syntax
+    checks pass, the C17 report is 47/0/0/0, the focused ABI integration test
+    passes, and `./gradlew build --no-daemon` passes. Implementation commit:
+    `0571de7`. No Windows or AArch64 complex execution is claimed.
     **Depends:** R4.6.2.2 and R5.4.5.2–R5.4.5.10.
-  - R4.6.2.4 [TODO] — implement and execute the C17 circular, inverse,
+  - R4.6.2.4 [DOING] — implement and execute the C17 circular, inverse,
     hyperbolic, and inverse-hyperbolic complex function families for all three
     precisions, including their branch behavior. Add independent C17 fixture
     and dependency audit.
