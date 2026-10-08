@@ -1104,7 +1104,8 @@ creates a type-name binding usable under the imported name in every language
 context that accepts that type, including declarations, fields, function
 parameters and results, pointers, arrays, casts, and type queries. An `as`
 alias SHALL rename the type binding in those contexts just as it renames a
-value binding.
+value binding. Public enumerator names declared by an imported enumeration
+SHALL be selectable as value imports.
 
 For distinct modules, placing a source file in the same compilation graph or
 package SHALL NOT by itself make its declarations available by unqualified

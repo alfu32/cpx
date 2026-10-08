@@ -2905,6 +2905,14 @@ Typed `std.sync` declarations are forwarded by
 the adapter therefore adds no platform-specific object representation or
 dependency. `RuntimeLinker` includes both the algorithm and façade sources.
 
+`std.atomic` is implemented by `sdk/runtime/src/atomic.c`: the target C
+compiler's atomic builtins implement aligned 32-bit load/store/RMW/fence
+operations, while wait/wake delegates to the PAL. The façade switches over
+explicit memory-order values so each builtin receives a compile-time constant
+order rather than defaulting to sequential consistency. Atomic integers remain
+four bytes on every supported ABI; this implementation must link without
+`libatomic` on the declared x86_64/AArch64 targets.
+
 Portable synchronization algorithms are shared in `sdk/runtime/src/sync.c`:
 32-bit state-word mutexes, sequence-based condition variables, counting
 semaphores, and once initialization use compiler atomic intrinsics for their

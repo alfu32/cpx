@@ -1574,6 +1574,14 @@ class SemanticAnalyzer(
                     .mapNotNull(sourceTypeDeclarationsByModule::get)
                     .firstOrNull()
                     .orEmpty()
+                val targetEnumValues = targetNames.asSequence()
+                    .mapNotNull(moduleDeclarations::get)
+                    .firstOrNull()
+                    .orEmpty()
+                    .filterIsInstance<AstEnum>()
+                    .filter(AstEnum::isPublic)
+                    .flatMap { it.values.map(AstEnumValue::name) }
+                    .toSet()
                 val targetFunctions = targetNames.asSequence()
                     .mapNotNull(moduleFunctions::get)
                     .firstOrNull()
@@ -1587,7 +1595,9 @@ class SemanticAnalyzer(
                         diagnostics.error("module import '${import.module}' cannot be resolved", rangeOf(import.origin), "SEM402")
                     } else if (import.names.isNotEmpty()) {
                         import.names.forEach { name ->
-                            if (name !in foreignTypes && name !in foreignGlobals && name !in targetSourceTypes) {
+                            if (name !in foreignTypes && name !in foreignGlobals &&
+                                name !in targetSourceTypes && name !in targetEnumValues
+                            ) {
                                 diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
                             }
                         }
@@ -1601,7 +1611,7 @@ class SemanticAnalyzer(
                     return@forEach
                 }
                 import.names.forEach { name ->
-                    if (name in targetSourceTypes) return@forEach
+                    if (name in targetSourceTypes || name in targetEnumValues) return@forEach
                     if (name in foreignTypes || name in foreignGlobals) return@forEach
                     val function = targetFunctions[name]
                     if (function == null) {

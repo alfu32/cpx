@@ -1081,6 +1081,60 @@ negative PAL error. `std_once_complete` SHALL publish completion and wake
 waiters. The once operation is non-recursive; cancellation recovery is not
 provided if an initializer exits without completion.
 
+The public `std.atomic` module SHALL expose integer atomics and wait/wake over
+the target's native aligned 32-bit integer operations:
+
+```c
+typedef enum {
+    STD_MEMORY_ORDER_RELAXED = 0,
+    STD_MEMORY_ORDER_CONSUME = 1,
+    STD_MEMORY_ORDER_ACQUIRE = 2,
+    STD_MEMORY_ORDER_RELEASE = 3,
+    STD_MEMORY_ORDER_ACQ_REL = 4,
+    STD_MEMORY_ORDER_SEQ_CST = 5
+} std_memory_order_t;
+
+struct std_atomic_int_t { volatile int value; };
+
+int std_atomic_init_int(std_atomic_int_t* object, int value);
+int std_atomic_load_int(std_atomic_int_t* object, std_memory_order_t order, int* result);
+int std_atomic_store_int(std_atomic_int_t* object, int value, std_memory_order_t order);
+int std_atomic_exchange_int(std_atomic_int_t* object, int value, std_memory_order_t order, int* previous);
+int std_atomic_compare_exchange_int(
+    std_atomic_int_t* object, int* expected, int desired,
+    std_memory_order_t order, int* exchanged);
+int std_atomic_fetch_add_int(std_atomic_int_t* object, int value, std_memory_order_t order, int* previous);
+int std_atomic_fetch_sub_int(std_atomic_int_t* object, int value, std_memory_order_t order, int* previous);
+int std_atomic_fetch_and_int(std_atomic_int_t* object, int value, std_memory_order_t order, int* previous);
+int std_atomic_fetch_or_int(std_atomic_int_t* object, int value, std_memory_order_t order, int* previous);
+int std_atomic_fetch_xor_int(std_atomic_int_t* object, int value, std_memory_order_t order, int* previous);
+int std_atomic_thread_fence(std_memory_order_t order);
+int std_atomic_wait_int(std_atomic_int_t* object, int expected, std_memory_order_t order);
+int std_atomic_wake_int(std_atomic_int_t* object, unsigned int count);
+```
+
+`std_atomic_int_t` SHALL contain one four-byte state word at offset zero and
+SHALL be initialized before concurrent use. Operations SHALL return zero on
+success and the stable invalid-argument PAL status for null/misaligned objects,
+missing outputs, or invalid memory orders; output arguments SHALL remain
+unchanged on validation failure. Load orders are relaxed, consume, acquire, or
+sequentially consistent. Store orders are relaxed, release, or sequentially
+consistent. Read-modify-write operations accept all six orders. Compare-exchange
+is strong; its failure order is derived as the requested order, except release
+uses relaxed and acquire-release uses acquire. A failure SHALL update
+`expected` with the observed value and set `exchanged` to zero; success sets it
+to one.
+
+The façade SHALL dispatch each explicit memory order to the corresponding
+compiler atomic primitive with that order as a compile-time constant; it SHALL
+NOT silently strengthen a runtime-selected order. Integer load/store/exchange,
+compare-exchange, arithmetic/bitwise fetch operations, and fences SHALL not
+introduce an OS service or a `libatomic` dependency for the supported 32-bit
+type. Atomic wait SHALL repeat an ordered load and block only while the value
+equals `expected`; wake SHALL use the PAL wait/wake service, where zero wakes
+no waiters and `UINT_MAX` requests wake-all. Wait/wake SHALL preserve stable PAL
+errors.
+
 Creation SHALL start `entry(context)` on a runtime-managed thread and return an
 opaque positive handle, or a stable negative PAL error. A successful join
 SHALL wait for termination, optionally write the entry's return value to
