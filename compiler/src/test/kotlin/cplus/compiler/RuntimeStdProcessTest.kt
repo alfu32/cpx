@@ -59,6 +59,7 @@ class RuntimeStdProcessTest {
                         std_process_stderr_write((const char*)0, 0) != 0) return 4;
                     if (std_process_spawn((const char*)0, (const char* const*)0) != -2 ||
                         std_process_wait(-1, &exit_status) != -2) return 5;
+                    if (std_process_spawn("/cplus/no/such/executable", (const char* const*)0) != -3) return 16;
                     if (argument_count == 2) {
                         if (!same(std_process_argument(1), "child")) return 6;
                         if (std_process_argument(2) != (const char*)0) return 7;
