@@ -150,6 +150,129 @@ class RuntimeStdNetTest {
     }
 
     @Test
+    fun cplusStdNetUdpFacadePreservesEmptyDatagramsAndSourceAddresses() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            System.getProperty("os.name").contains("linux", ignoreCase = true)
+        )
+        val manifestPath = SdkManifestLocator.defaultManifestPath()
+        val manifest = requireNotNull(SdkManifestLoader.load(manifestPath).manifest)
+        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val root = manifestPath.toAbsolutePath().normalize().parent!!.parent!!
+        val directory = Files.createTempDirectory("cplus-std-net-udp")
+        val mainSource = directory.resolve("main.cp").also {
+            Files.writeString(it, """
+                import {
+                    std_net_address_t,
+                    std_net_bind,
+                    std_net_close,
+                    std_net_get_address,
+                    std_net_open,
+                    std_net_receive_from,
+                    std_net_send_to,
+                    std_net_socket_t,
+                    STD_NET_FAMILY_IPV4,
+                    STD_NET_INVALID_ARGUMENT,
+                    STD_NET_SOCKET_DATAGRAM
+                } from std.net;
+                static int bytes_equal(const char* left, const char* right, unsigned int length) {
+                    unsigned int index;
+                    for (index = 0; index < length; index++) {
+                        if (left[index] != right[index]) return 0;
+                    }
+                    return 1;
+                }
+
+                int main() {
+                    std_net_address_t bind_address;
+                    std_net_address_t server_address;
+                    std_net_address_t source_address;
+                    std_net_address_t unchanged;
+                    std_net_socket_t server;
+                    std_net_socket_t client;
+                    char buffer[16];
+                    const char empty_marker = 'E';
+                    const char payload[] = "udp-payload";
+                    const char optional_source[] = "no-source";
+                    unsigned int index;
+
+                    bind_address.family = STD_NET_FAMILY_IPV4;
+                    bind_address.port = 0;
+                    bind_address.reserved = 0;
+                    bind_address.scope_id = 0;
+                    for (index = 0; index < 16; index++) bind_address.address[index] = 0;
+                    bind_address.address[0] = 127;
+                    bind_address.address[3] = 1;
+                    unchanged.family = 77;
+                    unchanged.port = 1234;
+                    unchanged.reserved = 0;
+                    unchanged.scope_id = 99;
+                    for (index = 0; index < 16; index++) unchanged.address[index] = 0x5a;
+
+                    if (std_net_receive_from(-1, buffer, sizeof(buffer), &unchanged) != STD_NET_INVALID_ARGUMENT ||
+                        unchanged.family != 77 || unchanged.port != 1234 || unchanged.scope_id != 99 ||
+                        std_net_send_to(-1, &empty_marker, 0, &bind_address) != STD_NET_INVALID_ARGUMENT ||
+                        std_net_send_to(1, &empty_marker, 0, (const std_net_address_t*)0) != STD_NET_INVALID_ARGUMENT) return 1;
+                    server = std_net_open(STD_NET_FAMILY_IPV4, STD_NET_SOCKET_DATAGRAM);
+                    if (server < 0 || std_net_bind(server, &bind_address) != 0 ||
+                        std_net_get_address(server, 0, &server_address) != 0 || server_address.port == 0) return 2;
+                    client = std_net_open(STD_NET_FAMILY_IPV4, STD_NET_SOCKET_DATAGRAM);
+                    if (client < 0) return 3;
+
+                    if (std_net_send_to(client, (const void*)0, 1, &server_address) != STD_NET_INVALID_ARGUMENT ||
+                        std_net_send_to(client, payload, (unsigned long long)2147483648, &server_address) != STD_NET_INVALID_ARGUMENT ||
+                        std_net_receive_from(server, (void*)0, 1, &source_address) != STD_NET_INVALID_ARGUMENT) return 4;
+                    if (std_net_send_to(client, &empty_marker, 0, &server_address) != 0 ||
+                        std_net_receive_from(server, (void*)0, 0, &source_address) != 0 ||
+                        source_address.family != STD_NET_FAMILY_IPV4 || source_address.port == 0) return 5;
+                    if (std_net_send_to(client, payload, sizeof(payload) - 1, &server_address) != sizeof(payload) - 1 ||
+                        std_net_receive_from(server, buffer, sizeof(buffer), &source_address) != sizeof(payload) - 1 ||
+                        !bytes_equal(buffer, payload, sizeof(payload) - 1) ||
+                        source_address.family != STD_NET_FAMILY_IPV4 || source_address.port == 0) return 6;
+                    if (std_net_send_to(client, optional_source, sizeof(optional_source) - 1, &server_address) !=
+                            sizeof(optional_source) - 1 ||
+                        std_net_receive_from(server, buffer, sizeof(buffer), (std_net_address_t*)0) !=
+                            sizeof(optional_source) - 1 ||
+                        !bytes_equal(buffer, optional_source, sizeof(optional_source) - 1)) return 7;
+                    if (std_net_close(client) != 0 || std_net_close(server) != 0) return 8;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val generatedC = directory.resolve("std-net-udp.c")
+        val executable = directory.resolve("std-net-udp")
+        try {
+            val compilation = CPlusCompiler().compile(
+                CompileRequest(listOf(root.resolve("std/src/net.cp"), mainSource), target)
+            )
+            assertTrue(compilation.isSuccessful, compilation.diagnostics.joinToString())
+            Files.writeString(generatedC, compilation.generatedUnits.single().text)
+            val link = LinkDriver.link(LinkRequest(generatedC, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+
+            val undefined = ProcessBuilder("nm", "-u", executable.toString()).start()
+            val undefinedOutput = undefined.inputStream.bufferedReader().readText()
+            assertEquals(0, undefined.waitFor(), undefinedOutput)
+            assertTrue(undefinedOutput.isBlank(), "UDP façade product imports host symbols: $undefinedOutput")
+
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            if (!process.waitFor(20, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw AssertionError("C+ std.net UDP fixture timed out; artifacts at $directory")
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), "UDP façade fixture failed with output '$output'")
+        } finally {
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(generatedC)
+            Files.deleteIfExists(mainSource)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test
     fun stdNetTcpFacadePassesStrictC17ChecksOnFourTargetCompilers() {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val source = root.resolve("runtime/src/net.c")

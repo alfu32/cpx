@@ -68,6 +68,32 @@ long long std_net_receive(std_net_socket_t socket, void* buffer, unsigned long l
     return platform_socket_receive(socket, buffer, capacity);
 }
 
+long long std_net_send_to(
+    std_net_socket_t socket,
+    const void* buffer,
+    unsigned long long length,
+    const struct std_net_address_t* destination) {
+    cplus_socket_address_t pal_destination;
+    if (!destination) return CPLUS_PAL_INVALID_ARGUMENT;
+    __cplus_net_copy_address_to_pal(destination, &pal_destination);
+    return platform_socket_send_to(socket, buffer, length, &pal_destination);
+}
+
+long long std_net_receive_from(
+    std_net_socket_t socket,
+    void* buffer,
+    unsigned long long capacity,
+    struct std_net_address_t* source) {
+    cplus_socket_address_t pal_source;
+    long long received = platform_socket_receive_from(
+        socket,
+        buffer,
+        capacity,
+        source ? &pal_source : (cplus_socket_address_t*)0);
+    if (received >= 0 && source) __cplus_net_copy_address_from_pal(&pal_source, source);
+    return received;
+}
+
 int std_net_shutdown(std_net_socket_t socket, enum std_net_shutdown_t direction) {
     return platform_socket_shutdown(socket, (unsigned int)direction);
 }
