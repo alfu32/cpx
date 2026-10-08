@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    58/75 accepted with recorded evidence
+Roadmap leaf tasks:    58/87 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.5 — implement portable std.math and C math
+Current task:          R3.1.3 — add target-aware long double ABI support
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -23,13 +23,13 @@ R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
-R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 26/31 native std and platform-service work remains open
+R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
+R5 [DOING] 26/41 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       58/75 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       58/87 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -150,15 +150,32 @@ against the production resolver. Linked public C+ products have no undefined
 host-runtime symbols, strict warning-as-error C17 façade checks pass for all
 four Linux/Windows x86_64/AArch64 target triples, and the full Gradle build
 passes. Commit `9a154ae` brings the numerator to 58/75 and R5 to 26/31. Windows
-runtime execution remains deferred. R5.4.4 is now complete at 4/4; R5.4.5
-portable math is the active task.
+runtime execution remains deferred. R5.4.4 is now complete at 4/4; portable
+math remains queued behind the long-double ABI prerequisite.
+
+Audit of R5.4.5 found that the two-function math stub cannot meet C17: the
+standard real-math surface includes classification, rounding, decomposition,
+remainder, power/root, exponential/logarithmic, trigonometric/hyperbolic,
+error/gamma, minimum/maximum, and fused-multiply-add families, with
+float/double/long-double variants. The roadmap denominator increases from 75
+to 85 and R5 from 31 to 41 by decomposing that parent into eleven independently
+testable leaves, with no completion credit. A separate audit of the already
+advertised C17 headers found that `<complex.h>` and `<tgmath.h>` are absent;
+R4.6 adds two leaves, increasing the total from 85 to 87 and R4 from 5/5 to
+5/7, also with no completion credit. `long double` is accepted syntactically
+but absent from semantic primitive and target ABI modeling. R3.1.3 is
+explicitly expanded to establish and probe target floating formats, size, and
+alignment before the C17 math declaration matrix is accepted. R5.4.5.1
+depends on that still-open ABI task; complex math additionally depends on the
+real math implementation.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
 1. Continue R5.4–R5.5; Linux C17 stdio and
-   report tasks R4.4/R4.5 now pass their stated acceptance checks.
+   report tasks R4.4/R4.5 pass their recorded Linux checks; R4.6 complex and
+   type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -3996,7 +4013,9 @@ declaration.
   - R3.1.2 [DONE] — execute globals, TLS, export/link-name, and aggregate-return
     interoperability fixtures.
   - R3.1.3 [DOING] — extend target ABI audit from descriptor-level layouts to
-    parsed primitive declarations, emitted C, and independent ABI fixtures.
+    parsed primitive declarations, emitted C, and independent ABI fixtures,
+    including target-specific `long double` format, size, alignment, and call
+    compatibility required by the C17 math surface.
 - R3.2 [DONE] — complete headers, dependencies, source maps, and external C
   diagnostic remapping as one audited product.
 - R3.3 [DONE] — identify compiler-generated runtime helpers and either provide
@@ -4038,7 +4057,12 @@ This is partial evidence only. R3.1.3 remains `DOING` until end-to-end fixtures
 prove that each supported multiword spelling preserves signedness, rank, and
 target width through the parser, semantic model, emitted C, and independent C
 caller. This specifically covers LP64 and LLP64 differences and the
-`char`/`signed char`/`unsigned char` distinction.
+`char`/`signed char`/`unsigned char` distinction. The acceptance matrix now
+also includes `long double`: each target descriptor SHALL record its floating
+format, storage size, and alignment; the selected C compiler SHALL pass a
+matching probe, and emitted C plus an independent caller SHALL agree on scalar,
+aggregate-field, and function-parameter/return ABI. This is a prerequisite to
+accepting the C17 `<math.h>` declaration matrix in R5.4.5.1.
 
 Linux evidence added for the current pass:
 
@@ -4110,6 +4134,17 @@ layout, source-map, and dependency audits.
 - R4.5 [DONE] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and ensure the report exercises every advertised stdio
   operation rather than treating declarations or stubs as complete.
+- R4.6 [TODO] [0/2] — complete the currently missing C17 complex and type-generic
+  math headers; the existing 42-pass Linux report covers its registered subset
+  and is not evidence that every header family listed in SPEC.STDLIB §18 is
+  complete.
+  - R4.6.1 [TODO] — add target-described C complex types and the C17
+    `<complex.h>` declarations/macros, with semantic, layout, and independent
+    C-caller coverage.
+  - R4.6.2 [TODO] — implement the C17 complex math function families and
+    `<tgmath.h>` dispatch across real and complex argument types, with an
+    independent C17 fixture and no undeclared host `libm` dependency.
+    **Depends:** R4.6.1 and R5.4.5.2–R5.4.5.10.
 
 The Linux x86_64 conformance command reports the individual header, runtime
 source, fixture execution, and binary dependency checks; it returns non-zero
@@ -4119,8 +4154,10 @@ their stream argument. R5.3.3 fixed those behaviors; the independent
 `c17-stdio.c` fixture now exercises every function declared by the SDK's
 `stdio.h`, and `cplus libc test --target linux-x86_64` reports 42 pass, 0 fail,
 0 unsupported, and 0 planned, including exact stdin/stdout/stderr checks and a
-binary dependency audit. The Linux R4.4/R4.5 leaves are complete; the R4 phase
-gate remains open for deferred Windows validation.
+binary dependency audit. These 42 registered checks do not cover the full C17
+header list: `<complex.h>` and `<tgmath.h>` remain open under R4.6. The R4.4/
+R4.5 Linux leaves pass their recorded acceptance checks; the R4 phase gate
+remains open for R4.6 and deferred Windows validation.
 
 ### R4.1/R4.2 completion record
 
@@ -4229,9 +4266,10 @@ undeclared host/compiler-runtime dependency. `ConformanceTest` asserts the
 stream case is present and passing. Running
 `./gradlew :cli:run --no-daemon --args='libc test --target linux-x86_64'`
 reports 42 pass, 0 fail, 0 unsupported, and 0 planned; `./gradlew build
---no-daemon` passes. This completes R4.4/R4.5 for the Linux x86_64 claim. The
-parent R4 phase gate remains `DOING` until deferred Windows runtime/libc
-validation passes.
+--no-daemon` passes. This satisfies the recorded R4.4/R4.5 Linux checks but
+does not establish all C17 headers: `<complex.h>` and `<tgmath.h>` remain TODO
+under R4.6. The parent R4 phase gate remains `DOING` until R4.6 and deferred
+Windows runtime/libc validation pass.
 
 Windows and AArch64 execution remains deferred until the final cross-platform
 validation pass.
@@ -4514,8 +4552,33 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [DOING] — implement the specified portable `std.math` and C math
-    surface without requiring a host `libm` dependency;
+  - R5.4.5 [TODO] [0/11] — implement the specified portable real `std.math` and
+    C `<math.h>` surface without requiring a host `libm` dependency.
+    - R5.4.5.1 [TODO] — define the complete real C17 `<math.h>` and `std.math`
+      API, including declarations, macros, constants, and float/double/long
+      double signatures. **Depends:** R3.1.3.
+    - R5.4.5.2 [TODO] — implement floating classification and comparison
+      operations/macros for each supported real type. **Depends:** R5.4.5.1.
+    - R5.4.5.3 [TODO] — implement rounding and integer-conversion families.
+      **Depends:** R5.4.5.1.
+    - R5.4.5.4 [TODO] — implement decomposition, scaling, sign, NaN, and
+      adjacent-value manipulation families. **Depends:** R5.4.5.1.
+    - R5.4.5.5 [TODO] — implement remainder and quotient-remainder families.
+      **Depends:** R5.4.5.1.
+    - R5.4.5.6 [TODO] — implement absolute value, power, roots, and hypotenuse
+      families. **Depends:** R5.4.5.1.
+    - R5.4.5.7 [TODO] — implement exponential and logarithmic families.
+      **Depends:** R5.4.5.1.
+    - R5.4.5.8 [TODO] — implement trigonometric and hyperbolic families.
+      **Depends:** R5.4.5.1.
+    - R5.4.5.9 [TODO] — implement error and gamma families.
+      **Depends:** R5.4.5.1.
+    - R5.4.5.10 [TODO] — implement positive-difference, extrema, and
+      fused-multiply-add families. **Depends:** R5.4.5.1.
+    - R5.4.5.11 [TODO] — expose the implemented real operations through the
+      self-hosted `std.math` façade and pass the complete real-math runtime,
+      C17 fixture, and host-library dependency audits. **Depends:**
+      R5.4.5.2–R5.4.5.10.
   - R5.4.6 [TODO] — propagate target capabilities and stable unavailable-service
     diagnostics, and audit that unused modules add no platform dependencies;
 - R5.5 [TODO] — record Darwin as either executablely supported or explicitly

@@ -2444,17 +2444,45 @@ Native C+ math code SHALL not implicitly depend on mutable floating-point-enviro
 
 # 52. Math library
 
-The SDK SHALL contain a self-hosted `std.math` and C-compatible `<math.h>` implementation.
+The SDK SHALL contain a self-hosted `std.math` and a C17-compatible
+`<math.h>` implementation. The real-math surface SHALL include the complete
+C17 `<math.h>` declarations, macros, constants, and behavior for `float`,
+`double`, and `long double`, including the corresponding `f` and `l` function
+variants. This includes classification and comparison macros; rounding and
+integer conversion; decomposition, scaling, and adjacent-value manipulation;
+remainder; power, roots, and magnitude; exponential and logarithmic;
+trigonometric and hyperbolic; error and gamma; positive-difference, extrema,
+and fused-multiply-add operations.
 
-The implementation MAY use:
+The SDK SHALL expose the supported real operations through `std.math` with
+explicit C+ declarations and types. It SHALL preserve the selected target's
+floating formats and ABI, including `long double`, and SHALL NOT silently
+substitute a lower-precision type. The C17 profile SHALL NOT claim IEC 60559 /
+Annex F conformance unless that additional behavior has its own verified
+conformance gate.
 
-```text
-portable algorithms
-architecture intrinsics
-hardware floating-point instructions
-```
+Implementations MAY use portable algorithms, architecture intrinsics, or
+hardware floating-point instructions. A complete self-hosted profile SHALL
+NOT require the host system `libm`; conformance binaries SHALL be checked for
+undeclared host math-library and compiler-runtime dependencies.
 
-It SHALL NOT require the system `libm` in a complete self-hosted profile.
+## 52.1 Complex and type-generic math
+
+Where the target advertises the C17 complex profile, the SDK SHALL provide the
+standard `<complex.h>` types, macros, and float/double/long-double complex
+function families, including construction, projection, component, argument,
+and complex arithmetic/transcendental operations. The complex representation
+and calling convention SHALL match the selected target ABI; complex values
+SHALL NOT be modeled as ordinary C+ records.
+
+The C17 `<tgmath.h>` header SHALL provide the standard type-generic math
+macros for the corresponding `<math.h>` and `<complex.h>` operations. Dispatch
+SHALL follow C17 argument-type selection, including integer promotion and
+real-versus-complex selection, and SHALL preserve the result type and required
+single-evaluation behavior. Neither header may rely on a host `libm` that is
+absent from the self-hosted profile. These two headers are part of the C17
+profile claim only after their independent C17 fixtures and dependency audits
+pass.
 
 ---
 

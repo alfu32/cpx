@@ -1615,6 +1615,43 @@ SDK signatures. If the selected target does not advertise and implement the
 corresponding `std.fixed_width` alias SHALL produce diagnostic `SEM411` rather
 than silently selecting a narrower type.
 
+## 34.2 C floating types
+
+`float`, `double`, and `long double` SHALL be distinct canonical C primitive
+types even when a target gives two of them the same representation. The
+specifier sequence `long double` SHALL resolve to the `long double` primitive;
+it SHALL NOT be treated as an unknown user-defined type or as an alias for
+`double`.
+
+Floating representation is target-ABI dependent. Each supported target ABI
+descriptor SHALL identify the format, storage size, and alignment of `float`,
+`double`, and `long double`. The selected C toolchain SHALL be probed for those
+properties before code generation or linking. If its results disagree with
+the selected descriptor, the compiler SHALL reject the target/toolchain
+combination with an ABI diagnostic rather than emitting a product with an
+unverified layout or calling convention.
+
+The semantic and ABI models SHALL preserve each floating type through
+declarations, expressions, aggregate fields, function parameters and returns,
+and emitted C. A target MAY use the same format for `double` and `long double`,
+but their C type identities and overload/conversion rules remain distinct.
+
+## 34.3 C complex types
+
+When the selected C17 profile advertises `<complex.h>`, C+ SHALL recognize
+`float _Complex`, `double _Complex`, and `long double _Complex` as distinct
+types paired with their corresponding real types. The `complex` spelling
+provided by `<complex.h>` SHALL denote `_Complex` as required by the C header
+contract. Complex type identity, aggregate layout, parameter/return ABI, and
+conversion behavior SHALL be target-described and preserved by semantic
+analysis and C lowering; they SHALL NOT be approximated as an ordinary
+user-declared two-field structure.
+
+Complex support SHALL be capability-gated by the selected target/toolchain
+profile. A target SHALL NOT advertise C17 complex compatibility until its
+complex representation and calling convention pass the target ABI probe and
+independent C-caller checks.
+
 ---
 
 # 35. CPX versus runtime function calls
