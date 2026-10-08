@@ -58,9 +58,14 @@ async function main() {
       '--user-data-dir', userDataDirectory,
       '--install-extension', vsixPath,
       '--force'
-    ], { encoding: 'utf8', timeout: 120000 });
-    if (install.status !== 0) {
-      throw new Error(`VS Code could not install the packaged C+ VSIX:\n${install.stdout}\n${install.stderr}`);
+    ], { encoding: 'utf8', timeout: 120000, shell: process.platform === 'win32' });
+    if (install.error || install.status !== 0) {
+      throw new Error([
+        'VS Code could not install the packaged C+ VSIX.',
+        `status: ${install.status}; signal: ${install.signal}; error: ${install.error?.message || 'none'}`,
+        install.stdout || '',
+        install.stderr || ''
+      ].join('\n'));
     }
 
     const exitCode = await runTests({
