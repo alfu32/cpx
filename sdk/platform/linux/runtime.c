@@ -341,20 +341,36 @@ int platform_process_wait(long long process, int* exit_status) {
     return 0;
 }
 
-long platform_write_stdout(const char* buffer, unsigned long length) {
+static long long cplus_linux_standard_io(long descriptor, void* buffer, unsigned long long length, int reading) {
+    long result;
+    long syscall_number;
+    if ((!buffer && length != 0) || length > 0x7fffffffffffffffULL) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (length == 0) return 0;
 #if defined(__x86_64__)
-    register long first __asm__("rdi") = 1;
-    register const char* second __asm__("rsi") = buffer;
-    register unsigned long third __asm__("rdx") = length;
-    register long number __asm__("rax") = 1;
-    __asm__ volatile("syscall" : "+a"(number) : "D"(first), "S"(second), "d"(third) : "rcx", "r11", "memory");
-    return number;
+    syscall_number = reading ? 0 : 1;
 #elif defined(__aarch64__)
-    return cplus_linux_syscall3(64, 1, (long)buffer, (long)length);
+    syscall_number = reading ? 63 : 64;
 #else
-    (void)buffer; (void)length;
-    return -38;
+    (void)descriptor;
+    (void)reading;
+    return CPLUS_PAL_UNSUPPORTED;
 #endif
+    do {
+        result = cplus_linux_syscall3(syscall_number, descriptor, (long)buffer, (long)length);
+    } while (result == -4);
+    return cplus_normalize_linux_result(result);
+}
+
+long long platform_read_stdin(void* buffer, unsigned long long capacity) {
+    return cplus_linux_standard_io(0, buffer, capacity, 1);
+}
+
+long long platform_write_stdout(const char* buffer, unsigned long long length) {
+    return cplus_linux_standard_io(1, (void*)buffer, length, 0);
+}
+
+long long platform_write_stderr(const char* buffer, unsigned long long length) {
+    return cplus_linux_standard_io(2, (void*)buffer, length, 0);
 }
 
 long long platform_file_open(const char* path, unsigned long long mode) {

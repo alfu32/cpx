@@ -6,6 +6,11 @@
 
 typedef struct FILE FILE;
 
+#define EOF (-1)
+extern FILE* stdin;
+extern FILE* stdout;
+extern FILE* stderr;
+
 int printf(const char* format, ...);
 int fprintf(FILE* stream, const char* format, ...);
 int sprintf(char* buffer, const char* format, ...);

@@ -146,9 +146,17 @@ The baseline PAL SHALL expose a uniform, versioned C ABI to both the C+
 runtime and native SDK services. The baseline operations are:
 
 ```c
-long platform_write_stdout(const char* buffer, unsigned long length);
+long long platform_read_stdin(void* buffer, unsigned long long capacity);
+long long platform_write_stdout(const char* buffer, unsigned long long length);
+long long platform_write_stderr(const char* buffer, unsigned long long length);
 int platform_process_exit(int status);
 ```
+
+Reads and writes MAY be partial. A zero-length request SHALL return zero, and
+standard-input EOF SHALL return zero. Negative results SHALL use the stable
+PAL error values. The C stdio façade SHALL route `stdin`, `stdout`, and
+`stderr` operations to their corresponding channels; it SHALL NOT silently
+route `fprintf(stderr, ...)` to stdout or report EOF for unread input.
 
 The version-2 file-service extension SHALL expose the following additional
 operations. The explicit-width handle and size types are required because
@@ -700,12 +708,7 @@ isize os_write(os_handle_t handle, borrowed void* src, usize count);
 void os_close(os_handle_t handle);
 ```
 
-The process/runtime baseline additionally uses the uniform PAL ABI:
-
-```c
-long platform_write_stdout(const char* buffer, unsigned long length);
-int platform_process_exit(int status);
-```
+The PAL standard-channel operations are specified in §2.5.
 
 File streams use the PAL file operations (version-2 operations are preserved
 by version 3). `std.io` may layer
@@ -829,6 +832,9 @@ through the uniform C ABI:
 typedef long long cplus_process_handle_t;
 
 long long platform_process_id(void);
+unsigned long long platform_process_argument_count(void);
+const char* platform_process_argument(unsigned long long index);
+const char* const* platform_process_environment(void);
 cplus_process_handle_t platform_process_spawn(
     const char* executable,
     const char* const* arguments);
@@ -842,6 +848,18 @@ first element is the child `argv[0]`; when null, the PAL SHALL use
 environment and standard input, output, and error streams. The PAL SHALL NOT
 invoke a shell or parse a command string. Argument storage is borrowed only
 for the duration of spawn and SHALL NOT be retained by the PAL.
+
+The current-process argument count SHALL exclude the terminating null entry;
+an out-of-range argument lookup SHALL return null. The environment accessor
+SHALL return a null-terminated vector of `NAME=value` byte strings whose
+storage remains valid for the process lifetime. Unix adapters SHALL preserve
+the OS-provided bytes without lossy conversion; Windows adapters SHALL encode
+the native UTF-16 command-line and environment data as UTF-8. C+ text
+operations that require valid UTF-8 SHALL validate these byte strings before
+decoding them. Windows startup SHALL apply the platform command-line quoting
+rules. If Windows command-line or environment text cannot be converted to
+valid UTF-8, or required startup storage cannot be allocated, startup SHALL
+exit with status 127 before calling `main`.
 
 Spawn SHALL return an opaque non-negative process handle on success or a
 stable negative PAL error on failure. It SHALL report executable lookup or

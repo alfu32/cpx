@@ -26,9 +26,14 @@
 
 typedef long long cplus_process_handle_t;
 
-long platform_write_stdout(const char* buffer, unsigned long length);
+long long platform_read_stdin(void* buffer, unsigned long long capacity);
+long long platform_write_stdout(const char* buffer, unsigned long long length);
+long long platform_write_stderr(const char* buffer, unsigned long long length);
 int platform_process_exit(int status);
 long long platform_process_id(void);
+unsigned long long platform_process_argument_count(void);
+const char* platform_process_argument(unsigned long long index);
+const char* const* platform_process_environment(void);
 cplus_process_handle_t platform_process_spawn(
     const char* executable,
     const char* const* arguments);

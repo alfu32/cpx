@@ -2847,8 +2847,15 @@ self-hosted product.
 
 The process ABI follows the same boundary: process handles use a signed
 64-bit opaque carrier, argument vectors are borrowed UTF-8 null-terminated
-pointer arrays, the child inherits the current environment and standard
-streams, and PAL failures use the stable CPLUS error set. Linux uses
+pointer arrays, and current-process arguments/environment are exposed as
+runtime-lifetime UTF-8 views. Linux startup forwards the initial stack's
+`argc`, `argv`, and `envp` to common runtime initialization. Windows startup
+converts `GetCommandLineW` arguments and the `GetEnvironmentStringsW` block to
+runtime-owned UTF-8 vectors before invoking common initialization. The child
+inherits the current environment and standard streams, and PAL failures use
+the stable CPLUS error set. Standard input uses Linux fd 0 / Windows
+`GetStdHandle(STD_INPUT_HANDLE)` and `ReadFile`; stdout/stderr use Linux fds 1
+and 2 / their Windows standard handles and `WriteFile`. Linux uses
 target-catalogued process syscalls; spawn uses a close-on-exec
 error channel so `execve` failures are returned synchronously instead of being
 confused with a child exit code. Windows uses `CreateProcessW`, converts

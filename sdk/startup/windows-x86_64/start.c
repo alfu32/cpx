@@ -1,8 +1,8 @@
-int __cplus_start(int argc, char** argv);
+int __cplus_windows_start(void);
 int platform_process_exit(int status);
 
 void mainCRTStartup(void) {
-    int status = __cplus_start(0, (char**)0);
+    int status = __cplus_windows_start();
     platform_process_exit(status);
     for (;;) { }
 }

@@ -20,12 +20,12 @@ void __main(void) { }
 void __cplus_flush_streams(void);
 void platform_process_exit(int status);
 
-int __cplus_runtime_init(int argc, char** argv) {
+int __cplus_runtime_init(int argc, char** argv, char** environment) {
     __cplus_exit_handler_count = 0;
     __cplus_quick_exit_handler_count = 0;
     __cplus_argc = argc;
     __cplus_argv = argv;
-    __cplus_environment = argv && argc >= 0 ? argv + argc + 1 : (char**)0;
+    __cplus_environment = environment;
     __cplus_tls_initialized = 1;
     __cplus_allocator_initialized = 1;
     __cplus_global_state_initialized = 1;
@@ -36,6 +36,17 @@ int __cplus_runtime_init(int argc, char** argv) {
 int __cplus_runtime_is_initialized(void) { return __cplus_runtime_initialized; }
 int __cplus_runtime_argc(void) { return __cplus_argc; }
 char** __cplus_runtime_argv(void) { return __cplus_argv; }
+char** __cplus_runtime_environment(void) { return __cplus_environment; }
+unsigned long long platform_process_argument_count(void) {
+    return __cplus_argc < 0 ? 0ULL : (unsigned long long)__cplus_argc;
+}
+const char* platform_process_argument(unsigned long long index) {
+    return index < platform_process_argument_count() && __cplus_argv
+        ? __cplus_argv[index] : (const char*)0;
+}
+const char* const* platform_process_environment(void) {
+    return (const char* const*)__cplus_environment;
+}
 int __cplus_tls_is_initialized(void) { return __cplus_tls_initialized; }
 int __cplus_allocator_is_initialized(void) { return __cplus_allocator_initialized; }
 int __cplus_global_state_is_initialized(void) { return __cplus_global_state_initialized; }
@@ -94,9 +105,9 @@ void __cplus_flush_streams(void) { }
 
 extern int main(int argc, char** argv);
 
-int __cplus_start(int argc, char** argv) {
+int __cplus_start(int argc, char** argv, char** environment) {
     int status;
-    if (__cplus_runtime_init(argc, argv) != 0) return 127;
+    if (__cplus_runtime_init(argc, argv, environment) != 0) return 127;
     status = main(argc, argv);
     return __cplus_terminate_normal(status);
 }

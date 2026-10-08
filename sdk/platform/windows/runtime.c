@@ -68,6 +68,9 @@ typedef struct __cplus_process_information {
 
 __declspec(dllimport) __cplus_handle __stdcall GetStdHandle(__cplus_dword kind);
 __declspec(dllimport) __cplus_dword __stdcall GetCurrentProcessId(void);
+__declspec(dllimport) unsigned short* __stdcall GetCommandLineW(void);
+__declspec(dllimport) unsigned short* __stdcall GetEnvironmentStringsW(void);
+__declspec(dllimport) __cplus_bool __stdcall FreeEnvironmentStringsW(unsigned short* environment);
 __declspec(dllimport) __cplus_handle __stdcall GetProcessHeap(void);
 __declspec(dllimport) void* __stdcall HeapAlloc(__cplus_handle heap, __cplus_dword flags, unsigned long long bytes);
 __declspec(dllimport) __cplus_bool __stdcall HeapFree(__cplus_handle heap, __cplus_dword flags, void* memory);
@@ -185,6 +188,8 @@ __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(__cplus_dw
 #define __CPLUS_INFINITE 0xffffffffUL
 #define __CPLUS_MAX_ARGUMENTS 4096
 #define __CPLUS_MAX_COMMAND_LINE 32767
+#define __CPLUS_ERROR_HANDLE_EOF 38UL
+#define __CPLUS_ERROR_BROKEN_PIPE 109UL
 
 static long cplus_normalize_windows_error(void) {
     __cplus_dword error = GetLastError();
@@ -330,10 +335,213 @@ int platform_page_release(void* address, unsigned long long page_count) {
     return VirtualFree(address, 0, __CPLUS_MEM_RELEASE) ? 0 : (int)cplus_normalize_windows_error();
 }
 
-long platform_write_stdout(const char* buffer, unsigned long length) {
+static long long cplus_windows_standard_read(__cplus_dword stream, void* buffer, unsigned long long capacity) {
+    __cplus_dword read_count = 0;
+    __cplus_handle handle;
+    if ((!buffer && capacity != 0)) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (capacity == 0) return 0;
+    handle = GetStdHandle(stream);
+    if (!handle || handle == __CPLUS_INVALID_HANDLE) return CPLUS_PAL_IO_ERROR;
+    if (capacity > 0xffffffffULL) capacity = 0xffffffffULL;
+    if (ReadFile(handle, buffer, (__cplus_dword)capacity, &read_count, (void*)0)) return (long long)read_count;
+    {
+        __cplus_dword error = GetLastError();
+        if (error == __CPLUS_ERROR_HANDLE_EOF || error == __CPLUS_ERROR_BROKEN_PIPE) return 0;
+        return (long long)cplus_normalize_windows_error();
+    }
+}
+
+static long long cplus_windows_standard_write(__cplus_dword stream, const char* buffer, unsigned long long length) {
     __cplus_dword written = 0;
-    __cplus_handle handle = GetStdHandle((__cplus_dword)-11);
-    return WriteFile(handle, buffer, (__cplus_dword)length, &written, (void*)0) ? (long)written : CPLUS_PAL_IO_ERROR;
+    __cplus_handle handle;
+    if (!buffer && length != 0) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (length == 0) return 0;
+    handle = GetStdHandle(stream);
+    if (!handle || handle == __CPLUS_INVALID_HANDLE) return CPLUS_PAL_IO_ERROR;
+    if (length > 0xffffffffULL) length = 0xffffffffULL;
+    return WriteFile(handle, buffer, (__cplus_dword)length, &written, (void*)0)
+        ? (long long)written : (long long)cplus_normalize_windows_error();
+}
+
+long long platform_read_stdin(void* buffer, unsigned long long capacity) {
+    return cplus_windows_standard_read((__cplus_dword)-10, buffer, capacity);
+}
+
+long long platform_write_stdout(const char* buffer, unsigned long long length) {
+    return cplus_windows_standard_write((__cplus_dword)-11, buffer, length);
+}
+
+long long platform_write_stderr(const char* buffer, unsigned long long length) {
+    return cplus_windows_standard_write((__cplus_dword)-12, buffer, length);
+}
+
+static int cplus_windows_is_space(unsigned short value) {
+    return value == (unsigned short)' ' || value == (unsigned short)'\t';
+}
+
+static int cplus_windows_build_arguments(
+    const unsigned short* command_line,
+    char*** arguments_out
+) {
+    unsigned short* argument_buffer;
+    char** arguments;
+    char* utf8_storage;
+    unsigned long long storage_offset = 0;
+    int argc = 0;
+    int index = 0;
+    if (!command_line || !arguments_out) return -1;
+    argument_buffer = (unsigned short*)HeapAlloc(
+        GetProcessHeap(), 0, ((unsigned long long)__CPLUS_MAX_COMMAND_LINE + 1ULL) * 2ULL);
+    arguments = (char**)HeapAlloc(
+        GetProcessHeap(), 0, ((unsigned long long)__CPLUS_MAX_ARGUMENTS + 1ULL) * sizeof(char*));
+    utf8_storage = (char*)HeapAlloc(
+        GetProcessHeap(), 0, (unsigned long long)__CPLUS_MAX_COMMAND_LINE * 3ULL + 1ULL);
+    if (!argument_buffer || !arguments || !utf8_storage) return -1;
+    while (command_line[index]) {
+        int argument_length = 0;
+        int in_quotes = 0;
+        int required;
+        int converted;
+        while (cplus_windows_is_space(command_line[index])) index++;
+        if (!command_line[index]) break;
+        if (argc >= __CPLUS_MAX_ARGUMENTS) return -1;
+        while (command_line[index]) {
+            int backslashes = 0;
+            while (command_line[index] == (unsigned short)'\\') {
+                backslashes++;
+                index++;
+            }
+            if (command_line[index] == (unsigned short)'"') {
+                int slash_index;
+                for (slash_index = 0; slash_index < backslashes / 2; slash_index++) {
+                    argument_buffer[argument_length++] = (unsigned short)'\\';
+                }
+                if ((backslashes & 1) != 0) {
+                    argument_buffer[argument_length++] = (unsigned short)'"';
+                    index++;
+                } else if (in_quotes && command_line[index + 1] == (unsigned short)'"') {
+                    argument_buffer[argument_length++] = (unsigned short)'"';
+                    index += 2;
+                } else {
+                    in_quotes = !in_quotes;
+                    index++;
+                }
+                continue;
+            }
+            while (backslashes-- > 0) argument_buffer[argument_length++] = (unsigned short)'\\';
+            if (!command_line[index] || (!in_quotes && cplus_windows_is_space(command_line[index]))) break;
+            argument_buffer[argument_length++] = command_line[index++];
+        }
+        required = argument_length == 0 ? 0 : WideCharToMultiByte(
+            __CPLUS_CP_UTF8,
+            __CPLUS_WC_ERR_INVALID_CHARS,
+            argument_buffer,
+            argument_length,
+            (char*)0,
+            0,
+            (const char*)0,
+            (int*)0);
+        if ((argument_length != 0 && required <= 0) || storage_offset + (unsigned long long)required + 1ULL >
+                (unsigned long long)__CPLUS_MAX_COMMAND_LINE * 3ULL + 1ULL) return -1;
+        arguments[argc++] = utf8_storage + storage_offset;
+        if (required != 0) {
+            converted = WideCharToMultiByte(
+                __CPLUS_CP_UTF8,
+                __CPLUS_WC_ERR_INVALID_CHARS,
+                argument_buffer,
+                argument_length,
+                utf8_storage + storage_offset,
+                required,
+                (const char*)0,
+                (int*)0);
+            if (converted != required) return -1;
+        }
+        utf8_storage[storage_offset + (unsigned long long)required] = 0;
+        storage_offset += (unsigned long long)required + 1ULL;
+        while (cplus_windows_is_space(command_line[index])) index++;
+    }
+    arguments[argc] = (char*)0;
+    *arguments_out = arguments;
+    return argc;
+}
+
+static char** cplus_windows_build_environment(unsigned short* native_environment) {
+    const unsigned short* cursor = native_environment;
+    unsigned long long entry_count = 0;
+    unsigned long long storage_units = 0;
+    char** environment;
+    char* utf8_storage;
+    unsigned long long storage_offset = 0;
+    unsigned long long entry_index = 0;
+    if (!native_environment) return (char**)0;
+    while (*cursor) {
+        unsigned long long length = 0;
+        while (cursor[length]) length++;
+        if (storage_units > 0x7fffffffffffffffULL - length - 1ULL) return (char**)0;
+        storage_units += length + 1ULL;
+        entry_count++;
+        cursor += length + 1ULL;
+    }
+    if (storage_units > 0x7fffffffffffffffULL / 3ULL || entry_count > 0x7fffffffffffffffULL / sizeof(char*) - 1ULL) {
+        return (char**)0;
+    }
+    environment = (char**)HeapAlloc(
+        GetProcessHeap(), 0, (entry_count + 1ULL) * sizeof(char*));
+    utf8_storage = (char*)HeapAlloc(GetProcessHeap(), 0, storage_units * 3ULL + 1ULL);
+    if (!environment || !utf8_storage) return (char**)0;
+    cursor = native_environment;
+    while (*cursor) {
+        unsigned long long length = 0;
+        int required;
+        int converted;
+        while (cursor[length]) length++;
+        if (length > 0x7fffffffULL) return (char**)0;
+        required = WideCharToMultiByte(
+            __CPLUS_CP_UTF8,
+            __CPLUS_WC_ERR_INVALID_CHARS,
+            cursor,
+            (int)length,
+            (char*)0,
+            0,
+            (const char*)0,
+            (int*)0);
+        if (required <= 0 || storage_offset + (unsigned long long)required + 1ULL > storage_units * 3ULL + 1ULL) {
+            return (char**)0;
+        }
+        environment[entry_index++] = utf8_storage + storage_offset;
+        converted = WideCharToMultiByte(
+            __CPLUS_CP_UTF8,
+            __CPLUS_WC_ERR_INVALID_CHARS,
+            cursor,
+            (int)length,
+            utf8_storage + storage_offset,
+            required,
+            (const char*)0,
+            (int*)0);
+        if (converted != required) return (char**)0;
+        utf8_storage[storage_offset + (unsigned long long)required] = 0;
+        storage_offset += (unsigned long long)required + 1ULL;
+        cursor += length + 1ULL;
+    }
+    environment[entry_index] = (char*)0;
+    return environment;
+}
+
+extern int __cplus_start(int argc, char** argv, char** environment);
+
+int __cplus_windows_start(void) {
+    unsigned short* native_environment = GetEnvironmentStringsW();
+    char** arguments = (char**)0;
+    char** environment;
+    int argc;
+    int status;
+    if (!native_environment) return 127;
+    argc = cplus_windows_build_arguments(GetCommandLineW(), &arguments);
+    environment = cplus_windows_build_environment(native_environment);
+    FreeEnvironmentStringsW(native_environment);
+    if (argc < 0 || !arguments || !environment) return 127;
+    status = __cplus_start(argc, arguments, environment);
+    return status;
 }
 
 long long platform_file_open(const char* path, unsigned long long mode) {

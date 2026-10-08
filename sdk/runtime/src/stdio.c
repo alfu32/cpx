@@ -1,4 +1,5 @@
 /* Minimal C17 stdio compatibility for the self-hosted profile. */
+#include "cplus_platform.h"
 #if defined(_MSC_VER)
 #include <stdarg.h>
 typedef va_list __cplus_va_list;
@@ -12,38 +13,61 @@ typedef __builtin_va_list __cplus_va_list;
 #define __cplus_va_end __builtin_va_end
 #endif
 extern const char* __cplus_vformat(const char* format, __cplus_va_list arguments);
-extern long platform_write_stdout(const char* buffer, unsigned long length);
+extern long long platform_read_stdin(void* buffer, unsigned long long capacity);
+extern long long platform_write_stdout(const char* buffer, unsigned long long length);
+extern long long platform_write_stderr(const char* buffer, unsigned long long length);
 
-static unsigned long __cplus_length(const char* text) {
-    unsigned long length = 0;
+static unsigned long long __cplus_length(const char* text) {
+    unsigned long long length = 0;
     while (text[length] != 0) length++;
     return length;
 }
 
-static long __cplus_write(long fd, const char* buffer, unsigned long length) {
-    (void)fd;
-    return platform_write_stdout(buffer, length);
+typedef struct FILE { int kind; } FILE;
+static FILE __cplus_stdin_marker = { 0 };
+static FILE __cplus_stdout_marker = { 1 };
+static FILE __cplus_stderr_marker = { 2 };
+FILE* stdin = &__cplus_stdin_marker;
+FILE* stdout = &__cplus_stdout_marker;
+FILE* stderr = &__cplus_stderr_marker;
+
+static long long __cplus_write(FILE* stream, const char* buffer, unsigned long long length) {
+    unsigned long long written_total = 0;
+    long long (*write_channel)(const char*, unsigned long long);
+    if (stream == stdout) write_channel = platform_write_stdout;
+    else if (stream == stderr) write_channel = platform_write_stderr;
+    else {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
+    while (written_total < length) {
+        long long result = write_channel(buffer + written_total, length - written_total);
+        if (result < 0) {
+            return result;
+        }
+        if (result == 0) {
+            return CPLUS_PAL_IO_ERROR;
+        }
+        written_total += (unsigned long long)result;
+    }
+    return (long long)written_total;
 }
 
-typedef struct __cplus_file_marker { int kind; } __cplus_file_marker;
-static __cplus_file_marker __cplus_stdin_marker = { 0 };
-static __cplus_file_marker __cplus_stdout_marker = { 1 };
-static __cplus_file_marker __cplus_stderr_marker = { 2 };
-void* stdin = &__cplus_stdin_marker;
-void* stdout = &__cplus_stdout_marker;
-void* stderr = &__cplus_stderr_marker;
+static int __cplus_stdio_result(long long result) {
+    if (result < 0 || result > 0x7fffffffLL) return -1;
+    return (int)result;
+}
 
 int vprintf(const char* format, __cplus_va_list arguments) {
     const char* text = __cplus_vformat(format, arguments);
-    return (int)__cplus_write(1, text, __cplus_length(text));
+    return __cplus_stdio_result(__cplus_write(stdout, text, __cplus_length(text)));
 }
 
-int vsnprintf(char* buffer, unsigned long size, const char* format, __cplus_va_list arguments) {
+int vsnprintf(char* buffer, unsigned long long size, const char* format, __cplus_va_list arguments) {
     const char* text = __cplus_vformat(format, arguments);
-    unsigned long length = __cplus_length(text);
-    unsigned long index;
+    unsigned long long length = __cplus_length(text);
+    unsigned long long index;
     if (buffer && size > 0) {
-        unsigned long limit = length < size - 1 ? length : size - 1;
+        unsigned long long limit = length < size - 1 ? length : size - 1;
         for (index = 0; index < limit; index++) buffer[index] = text[index];
         buffer[limit] = 0;
     }
@@ -51,12 +75,12 @@ int vsnprintf(char* buffer, unsigned long size, const char* format, __cplus_va_l
 }
 
 int vsprintf(char* buffer, const char* format, __cplus_va_list arguments) {
-    return vsnprintf(buffer, ~0UL, format, arguments);
+    return vsnprintf(buffer, ~0ULL, format, arguments);
 }
 
-int vfprintf(void* stream, const char* format, __cplus_va_list arguments) {
-    (void)stream;
-    return vprintf(format, arguments);
+int vfprintf(FILE* stream, const char* format, __cplus_va_list arguments) {
+    const char* text = __cplus_vformat(format, arguments);
+    return __cplus_stdio_result(__cplus_write(stream, text, __cplus_length(text)));
 }
 
 int printf(const char* format, ...) {
@@ -64,15 +88,13 @@ int printf(const char* format, ...) {
     __cplus_va_start(arguments, format);
     const char* text = __cplus_vformat(format, arguments);
     __cplus_va_end(arguments);
-    __cplus_write(1, text, __cplus_length(text));
-    return (int)__cplus_length(text);
+    return __cplus_stdio_result(__cplus_write(stdout, text, __cplus_length(text)));
 }
 
-int fprintf(void* stream, const char* format, ...) {
+int fprintf(FILE* stream, const char* format, ...) {
     __cplus_va_list arguments;
-    (void)stream;
     __cplus_va_start(arguments, format);
-    int result = vprintf(format, arguments);
+    int result = vfprintf(stream, format, arguments);
     __cplus_va_end(arguments);
     return result;
 }
@@ -85,7 +107,7 @@ int sprintf(char* buffer, const char* format, ...) {
     return result;
 }
 
-int snprintf(char* buffer, unsigned long size, const char* format, ...) {
+int snprintf(char* buffer, unsigned long long size, const char* format, ...) {
     __cplus_va_list arguments;
     __cplus_va_start(arguments, format);
     int result = vsnprintf(buffer, size, format, arguments);
@@ -94,24 +116,36 @@ int snprintf(char* buffer, unsigned long size, const char* format, ...) {
 }
 
 int puts(const char* text) {
-    __cplus_write(1, text, __cplus_length(text));
-    __cplus_write(1, "\n", 1);
+    unsigned long long length = __cplus_length(text);
+    if (__cplus_write(stdout, text, length) < 0 || __cplus_write(stdout, "\n", 1) < 0) return -1;
     return 0;
 }
 
-int fputc(int value, void* stream) {
+int fputc(int value, FILE* stream) {
     char text[1];
-    (void)stream;
     text[0] = (char)value;
-    return __cplus_write(1, text, 1) == 1 ? value : -1;
+    return __cplus_write(stream, text, 1) == 1 ? (unsigned char)value : -1;
 }
 
-int fgetc(void* stream) {
-    (void)stream;
-    return -1;
+int fgetc(FILE* stream) {
+    unsigned char value;
+    long long result;
+    if (stream != stdin) {
+        return -1;
+    }
+    result = platform_read_stdin(&value, 1);
+    if (result < 0) {
+        return -1;
+    }
+    return result == 0 ? -1 : (int)value;
 }
 
-int fflush(void* stream) { (void)stream; return 0; }
+int fflush(FILE* stream) {
+    if (stream && stream != stdout && stream != stderr && stream != stdin) {
+        return -1;
+    }
+    return 0;
+}
 
 /* The self-hosted stdio profile is unbuffered; retain an explicit libc hook. */
 void __cplus_flush_streams(void) { }

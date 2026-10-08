@@ -3,7 +3,11 @@
 
 typedef void (*__cplus_exit_handler)(void);
 
-int __cplus_runtime_init(int argc, char** argv);
+int __cplus_runtime_init(int argc, char** argv, char** environment);
+int __cplus_runtime_argc(void);
+char** __cplus_runtime_argv(void);
+char** __cplus_runtime_environment(void);
+int __cplus_start(int argc, char** argv, char** environment);
 int __cplus_register_exit_handler(__cplus_exit_handler handler);
 int __cplus_register_quick_exit_handler(__cplus_exit_handler handler);
 void __cplus_run_exit_handlers(void);
