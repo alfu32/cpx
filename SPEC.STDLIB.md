@@ -1175,12 +1175,16 @@ result array is valid only when capacity is zero. A numeric address SHALL be
 resolved without a DNS transaction when it matches the requested family.
 
 The Linux resolver SHALL read up to three numeric `nameserver` entries from
-`/etc/resolv.conf`, use a randomized DNS transaction identifier and ephemeral
-source port, query A and/or AAAA records, verify the response question and
-source, follow bounded CNAME chains, and use TCP when a UDP reply is truncated
-(RFC 1035 and RFC 7766). Each DNS exchange SHALL have a finite timeout; native
-resolver, socket, and DNS response codes SHALL be translated to stable PAL
-results. The Windows resolver SHALL use the Unicode Winsock resolver API via
+`/etc/resolv.conf`, derive DNS transaction identifiers from kernel entropy,
+use an ephemeral source port, query A and/or AAAA records, verify the response
+question and source, follow at most eight CNAME indirections per queried
+family, and use TCP when a UDP reply is truncated (RFC 1035 and RFC 7766). Each
+DNS query, including a UDP-to-TCP retry, SHALL use a two-second absolute
+deadline. A response producing more than 256 unique addresses or exceeding the
+CNAME bound SHALL fail with `CPLUS_PAL_NETWORK_ERROR`; unavailable kernel
+entropy SHALL fail rather than fall back to predictable transaction IDs.
+Native resolver, socket, and DNS response codes SHALL be translated to stable
+PAL results. The Windows resolver SHALL use the Unicode Winsock resolver API via
 the dynamically loaded `ws2_32.dll` module and SHALL copy and release its
 native result list before returning. Neither resolver SHALL require a host C
 runtime or expose native error codes. A name with no address result SHALL

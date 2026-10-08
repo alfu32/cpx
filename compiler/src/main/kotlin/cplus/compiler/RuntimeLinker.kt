@@ -87,10 +87,10 @@ object RuntimeLinker {
                 } else {
                     emptyList()
                 }
-                val platformNetworkRuntime = if (descriptor.os == "windows") {
-                    listOf(resolution.layout.platformSource.resolve("network.c"))
-                } else {
-                    emptyList()
+                val platformNetworkRuntime = when (descriptor.os) {
+                    "linux" -> listOf(resolution.layout.platformSource.resolve("network_dns.c"))
+                    "windows" -> listOf(resolution.layout.platformSource.resolve("network.c"))
+                    else -> emptyList()
                 }
                 val threadTlsScript = if (descriptor.os == "linux") {
                     listOf(resolution.layout.platformSource.resolve("thread-tls.ld"))

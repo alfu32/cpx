@@ -2912,8 +2912,11 @@ above this binary transport ABI. A shared freestanding runtime source parses
 and formats IPv4/IPv6 text, performs UTF-8 validation and IDNA A-label encoding,
 and returns canonical text without locale or host-library dependencies,
 including mixed dotted-decimal formatting for IPv4-mapped IPv6 addresses. Linux
-uses the configured numeric nameservers, direct PAL sockets, bounded UDP
-queries, and TCP fallback for truncated DNS messages. Windows uses the Unicode
+uses the configured numeric nameservers, kernel-entropy transaction IDs,
+ephemeral ports, nonblocking direct socket syscalls, and `poll` against an
+absolute two-second query deadline; truncated UDP messages retry over TCP
+within that same deadline. CNAME and result counts are bounded by the language
+contract. Windows uses the Unicode
 Winsock resolver after lazy module initialization and copies/frees the native
 result list before returning. Both implementations expose the same caller-owned
 address-array ABI and stable PAL error values; neither leaks native resolver

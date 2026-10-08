@@ -24,6 +24,7 @@ class RuntimeLinkerTest {
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "thread-x86_64.S" })
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "sync.c" })
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "net_address.c" })
+        assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "network_dns.c" })
         assertTrue(result.plan.linkerFlags.any { it.contains("thread-tls.ld") })
     }
 
@@ -41,6 +42,7 @@ class RuntimeLinkerTest {
         assertTrue(result.plan.runtimeSources.any { it.toString().replace('\\', '/').contains("platform/windows/network.c") })
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "sync.c" })
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "net_address.c" })
+        assertTrue(result.plan.runtimeSources.none { it.fileName.toString() == "network_dns.c" })
         assertTrue(result.plan.runtimeSources.none { it.fileName.toString().startsWith("thread-") })
         assertTrue(result.plan.linkerFlags.none { it.contains("thread-tls.ld") })
         assertTrue(result.plan.linkerFlags.contains("-lkernel32"))
