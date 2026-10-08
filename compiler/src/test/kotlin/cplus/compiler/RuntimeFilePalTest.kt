@@ -126,12 +126,14 @@ class RuntimeFilePalTest {
         val sourcePath = nestedPath.resolve("source.txt").toAbsolutePath().normalize()
         val renamedPath = nestedPath.resolve("renamed.txt").toAbsolutePath().normalize()
         val missingPath = nestedPath.resolve("missing.txt").toAbsolutePath().normalize()
+        val notDirectoryPath = sourcePath.resolve("child").toAbsolutePath().normalize()
         val source = directory.resolve("file-pal.c")
         val executable = directory.resolve(if (target.targetTriple.startsWith("windows-")) "file-pal.exe" else "file-pal")
         val nestedName = cString(nestedPath.toString().replace('\\', '/'))
         val sourceName = cString(sourcePath.toString().replace('\\', '/'))
         val renamedName = cString(renamedPath.toString().replace('\\', '/'))
         val missingName = cString(missingPath.toString().replace('\\', '/'))
+        val notDirectoryName = cString(notDirectoryPath.toString().replace('\\', '/'))
         Files.writeString(source, """
             #include "cplus_platform.h"
             #include <stddef.h>
@@ -148,6 +150,7 @@ class RuntimeFilePalTest {
                 const char* renamed = "$renamedName";
                 const char* nested = "$nestedName";
                 const char* missing = "$missingName";
+                const char* not_directory = "$notDirectoryName";
                 const char* text = "portable";
                 char buffer[8];
                 char entry[32];
@@ -191,6 +194,9 @@ class RuntimeFilePalTest {
                 if (platform_file_metadata(source, &metadata) != 0) return 20;
                 if (metadata.size_bytes != 8 || metadata.kind != CPLUS_FILE_KIND_REGULAR) return 21;
                 if (metadata.modified_nanoseconds > 999999999U || metadata.reserved0 != 0 || metadata.reserved1 != 0) return 22;
+                if (platform_file_open(not_directory, CPLUS_FILE_READ) != CPLUS_PAL_NOT_FOUND) return 59;
+                if (platform_file_metadata(not_directory, &metadata) != CPLUS_PAL_NOT_FOUND) return 60;
+                if (platform_directory_open(not_directory) != CPLUS_PAL_NOT_FOUND) return 61;
                 if (platform_file_seek(-1, 0, CPLUS_SEEK_BEGIN) != CPLUS_PAL_INVALID_ARGUMENT) return 23;
                 if (std_fs_rename(source, renamed) != 0) return 14;
                 handle = std_fs_open(renamed, CPLUS_FILE_READ);
