@@ -23,10 +23,28 @@
 #define CPLUS_PAL_IO_ERROR (-5L)
 #define CPLUS_PAL_UNSUPPORTED (-6L)
 #define CPLUS_PAL_BUFFER_TOO_SMALL (-7L)
+#define CPLUS_PAL_NETWORK_ERROR (-8L)
+
+#define CPLUS_SOCKET_IPV4 4U
+#define CPLUS_SOCKET_IPV6 6U
+#define CPLUS_SOCKET_STREAM 1U
+#define CPLUS_SOCKET_DATAGRAM 2U
+#define CPLUS_SOCKET_SHUTDOWN_RECEIVE 0U
+#define CPLUS_SOCKET_SHUTDOWN_SEND 1U
+#define CPLUS_SOCKET_SHUTDOWN_BOTH 2U
 
 typedef long long cplus_process_handle_t;
 typedef long long cplus_thread_handle_t;
+typedef long long cplus_socket_handle_t;
 typedef void* (*cplus_thread_entry_t)(void* context);
+
+typedef struct cplus_socket_address_t {
+    unsigned int family;
+    unsigned short port;
+    unsigned short reserved;
+    unsigned char address[16];
+    unsigned int scope_id;
+} cplus_socket_address_t;
 
 long long platform_read_stdin(void* buffer, unsigned long long capacity);
 long long platform_write_stdout(const char* buffer, unsigned long long length);
@@ -44,6 +62,18 @@ cplus_thread_handle_t platform_thread_create(cplus_thread_entry_t entry, void* c
 int platform_thread_join(cplus_thread_handle_t thread, void** result);
 long long platform_thread_current_id(void);
 int platform_thread_yield(void);
+cplus_socket_handle_t platform_socket_open(unsigned int family, unsigned int kind);
+int platform_socket_bind(cplus_socket_handle_t socket, const cplus_socket_address_t* address);
+int platform_socket_listen(cplus_socket_handle_t socket, int backlog);
+cplus_socket_handle_t platform_socket_accept(cplus_socket_handle_t socket, cplus_socket_address_t* peer);
+int platform_socket_connect(cplus_socket_handle_t socket, const cplus_socket_address_t* address);
+int platform_socket_get_address(cplus_socket_handle_t socket, int peer, cplus_socket_address_t* address);
+long long platform_socket_send(cplus_socket_handle_t socket, const void* buffer, unsigned long long length);
+long long platform_socket_receive(cplus_socket_handle_t socket, void* buffer, unsigned long long capacity);
+long long platform_socket_send_to(cplus_socket_handle_t socket, const void* buffer, unsigned long long length, const cplus_socket_address_t* destination);
+long long platform_socket_receive_from(cplus_socket_handle_t socket, void* buffer, unsigned long long capacity, cplus_socket_address_t* source);
+int platform_socket_shutdown(cplus_socket_handle_t socket, unsigned int direction);
+int platform_socket_close(cplus_socket_handle_t socket);
 int platform_mutex_init(volatile int* state);
 int platform_mutex_lock(volatile int* state);
 int platform_mutex_unlock(volatile int* state);
