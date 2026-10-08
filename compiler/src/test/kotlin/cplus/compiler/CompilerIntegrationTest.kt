@@ -73,8 +73,8 @@ class CompilerIntegrationTest {
             assertTrue(header.contains("$symbol("), "public extension prototype $symbol")
         }
         assertTrue(generated.contains("struct counter_t* self"))
-        assertTrue(generated.contains("enum status_t* self"))
-        assertTrue(generated.contains("int* self"))
+        assertTrue(generated.contains("enum status_t self"))
+        assertTrue(generated.contains("int self"))
         assertFalse(generated.contains("struct int"))
     }
 
@@ -123,6 +123,52 @@ class CompilerIntegrationTest {
         val generated = result.generatedUnits.single().text
         assertEquals(2, Regex("\\b__cplus_ext__main__point_t_area\\b").findAll(generated).count(), generated)
         assertFalse(generated.contains("__cplus_ext__main__point_alias_t_area"), generated)
+    }
+
+    @Test
+    fun extensionCallsUseResolvedReceiverAdaptationForValuesAndPointers() {
+        val directory = Files.createTempDirectory("cplus-trait-call-lowering")
+        val result = CPlusCompiler().compileText(
+            directory.resolve("main.cp"),
+            """
+                struct counter_t { int value; };
+                int calls;
+                counter_t counter;
+                counter_t* getCounter() { calls += 1; return &counter; }
+                comptime trait counter_t {
+                    int increment(self*) { self->value += 1; return self->value; }
+                }
+                comptime trait int {
+                    int doubled(self) { return self * 2; }
+                }
+                int main() {
+                    counter.value = 4;
+                    counter_t* pointer = &counter;
+                    int first = pointer.increment();
+                    int second = getCounter().increment();
+                    int scalar = 3;
+                    int third = scalar.doubled();
+                    return first + second + third + calls;
+                }
+            """.trimIndent()
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("__cplus_ext__main__counter_t_increment(pointer)"), generated)
+        assertTrue(generated.contains("__cplus_ext__main__counter_t_increment(getCounter())"), generated)
+        assertTrue(generated.contains("__cplus_ext__main__int_doubled(scalar)"), generated)
+        val cFile = directory.resolve("main.c").also { it.writeText(generated) }
+        val executable = directory.resolve("main")
+        val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), compileOutput)
+
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(18, execution.waitFor(), executionOutput)
     }
 
     @Test

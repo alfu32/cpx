@@ -2917,6 +2917,7 @@ class SemanticAnalyzer(
         globals: Map<String, Symbol>,
         diagnostics: DiagnosticBag
     ): ReceiverAdaptation {
+        if (method.receiverKind == ReceiverKind.STATIC) return ReceiverAdaptation.NONE
         val pointerReceiver = isPointerLike(method.receiverType)
         val pointerValue = isPointerLike(actualType)
         if (pointerReceiver && !pointerValue) {
@@ -2930,11 +2931,17 @@ class SemanticAnalyzer(
             return ReceiverAdaptation.ADDRESS
         }
         if (pointerValue) return ReceiverAdaptation.POINTER
-        return if (method.owner is StructType || method.owner is UnionType) {
-            ReceiverAdaptation.ADDRESS
-        } else {
-            ReceiverAdaptation.VALUE
+        if (method.owner is StructType || method.owner is UnionType) {
+            if (!isAssignable(receiver, locals, globals)) {
+                diagnostics.error(
+                    "aggregate receiver for '${method.symbol.name}' requires addressable storage",
+                    rangeOf(receiver.origin),
+                    "SEM419"
+                )
+            }
+            return ReceiverAdaptation.ADDRESS
         }
+        return ReceiverAdaptation.VALUE
     }
 
     private val assignmentOperators = setOf("=", "+=", "-=", "*=", "/=", "%=")

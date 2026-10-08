@@ -409,7 +409,13 @@ class CLowerer(
         val parameters = buildList {
             val receiver = declaration.parameters.firstOrNull { it.isReceiver }
             if (receiver != null) {
-                add(CParameter(pointerTo(semanticType(method.owner)), receiver.name, receiver.origin))
+                val ownerType = semanticType(method.owner)
+                val receiverCType = if (method.receiverType is PointerType || method.owner is StructType || method.owner is UnionType) {
+                    pointerTo(ownerType)
+                } else {
+                    ownerType
+                }
+                add(CParameter(receiverCType, receiver.name, receiver.origin))
             }
             method.parameters.forEachIndexed { index, parameter ->
                 val source = sourceParameters.getOrNull(index)
@@ -848,6 +854,23 @@ class CLowerer(
                 node.arguments.map { expression(it, ownerName, instanceMethod) },
                 node.origin
             )
+        }
+
+        val resolvedCall = semantic.resolvedMethodCalls[node]
+        if (resolvedCall?.method?.isExtension == true) {
+            val target = CIdentifier(names.extensionMethodName(resolvedCall.method), node.origin)
+            val arguments = buildList {
+                when (resolvedCall.adaptation) {
+                    ReceiverAdaptation.VALUE,
+                    ReceiverAdaptation.POINTER -> add(expression(resolvedCall.receiver, ownerName, instanceMethod))
+                    ReceiverAdaptation.ADDRESS -> add(
+                        CUnary("&", expression(resolvedCall.receiver, ownerName, instanceMethod), resolvedCall.receiver.origin)
+                    )
+                    ReceiverAdaptation.NONE -> Unit
+                }
+                node.arguments.forEach { add(expression(it, ownerName, instanceMethod)) }
+            }
+            return CCall(target, arguments, node.origin)
         }
 
         val receiverType = semantic.expressionTypes[member.receiver]

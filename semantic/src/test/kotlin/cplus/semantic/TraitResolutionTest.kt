@@ -164,6 +164,20 @@ class TraitResolutionTest {
         assertTrue(opaqueResult.diagnostics.any { it.code == "SEM417" }, opaqueResult.diagnostics.joinToString())
     }
 
+    @Test
+    fun aggregateValueReceiverRequiresAddressableStorage() {
+        val result = analyze(
+            """
+                struct point_t { int value; };
+                comptime trait point_t { int read(self) { return self.value; } }
+                point_t makePoint() { point_t point; return point; }
+                int main() { return makePoint().read(); }
+            """
+        )
+
+        assertTrue(result.diagnostics.any { it.code == "SEM419" }, result.diagnostics.joinToString())
+    }
+
     private fun analyze(text: String): SemanticResult {
         return SemanticAnalyzer().analyze(parse(100, "traits.cp", text))
     }
