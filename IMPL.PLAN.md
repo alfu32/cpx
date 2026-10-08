@@ -268,6 +268,7 @@ Latest completed implementation commits:
 - `e7e480c` — model target floating layouts and verify Linux long-double calls (R3.1.3 Linux leaf only; Windows ABI gate remains open).
 - `a8d1470` — declare the C17 real-math function surface (R5.4.5.1).
 - `3817e8e` — implement C17 floating classification, comparisons, and constants (R5.4.5.2; Windows runtime execution deferred).
+- `7ce3908` — implement portable C17 rounding and checked integer conversions (R5.4.5.3; Windows runtime execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
