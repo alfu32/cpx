@@ -163,6 +163,7 @@ class CliIntegrationTest {
             )
         }
         assertTrue(auditOutput.contains("observed:"), auditOutput)
+
     }
 
     @Test
@@ -227,6 +228,21 @@ class CliIntegrationTest {
             )
         }
         assertTrue(auditOutput.contains("observed:"), auditOutput)
+
+        val aarch64Runner = System.getenv("PATH").orEmpty()
+            .split(java.io.File.pathSeparator)
+            .filter(String::isNotBlank)
+            .asSequence()
+            .flatMap { path -> sequenceOf("qemu-aarch64", "qemu-aarch64-static").map { Path.of(path).resolve(it) } }
+            .firstOrNull(Files::isExecutable)
+        if (aarch64Runner != null) {
+            val run = ProcessBuilder(aarch64Runner.toString(), executable.toString())
+                .redirectErrorStream(true)
+                .start()
+            val output = run.inputStream.bufferedReader().readText()
+            assertEquals(0, run.waitFor(), output)
+            assertTrue("Result: 12" in output, output)
+        }
     }
 
     private fun commandAvailable(command: String): Boolean = runCatching {

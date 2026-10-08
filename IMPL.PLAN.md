@@ -5458,8 +5458,10 @@ hard-coded CLI path.
   0 fail, 5 unsupported: the atomic-containing basic fixture and stdio fixture
   executed successfully and passed dependency/stream checks; context, complex
   types, tgmath, complex arithmetic runtime, and setjmp remain capability-gated.
-  `ConformanceTest` conditionally repeats the AArch64 run when a QEMU
-  user-mode runner is available. This execution evidence does not close R8.3;
+  `ConformanceTest` conditionally repeats the AArch64 C17 run, and the CLI
+  integration test now executes the built `examples/module_main.cp` product
+  through QEMU and checks `Result: 12` when a user-mode runner is available.
+  This execution evidence does not close R8.3;
   the Windows target matrix remains pending. The prior x86_64 CLI run also
   exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows
   testing and patching remain deferred; the last MinGW full-runtime link
