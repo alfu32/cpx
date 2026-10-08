@@ -850,6 +850,27 @@ cplus build main.cp \
 
 The SDK manifest provides the compiler with the standard library, runtime, target ABI information, and platform components required for the selected build.
 
+The installable C+ CLI distribution includes the source SDK and discovers it
+automatically, including when invoked from another project directory. To test
+an SDK checkout or alternate SDK, set the JVM system property before `-jar`:
+
+```bash
+java -Dcplus.sdk.manifest=/path/to/sdk/manifest/sdk.toml \
+    -jar /path/to/cplus-cli-all.jar check main.cp
+```
+
+The installable CLI distribution is built with `./gradlew :cli:installDist`
+or `./gradlew :cli:distZip`; it places the SDK beside its launcher and JAR.
+For that generated launcher, pass the override through `JAVA_OPTS`:
+
+```bash
+JAVA_OPTS="-Dcplus.sdk.manifest=/path/to/sdk/manifest/sdk.toml" \
+    /path/to/cplus/bin/cplus check main.cp
+```
+
+Run `cplus --help` for the JVM option name and its placement when invoking
+`java` directly.
+
 ---
 
 # C source interoperability

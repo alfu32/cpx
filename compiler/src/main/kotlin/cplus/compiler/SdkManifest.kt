@@ -59,14 +59,27 @@ object SdkManifestLocator {
             ?.let(Path::of)
         if (configured != null) return configured
 
-        var directory = Path.of("").toAbsolutePath().normalize()
+        val bundled = codeSourcePath()?.let(::findInAncestors)
+        if (bundled != null) return bundled
+
+        val workingDirectory = Path.of("").toAbsolutePath().normalize()
+        return findInAncestors(workingDirectory)
+            ?: workingDirectory.resolve("sdk/manifest/sdk.toml")
+    }
+
+    private fun codeSourcePath(): Path? = runCatching {
+        Path.of(SdkManifestLocator::class.java.protectionDomain.codeSource.location.toURI())
+    }.getOrNull()
+
+    private fun findInAncestors(start: Path): Path? {
+        var directory = if (Files.isDirectory(start)) start else start.parent ?: start
         while (true) {
             val candidate = directory.resolve("sdk/manifest/sdk.toml")
             if (Files.isRegularFile(candidate)) return candidate
             val parent = directory.parent ?: break
             directory = parent
         }
-        return Path.of("sdk", "manifest", "sdk.toml")
+        return null
     }
 }
 

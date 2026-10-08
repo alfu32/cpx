@@ -1026,6 +1026,9 @@ internal class Cli {
         stream.println("  libc        list delivered libc headers or run C17 conformance [test]")
         stream.println("  audit       inspect binary runtime dependencies [--target <triple>]")
         stream.println("  lsp         serve compiler diagnostics over stdio JSON-RPC")
+        stream.println()
+        stream.println("JVM options (place before -jar):")
+        stream.println("  -Dcplus.sdk.manifest=<path>  select or override the SDK manifest")
     }
 
     private data class FileArguments(

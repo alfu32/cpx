@@ -7,7 +7,19 @@ plugins {
 }
 
 application {
+    applicationName = "cplus"
     mainClass.set("cplus.cli.MainKt")
+}
+
+distributions {
+    main {
+        distributionBaseName = "cplus"
+        contents {
+            from(rootProject.file("sdk")) {
+                into("sdk")
+            }
+        }
+    }
 }
 
 tasks.named<JavaExec>("run") {

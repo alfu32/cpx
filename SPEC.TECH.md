@@ -2111,8 +2111,13 @@ the SDK conformance fixtures for the requested target.
 
 The CLI SHALL remove its temporary `run` product directory after build failure
 or process completion and SHALL return the child process exit status. Process-
-start failures SHALL be reported as CLI errors. The distributable fat JAR SHALL
-use reproducible entry ordering and timestamps.
+start failures SHALL be reported as CLI errors. The distributable CLI package
+SHALL include the CLI launcher, required JVM artifacts, and the source SDK as
+one installable product. The CLI SHALL discover that adjacent SDK by default;
+`-Dcplus.sdk.manifest=<path>` SHALL override the bundled SDK for development
+and alternate SDK testing. CLI help SHALL identify this JVM option and state
+that it precedes `-jar`. The fat JAR and distribution archives SHALL use
+reproducible entry ordering and timestamps.
 
 ---
 

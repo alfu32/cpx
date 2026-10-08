@@ -11,10 +11,10 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    93/93 accepted with recorded evidence
-Phase gates:           9/9 complete; 0 active; 0 queued
-Current task:          none — implementation roadmap acceptance complete
-Current milestone:     release validation complete for claimed Linux/Windows x86_64 profiles
+Roadmap leaf tasks:    97/97 accepted with recorded evidence
+Phase gates:           10/10 complete; 0 active; 0 queued
+Current task:          none — installable CLI/SDK distribution accepted
+Current milestone:     CLI and source SDK distribution
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
@@ -35,10 +35,15 @@ R5 [DONE]  41/41 implementation leaves; registered Windows x86_64 service tests 
 R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
 R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
+R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
 
-TOTAL       93/93 implementation tasks accepted; 9/9 phase gates complete,
+TOTAL       97/97 implementation tasks accepted; 10/10 phase gates complete,
             0 active, 0 queued
 ```
+
+R9 adds four independently accepted distribution leaves to the prior 93-task
+roadmap, increasing the denominator to 97. The 10th phase gate records the
+joint CLI/SDK install product and its explicit SDK-development override.
 
 R7.4 adds one cross-platform packaged-extension-host acceptance leaf, changing
 the roadmap denominator from 92 to 93 without adding completion credit. Final
@@ -354,7 +359,7 @@ technical architecture records this boundary. No Darwin execution is claimed.
 This moves the roadmap from 71/88 to 72/88 and R5 from 38/41 to 39/41; R5
 remains open for R5.1; R5.2.5 is now accepted with native Windows evidence.
 
-The detailed, authoritative R0–R8 work queue is in the
+The detailed, authoritative R0–R9 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current dependency sequence is:
 
@@ -3764,7 +3769,7 @@ self-hosted SDK described by the specifications.
 
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
-Completion phases: [DONE] [9/9 gates complete]
+Completion phases: [DONE] [10/10 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3775,9 +3780,10 @@ Completion phases: [DONE] [9/9 gates complete]
 [DONE]  R6 — CLI transcoder and build-product completion
 [DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
+[DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
 ```
 
-The completion phase counter counts only the nine phase gates above. A phase
+The completion phase counter counts only the ten phase gates above. A phase
 MUST remain `DOING` until every acceptance gate inside it passes on the claimed
 target matrix. Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
@@ -3817,7 +3823,8 @@ and product code at `d32565d`; subsequent local commits alter only the VS Code
 host-test harness and documentation. The latest harness files were copied into
 the isolated archive and its Windows host test passed. No Windows-side source
 patch was needed. Full Linux and Windows suite results are retained as the
-acceptance evidence for the 9/9 phase dashboard above.
+acceptance evidence for the then-current 9/9 phase dashboard; R9 acceptance is
+recorded separately below.
 
 ## R0 [DONE] Implementation inventory and scope freeze
 
@@ -5837,12 +5844,41 @@ The release checklist is reproducible from a clean checkout, every claimed
 target/profile has executable evidence, and all remaining unsupported features
 are explicit capability diagnostics or separately labelled post-release work.
 
+## R9 [DONE] [4/4] Package CLI together with the source SDK
+
+**Dependency-ordered work queue**
+
+- R9.1 [DONE] — produce an installable C+ distribution containing the CLI
+  launchers, JVM runtime dependencies, and full source SDK tree. Both
+  `:cli:installDist` and `:cli:distZip` pass; archive inspection confirms the
+  launcher, dependency JARs, and `sdk/manifest/sdk.toml` are present.
+- R9.2 [DONE] — discover the SDK bundled beside the installed CLI by default,
+  while allowing `-Dcplus.sdk.manifest=<path>` to override it for SDK
+  development. `SdkManifestLocator` checks the CLI class code-source ancestry
+  before the working-directory ancestry; integration coverage verifies the
+  override takes precedence.
+- R9.3 [DONE] — list Java-specific runtime options in CLI help and document
+  their position before `-jar`. `cplus --help` names
+  `-Dcplus.sdk.manifest=<path>`; README documents the same option and the
+  installable distribution commands.
+- R9.4 [DONE] — test an installed distribution from a working directory
+  outside the installation. The installed launcher scaffolded a project in
+  `/tmp`, then `cplus check --project cplus.toml` succeeded without an SDK
+  override, reproducing the external-project use case. CLI tests and
+  `git diff --check` pass.
+
+**Gate**
+
+The installable distribution runs from an unrelated project directory without
+manual SDK configuration; an explicit JVM property selects a development SDK;
+the CLI help identifies the JVM option.
+
 ## Execution order and commit policy
 
 The work proceeds vertically in this order:
 
 ```text
-R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8
+R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8 → R9
 ```
 
 Each phase is split into small implementation commits. A phase may be

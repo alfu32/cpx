@@ -843,6 +843,25 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun helpListsJvmSdkOverrideAndExplicitOverrideIsHonored() {
+        val help = captureStdout {
+            assertEquals(0, Cli().run(listOf("--help")))
+        }
+        assertTrue(help.contains("-Dcplus.sdk.manifest=<path>"))
+        assertTrue(help.contains("place before -jar"))
+
+        val previous = System.getProperty("cplus.sdk.manifest")
+        val override = Files.createTempDirectory("cplus-test-sdk").resolve("manifest/sdk.toml")
+        try {
+            System.setProperty("cplus.sdk.manifest", override.toString())
+            assertEquals(override, SdkManifestLocator.defaultManifestPath())
+        } finally {
+            if (previous == null) System.clearProperty("cplus.sdk.manifest")
+            else System.setProperty("cplus.sdk.manifest", previous)
+        }
+    }
+
+    @Test
     fun checkAcceptsNormalizedSdkTargetRuntimeSysrootAndNativeInputs() {
         val directory = Files.createTempDirectory("cplus-cli-normalized-options")
         val source = directory.resolve("main.cp").also { it.writeText("int main() { return 0; }") }
