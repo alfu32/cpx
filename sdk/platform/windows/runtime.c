@@ -93,6 +93,13 @@ __declspec(dllimport) __cplus_handle __stdcall CreateThread(
     __cplus_dword creation_flags,
     __cplus_dword* thread_id);
 __declspec(dllimport) __cplus_bool __stdcall SwitchToThread(void);
+__declspec(dllimport) __cplus_bool __stdcall WaitOnAddress(
+    volatile void* address,
+    void* compare_address,
+    unsigned long long address_size,
+    __cplus_dword milliseconds);
+__declspec(dllimport) void __stdcall WakeByAddressSingle(void* address);
+__declspec(dllimport) void __stdcall WakeByAddressAll(void* address);
 __declspec(dllimport) unsigned short* __stdcall GetCommandLineW(void);
 __declspec(dllimport) unsigned short* __stdcall GetEnvironmentStringsW(void);
 __declspec(dllimport) __cplus_bool __stdcall FreeEnvironmentStringsW(unsigned short* environment);
@@ -982,6 +989,29 @@ long long platform_thread_current_id(void) {
 
 int platform_thread_yield(void) {
     SwitchToThread();
+    return 0;
+}
+
+static int cplus_windows_valid_atomic32(const volatile int* address) {
+    return address && (((unsigned long long)(const void*)address & 3ULL) == 0);
+}
+
+int platform_atomic_wait32(volatile int* address, int expected) {
+    if (!cplus_windows_valid_atomic32(address)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    return WaitOnAddress(address, &expected, sizeof(expected), __CPLUS_INFINITE)
+        ? 0 : (int)cplus_normalize_windows_error();
+}
+
+int platform_atomic_wake32(volatile int* address, unsigned int count) {
+    unsigned int index;
+    if (!cplus_windows_valid_atomic32(address)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (count == 0) return 0;
+    if (count == 0xffffffffU) {
+        WakeByAddressAll((void*)address);
+        return 0;
+    }
+    if (count > 0x7fffffffU) count = 0x7fffffffU;
+    for (index = 0; index < count; index++) WakeByAddressSingle((void*)address);
     return 0;
 }
 

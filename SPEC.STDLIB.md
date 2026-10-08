@@ -247,7 +247,8 @@ be represented as valid UTF-8 SHALL return `CPLUS_PAL_UNSUPPORTED`. Directory
 handles are opaque and SHALL be closed with `platform_directory_close`.
 
 PAL version 4 SHALL preserve every version-3 operation and add the clock
-services specified in §14. `CPLUS_PAL_API_VERSION` SHALL be 4.
+services specified in §14 and the thread/synchronization services specified in
+§15. `CPLUS_PAL_API_VERSION` SHALL be 4.
 
 Portable runtime and standard-library code SHALL call these PAL operations and
 SHALL NOT contain Linux syscall instructions, Windows DLL declarations, host
@@ -961,6 +962,56 @@ thread-local C `errno`. Linux adapters SHALL provide independent static TLS
 for each thread while using kernel clone/futex services; Windows adapters
 SHALL use OS-managed TLS with native thread creation/wait services. Neither
 adapter SHALL depend on pthreads or a host C runtime.
+
+The version-4 PAL SHALL also expose 32-bit, four-byte-aligned state-word
+operations for mutexes, condition variables, semaphores, once initialization,
+and atomic wait/wake:
+
+```c
+int platform_mutex_init(volatile int* state);
+int platform_mutex_lock(volatile int* state);
+int platform_mutex_unlock(volatile int* state);
+int platform_condition_init(volatile int* sequence);
+int platform_condition_wait(volatile int* sequence, volatile int* mutex_state);
+int platform_condition_signal(volatile int* sequence);
+int platform_condition_broadcast(volatile int* sequence);
+int platform_semaphore_init(volatile int* count, int initial_count);
+int platform_semaphore_wait(volatile int* count);
+int platform_semaphore_post(volatile int* count);
+int platform_once_init(volatile int* state);
+int platform_once_enter(volatile int* state);
+int platform_once_complete(volatile int* state);
+int platform_atomic_wait32(volatile int* address, int expected);
+int platform_atomic_wake32(volatile int* address, unsigned int count);
+```
+
+Mutex, condition, semaphore, and once state words SHALL be initialized before
+concurrent use. Mutex state zero means unlocked. A condition wait SHALL be
+called with its mutex held and SHALL return with that mutex reacquired;
+signal/broadcast SHALL advance the sequence before waking waiters. On a native
+wait error, condition wait SHALL attempt to reacquire the mutex before
+returning the error; if reacquisition itself fails, that error is returned and
+mutex ownership is not guaranteed. Semaphore counts SHALL remain in
+`[0, INT_MAX]`. Once state zero means uninitialized,
+one means initialization in progress, and two means complete; `once_enter`
+returns zero to the initializer, one when already complete, or a negative PAL
+error. `once_complete` SHALL publish the completed state and wake waiters.
+
+Atomic wait SHALL block only while the aligned 32-bit value equals `expected`;
+it MAY return spuriously after a wake. Wake count zero wakes none and
+`UINT_MAX` requests wake-all. These operations provide waiting only; ordinary
+atomic memory operations and memory ordering remain compiler/runtime
+intrinsics. A successful atomic wake SHALL return zero on every target; the
+number of awakened waiters is intentionally not observable. Linux SHALL use
+private futex operations. Windows SHALL use
+`WaitOnAddress`/`WakeByAddress*` and therefore requires Windows 8 or newer for
+the native synchronization profile. Invalid pointers/alignment, overflow, and
+native failures SHALL map to stable PAL errors.
+
+Once initialization is not recursive: an initializer SHALL NOT call
+`once_enter` again for the same state before completing it. The API does not
+provide cancellation or recovery when an initializer terminates without
+calling `once_complete`.
 
 Native synchronization SHALL use the cheapest supported platform primitive.
 

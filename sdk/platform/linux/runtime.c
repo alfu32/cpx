@@ -455,6 +455,41 @@ int platform_thread_yield(void) {
 #endif
 }
 
+static int cplus_linux_valid_atomic32(const volatile int* address) {
+    return address && (((unsigned long long)(const void*)address & 3ULL) == 0);
+}
+
+int platform_atomic_wait32(volatile int* address, int expected) {
+    long result;
+    if (!cplus_linux_valid_atomic32(address)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall6(202, (long)address, 128, expected, 0, 0, 0);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall6(98, (long)address, 128, expected, 0, 0, 0);
+#else
+    (void)expected;
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    if (result == 0 || result == -4 || result == -11) return 0;
+    return result < 0 ? (int)cplus_normalize_linux_result(result) : 0;
+}
+
+int platform_atomic_wake32(volatile int* address, unsigned int count) {
+    long result;
+    unsigned int wake_count;
+    if (!cplus_linux_valid_atomic32(address)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (count == 0) return 0;
+    wake_count = count > 0x7fffffffU ? 0x7fffffffU : count;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall6(202, (long)address, 129, wake_count, 0, 0, 0);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall6(98, (long)address, 129, wake_count, 0, 0, 0);
+#else
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    return result < 0 ? (int)cplus_normalize_linux_result(result) : 0;
+}
+
 static long cplus_linux_process_fork(void) {
 #if defined(__x86_64__)
     return cplus_linux_syscall1(57, 0);

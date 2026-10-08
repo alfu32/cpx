@@ -2884,6 +2884,17 @@ thread attachment before calling its entry function. Windows uses
 performs the same runtime attachment before user code. Thread-control and stack
 storage use the PAL page allocator and are released by join.
 
+Portable synchronization algorithms are shared in `sdk/runtime/src/sync.c`:
+32-bit state-word mutexes, sequence-based condition variables, counting
+semaphores, and once initialization use compiler atomic intrinsics for their
+state transitions and memory ordering. Their blocking edge is the PAL's
+32-bit atomic wait/wake pair. Linux maps this pair to private futex syscalls;
+Windows maps it to `WaitOnAddress` and the address wake APIs (Windows 8+).
+Successful wake returns zero consistently rather than exposing a
+platform-specific waiter count. The runtime link plan includes the shared
+algorithm source and exactly one target wait/wake adapter; ordinary atomic
+load/store/RMW operations do not become OS services.
+
 The C backend's ABI gate includes an independently compiled C17 caller fixture.
 The fixture MUST consume the generated public header and link against generated
 C, exercising scalar and object-pointer parameters, aggregate by-value

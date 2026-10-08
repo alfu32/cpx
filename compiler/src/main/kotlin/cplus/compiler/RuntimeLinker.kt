@@ -78,6 +78,7 @@ object RuntimeLinker {
                 val wide = resolution.layout.runtimeSource.resolve("wide.c")
                 val wctype = resolution.layout.runtimeSource.resolve("wctype.c")
                 val filesystem = resolution.layout.runtimeSource.resolve("fs.c")
+                val synchronization = resolution.layout.runtimeSource.resolve("sync.c")
                 val platformRuntime = resolution.layout.platformSource.resolve("runtime.c")
                 val setjmp = if (descriptor.os == "linux" && descriptor.architecture == "x86_64") listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S")) else emptyList()
                 val threadStartup = if (descriptor.os == "linux") {
@@ -90,7 +91,7 @@ object RuntimeLinker {
                 } else {
                     emptyList()
                 }
-                val missing = (listOf(startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, platformRuntime) + setjmp + threadStartup + threadTlsScript).filterNot(Files::isRegularFile)
+                val missing = (listOf(startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, synchronization, platformRuntime) + setjmp + threadStartup + threadTlsScript).filterNot(Files::isRegularFile)
                 if (missing.isNotEmpty()) {
                     RuntimeLinkPlanResult(
                         null,
@@ -108,7 +109,7 @@ object RuntimeLinker {
                         RuntimeLinkPlan(
                             target.buildProfile.runtime,
                             listOf(startup),
-                            listOf(runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, platformRuntime) + setjmp + threadStartup,
+                            listOf(runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, synchronization, platformRuntime) + setjmp + threadStartup,
                             buildList {
                                 addAll(
                                     listOf(
