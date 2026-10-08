@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    110/129 accepted with recorded evidence; 19 TODO
+Roadmap leaf tasks:    111/129 accepted with recorded evidence; 18 TODO
 Phase gates:           11/13 complete; 1 active; 1 queued
-Current task:          R10.2.2.1 — implement one import-edit builder
+Current task:          R10.2.2.2 — offer unimported symbols with additional import edits
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -36,11 +36,11 @@ R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
 R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
-R10 [DOING] 12/19 import discovery, completion and quick fixes
+R10 [DOING] 13/19 import discovery, completion and quick fixes
 R11 [TODO]  0/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 
-TOTAL       110/129 implementation tasks accepted; 11/13 phase gates complete,
+TOTAL       111/129 implementation tasks accepted; 11/13 phase gates complete,
             1 active, 1 queued
 ```
 
@@ -51,7 +51,7 @@ denominator to 128. R12 adds one independently accepted generated-version
 task, bringing the current denominator to 129. Their broader existing task IDs
 are retained as composites, not double-counted as leaves.
 The recorded Linux/Windows results above apply to the prior R0–R9 baseline, not
-these features. Twelve R10 leaves now have recorded Linux evidence; R10 remains
+these features. Thirteen R10 leaves now have recorded Linux evidence; R10 remains
 active and R11 remains queued.
 
 R9 adds four independently accepted distribution leaves to the prior 93-task
@@ -3785,7 +3785,8 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [11/13 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 110/129 accepted; R10.1 (10/10) and R10.2.1 (2/2) accepted, R10 active,
+Roadmap leaf tasks: 111/129 accepted; R10.1 (10/10), R10.2.1 (2/2), and
+                     R10.2.2.1 accepted; R10 active,
                      R11 queued, R12 accepted
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -3798,7 +3799,7 @@ Roadmap leaf tasks: 110/129 accepted; R10.1 (10/10) and R10.2.1 (2/2) accepted, 
 [DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
-[DOING] R10 — import discovery, completion and quick fixes (12/19 leaves)
+[DOING] R10 — import discovery, completion and quick fixes (13/19 leaves)
 [TODO]  R11 — compile-time extension methods (0/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 ```
@@ -5897,7 +5898,7 @@ The installable distribution runs from an unrelated project directory without
 manual SDK configuration; an explicit JVM property selects a development SDK;
 the CLI help identifies the JVM option.
 
-## R10 [DOING] [12/19] Discoverable imports and editor fixes
+## R10 [DOING] [13/19] Discoverable imports and editor fixes
 
 **Language:** LS §21 Imports; §22 Importing C; §41.1 Import assistance.
 **Technical:** TS §28 C import architecture; §54.1 Discoverable imports.
@@ -6169,7 +6170,7 @@ fixtures verify identical-index cache reuse, source/overlay and nested-header in
 watched-file diagnostic refresh, request cancellation, and stale document-version
 suppression. Header dependency content is hashed and cache size is bounded.
 
-### R10.2 [DOING] [2/4] Import and auto-import completion
+### R10.2 [DOING] [3/4] Import and auto-import completion
 
 **Language:** LS §41.1 Import assistance.
 **Technical:** TS §54 Completion; §54.1 Discoverable imports.
@@ -6218,12 +6219,12 @@ items with signature/provider detail and replacement edits, excludes a name
 already selected in the import, and completes `./helper.cp` from an unsaved
 workspace document. Ordinary semantic completion remains covered by the suite.
 
-#### R10.2.2 [TODO] [0/2] Safe auto-import edits
+#### R10.2.2 [DOING] [1/2] Safe auto-import edits
 
 **Language:** LS §21.3 Aliased import; §21.4 Selective import; §41.1 Import assistance.
 **Technical:** TS §54.1 Discoverable imports.
 
-##### R10.2.2.1 [DOING] Implement one import-edit builder
+##### R10.2.2.1 [DONE] Implement one import-edit builder
 
 **Language:** LS §21.3 Aliased import; §21.4 Selective import; §41.1 Import assistance.
 **Technical:** TS §51 Workspace model; §54.1 Discoverable imports.
@@ -6237,7 +6238,13 @@ workspace document. Ordinary semantic completion remains covered by the suite.
 
 **Verify:** `gradle :cli:test` (new `ImportEditsTest`).
 
-##### R10.2.2.2 [TODO] Offer unimported symbols with additional import edits
+**Evidence:** `./gradlew :cli:test --no-daemon` passes. `ImportEditsTest` applies
+edits for empty/package files, leading comments, CRLF, BOM and non-BMP text;
+checks same-provider merging and idempotence; reuses selective/module aliases;
+rejects collisions/malformed imports; and uses a separate import for multiline
+or commented lists and quoted paths containing spaces.
+
+##### R10.2.2.2 [DOING] Offer unimported symbols with additional import edits
 
 **Language:** LS §41.1 Import assistance.
 **Technical:** TS §54 Completion; §54.1 Discoverable imports.

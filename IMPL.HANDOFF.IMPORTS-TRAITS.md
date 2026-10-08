@@ -3,7 +3,7 @@
 ## Start here
 
 This is the active implementation runbook. The current leaf is tracked in
-`IMPL.PLAN.md` (currently `R10.2.2.1`); consult that file for status and evidence.
+`IMPL.PLAN.md` (currently `R10.2.2.2`); consult that file for status and evidence.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
@@ -15,7 +15,7 @@ The requested outcomes are:
   `comptime trait type_identifier { ... }`.
 
 Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1–
-R10.1.2.3 and R10.2.1 are accepted; resume at **R10.2.2.1**, not by restarting
+R10.1.2.3, R10.2.1 and R10.2.2.1 are accepted; resume at **R10.2.2.2**, not by restarting
 the parser foundation or jumping ahead to the VS Code UI. Do not restart R0–R9
 or rewrite the compiler.
 
@@ -255,8 +255,8 @@ Windows test. Their task dependencies permit this order.
 10. `R10.1.2.3` — Invalidate discovery and compilation consistently. (Accepted.)
 11. `R10.2.1.1` — Identify incomplete import contexts from shared tokens. (Accepted.)
 12. `R10.2.1.2` — Serialize provider and export completion through JSON-RPC. (Accepted.)
-13. `R10.2.2.1` — Implement one import-edit builder. (Active.)
-14. `R10.2.2.2` — Offer unimported symbols with additional import edits.
+13. `R10.2.2.1` — Implement one import-edit builder. (Accepted.)
+14. `R10.2.2.2` — Offer unimported symbols with additional import edits. (Active.)
 15. `R10.3.1.1` — Map unresolved-symbol diagnostics to compatible providers.
 16. `R10.3.1.2` — Expose import quick fixes through the LSP server.
 17. `R10.3.2.1` — Verify installed CLI and LSP import parity.
