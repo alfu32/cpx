@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    45/69 evidenced on Linux
+Roadmap leaf tasks:    46/69 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.8.1 — implement shared address and UTF-8 name codecs
+Current task:          R5.3.8.2 — implement configured-DNS transport on Linux
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 13/25 native std and platform-service work remains open
+R5 [DOING] 14/25 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       45/69 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       46/69 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -44,13 +44,17 @@ runtime execution or a complete Windows runtime image.
 R5.3.8 was decomposed into shared address/name codecs, Linux DNS transport,
 and Windows resolver integration because each has independent implementation
 and acceptance evidence. This increases the denominator from 67 to 69 without
-adding completion credit; the current numerator remains 45.
+adding completion credit. R5.3.8.1 then passed its executable codec vectors,
+freestanding undefined-symbol audit, strict C17 checks for all four target
+triples, and C+ API/ABI target checks; commits `9a8532e` and `34d322f` bring
+the numerator to 46/69. Linux DNS transport and Windows resolver integration
+remain open.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.3.8.1–R5.3.8.3, then R5.4–R5.5; Linux C17 stdio and
+1. Continue R5.3.8.2–R5.3.8.3, then R5.4–R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 now pass their stated acceptance checks.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
@@ -91,6 +95,8 @@ Latest completed implementation commits:
 - `bd26d05` — verify standard-channel error mapping and host-runtime isolation.
 - `c39c402` — preserve the target `size_t` ABI in stdio formatting functions.
 - `4952b4d` — verify declared stdio channels in the independent C17 report (Linux x86_64).
+- `9a8532e` — shared freestanding IPv4/IPv6 and UTF-8 hostname codecs.
+- `34d322f` — verify rejection at the DNS label-length boundary.
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4159,7 +4165,7 @@ dependencies.
     file-stream read/write/seek/close adapters without exposing OS handles;
   - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
     matrix, error-normalization and dependency audit, and close platform gaps;
-- R5.3 [DOING] 9/12 — implement and Linux-execute the remaining PAL services;
+- R5.3 [DOING] 10/12 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
@@ -4220,7 +4226,7 @@ dependencies.
         Windows execution remains deferred. Whole-runtime Windows PE linking is
         tracked separately by R8.3.
       - **Depends:** R5.3.7.1.
-  - R5.3.8 [DOING] [0/3] — implement portable address text conversion and DNS
+  - R5.3.8 [DOING] [1/3] — implement portable address text conversion and DNS
     resolution with UTF-8 inputs and target-independent result ownership;
     - **Language:** SPEC.STDLIB §16.1 address parsing/formatting and name resolution.
     - **Technical:** SPEC.TECH §78 shared codecs and target resolver adapters.
@@ -4230,12 +4236,16 @@ dependencies.
       support and no host-runtime dependency; Windows uses the Unicode system
       resolver without a static `ws2_32` import. Windows execution remains part
       of final validation.
-    - R5.3.8.1 [DOING] — implement shared IPv4/IPv6 parse/format and UTF-8
+    - R5.3.8.1 [DONE] — implement shared IPv4/IPv6 parse/format and UTF-8
       hostname-to-A-label codecs plus the caller-owned resolver result ABI.
-      - **Acceptance:** RFC 5952 canonical vectors, IPv4/IPv6 scope and malformed
-        input cases, UTF-8/Punycode vectors, and C+/C ABI checks pass across the
-        four Linux/Windows x86_64/AArch64 target descriptors.
-    - R5.3.8.2 [TODO] — implement the Linux configured-DNS resolver using the
+      - **Acceptance evidence:** host-executed RFC 5952 canonical and
+        IPv4-mapped mixed-notation vectors; IPv4/IPv6 scope and malformed-input
+        cases; UTF-8/Punycode and 63/64-byte label plus 253/254-byte name
+        boundaries; freestanding object with no undefined host-runtime
+        symbols; strict C17 syntax checks for Linux/Windows x86_64/AArch64; C+
+        API and ABI checks across all four target descriptors; and a successful
+        full Gradle build.
+    - R5.3.8.2 [DOING] — implement the Linux configured-DNS resolver using the
       freestanding socket PAL, bounded UDP queries, and TCP fallback.
       - **Acceptance:** a local loopback DNS fixture covers A/AAAA, CNAME,
         truncation/TCP fallback, malformed responses, timeout/error mapping,
