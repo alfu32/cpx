@@ -10,6 +10,90 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeFilePalTest {
     @Test
+    fun linuxDirectoryIterationRejectsInvalidUtf8NamesAsUnsupported() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-file-pal-invalid-utf8")
+        val entryDirectory = Files.createDirectory(directory.resolve("entries"))
+        val helperSource = directory.resolve("create-invalid-name.c")
+        val helper = directory.resolve("create-invalid-name")
+        val source = directory.resolve("invalid-utf8-pal.c")
+        val executable = directory.resolve("invalid-utf8-pal")
+        val directoryName = cString(entryDirectory.toAbsolutePath().normalize().toString())
+
+        Files.writeString(helperSource, """
+            #include <fcntl.h>
+            #include <stdio.h>
+            #include <string.h>
+            #include <unistd.h>
+
+            int main(int argc, char** argv) {
+                char path[4096];
+                int count;
+                int descriptor;
+                if (argc != 3) return 10;
+                count = snprintf(path, sizeof(path), "%s/%c", argv[2], (char)0xff);
+                if (count < 0 || (size_t)count >= sizeof(path)) return 11;
+                if (strcmp(argv[1], "create") == 0) {
+                    descriptor = open(path, O_CREAT | O_EXCL | O_WRONLY, 0600);
+                    if (descriptor < 0) return 12;
+                    return close(descriptor) == 0 ? 0 : 13;
+                }
+                if (strcmp(argv[1], "remove") == 0) return unlink(path) == 0 ? 0 : 14;
+                return 15;
+            }
+        """.trimIndent())
+        Files.writeString(source, """
+            #include "cplus_platform.h"
+
+            int main(void) {
+                const char* path = "$directoryName";
+                char name[32];
+                long long handle = platform_directory_open(path);
+                long long result;
+                if (handle < 0) return 1;
+                result = platform_directory_read(handle, name, sizeof(name));
+                if (result != CPLUS_PAL_UNSUPPORTED) return 2;
+                if (platform_directory_close(handle) != 0) return 3;
+                return 0;
+            }
+        """.trimIndent())
+
+        try {
+            val helperCompile = ProcessBuilder(
+                "cc", "-std=c17", helperSource.toString(), "-o", helper.toString()
+            ).redirectErrorStream(true).start()
+            val helperOutput = helperCompile.inputStream.bufferedReader().readText()
+            assertEquals(0, helperCompile.waitFor(), helperOutput)
+            val create = ProcessBuilder(helper.toString(), "create", entryDirectory.toString()).start()
+            assertEquals(0, create.waitFor())
+
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+        } finally {
+            if (Files.isExecutable(helper)) {
+                runCatching { ProcessBuilder(helper.toString(), "remove", entryDirectory.toString()).start().waitFor() }
+            }
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(source)
+            Files.deleteIfExists(helper)
+            Files.deleteIfExists(helperSource)
+            Files.deleteIfExists(entryDirectory)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test
     fun linuxFilesystemPermissionFailuresUseAccessDeniedPalCode() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         assumeTrue(!System.getProperty("user.name").equals("root", ignoreCase = true), "root bypasses POSIX permission checks")

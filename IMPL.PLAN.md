@@ -4625,7 +4625,10 @@ dependencies.
     metadata, and directory-open operations. The fixture also checks one-level
     directory creation (without synthesizing missing parents) and confirms file
     removal rejects directories while preserving them. These checks extend
-    Linux evidence only and do not close the cross-platform leaf.
+    Linux evidence only and do not close the cross-platform leaf. A dedicated
+    Linux fixture creates a directory entry with an invalid UTF-8 byte and
+    verifies production directory iteration returns `UNSUPPORTED`; the linked
+    fixture also passes the dependency audit.
 - R5.3 [DONE] 12/12 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
