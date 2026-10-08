@@ -72,6 +72,7 @@ object RuntimeLinker {
                 val libcCore = resolution.layout.runtimeSource.resolve("libc_core.c")
                 val time = resolution.layout.runtimeSource.resolve("time.c")
                 val math = resolution.layout.runtimeSource.resolve("math.c")
+                val complexArithmetic = resolution.layout.runtimeSource.resolve("complex_arithmetic.c")
                 val ctype = resolution.layout.runtimeSource.resolve("ctype.c")
                 val locale = resolution.layout.runtimeSource.resolve("locale.c")
                 val signal = resolution.layout.runtimeSource.resolve("signal.c")
@@ -107,7 +108,7 @@ object RuntimeLinker {
                     math, ctype, locale, signal, wide, wctype, filesystem, synchronization,
                     synchronizationFacade, atomics, process, thread, networkAddress, networkFacade,
                     platformRuntime
-                )
+                ) + if ("c17_complex" in descriptor.features) listOf(complexArithmetic) else emptyList()
                 val missing = (commonRuntime + setjmp + threadStartup + platformNetworkRuntime + threadTlsScript)
                     .filterNot(Files::isRegularFile)
                 if (missing.isNotEmpty()) {

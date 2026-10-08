@@ -1924,6 +1924,18 @@ class SemanticAnalyzer(
                             UnknownType(TypeId(-1))
                         }
                     }
+                    "+", "-" -> if (isNumericType(operandType)) operandType else {
+                        diagnostics.error("unary '${expression.operator}' requires a numeric operand", rangeOf(expression.origin), "SEM316")
+                        UnknownType(TypeId(-1))
+                    }
+                    "!" -> if (isScalarType(operandType)) primitive("bool") else {
+                        diagnostics.error("logical negation requires a scalar operand", rangeOf(expression.origin), "SEM316")
+                        UnknownType(TypeId(-1))
+                    }
+                    "~" -> if (isIntegerType(operandType)) operandType else {
+                        diagnostics.error("bitwise complement requires an integer operand", rangeOf(expression.origin), "SEM316")
+                        UnknownType(TypeId(-1))
+                    }
                     else -> operandType
                 }
             }
@@ -1940,13 +1952,19 @@ class SemanticAnalyzer(
                 binaryResultType(expression.operator, left, right, expression.origin, diagnostics, primitive)
             }
             is AstConditional -> {
-                validateExpression(expression.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                val conditionType = validateExpression(expression.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                if (!isScalarType(conditionType)) {
+                    diagnostics.error("conditional expression requires a scalar condition", rangeOf(expression.condition.origin), "SEM316")
+                }
                 val thenType = validateExpression(expression.thenBranch, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 val elseType = validateExpression(expression.elseBranch, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 if (thenType !is UnknownType && elseType !is UnknownType && !argumentCompatible(thenType, elseType)) {
                     diagnostics.error("conditional branches have incompatible types", rangeOf(expression.origin), "SEM309")
                 }
-                thenType
+                if (isNumericType(thenType) && isNumericType(elseType) &&
+                    (isComplexType(thenType) || isComplexType(elseType))) {
+                    commonComplexArithmeticType(thenType, elseType, primitive)
+                } else thenType
             }
             is AstUpdate -> {
                 val operandType = validateExpression(expression.operand, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
@@ -2218,32 +2236,45 @@ class SemanticAnalyzer(
             return UnknownType(TypeId(-1))
         }
         return when {
-            operator in assignmentOperators -> left
+            operator in assignmentOperators -> {
+                if (operator == "%=" && (isComplexType(left) || isComplexType(right))) {
+                    invalid("operator '%=' requires integer operands")
+                } else left
+            }
             operator in logicalOperators -> {
                 if (!isScalarType(left) || !isScalarType(right)) {
                     invalid("logical operator '$operator' requires scalar operands")
                 } else primitive("bool")
             }
             operator in comparisonOperators -> {
-                val valid = isNumericType(left) && isNumericType(right) || pointersCompatible(left, right)
+                val valid = if (operator in setOf("==", "!=")) {
+                    isNumericType(left) && isNumericType(right) || pointersCompatible(left, right)
+                } else {
+                    isNumericType(left) && isNumericType(right) &&
+                        !isComplexType(left) && !isComplexType(right) || pointersCompatible(left, right)
+                }
                 if (!valid) invalid("comparison operator '$operator' requires compatible scalar operands")
                 else primitive("bool")
             }
             operator == "+" -> when {
-                isNumericType(left) && isNumericType(right) -> left
+                isNumericType(left) && isNumericType(right) -> commonComplexArithmeticType(left, right, primitive)
                 isPointerLike(left) && isIntegerType(right) -> pointerValueType(left)
                 isIntegerType(left) && isPointerLike(right) -> pointerValueType(right)
                 else -> invalid("operator '+' requires numeric operands or a pointer and integer")
             }
             operator == "-" -> when {
-                isNumericType(left) && isNumericType(right) -> left
+                isNumericType(left) && isNumericType(right) -> commonComplexArithmeticType(left, right, primitive)
                 isPointerLike(left) && isIntegerType(right) -> pointerValueType(left)
                 isPointerLike(left) && isPointerLike(right) && pointersCompatible(left, right) -> primitive("ptrdiff_t")
                 else -> invalid("operator '-' requires numeric operands, pointer/integer, or compatible pointers")
             }
-            operator in setOf("*", "/", "%") -> {
-                if (isNumericType(left) && isNumericType(right)) left
+            operator in setOf("*", "/") -> {
+                if (isNumericType(left) && isNumericType(right)) commonComplexArithmeticType(left, right, primitive)
                 else invalid("operator '$operator' requires numeric operands")
+            }
+            operator == "%" -> {
+                if (isIntegerType(left) && isIntegerType(right)) left
+                else invalid("operator '%' requires integer operands")
             }
             operator in setOf("<<", ">>", "|", "^", "&") -> {
                 if (isIntegerType(left) && isIntegerType(right)) left
@@ -2254,10 +2285,43 @@ class SemanticAnalyzer(
     }
 
     private fun isNumericType(type: CType): Boolean = when (val canonical = canonicalType(type)) {
-        is PrimitiveType -> CPrimitiveTypes.isNumeric(canonical.name)
+        is PrimitiveType -> CPrimitiveTypes.isNumeric(canonical.name) || CPrimitiveTypes.isComplex(canonical.name)
         is ForeignType -> canonical.underlyingType?.let(::isNumericType) == true
         is EnumType -> true
         else -> false
+    }
+
+    private fun isComplexType(type: CType): Boolean = when (val canonical = canonicalType(type)) {
+        is PrimitiveType -> CPrimitiveTypes.isComplex(canonical.name)
+        is ForeignType -> canonical.underlyingType?.let(::isComplexType) == true
+        else -> false
+    }
+
+    private fun complexComponentRank(type: CType): CFloatingRank? = when (val canonical = canonicalType(type)) {
+        is PrimitiveType -> CPrimitiveTypes.typeInfo(canonical.name)?.let { primitive ->
+            when (primitive.kind) {
+                CPrimitiveKind.COMPLEX, CPrimitiveKind.FLOATING -> primitive.floatingRank
+                else -> null
+            }
+        }
+        is ForeignType -> canonical.underlyingType?.let(::complexComponentRank)
+        else -> null
+    }
+
+    private fun commonComplexArithmeticType(
+        left: CType,
+        right: CType,
+        primitive: (String) -> PrimitiveType
+    ): CType {
+        if (!isComplexType(left) && !isComplexType(right)) return left
+        val rank = listOfNotNull(complexComponentRank(left), complexComponentRank(right))
+            .maxOrNull() ?: CFloatingRank.DOUBLE
+        val componentName = when (rank) {
+            CFloatingRank.FLOAT -> "float"
+            CFloatingRank.DOUBLE -> "double"
+            CFloatingRank.LONG_DOUBLE -> "long double"
+        }
+        return primitive("$componentName _Complex")
     }
 
     private fun isIntegerType(type: CType): Boolean = when (val canonical = canonicalType(type)) {

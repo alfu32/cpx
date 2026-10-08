@@ -37,7 +37,7 @@ class Lexer {
 
     private val multiCharacterSymbols = listOf(
         "...", "->", "++", "--", "==", "!=", "<=", ">=", "&&", "||", "+=", "-=",
-        "*=", "/=", "<<", ">>", "::"
+        "*=", "/=", "%=", "<<", ">>", "::"
     )
 
     fun lex(source: SourceFile): LexedSource {

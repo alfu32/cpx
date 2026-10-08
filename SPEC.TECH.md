@@ -2832,6 +2832,13 @@ collection (`--gc-sections` or `/OPT:REF`) so unused service adapters do not
 pull their platform dependencies into minimal products. The system profile
 does not enable this self-hosted dead stripping.
 
+For a target that advertises C17 complex support, the runtime link plan SHALL
+include the C+ definitions for compiler-emitted complex multiply/divide helper
+ABIs (currently the GCC/Clang `__mul*3` and `__div*3` families). These
+definitions are capability-gated and SHALL NOT be satisfied by an undeclared
+host `libgcc`, compiler-rt archive, or system math library; the normal runtime
+dependency audit remains authoritative.
+
 Runtime memory is layered as `std.alloc` → compiler-owned allocator →
 `platform_page_allocate/release`. The allocator is page-backed and exposes
 explicit-width size/alignment operations; its implementation MUST remain free

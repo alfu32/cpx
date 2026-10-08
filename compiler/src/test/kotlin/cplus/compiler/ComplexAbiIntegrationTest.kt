@@ -1,24 +1,52 @@
 package cplus.compiler
 
+import cplus.core.AstBinary
+import cplus.core.AstBlock
+import cplus.core.AstConditional
+import cplus.core.AstFunction
+import cplus.core.AstReturn
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class ComplexAbiIntegrationTest {
     @Test
     fun complexScalarFunctionsMatchIndependentLinuxC17CallerAbi() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val source = """
             pub float _Complex round_trip_float_complex(float _Complex value) { return value; }
             pub double _Complex round_trip_double_complex(double _Complex value) { return value; }
             pub long double _Complex round_trip_long_double_complex(long double _Complex value) { return value; }
+            pub float _Complex add_float_complex(float _Complex left, float right) { return left + right; }
+            pub double _Complex add_mixed_complex(float _Complex left, double right) { return left + right; }
+            pub float _Complex add_integer_complex(float _Complex left, int right) { return left + right; }
+            pub long double _Complex add_extended_complex(double _Complex left, long double right) { return left + right; }
+            pub double _Complex subtract_complex(double _Complex left, double _Complex right) { return left - right; }
+            pub double _Complex negate_complex(double _Complex value) { return -value; }
+            pub double _Complex multiply_complex(double _Complex left, double _Complex right) { return left * right; }
+            pub double _Complex divide_complex(double _Complex left, double _Complex right) { return left / right; }
+            pub double _Complex add_assign_complex(double _Complex left, double _Complex right) { left += right; return left; }
+            pub bool equal_complex(double _Complex left, double _Complex right) { return left == right; }
+            pub bool not_equal_complex(double _Complex left, double _Complex right) { return left != right; }
+            pub bool logical_and_complex(double _Complex left, double _Complex right) { return left && right; }
+            pub bool logical_or_complex(double _Complex left, double _Complex right) { return left || right; }
+            pub bool logical_not_complex(double _Complex value) { return !value; }
+            pub long double _Complex select_extended_complex(bool choose, float _Complex left, long double _Complex right) {
+                return choose ? left : right;
+            }
         """.trimIndent()
         val result = CPlusCompiler().compileText(Files.createTempFile("complex-abi", ".cp"), source)
 
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         val descriptor = requireNotNull(result.sdkResolution?.targetDescriptor)
-        assertTrue(CCompilerToolchains.supportsC17Complex(descriptor, "cc"))
+        val compilers = listOf("cc", "clang").filter(::isCompilerAvailable)
+        assertTrue("cc" in compilers, "the Linux test host must provide cc")
+        compilers.forEach { compiler ->
+            assertTrue(CCompilerToolchains.supportsC17Complex(descriptor, compiler), compiler)
+        }
         val model = requireNotNull(result.semanticModel)
         listOf(
             Triple("round_trip_float_complex", "float _Complex", 8),
@@ -32,13 +60,26 @@ class ComplexAbiIntegrationTest {
             assertEquals(expectedSize, layout.size, typeName)
             assertEquals(descriptor.floatingTypes.getValue(typeName.substringBefore(" _Complex")).alignmentBytes, layout.alignment, typeName)
         }
+        fun binaryExpressionType(functionName: String): String {
+            val function = result.artifacts.single().ast.declarations
+                .filterIsInstance<AstFunction>().single { it.name == functionName }
+            val expression = ((function.body as AstBlock).statements.single() as AstReturn).expression as AstBinary
+            return model.expressionTypes.getValue(expression).name
+        }
+        assertEquals("float _Complex", binaryExpressionType("add_float_complex"))
+        assertEquals("double _Complex", binaryExpressionType("add_mixed_complex"))
+        assertEquals("float _Complex", binaryExpressionType("add_integer_complex"))
+        assertEquals("long double _Complex", binaryExpressionType("add_extended_complex"))
+        val conditionalFunction = result.artifacts.single().ast.declarations
+            .filterIsInstance<AstFunction>().single { it.name == "select_extended_complex" }
+        val conditionalExpression = ((conditionalFunction.body as AstBlock).statements.single() as AstReturn)
+            .expression as AstConditional
+        assertEquals("long double _Complex", model.expressionTypes.getValue(conditionalExpression).name)
 
-        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val directory = Files.createTempDirectory("complex-caller")
         val header = directory.resolve("complex_api.h")
         val generated = directory.resolve("generated.c")
         val caller = directory.resolve("caller.c")
-        val executable = directory.resolve("complex-caller")
         try {
             header.toFile().writeText(result.generatedHeaders.single().text)
             generated.toFile().writeText(result.generatedUnits.single().text)
@@ -60,22 +101,51 @@ class ComplexAbiIntegrationTest {
                         if (round_trip_double_complex(double_value) != double_value) return 2;
                         if (round_trip_long_double_complex(extended) != extended) return 3;
                         if (I != CMPLXF(0.0F, 1.0F)) return 4;
+                        if (add_float_complex(CMPLXF(1.0F, 2.0F), 2.5F) != CMPLXF(3.5F, 2.0F)) return 5;
+                        if (add_mixed_complex(CMPLXF(1.0F, 2.0F), 3.0) != CMPLX(4.0, 2.0)) return 6;
+                        if (add_integer_complex(CMPLXF(1.0F, 2.0F), 4) != CMPLXF(5.0F, 2.0F)) return 7;
+                        if (add_extended_complex(CMPLX(2.0, 3.0), 4.0L) != CMPLXL(6.0L, 3.0L)) return 8;
+                        if (subtract_complex(CMPLX(3.0, 4.0), CMPLX(1.0, 2.0)) != CMPLX(2.0, 2.0)) return 9;
+                        if (negate_complex(CMPLX(1.0, 2.0)) != CMPLX(-1.0, -2.0)) return 10;
+                        if (multiply_complex(CMPLX(1.0, 2.0), CMPLX(3.0, 4.0)) != CMPLX(-5.0, 10.0)) return 11;
+                        if (divide_complex(CMPLX(1.0, 2.0), CMPLX(3.0, 4.0)) != CMPLX(0.44, 0.08)) return 12;
+                        if (add_assign_complex(CMPLX(1.0, 2.0), CMPLX(3.0, 4.0)) != CMPLX(4.0, 6.0)) return 13;
+                        if (!equal_complex(double_value, double_value)) return 14;
+                        if (not_equal_complex(double_value, double_value)) return 15;
+                        if (!logical_and_complex(double_value, extended)) return 16;
+                        if (!logical_or_complex(CMPLX(0.0, 0.0), double_value)) return 17;
+                        if (!logical_not_complex(CMPLX(0.0, 0.0))) return 18;
+                        if (select_extended_complex(1, CMPLXF(1.0F, 2.0F), CMPLXL(3.0L, 4.0L)) != CMPLXL(1.0L, 2.0L)) return 19;
+                        if (select_extended_complex(0, CMPLXF(1.0F, 2.0F), CMPLXL(3.0L, 4.0L)) != CMPLXL(3.0L, 4.0L)) return 20;
                         return 0;
                     }
                 """.trimIndent()
             )
-            val compile = ProcessBuilder(
-                "cc", "-std=c17", "-I", root.resolve("libc/include").toString(),
-                "-I", root.resolve("runtime/include").toString(), generated.toString(), caller.toString(),
-                "-o", executable.toString()
-            ).redirectErrorStream(true).start()
-            val compileOutput = compile.inputStream.bufferedReader().readText()
-            assertEquals(0, compile.waitFor(), compileOutput)
-            val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
-            val executionOutput = execution.inputStream.bufferedReader().readText()
-            assertEquals(0, execution.waitFor(), executionOutput)
+            val sdk = requireNotNull(result.sdkResolution)
+            val target = TargetInfo(targetTriple = "linux-x86_64")
+            val plan = requireNotNull(RuntimeLinker.plan(sdk, target).plan)
+            compilers.forEach { compiler ->
+                val executable = directory.resolve("complex-caller-${compiler.replace('/', '-')}")
+                val link = LinkDriver.link(
+                    LinkRequest(
+                        generated,
+                        executable,
+                        target,
+                        sdk,
+                        sourceDependencies = listOf(caller),
+                        cCompiler = compiler
+                    ),
+                    plan
+                )
+                assertTrue(link.isSuccessful, "$compiler: ${link.output}")
+                val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+                val executionOutput = execution.inputStream.bufferedReader().readText()
+                assertEquals(0, execution.waitFor(), "$compiler: $executionOutput")
+                val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+                assertTrue(audit.isSuccessful, "$compiler: ${audit.diagnostics.joinToString()}")
+                Files.deleteIfExists(executable)
+            }
         } finally {
-            Files.deleteIfExists(executable)
             Files.deleteIfExists(caller)
             Files.deleteIfExists(generated)
             Files.deleteIfExists(header)
@@ -96,6 +166,26 @@ class ComplexAbiIntegrationTest {
     }
 
     @Test
+    fun rejectsOrderedAndIntegralOnlyComplexOperations() {
+        val invalidBodies = listOf(
+            "return left < right;",
+            "return left % right;",
+            "left %= right; return left;",
+            "return ~left;",
+            "return left & right;"
+        )
+        invalidBodies.forEachIndexed { index, body ->
+            val result = CPlusCompiler().compileText(
+                Files.createTempFile("complex-invalid-op-$index", ".cp"),
+                "bool invalid_operation(double _Complex left, double _Complex right) { $body }"
+            )
+
+            assertFalse(result.isSuccessful, body)
+            assertTrue(result.diagnostics.any { it.code == "SEM316" }, result.diagnostics.joinToString())
+        }
+    }
+
+    @Test
     fun cComplexImportsExposeTheC17HeaderAndFunctionDeclarations() {
         val result = CPlusCompiler().compileText(
             Files.createTempFile("complex-import", ".cp"),
@@ -109,4 +199,10 @@ class ComplexAbiIntegrationTest {
         assertTrue(result.generatedUnits.single().text.contains("#include <complex.h>"))
         assertTrue(result.generatedUnits.single().text.contains("cabs"))
     }
+
+    private fun isCompilerAvailable(compiler: String): Boolean = runCatching {
+        val process = ProcessBuilder(compiler, "--version").redirectErrorStream(true).start()
+        process.inputStream.bufferedReader().use { it.readText() }
+        process.waitFor() == 0
+    }.getOrDefault(false)
 }

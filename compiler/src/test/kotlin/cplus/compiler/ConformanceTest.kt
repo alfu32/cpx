@@ -27,4 +27,16 @@ class ConformanceTest {
         assertTrue(report.cases.any { it.id == "fixture.streams.stdio" && it.status == "pass" })
         assertTrue(report.cases.any { it.id == "fixture.dependencies.context" && it.status == "pass" })
     }
+
+    @Test
+    fun complexRuntimeAuditIsCapabilityGated() {
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-aarch64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val report = C17ConformanceAudit.inspect(resolution, target)
+
+        assertTrue(report.cases.any {
+            it.id == "runtime.source.complex.arithmetic" && it.status == "unsupported"
+        })
+    }
 }

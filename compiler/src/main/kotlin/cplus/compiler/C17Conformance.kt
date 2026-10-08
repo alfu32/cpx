@@ -17,6 +17,7 @@ object C17ConformanceAudit {
         "format" to "format.c",
         "time" to "time.c",
         "math" to "math.c",
+        "complex.arithmetic" to "complex_arithmetic.c",
         "ctype" to "ctype.c",
         "locale" to "locale.c",
         "signal" to "signal.c",
@@ -75,13 +76,23 @@ object C17ConformanceAudit {
 
         runtimeSources.forEach { (id, file) ->
             val path = resolution.layout.runtimeSource.resolve(file)
+            val supported = id != "complex.arithmetic" || "c17_complex" in descriptor.features
+            val present = Files.isRegularFile(path)
             cases += ConformanceCase(
                 "runtime.source.$id",
                 ConformanceArea.RUNTIME,
                 descriptor.targetTriple,
                 "c17",
-                if (Files.isRegularFile(path)) "pass" else "fail",
-                if (Files.isRegularFile(path)) path.toString() else "runtime source is missing: $path"
+                when {
+                    !supported -> "unsupported"
+                    present -> "pass"
+                    else -> "fail"
+                },
+                when {
+                    !supported -> "complex arithmetic runtime helpers are not enabled for this target"
+                    present -> path.toString()
+                    else -> "runtime source is missing: $path"
+                }
             )
         }
 
