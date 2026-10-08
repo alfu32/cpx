@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    39/65 evidenced on Linux
+Roadmap leaf tasks:    40/65 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.4 — implement distinct wall, monotonic and process-CPU clocks
+Current task:          R5.3.5 — implement portable threads and runtime TLS
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,12 +22,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 7/21 native std and platform-service work remains open
+R5 [DOING] 8/21 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       39/65 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       40/65 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,7 +35,7 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5 with R5.3.4 clocks, then R5.3.5–R5.5; Linux C17 stdio and
+1. Continue R5 with R5.3.5 threads/TLS, then R5.3.6–R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 now pass their stated acceptance checks.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
@@ -67,6 +67,7 @@ Latest completed implementation commits:
 - `2d24aed` — validate page-memory PAL failure cases (R5.3.1 Linux-verified; Windows execution deferred).
 - `4d253de` — add portable process spawn and wait adapters (R5.3.2 Linux-verified; Windows execution deferred).
 - `5ec70b7` — expose process context and standard streams (R5.3.3 Linux-verified; Windows execution deferred).
+- `61326a8` — add checked version-four wall, monotonic, and process-CPU clocks (R5.3.4 Linux-verified; Windows execution deferred).
 - `bd26d05` — verify standard-channel error mapping and host-runtime isolation.
 - `c39c402` — preserve the target `size_t` ABI in stdio formatting functions.
 - `4952b4d` — verify declared stdio channels in the independent C17 report (Linux x86_64).
@@ -4138,7 +4139,7 @@ dependencies.
     file-stream read/write/seek/close adapters without exposing OS handles;
   - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
     matrix, error-normalization and dependency audit, and close platform gaps;
-- R5.3 [DOING] — implement and Linux-execute the remaining PAL services;
+- R5.3 [DOING] 4/8 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
@@ -4149,8 +4150,9 @@ dependencies.
   - R5.3.3 [DONE] — implement environment and argument access plus portable
     standard-input/output/error service contracts, with Linux execution and
     Windows source/ABI checks;
-  - R5.3.4 [TODO] — provide distinct wall, monotonic and process-CPU clocks
-    with documented nanosecond units and overflow behavior;
+  - R5.3.4 [DONE] — provide distinct wall, monotonic and process-CPU clocks
+    with documented nanosecond units, checked overflow behavior, and the
+    C `time()`/`clock()` mappings;
   - R5.3.5 [TODO] — implement thread create/join/current/yield and runtime TLS
     setup without requiring pthreads on Windows;
   - R5.3.6 [TODO] — implement mutex, condition, semaphore, once and supported
@@ -4164,7 +4166,7 @@ dependencies.
   - R5.4.1 [TODO] — implement `std.process` identity, spawn/wait, exit,
     arguments, environment and standard-stream APIs;
   - R5.4.2 [TODO] — implement `std.time` wall/monotonic/duration APIs and
-    correct the C time façade to use its specified clock semantics;
+    complete C time façade behavior tests over the version-4 clock services;
   - R5.4.3 [TODO] — implement `std.thread`/`std.sync` and map atomic APIs to
     compiler/runtime intrinsics and supported wait/wake services;
   - R5.4.4 [TODO] — implement portable `std.net` address, DNS, socket, TCP and
@@ -4208,10 +4210,11 @@ math receives known-value, boundary and exceptional-value tests without a
 host `libm`; the capability task checks unavailable-target diagnostics and
 proves unused services do not introduce link dependencies.
 
-R5.2.1 acceptance evidence: the normative PAL contract, C header, and C+
-declarations agree on version 3, stable error codes, operations, and the
-32-byte metadata record. `AbiLayoutTest.versionThreeFileMetadataHasStableTargetIndependentLayout`
-checks its size, alignment, member offsets, and declarations against Linux and
+R5.2.1 acceptance evidence: the normative PAL v3 filesystem contract and C+
+declarations agree on stable error codes, operations, and the 32-byte metadata
+record. The version-4 ABI preserves those version-3 services. The
+`AbiLayoutTest.versionFourPreservesVersionThreeFileMetadataLayout` check covers
+metadata size, alignment, member offsets, and declarations against Linux and
 Windows x86_64/AArch64 descriptors; `./gradlew build` passes on Linux. The
 Windows entries are descriptor-model checks only, not execution evidence.
 
@@ -4271,10 +4274,25 @@ closing each standard descriptor. `nm -u` confirms no unresolved host-runtime
 symbols. `RuntimeProcessPalTest` also passes with the new explicit `envp`
 startup ABI. Linux AArch64 runtime/startup source checks and startup assembly
 compilation pass; Windows x86_64 adapter/startup sources pass strict MinGW
-syntax compilation. `./gradlew build --no-daemon` passes on Linux. No Windows
-execution is claimed. R4.4/R4.5 remain open: this focused fixture is not yet
-registered in the `cplus libc test` report, and the full advertised C `FILE`
-surface still requires audit.
+syntax compilation. `./gradlew build --no-daemon` passes on Linux. The
+independent C17 stdio fixture is registered in the libc report and audits the
+declared stdio channel surface; R4.4/R4.5 Linux leaves are complete, while
+their Windows execution gate remains open. No Windows execution is claimed.
+
+R5.3.4 acceptance evidence: `RuntimeClockPalTest` builds and executes a
+freestanding static Linux x86_64 program against the production PAL and runtime
+sources with `-nostdlib`. It checks exact nanosecond conversion, malformed
+timespec rejection, signed-64-bit overflow, distinct non-negative wall,
+monotonic, and process-CPU readings, monotonic non-regression, CPU-time
+progress, `time()` wall seconds, `clock()` process CPU nanoseconds, and the
+legacy monotonic alias; `nm -u` confirms no unresolved host-runtime symbols.
+`AbiLayoutTest` verifies all three clock results are signed 64-bit values for
+Linux/Windows x86_64/AArch64 and checks the version-4 PAL API value. The PAL v4
+contract preserves v3 filesystem services. Linux AArch64 runtime syntax and
+startup assembly checks pass; Windows x86_64 adapter/runtime sources pass
+strict MinGW syntax checking. The full `./gradlew build --no-daemon` passes,
+and `cplus libc test --target linux-x86_64` reports 42 pass, 0 fail,
+0 unsupported, and 0 planned. Windows runtime execution remains deferred.
 
 ### R5.1 status audit
 
