@@ -60,6 +60,7 @@ Latest completed implementation commits:
 - `679fa85` — add target-aware std.core and memory APIs (Linux evidence; R5.1 remains open).
 - `4efd2f7` — define the version-three filesystem PAL contract (R5.2.1 verified; adapters remain open).
 - `da60b85` — add seek and file-metadata adapters (R5.2.2 Linux-verified; Windows execution deferred).
+- `b6bc355` — add portable directory PAL services (R5.2.3 Linux-verified; Windows execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
