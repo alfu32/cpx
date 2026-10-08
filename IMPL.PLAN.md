@@ -10,7 +10,7 @@ runtime, SDK, LSP, and release products.
 ### Release roadmap dashboard
 
 ```text
-Historical foundation: 144/146 evidenced; target-aware core audit remains open
+Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
 Roadmap leaf tasks:    92/92 accepted with recorded evidence
 Phase gates:           4/9 complete; 5 active; 0 queued
 Current task:          R4 — native Windows runtime/libc conformance gate
@@ -19,8 +19,8 @@ Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
 Windows full-runtime link: native Windows and local MinGW PE products pass
-Latest full test suites: Linux `gradle test` passes (1m40s); native Windows
-                         VM `gradle test` passes (3m40s)
+Latest full test suites: Linux `gradle test --rerun-tasks` passes (4m10s);
+                         native Windows VM `gradle test` passes (3m40s)
 Windows runtime evidence: allocator, process, stdio channels, clocks, threads/TLS,
                           atomics/synchronization, TCP/UDP/IPv6, resolver,
                           std.math façade, C17 subset, locale/signal/ctype,
@@ -3292,7 +3292,7 @@ they are explicitly reopened as R1.4 below.
 
 ---
 
-## 6.3 [DOING] [5/8] Native `std` and C libc compatibility implementation
+## 6.3 [DONE] [8/8] Native `std` and C libc compatibility implementation
 
 **SDK**
 - SDK §6–19
@@ -3300,9 +3300,9 @@ they are explicitly reopened as R1.4 below.
 - SDK §75–76
 - SDK §90–92
 
-### 6.3.1 [DOING] [2/4] Native C+ standard-library core
+### 6.3.1 [DONE] [4/4] Native C+ standard-library core
 
-#### 6.3.1.1 [DOING] Implement `std.core`, `std.mem` and portable memory primitives
+#### 6.3.1.1 [DONE] Implement `std.core`, `std.mem` and portable memory primitives
 
 **SDK**
 - SDK §7 `std.core`
@@ -3328,6 +3328,12 @@ they are explicitly reopened as R1.4 below.
   modules with imports are compiled with their workspace dependencies; the
   R6.1 acceptance added SDK-rooted `std.*` discovery for standalone CLI
   entry points and project/workspace commands.
+- **Acceptance evidence:** R5.1 closes the target-aware value/error/option,
+  byte/size/index, memory/pointer, string/text, and collection surface. Its
+  Linux x86_64 self-hosted and hosted UBSan fixtures, Linux AArch64 QEMU
+  fixture, explicit-import/layout checks across four target descriptors, and
+  recorded native Windows x86_64 self-hosted fixture cover this acceptance.
+  The forced Linux `./gradlew test --no-daemon --rerun-tasks` run passes.
 
 **Depends**
 - 6.2.1.4
@@ -3371,7 +3377,7 @@ they are explicitly reopened as R1.4 below.
 - 6.3.1.1
 - 6.3.1.2
 
-#### 6.3.1.4 [DOING] Implement hosted native services: I/O, filesystem, process, time, threads, sync, networking and math
+#### 6.3.1.4 [DONE] Implement hosted native services: I/O, filesystem, process, time, threads, sync, networking and math
 
 **SDK**
 - SDK §11–16 Native Standard-library Packages
@@ -3385,12 +3391,16 @@ they are explicitly reopened as R1.4 below.
 - unavailable target capabilities are reported through structured results/capability checks.
 - representative cross-platform API tests run against each implemented PAL.
 
-**Implementation**
-- Added initial source contracts for `std.io`, `std.fs`, `std.process`, `std.time`, `std.thread`, `std.sync`, `std.net`, and `std.math`; R5.2 records the implemented filesystem and stream portions.
-- The remaining process, time, thread/sync, networking, math, and capability behavior is not complete. Linux/Windows/Darwin declarations alone do not satisfy this task's executable cross-platform acceptance.
-
-**Reopened status**
-- Reopened after auditing the acceptance criteria: the historical implementation supplied mostly declarations/contracts, while representative service execution and structured capability behavior remain outstanding. R5.3–R5.5 now contain the measurable implementation and validation work that closes this item.
+**Implementation and acceptance evidence**
+- R5.2 implements the filesystem/stream layer; R5.3 implements process,
+  environment, clocks, threads/TLS, synchronization, networking, and DNS PAL
+  services; R5.4 implements the public native façades and math surface; R5.5
+  explicitly capability-gates Darwin rather than claiming an unimplemented
+  adapter. These dependency-ordered leaves include production-linked Linux
+  execution, dependency audits, and recorded native Windows x86_64 execution
+  for representative service families. The current R4/R5 Windows matrix gates
+  remain separate and are not closed by this historical foundation item.
+- A forced full Linux Gradle test run passes after the acceptance reconciliation.
 
 **Depends**
 - 6.3.1.2
@@ -3398,7 +3408,7 @@ they are explicitly reopened as R1.4 below.
 
 ---
 
-### 6.3.2 [DOING] [3/4] C libc compatibility surface
+### 6.3.2 [DONE] [4/4] C libc compatibility surface
 
 #### 6.3.2.1 [DONE] Generate and deliver the C17 standard-header surface
 
@@ -3746,18 +3756,18 @@ authoritative work queue for completing the working CLI transcoder and
 self-hosted SDK described by the specifications.
 
 ```text
-Foundation tasks: 144/146 (6.3.1.1 and 6.3.1.4 remain open: target-aware core acceptance and executable native service coverage)
-Completion phases: [DOING] [2/9 gates complete]
+Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
+Completion phases: [DOING] [4/9 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DOING] R1 — language and front-end conformance; primitive type matrix reopened
 [DONE]  R2 — CPX, generics and reflection conformance
-[DOING] R3 — C backend and ABI interoperability conformance
+[DONE]  R3 — C backend and ABI interoperability conformance
 [DOING] R4 — runtime, allocator and libc behavior
 [DOING] R5 — complete native std and platform services
-[TODO]  R6 — CLI transcoder and build-product completion
-[TODO]  R7 — LSP and VS Code product completion
-[TODO]  R8 — SDK packaging, target matrix and release conformance
+[DOING] R6 — CLI transcoder and build-product completion; Windows product gate pending
+[DOING] R7 — LSP and VS Code product completion; Windows editor-host gate pending
+[DONE]  R8 — SDK packaging, target matrix and release conformance
 ```
 
 The completion phase counter counts only the nine phase gates above. A phase
