@@ -11,37 +11,41 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    44/67 evidenced on Linux
+Roadmap leaf tasks:    45/67 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.7.3 — implement the Windows Winsock socket PAL
+Current task:          R5.3.8 — implement network address conversion and DNS
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
+Windows full-runtime link: open in R8.3; local MinGW reports unresolved
+                           __emutls_get_address and WaitOnAddress/wake imports
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 12/23 native std and platform-service work remains open
+R5 [DOING] 13/23 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       44/67 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       45/67 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
 The roadmap denominator increased from 65 to 67 during R5.3.7 planning when
 one broad socket work item was decomposed into three verifiable leaves. That
 decomposition credited no work; the numerator increased to 43 after R5.3.7.1
-passed its ABI acceptance checks and to 44 after R5.3.7.2 passed its Linux
-implementation acceptance checks.
+passed its ABI acceptance checks, to 44 after R5.3.7.2 passed its Linux
+implementation acceptance checks, and to 45 after R5.3.7.3 passed its Windows
+source and network-adapter PE import checks. The latter does not claim Windows
+runtime execution or a complete Windows runtime image.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.3.7.3, then R5.3.8–R5.5; Linux C17 stdio and
+1. Continue R5.3.8–R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 now pass their stated acceptance checks.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
@@ -78,6 +82,7 @@ Latest completed implementation commits:
 - `283c355` — implement portable synchronization primitives (R5.3.6 Linux x86_64-verified; Windows/AArch64 runtime execution deferred).
 - `9da7c39` — define and verify the portable socket PAL ABI (R5.3.7.1 target-layout verified).
 - `480587b` — add Linux IPv4/IPv6 TCP and UDP socket transport (R5.3.7.2 Linux-verified; Windows execution deferred).
+- `284ba99` — add lazy Windows Winsock socket transport (R5.3.7.3 source/PE-import verified; runtime execution and full-runtime PE linking deferred).
 - `bd26d05` — verify standard-channel error mapping and host-runtime isolation.
 - `c39c402` — preserve the target `size_t` ABI in stdio formatting functions.
 - `4952b4d` — verify declared stdio channels in the independent C17 report (Linux x86_64).
@@ -4149,7 +4154,7 @@ dependencies.
     file-stream read/write/seek/close adapters without exposing OS handles;
   - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
     matrix, error-normalization and dependency audit, and close platform gaps;
-- R5.3 [DOING] 8/10 — implement and Linux-execute the remaining PAL services;
+- R5.3 [DOING] 9/10 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
@@ -4168,7 +4173,7 @@ dependencies.
   - R5.3.6 [DONE] — implement mutex, condition, semaphore, once and supported
     atomic wait/wake services; ordinary atomic operations remain compiler/runtime
     intrinsics, not OS calls;
-  - R5.3.7 [DOING] [2/3] — define and implement the fixed-layout binary
+  - R5.3.7 [DONE] [3/3] — define and implement the fixed-layout binary
     socket-address ABI and blocking IPv4/IPv6 socket lifecycle, TCP stream, and
     UDP datagram operations with stable errors;
     - **Language:** SPEC.STDLIB §2.5 Platform Abstraction Layer and §16 `std.net`.
@@ -4196,17 +4201,21 @@ dependencies.
         architectures; Linux x86_64 tests TCP and UDP roundtrips, invalid
         arguments/error normalization, and `nm -u` host-runtime isolation.
       - **Depends:** R5.3.7.1.
-    - R5.3.7.3 [DOING] — implement Windows Winsock lifecycle and transport
+    - R5.3.7.3 [DONE] — implement Windows Winsock lifecycle and transport
       without an unconditional `ws2_32` import.
       - **Language:** SPEC.STDLIB §16 Windows PAL and stable socket error contract.
       - **Technical:** SPEC.TECH §78 Windows documented API and dependency policy.
-      - **Deliverable:** lazy Winsock initialization and Windows socket/address
-        adapters over documented Winsock entry points.
+      - **Deliverable:** thread-safe lazy Winsock 2.2 initialization, Windows
+        socket/address adapters, and process-exit cleanup over dynamically
+        resolved documented Winsock entry points.
       - **Acceptance:** warning-as-error Windows x86_64/AArch64 source checks
-        pass and a linked PE product imports the required kernel APIs without
-        statically importing `ws2_32`; Windows execution remains deferred.
+        pass; a freestanding PE fixture links the production socket adapter and
+        imports its kernel loader/initialization APIs without statically
+        importing `ws2_32`; `RuntimeLinker` selects the adapter only on Windows.
+        Windows execution remains deferred. Whole-runtime Windows PE linking is
+        tracked separately by R8.3.
       - **Depends:** R5.3.7.1.
-  - R5.3.8 [TODO] — implement portable network address conversion and DNS
+  - R5.3.8 [DOING] — implement portable network address conversion and DNS
     resolution with UTF-8 inputs and target-independent result ownership;
 - R5.4 [TODO] — connect native std façades to the verified PAL services;
   - R5.4.1 [TODO] — implement `std.process` identity, spawn/wait, exit,
@@ -4401,6 +4410,19 @@ also pass for Windows x86_64/AArch64 source, but those are not Windows socket
 runtime or import-table evidence. Windows runtime execution and Linux AArch64
 runtime execution remain deferred and receive no credit from this leaf.
 
+R5.3.7.3 acceptance evidence: Windows x86_64 MinGW and Windows AArch64 Clang
+compile the production Windows platform and network sources with warnings as
+errors. `RuntimeLinkerTest` confirms `network.c` is selected only for the
+Windows runtime plan. `RuntimeNetworkPalTest` links the production network PAL
+into a freestanding x86_64 PE fixture and inspects its imports: kernel32 loader
+and once-initialization APIs are present, while `ws2_32.dll` is absent. The
+full Gradle build passes and the Linux C17 report remains 42 pass, 0 fail,
+0 unsupported, and 0 planned. The PE fixture does not contain the complete C+
+runtime and does not execute on Windows; a full Windows runtime link using the
+available MinGW toolchain currently fails on pre-existing emulated-TLS and
+`WaitOnAddress`/wake imports and is tracked in R8.3. No Windows runtime behavior
+or Linux AArch64 runtime execution is claimed.
+
 ### R5.1 status audit
 
 The memory, string, text, collection, and value/error carrier work below has
@@ -4519,7 +4541,10 @@ hard-coded CLI path.
 - R8.2 [TODO] — replace optimistic status entries with executable evidence and
   explicit capability diagnostics;
 - R8.3 [TODO] — run Linux x86_64/AArch64 and Windows x86_64 (plus available
-  Windows AArch64/Darwin targets) product validation;
+  Windows AArch64/Darwin targets) product validation, including complete
+  self-hosted Windows PE cross-linking; the current local MinGW x86_64 attempt
+  fails on unresolved `__emutls_get_address`, `WaitOnAddress`,
+  `WakeByAddressSingle`, and `WakeByAddressAll` symbols;
 - R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
   builds, documented examples, and upgrade/ABI compatibility rules.
 
