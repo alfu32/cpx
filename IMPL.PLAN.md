@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    57/75 accepted with recorded evidence
+Roadmap leaf tasks:    58/75 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.4.4 — implement std.net address and DNS façade
+Current task:          R5.4.5 — implement portable std.math and C math
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 25/31 native std and platform-service work remains open
+R5 [DOING] 26/31 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       57/75 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       58/75 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -140,6 +140,18 @@ the full Gradle build passes. Commit `48b342d` brings the numerator to 57/75
 and R5 to 25/31. Windows runtime execution remains deferred. R5.4.4.4 is now
 active; the public address and resolver operations remain declared but have no
 runtime forwarding implementation yet.
+R5.4.4.4 then passed production-linked C+ IPv4/IPv6 parse and canonical-format
+vectors, numeric resolver bypass, caller-owned result copying, short-buffer
+preservation, invalid-input output preservation, and required-count reporting.
+A deterministic resolver-bridge test covers multiple address results,
+capacity truncation, and preserved outputs on PAL lookup/validation errors; the
+existing `RuntimeNetworkDnsTest` passes its deterministic local DNS fixture
+against the production resolver. Linked public C+ products have no undefined
+host-runtime symbols, strict warning-as-error C17 façade checks pass for all
+four Linux/Windows x86_64/AArch64 target triples, and the full Gradle build
+passes. Commit `9a154ae` brings the numerator to 58/75 and R5 to 26/31. Windows
+runtime execution remains deferred. R5.4.4 is now complete at 4/4; R5.4.5
+portable math is the active task.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -4441,7 +4453,7 @@ dependencies.
         generated assembly contains no `__atomic_*`, `__sync_*`, or AArch64
         atomic-helper calls. The full Gradle build passes. Windows runtime
         execution remains deferred.
-  - R5.4.4 [DOING] [3/4] — implement portable `std.net` address, DNS, socket,
+  - R5.4.4 [DONE] [4/4] — implement portable `std.net` address, DNS, socket,
     TCP and UDP APIs with explicit partial/unavailable capability behavior;
     - **Language:** SPEC.STDLIB §16–§16.2 public networking behavior and PAL
       mapping.
@@ -4488,19 +4500,21 @@ dependencies.
         Linux/Windows x86_64 and AArch64; the full Gradle build passes.
         Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1.
-    - R5.4.4.4 [DOING] — implement the public address parse/format and hostname
+    - R5.4.4.4 [DONE] — implement the public address parse/format and hostname
       resolution façade over the shared codec and platform resolver.
-      - **Acceptance:** a production-linked C+ caller exercises IPv4/IPv6
-        parse and canonical format, numeric-address resolver bypass, and
-        caller-owned results. A deterministic resolver-stub bridge test checks
-        bounded result copying, required-count reporting, and unchanged outputs
-        on lookup/validation errors. The existing `RuntimeNetworkDnsTest`
-        exercises hostname resolution against a deterministic local DNS fixture
-        through the production PAL. The linked C+ Linux product has no
-        undefined host-runtime symbols; strict C17 checks pass for all four
-        supported target triples.
+      - **Acceptance evidence:** `RuntimeStdNetTest` compiles and runs
+        production-linked C+ IPv4/IPv6 parse and canonical-format vectors,
+        numeric resolver bypass, caller-owned result copying, short-buffer and
+        invalid-input output preservation, and required-count reporting. Its
+        deterministic resolver-bridge fixture checks multiple result copying,
+        capacity truncation, and unchanged outputs on lookup/validation errors.
+        `RuntimeNetworkDnsTest` passes its deterministic local DNS fixture
+        against the production Linux resolver. Linked public C+ products have
+        no undefined host-runtime symbols. Strict warning-as-error C17 checks
+        pass for the common façade on Linux/Windows x86_64 and AArch64; the full
+        Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [TODO] — implement the specified portable `std.math` and C math
+  - R5.4.5 [DOING] — implement the specified portable `std.math` and C math
     surface without requiring a host `libm` dependency;
   - R5.4.6 [TODO] — propagate target capabilities and stable unavailable-service
     diagnostics, and audit that unused modules add no platform dependencies;
