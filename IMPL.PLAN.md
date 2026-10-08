@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    52/72 accepted with recorded evidence
+Roadmap leaf tasks:    53/72 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.3.2 — implement typed std.sync wrappers
+Current task:          R5.4.3.3 — expose native atomic APIs
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 20/28 native std and platform-service work remains open
+R5 [DOING] 21/28 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       52/72 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       53/72 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -93,8 +93,17 @@ linked Linux executable has no unresolved host-runtime symbols. Public
 declarations and 64-bit handle layout passed all four target descriptor checks,
 strict warning-as-error C17 source checks passed on Linux/Windows x86_64 and
 AArch64, and the full Gradle build passed. Commit `25d2da6` brings the numerator
-to 52/72 and R5 to 20/28. Windows runtime execution remains deferred. The
-current task is R5.4.3.2.
+to 52/72 and R5 to 20/28. Windows runtime execution remains deferred; at that
+point R5.4.3.2 became active.
+R5.4.3.2 then passed a compiled C+ caller covering contended mutex operations,
+condition signal/broadcast and mutex reacquisition, semaphore count and blocked
+wait/post behavior, once-only initialization, and invalid-state errors. Typed
+objects are four bytes with four-byte alignment and offset-zero state on all
+four target descriptors. The linked Linux executable has no unresolved
+host-runtime symbols; strict C17 checks pass on Linux/Windows x86_64/AArch64;
+the full Gradle build passes. Commit `93a12a4` brings the numerator to 53/72
+and R5 to 21/28. Windows runtime execution remains deferred; R5.4.3.3 is now
+the active task.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -4360,7 +4369,7 @@ dependencies.
         Windows x86_64/AArch64 descriptors. Strict warning-as-error C17 source
         checks and the full Gradle build pass. Windows runtime execution remains
         deferred.
-  - R5.4.3 [DOING] [1/3] — implement public thread, synchronization, and atomic
+  - R5.4.3 [DOING] [2/3] — implement public thread, synchronization, and atomic
     APIs over the existing PAL services;
     - R5.4.3.1 [DONE] — implement the `std.thread` façade for thread creation,
       joining, current-thread identity, and yielding with opaque handles;
@@ -4373,14 +4382,17 @@ dependencies.
         warning-as-error C17 checks pass for the forwarding source on all four
         targets; the full Gradle build passes. Windows runtime execution remains
         deferred.
-    - R5.4.3.2 [TODO] — implement typed `std.sync` mutex, condition, semaphore,
+    - R5.4.3.2 [DONE] — implement typed `std.sync` mutex, condition, semaphore,
       and once wrappers over PAL synchronization state;
-      - **Acceptance evidence:** C+ execution covers uncontended and contended
-        mutex use, condition wait/reacquire and signal/broadcast, semaphore
-        count/wait/post, once-only initialization, and stable error handling.
-        The caller links without host synchronization dependencies, and public
-        layouts are checked across the four target descriptors. Windows runtime
-        execution remains deferred.
+      - **Acceptance evidence:** `RuntimeStdSyncTest` compiles and executes a
+        C+ caller covering contended mutex updates, condition signal/broadcast
+        and mutex reacquisition, semaphore count plus blocked wait/post, once
+        initialization, and invalid-state errors. Typed objects are four bytes
+        with four-byte alignment and state offset zero across Linux/Windows
+        x86_64/AArch64 descriptors. The linked Linux executable has no
+        unresolved host-runtime symbols; strict warning-as-error C17 checks pass
+        for the forwarding source on all four targets; the full Gradle build
+        passes. Windows runtime execution remains deferred.
     - R5.4.3.3 [TODO] — expose native atomic load/store/exchange/compare-exchange,
       arithmetic/fence operations, and supported wait/wake services;
       - **Acceptance evidence:** C+ execution covers specified memory orders,
