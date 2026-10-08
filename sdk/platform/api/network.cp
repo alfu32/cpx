@@ -21,3 +21,12 @@ pub int64_t platform_socket_send_to(int64_t socket, const void* buffer, uint64_t
 pub int64_t platform_socket_receive_from(int64_t socket, void* buffer, uint64_t capacity, cplus_socket_address_t* source);
 pub int platform_socket_shutdown(int64_t socket, uint32_t direction);
 pub int platform_socket_close(int64_t socket);
+pub int platform_network_parse_address(uint32_t family, const char* text, cplus_socket_address_t* address);
+pub int64_t platform_network_format_address(const cplus_socket_address_t* address, char* output, uint64_t capacity);
+pub int platform_network_resolve(
+    const char* hostname,
+    uint32_t family,
+    uint16_t port,
+    cplus_socket_address_t* addresses,
+    uint64_t capacity,
+    uint64_t* count);

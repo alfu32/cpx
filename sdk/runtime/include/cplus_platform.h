@@ -27,6 +27,7 @@
 
 #define CPLUS_SOCKET_IPV4 4U
 #define CPLUS_SOCKET_IPV6 6U
+#define CPLUS_SOCKET_ANY_FAMILY 0U
 #define CPLUS_SOCKET_STREAM 1U
 #define CPLUS_SOCKET_DATAGRAM 2U
 #define CPLUS_SOCKET_SHUTDOWN_RECEIVE 0U
@@ -74,6 +75,18 @@ long long platform_socket_send_to(cplus_socket_handle_t socket, const void* buff
 long long platform_socket_receive_from(cplus_socket_handle_t socket, void* buffer, unsigned long long capacity, cplus_socket_address_t* source);
 int platform_socket_shutdown(cplus_socket_handle_t socket, unsigned int direction);
 int platform_socket_close(cplus_socket_handle_t socket);
+int platform_network_parse_address(unsigned int family, const char* text, cplus_socket_address_t* address);
+long long platform_network_format_address(
+    const cplus_socket_address_t* address,
+    char* output,
+    unsigned long long capacity);
+int platform_network_resolve(
+    const char* hostname,
+    unsigned int family,
+    unsigned short port,
+    cplus_socket_address_t* addresses,
+    unsigned long long capacity,
+    unsigned long long* count);
 int platform_mutex_init(volatile int* state);
 int platform_mutex_lock(volatile int* state);
 int platform_mutex_unlock(volatile int* state);

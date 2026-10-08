@@ -1133,7 +1133,8 @@ int platform_network_resolve(
 
 Address parsing SHALL accept an explicit IPv4 or IPv6 family and a bare
 address literal (without URI brackets or a port). IPv4 text SHALL contain
-exactly four decimal octets in the range 0 through 255. IPv6 text SHALL follow
+exactly four decimal octets in the range 0 through 255, with no leading zero
+unless the octet is exactly `0`. IPv6 text SHALL follow
 the accepted literal forms in RFC 4291, including `::` compression and an
 optional dotted-decimal IPv4 tail. An IPv6 scope suffix MAY be supplied as
 `%` followed by an unsigned decimal scope identifier; named interfaces and URI
@@ -1147,8 +1148,11 @@ capacity for the NUL byte. A short output buffer SHALL return
 `CPLUS_PAL_BUFFER_TOO_SMALL` without modifying the output. IPv4 SHALL use
 dotted-decimal text. IPv6 SHALL use the canonical lowercase form, longest-zero
 run compression, and leftmost tie-breaking specified by RFC 5952; a nonzero
-scope identifier SHALL be appended as `%` plus decimal digits. Formatting
-SHALL not include a port or brackets and SHALL not allocate memory.
+scope identifier SHALL be appended as `%` plus decimal digits. IPv4-mapped
+IPv6 addresses SHALL use the RFC 5952 mixed form, with the low-order 32 bits
+rendered as dotted-decimal IPv4; other IPv6 addresses SHALL use hexadecimal
+groups. Formatting SHALL not include a port or brackets and SHALL not allocate
+memory.
 
 Hostname input and all PAL text buffers SHALL be UTF-8, independent of the
 Windows active code page. A hostname SHALL be a fully qualified DNS name; a

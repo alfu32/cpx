@@ -2910,7 +2910,8 @@ expose blocking lifecycle, TCP stream, UDP datagram, local/peer address, and
 shutdown operations with stable PAL error results. The address/DNS layer sits
 above this binary transport ABI. A shared freestanding runtime source parses
 and formats IPv4/IPv6 text, performs UTF-8 validation and IDNA A-label encoding,
-and returns canonical text without locale or host-library dependencies. Linux
+and returns canonical text without locale or host-library dependencies,
+including mixed dotted-decimal formatting for IPv4-mapped IPv6 addresses. Linux
 uses the configured numeric nameservers, direct PAL sockets, bounded UDP
 queries, and TCP fallback for truncated DNS messages. Windows uses the Unicode
 Winsock resolver after lazy module initialization and copies/frees the native

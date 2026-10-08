@@ -15,7 +15,8 @@ class RuntimeNetworkPalTest {
             "platform_socket_open", "platform_socket_bind", "platform_socket_listen",
             "platform_socket_accept", "platform_socket_connect", "platform_socket_get_address",
             "platform_socket_send", "platform_socket_receive", "platform_socket_send_to",
-            "platform_socket_receive_from", "platform_socket_shutdown", "platform_socket_close"
+            "platform_socket_receive_from", "platform_socket_shutdown", "platform_socket_close",
+            "platform_network_parse_address", "platform_network_format_address", "platform_network_resolve"
         )
         val header = java.nio.file.Files.readString(root.resolve("runtime/include/cplus_platform.h"))
         listOf("CPLUS_PAL_NETWORK_ERROR (-8L)", "CPLUS_SOCKET_IPV4 4U", "CPLUS_SOCKET_IPV6 6U").forEach {
