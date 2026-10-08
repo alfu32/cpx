@@ -4450,8 +4450,11 @@ passes on the Windows VM: both fixtures execute, stdout/stderr and stdin
 contracts match, and each PE product passes the host/compiler-runtime import
 audit. The same report asserts that context, complex types, complex arithmetic,
 and tgmath are explicitly unsupported for Windows rather than counted as
-passing. This is focused Windows C17 evidence; R4 remains open for its other
-runtime/libc families.
+passing. The shared `basic` fixture also exercises Windows `malloc`, `calloc`,
+`realloc`, `aligned_alloc`, zeroing/alignment, `errno` on allocation overflow,
+memory/string operations, and integer/floating conversion. The expanded fixture
+passes on both Windows x86_64 and Linux x86_64. This is focused Windows C17
+evidence; R4 remains open for its other runtime/libc families.
 
 ### R4.1/R4.2 completion record
 
@@ -4459,8 +4462,9 @@ Implemented and executed on Linux:
 
 - the PAL now exposes explicit-width page allocation and release operations;
 - Linux x86_64 and AArch64 syscall paths are catalogued in the platform
-  adapter, while Windows has the corresponding VirtualAlloc/VirtualFree ABI
-  implementation ready for final validation;
+adapter, while Windows has the corresponding VirtualAlloc/VirtualFree ABI
+implementation; the native Windows C17 basic fixture now executes allocation,
+zeroing, resize, alignment, and release paths through it;
 - the runtime allocator obtains whole pages, stores allocation metadata outside
   the user span, validates overflow and alignment requests, and releases the
   original page range on free;
@@ -5603,6 +5607,10 @@ hard-coded CLI path.
   profile restriction, and unclaimed targets. `SPEC.COVERAGE.md` was aligned
   with the latest Linux and native Windows evidence; Linux/PE dependency audits
   and capability-gated unsupported targets are recorded under R8.2/R8.3. The
+  R4 follow-up caught that SDK fixture files were read at test runtime but were
+  not Gradle test inputs; `compiler:test` now fingerprints the SDK source tree
+  (excluding caches/build output), and changing the shared C17 fixture reruns
+  the Windows/Linux integration test instead of reporting `UP-TO-DATE`. The
   full Linux/Windows Gradle and extension verification passes. R8.4 closes the
   release audit without closing the separate R1, R4, R5.1, R6, or R7 gates.
 
