@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    62/88 accepted with recorded evidence
+Roadmap leaf tasks:    63/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.5.4 — implement decomposition, scaling, sign, NaN, and adjacent-value families
+Current task:          R5.4.5.5 — implement remainder and quotient-remainder families
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
-R5 [DOING] 29/41 native std and platform-service work remains open
+R5 [DOING] 30/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       62/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       63/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -211,11 +211,25 @@ assertions pass for all four target descriptors; the full Gradle build passes.
 This moves the roadmap from 61/88 to 62/88 and R5 from 28/41 to 29/41.
 Windows runtime execution remains deferred and receives no completion credit.
 
+R5.4.5.4 then implemented the real decomposition, scaling, sign, NaN, and
+adjacent-value families: `ilogb`, `frexp`, `modf`, `ldexp`, `scalbn`,
+`scalbln`, `copysign`, `nan`, `nextafter`, and `nexttoward`, including each
+float/double/long-double variant. A production-linked Linux C17 fixture checks
+normal and subnormal decomposition, special values, signed zero, errno
+behavior, extreme `long` exponents, tagged-NaN payload distinction, adjacent
+values at zero/infinity/subnormal boundaries, and extended-precision
+`nexttoward` direction. The executable has no undefined host symbols. Strict
+warning-as-error C17 source checks pass for Linux/Windows x86_64 and AArch64
+target ABIs, and the full Gradle build passes. NaN tag payload mapping is now
+specified as deterministic FNV-1a. Commit `e2ba767` moves the roadmap from
+62/88 to 63/88 and R5 from 29/41 to 30/41. Windows runtime execution remains
+deferred and receives no completion credit.
+
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.4.5.4 onward, then R5.5; Linux C17 stdio and
+1. Continue R5.4.5.5 onward, then R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 pass their recorded Linux checks; R4.6 complex and
    type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
@@ -269,6 +283,7 @@ Latest completed implementation commits:
 - `a8d1470` — declare the C17 real-math function surface (R5.4.5.1).
 - `3817e8e` — implement C17 floating classification, comparisons, and constants (R5.4.5.2; Windows runtime execution deferred).
 - `7ce3908` — implement portable C17 rounding and checked integer conversions (R5.4.5.3; Windows runtime execution deferred).
+- `e2ba767` — implement portable C17 decomposition, scaling, sign, NaN, and adjacent-value functions (R5.4.5.4; Windows runtime execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4594,7 +4609,7 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [DOING] [3/11] — implement the specified portable real `std.math` and
+  - R5.4.5 [DOING] [4/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
     - R5.4.5.1 [DONE] — declare all C17 real `<math.h>` functions and
       float/double/long-double `std.math` entry points. **Depends:** R3.1.3.
@@ -4620,9 +4635,16 @@ dependencies.
       vectors cover truncation/parity; strict C17 and ABI-width/range assertions
       pass for all four targets; the linked product has no undefined host
       symbols; the full build passes. Windows runtime execution is deferred.
-    - R5.4.5.4 [DOING] — implement decomposition, scaling, sign, NaN, and
+    - R5.4.5.4 [DONE] — implement decomposition, scaling, sign, NaN, and
       adjacent-value manipulation families. **Depends:** R5.4.5.1.
-    - R5.4.5.5 [TODO] — implement remainder and quotient-remainder families.
+      **Acceptance evidence:** production-linked Linux C17 execution covers all
+      three real precisions, normal/subnormal decomposition, signed zero,
+      special values, errno, extreme `long` exponents, deterministic NaN tags,
+      adjacent-value and `nexttoward` direction cases. The linked executable
+      has no undefined host symbols; strict warning-as-error C17 checks pass
+      for Linux/Windows x86_64 and AArch64 target ABIs; the full Gradle build
+      passes. Windows runtime execution remains deferred.
+    - R5.4.5.5 [DOING] — implement remainder and quotient-remainder families.
       **Depends:** R5.4.5.1.
     - R5.4.5.6 [TODO] — implement absolute value, power, roots, and hypotenuse
       families. **Depends:** R5.4.5.1.
