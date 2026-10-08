@@ -22,7 +22,7 @@ async function main() {
     throw new Error(`Packaged VSIX is missing; run npm run package first: ${vsixPath}`);
   }
 
-  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cplus vscode extension host '));
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cplus-vscode-extension-host-'));
   const workspace = path.join(temporaryRoot, 'workspace');
   const extensionDirectory = path.join(temporaryRoot, 'extensions');
   const userDataDirectory = path.join(temporaryRoot, 'user-data');
@@ -80,7 +80,7 @@ async function main() {
       throw new Error(`VS Code extension host exited with status ${exitCode}`);
     }
   } finally {
-    if (path.basename(temporaryRoot).startsWith('cplus vscode extension host ')) {
+    if (path.basename(temporaryRoot).startsWith('cplus-vscode-extension-host-')) {
       fs.rmSync(temporaryRoot, { recursive: true, force: true });
     }
   }

@@ -35,10 +35,14 @@ async function run() {
 
   const extension = vscode.extensions.getExtension('cplus.cplus-language-support');
   assert.ok(extension, 'packaged C+ extension should be installed in the Extension Development Host');
-  assert.ok(
-    path.resolve(extension.extensionPath).startsWith(path.resolve(process.env.CPLUS_TEST_EXTENSIONS_DIR)),
-    'the C+ extension should be loaded from the installed VSIX, not the source checkout'
-  );
+  const installedExtensionsDirectory = process.env.CPLUS_TEST_EXTENSIONS_DIR;
+  assert.ok(installedExtensionsDirectory, 'the host test must provide its isolated extension directory');
+  const extensionRelativePath = path.relative(installedExtensionsDirectory, extension.extensionPath);
+  assert.ok(extensionRelativePath &&
+    extensionRelativePath !== '..' &&
+    !extensionRelativePath.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(extensionRelativePath),
+  `C+ must load from the installed VSIX directory; actual path: ${extension.extensionPath}`);
   await extension.activate();
 
   const commands = await vscode.commands.getCommands(true);
