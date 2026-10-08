@@ -241,6 +241,9 @@ data class MethodLookupKey(val receiver: ReceiverIdentity, val name: String)
 class MethodRegistry private constructor(
     private val methodsByKey: Map<MethodLookupKey, List<MethodSymbol>>
 ) {
+    val allMethods: List<MethodSymbol>
+        get() = methodsByKey.values.flatten()
+
     val extensionModules: Set<String> = methodsByKey.values.flatten()
         .filter(MethodSymbol::isExtension)
         .mapTo(linkedSetOf(), MethodSymbol::definingModule)

@@ -239,6 +239,24 @@ class CLowerer(
         } + program.declarations.filterIsInstance<AstStruct>().flatMap { structure ->
             activeModuleName = moduleByDeclaration[structure] ?: "<main>"
             structure.methods.map { method -> lowerMethod(structure.name, method).copy(isPublic = structure.isPublic || method.isPublic) }
+        } + program.declarations.filterIsInstance<AstTrait>().flatMap { trait ->
+            activeModuleName = moduleByDeclaration[trait] ?: "<main>"
+            trait.methods.mapNotNull { method ->
+                val registered = semantic.methodRegistry.allMethods.singleOrNull { candidate ->
+                    candidate.isExtension && candidate.definingModule == activeModuleName &&
+                        candidate.symbol.origin.primaryRange == method.origin.primaryRange
+                }
+                if (registered == null) {
+                    diagnostics.error(
+                        "trait method '${method.name}' has no resolved semantic symbol",
+                        method.origin.primaryRange,
+                        "LOW501"
+                    )
+                    null
+                } else {
+                    lowerExtensionMethod(registered, method)
+                }
+            }
         }
         val declaredFunctionNames = programFunctions.mapTo(mutableSetOf()) { it.name }
         val foreignFunctions = semantic.functions.values
@@ -384,6 +402,66 @@ class CLowerer(
             method.origin,
             isVariadic = method.isVariadic
         )
+    }
+
+    private fun lowerExtensionMethod(method: MethodSymbol, declaration: AstFunction): CFunction {
+        val sourceParameters = declaration.parameters.filterNot { it.isReceiver }
+        val parameters = buildList {
+            val receiver = declaration.parameters.firstOrNull { it.isReceiver }
+            if (receiver != null) {
+                add(CParameter(pointerTo(semanticType(method.owner)), receiver.name, receiver.origin))
+            }
+            method.parameters.forEachIndexed { index, parameter ->
+                val source = sourceParameters.getOrNull(index)
+                add(
+                    CParameter(
+                        semanticType(parameter.type),
+                        parameter.name,
+                        source?.origin ?: parameter.origin,
+                        source?.arrayDimensions.orEmpty()
+                    )
+                )
+            }
+        }
+        return CFunction(
+            semanticType(method.returnType),
+            names.extensionMethodName(method),
+            parameters,
+            declaration.body?.let { lowerBody(it, null, instanceMethod = true) },
+            declaration.origin,
+            isVariadic = method.signature.isVariadic,
+            isPublic = method.symbol.visibility == Visibility.PUBLIC
+        )
+    }
+
+    private fun semanticType(type: cplus.semantic.CType): CType = when (type) {
+        is PrimitiveType -> CType.Primitive(CPrimitiveTypes.canonicalName(type.name) ?: type.name)
+        is StructType -> CType.Struct(type.name)
+        is UnionType -> CType.Union(type.name)
+        is EnumType -> CType.Enum(type.name)
+        is PointerType -> pointerTo(semanticType(type.pointee))
+        is ArrayType -> semanticType(type.element)
+        is AliasType -> CType.Named(type.name)
+        is ForeignType -> CType.Named(type.externalName)
+        is FunctionType -> CType.FunctionPointer(
+            semanticType(type.returnType),
+            type.parameterTypes.map(::semanticType),
+            type.isVariadic
+        )
+        is UnknownType -> {
+            diagnostics.error("cannot lower unknown semantic type '${type.name}'", null, "LOW101")
+            CType.Unknown
+        }
+    }
+
+    private fun pointerTo(type: CType): CType = when (type) {
+        is CType.Primitive -> type.copy(pointerDepth = type.pointerDepth + 1)
+        is CType.Named -> type.copy(pointerDepth = type.pointerDepth + 1)
+        is CType.Struct -> type.copy(pointerDepth = type.pointerDepth + 1)
+        is CType.Union -> type.copy(pointerDepth = type.pointerDepth + 1)
+        is CType.Enum -> type.copy(pointerDepth = type.pointerDepth + 1)
+        is CType.FunctionPointer -> type.copy(pointerDepth = type.pointerDepth + 1)
+        CType.Unknown -> CType.Unknown
     }
 
     private fun type(reference: AstTypeRef): CType {

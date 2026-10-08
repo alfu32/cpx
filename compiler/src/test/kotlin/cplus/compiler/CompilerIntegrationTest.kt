@@ -41,6 +41,91 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun extensionDefinitionsEmitTypedFunctionsForAggregateEnumAndPrimitiveReceivers() {
+        val result = CPlusCompiler().compileText(
+            Files.createTempFile("cplus-trait-c-emission", ".cp"),
+            """
+                pub struct counter_t { int value; };
+                pub enum status_t { ready = 1 };
+                pub comptime trait counter_t {
+                    int read(self) { return self.value; }
+                }
+                pub comptime trait status_t {
+                    int code(self) { return self; }
+                }
+                pub comptime trait int {
+                    int doubled(self) { return self * 2; }
+                }
+                int main() { return 0; }
+            """.trimIndent()
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        val header = result.generatedHeaders.single().text
+
+        listOf(
+            "__cplus_ext__main__counter_t_read",
+            "__cplus_ext__main__status_t_code",
+            "__cplus_ext__main__int_doubled"
+        ).forEach { symbol ->
+            assertEquals(2, Regex("\\b$symbol\\b").findAll(generated).count(), "prototype and definition for $symbol")
+            assertTrue(header.contains("$symbol("), "public extension prototype $symbol")
+        }
+        assertTrue(generated.contains("struct counter_t* self"))
+        assertTrue(generated.contains("enum status_t* self"))
+        assertTrue(generated.contains("int* self"))
+        assertFalse(generated.contains("struct int"))
+    }
+
+    @Test
+    fun extensionCNamesIncludeTheDefiningModuleAcrossCyclicProviders() {
+        val directory = Files.createTempDirectory("cplus-trait-provider-names")
+        val types = directory.resolve("types.cp").also {
+            it.writeText("pub struct point_t { int value; };")
+        }
+        val first = directory.resolve("first.cp").also {
+            it.writeText("import {point_t} from types; import {secondValue} from second; pub int firstValue() { return secondValue(); } pub comptime trait point_t { int area(self) { return 1; } }")
+        }
+        val second = directory.resolve("second.cp").also {
+            it.writeText("import {point_t} from types; import {firstValue} from first; pub int secondValue() { return 2; } pub comptime trait point_t { int area(self) { return 2; } }")
+        }
+        val main = directory.resolve("main.cp").also {
+            it.writeText("import types; import first; import second; int main() { return 0; }")
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, first, second, types)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        val firstName = "__cplus_ext_first_point_t_area"
+        val secondName = "__cplus_ext_second_point_t_area"
+        assertEquals(2, Regex("\\b$firstName\\b").findAll(generated).count(), generated)
+        assertEquals(2, Regex("\\b$secondName\\b").findAll(generated).count(), generated)
+        assertFalse(generated.contains("struct int"))
+    }
+
+    @Test
+    fun aliasedReceiverTypeProducesOneExtensionDefinitionForItsCanonicalType() {
+        val result = CPlusCompiler().compileText(
+            Files.createTempFile("cplus-trait-alias-emission", ".cp"),
+            """
+                pub struct point_t { int value; };
+                typedef point_t point_alias_t;
+                comptime trait point_alias_t {
+                    int area(self) { return self.value; }
+                }
+                int main() { return 0; }
+            """.trimIndent()
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertEquals(2, Regex("\\b__cplus_ext__main__point_t_area\\b").findAll(generated).count(), generated)
+        assertFalse(generated.contains("__cplus_ext__main__point_alias_t_area"), generated)
+    }
+
+    @Test
     fun externalCCompilerDiagnosticsMapGeneratedRangesAndRetainForeignLocations() {
         val directory = Files.createTempDirectory("cplus-c-diagnostics")
         val source = SourceRepository().let { repository ->
