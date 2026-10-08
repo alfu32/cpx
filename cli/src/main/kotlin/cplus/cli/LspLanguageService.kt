@@ -4,6 +4,10 @@ import cplus.compiler.CompileResult
 import cplus.core.LineIndex
 import cplus.core.Origin
 import cplus.core.SourceRange
+import cplus.core.Lexer
+import cplus.core.SourceFile
+import cplus.core.SourceFileId
+import cplus.core.TokenKind
 import cplus.core.Token
 import cplus.core.AstIdentifier
 import cplus.semantic.AliasType
@@ -17,6 +21,7 @@ import cplus.semantic.Symbol
 import cplus.semantic.SymbolKind
 import cplus.semantic.UnionType
 import cplus.semantic.MethodSymbol
+import java.nio.file.Path
 
 internal data class CompletionItem(
     val label: String,
@@ -65,9 +70,9 @@ internal object LspLanguageService {
         return candidates.distinctBy { it.label to it.kind }.sortedBy { it.label }
     }
 
-    fun hover(result: CompileResult, text: String, position: LspPosition): HoverInfo? {
+    fun hover(result: CompileResult, text: String, position: LspPosition, sourcePath: Path? = null): HoverInfo? {
         val model = result.semanticModel ?: return null
-        val artifact = result.artifacts.firstOrNull() ?: return null
+        val artifact = artifactFor(result, sourcePath) ?: return null
         val offset = offsetAt(text, position) ?: return null
         val token = artifact.lexed.tokens.firstOrNull {
             it.range.startOffset <= offset && offset < it.range.endOffset
@@ -84,19 +89,20 @@ internal object LspLanguageService {
         result: CompileResult,
         text: String,
         position: LspPosition,
-        includeDeclaration: Boolean = true
+        includeDeclaration: Boolean = true,
+        sourcePath: Path? = null,
+        sourcePathFor: (SourceFileId) -> Path? = { null },
+        sourceTextFor: (SourceFileId) -> String? = { null }
     ): NavigationInfo? {
         val model = result.semanticModel ?: return null
-        val artifact = result.artifacts.firstOrNull() ?: return null
+        val artifact = artifactFor(result, sourcePath) ?: return null
         val offset = offsetAt(text, position) ?: return null
         val token = artifact.lexed.tokens.firstOrNull {
             it.range.startOffset <= offset && offset < it.range.endOffset
         } ?: return null
         val symbol = symbolAt(model, token) ?: return null
-        val definition = model.symbols
-            .firstOrNull { it.id == symbol.id }
-            ?.origin
-            ?.primaryRange
+        val declaration = model.symbols.firstOrNull { it.id == symbol.id }
+        val definition = declaration?.let { symbolDeclarationRange(result, it, sourcePathFor, sourceTextFor) }
         val indexedReferences = model.referenceIndex.referencesTo(symbol.id)
             .mapNotNull { it.origin.primaryRange }
         val references = (if (includeDeclaration) listOfNotNull(definition) else emptyList())
@@ -106,9 +112,31 @@ internal object LspLanguageService {
         return NavigationInfo(definition, references)
     }
 
-    fun signatureHelp(result: CompileResult, text: String, position: LspPosition): SignatureInfo? {
+    private fun symbolDeclarationRange(
+        result: CompileResult,
+        symbol: Symbol,
+        sourcePathFor: (SourceFileId) -> Path?,
+        sourceTextFor: (SourceFileId) -> String?
+    ): SourceRange? {
+        val declaration = symbol.origin.primaryRange ?: return null
+        val declarationPath = sourcePathFor(declaration.file)?.toAbsolutePath()?.normalize()
+        val text = sourceTextFor(declaration.file)
+        val tokens = if (declarationPath != null && text != null) {
+            Lexer().lex(SourceFile(declaration.file, declarationPath, text, 0)).tokens
+        } else {
+            result.artifacts.firstOrNull { it.source.id == declaration.file }?.lexed?.tokens.orEmpty()
+        }
+        val token = tokens.firstOrNull {
+                it.kind == TokenKind.IDENTIFIER && it.lexeme == symbol.name &&
+                    it.range.startOffset >= declaration.startOffset &&
+                    it.range.endOffset <= declaration.endOffset
+            }
+        return token?.range ?: declaration
+    }
+
+    fun signatureHelp(result: CompileResult, text: String, position: LspPosition, sourcePath: Path? = null): SignatureInfo? {
         val model = result.semanticModel ?: return null
-        val artifact = result.artifacts.firstOrNull() ?: return null
+        val artifact = artifactFor(result, sourcePath) ?: return null
         val offset = offsetAt(text, position) ?: return null
         val call = model.nodeIds.values
             .filterIsInstance<cplus.core.AstCall>()
@@ -137,6 +165,10 @@ internal object LspLanguageService {
             activeParameter
         )
     }
+
+    private fun artifactFor(result: CompileResult, sourcePath: Path?) =
+        if (sourcePath == null) result.artifacts.firstOrNull()
+        else result.artifacts.firstOrNull { it.source.path.toAbsolutePath().normalize() == sourcePath.toAbsolutePath().normalize() }
 
     private fun memberCandidates(
         model: cplus.semantic.SemanticModel,

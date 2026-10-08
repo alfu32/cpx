@@ -1454,6 +1454,7 @@ It provides:
 - hover;
 - go-to-definition;
 - references;
+- document symbols and cross-file rename;
 - imported C symbol information.
 
 ---

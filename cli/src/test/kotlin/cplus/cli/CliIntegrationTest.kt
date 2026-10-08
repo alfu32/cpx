@@ -214,6 +214,79 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun lspMapsNavigationSymbolsTokensAndRenameAcrossImportedSources() {
+        val directory = Files.createTempDirectory("cplus-cli-lsp-cross-source")
+        val helper = directory.resolve("module_helpers.cp").also {
+            it.writeText("pub int add(int left, int right) { return left + right; }")
+        }
+        val main = directory.resolve("module_main.cp")
+        val helperUri = helper.toUri().toString()
+        val mainUri = main.toUri().toString()
+        val helperText = "pub int add(int left, int right) { return left + right; }"
+        val mainText = "// from ./nonexistent.cp\nimport { add } from ./module_helpers.cp;\nint main() { return add(2, 3); }\n"
+        main.writeText(mainText)
+        val callLine = 2
+        val callColumn = mainText.lineSequence().elementAt(callLine).indexOf("add")
+        val messages = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$helperUri","version":1,"text":"$helperText"}}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$mainUri","version":1,"text":"${mainText.replace("\n", "\\n")}"}}}""",
+            """{"jsonrpc":"2.0","id":3,"method":"textDocument/definition","params":{"textDocument":{"uri":"$mainUri"},"position":{"line":$callLine,"character":$callColumn}}}""",
+            """{"jsonrpc":"2.0","id":4,"method":"textDocument/references","params":{"textDocument":{"uri":"$mainUri"},"position":{"line":$callLine,"character":$callColumn},"context":{"includeDeclaration":true}}}""",
+            """{"jsonrpc":"2.0","id":5,"method":"textDocument/documentSymbol","params":{"textDocument":{"uri":"$helperUri"}}}""",
+            """{"jsonrpc":"2.0","id":6,"method":"textDocument/rename","params":{"textDocument":{"uri":"$mainUri"},"position":{"line":$callLine,"character":$callColumn},"newName":"sum"}}""",
+            """{"jsonrpc":"2.0","id":7,"method":"textDocument/semanticTokens/full","params":{"textDocument":{"uri":"$helperUri"}}}""",
+            """{"jsonrpc":"2.0","id":8,"method":"textDocument/hover","params":{"textDocument":{"uri":"$mainUri"},"position":{"line":$callLine,"character":$callColumn}}}""",
+            """{"jsonrpc":"2.0","id":9,"method":"textDocument/completion","params":{"textDocument":{"uri":"$mainUri"},"position":{"line":$callLine,"character":${callColumn + 3}}}}""",
+            """{"jsonrpc":"2.0","id":10,"method":"textDocument/references","params":{"textDocument":{"uri":"$helperUri"},"position":{"line":0,"character":8},"context":{"includeDeclaration":true}}}""",
+            """{"jsonrpc":"2.0","id":11,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        )
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(messages.joinToString(separator = "", transform = ::frame).toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("\"id\":3, \"result\":{\"uri\":\"$helperUri\", \"range\":"), responses)
+        assertTrue(responses.contains("\"id\":3, \"result\":{\"uri\":\"$helperUri\", \"range\":{\"start\":{\"line\":0, \"character\":8}"), responses)
+        assertTrue(responses.contains("\"id\":4, \"result\":[") && responses.contains("\"uri\":\"$mainUri\""), responses)
+        assertTrue(responses.contains("\"id\":5, \"result\":[") && responses.contains("\"name\":\"add\""), responses)
+        assertTrue(responses.contains("\"id\":6, \"result\":{\"changes\":"), responses)
+        assertTrue(responses.contains("\"newText\":\"sum\""), responses)
+        assertTrue(responses.contains("\"character\":8}, \"end\":{\"line\":0, \"character\":11}"), responses)
+        assertTrue(responses.contains("\"id\":7, \"result\":{\"data\":["), responses)
+        assertTrue(responses.contains("\"id\":8, \"result\":{\"contents\":"), responses)
+        assertTrue(responses.contains("\"id\":9, \"result\":{\"isIncomplete\":false, \"items\":[") && responses.contains("\"label\":\"add\""), responses)
+        assertTrue(responses.contains("\"id\":10, \"result\":[") && responses.contains("\"uri\":\"$mainUri\""), responses)
+    }
+
+    @Test
+    fun lspPublishesDiagnosticsToOpenImportedDocuments() {
+        val directory = Files.createTempDirectory("cplus-cli-lsp-imported-diagnostics")
+        val helper = directory.resolve("helper.cp")
+        val main = directory.resolve("main.cp")
+        val helperUri = helper.toUri().toString()
+        val mainUri = main.toUri().toString()
+        val helperText = "pub int get_value() { return missing_value; }"
+        val mainText = "import { get_value } from ./helper.cp; int main() { return get_value(); }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$helperUri","version":1,"text":"$helperText"}}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$mainUri","version":1,"text":"$mainText"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "", transform = ::frame)
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("\"uri\":\"$mainUri\""))
+        assertTrue(responses.split("\"uri\":\"$helperUri\", \"diagnostics\":[{").size - 1 >= 2, responses)
+        assertTrue(responses.contains("missing_value"), responses)
+    }
+
+    @Test
     fun lspDoesNotMergeUnrelatedOpenProgramsIntoTheActiveWorkspace() {
         val directory = Files.createTempDirectory("cplus-cli-lsp-unrelated")
         val first = directory.resolve("first.cp")

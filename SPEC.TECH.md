@@ -1925,6 +1925,30 @@ Each edited document carries an independent version.
 
 Semantic analysis SHOULD operate asynchronously from lexical highlighting.
 
+The server SHALL discover imports from parsed import declarations and compile
+the transitive source closure with the selected document. Open documents in the
+same connected import component SHALL participate using their in-memory text;
+unrelated open documents SHALL remain isolated. Compiler source identities
+SHALL map diagnostics and navigation ranges back to the owning document URI and
+that document's current text. Diagnostics SHALL be republished to affected open
+documents when a connected document changes or closes. Semantic tokens, hover,
+completion, navigation, and signature help SHALL select the artifact for the
+requested document. The server SHALL provide document symbols and cross-file
+references; rename edits SHALL target exact identifier ranges and only C+
+sources in the compiled workspace.
+
+The server SHALL discover imports from parsed import declarations and compile
+the transitive source closure with the selected document. Open documents in the
+same connected import component SHALL participate using their in-memory text;
+unrelated open documents SHALL remain isolated. Compiler source identities
+SHALL map diagnostics and navigation ranges back to the owning document URI and
+that document's current text. Diagnostics SHALL be republished to affected open
+documents when a connected document changes or closes. Semantic tokens, hover,
+completion, navigation, and signature help SHALL select the artifact for the
+requested document. The server SHALL provide document symbols and cross-file
+references; rename edits SHALL target exact identifier ranges and only C+
+sources in the compiled workspace.
+
 ---
 
 # 52. Semantic tokens

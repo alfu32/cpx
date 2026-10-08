@@ -9,6 +9,7 @@ import cplus.semantic.ReferenceKind
 import cplus.semantic.SemanticModel
 import cplus.semantic.Symbol
 import cplus.semantic.SymbolKind
+import java.nio.file.Path
 
 internal object SemanticTokenService {
     val tokenTypes: List<String> = listOf(
@@ -27,8 +28,12 @@ internal object SemanticTokenService {
 
     private val tokenTypeIndexes = tokenTypes.withIndex().associate { it.value to it.index }
 
-    fun encode(result: CompileResult): List<Int> {
-        val artifact = result.artifacts.firstOrNull() ?: return emptyList()
+    fun encode(result: CompileResult, sourcePath: Path? = null): List<Int> {
+        val artifact = if (sourcePath == null) result.artifacts.firstOrNull() else {
+            result.artifacts.firstOrNull {
+                it.source.path.toAbsolutePath().normalize() == sourcePath.toAbsolutePath().normalize()
+            }
+        } ?: return emptyList()
         val model = result.semanticModel
         val references = model?.referenceIndex?.all().orEmpty()
             .mapNotNull { reference -> reference.origin.primaryRange?.let { it to reference } }

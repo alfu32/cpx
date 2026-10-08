@@ -1,10 +1,16 @@
 package cplus.cli
 
 import cplus.compiler.CPlusCompiler
+import cplus.compiler.SdkManifestLocator
 import cplus.compiler.TextSource
+import cplus.core.Lexer
 import cplus.core.DiagnosticSeverity
 import cplus.core.LineIndex
+import cplus.core.Parser
+import cplus.core.SourceFile
+import cplus.core.SourceFileId
 import cplus.core.SourceRange
+import cplus.core.SyntaxImport
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
@@ -63,6 +69,12 @@ internal class LspServer(
                 "textDocument/references" -> {
                     if (id != null) writeMessage(outputStream, response(id, references(params)))
                 }
+                "textDocument/documentSymbol" -> {
+                    if (id != null) writeMessage(outputStream, response(id, documentSymbols(params)))
+                }
+                "textDocument/rename" -> {
+                    if (id != null) writeMessage(outputStream, response(id, rename(params)))
+                }
                 "textDocument/signatureHelp" -> {
                     if (id != null) writeMessage(outputStream, response(id, signatureHelp(params)))
                 }
@@ -105,17 +117,32 @@ internal class LspServer(
     private fun didClose(params: Map<*, *>, output: OutputStream) {
         val document = params["textDocument"] as? Map<*, *> ?: return
         val uri = document["uri"] as? String ?: return
+        val openDocument = workspace.get(uri)
+        val affected = openDocument?.let(::connectedOpenDocuments).orEmpty()
         workspace.close(uri)
         writeMessage(output, publish(uri, emptyList()))
+        affected.filterNot { it.uri == uri }.forEach { remaining ->
+            publishDiagnostics(remaining.uri, output)
+        }
     }
 
     private fun publishDiagnostics(uri: String, output: OutputStream) {
         val document = workspace.get(uri) ?: return
         val result = compileWorkspace(document)
+        connectedOpenDocuments(document).forEach { target ->
+            publishDiagnostics(result, target, output)
+        }
+    }
+
+    private fun publishDiagnostics(
+        result: cplus.compiler.CompileResult,
+        document: WorkspaceDocument,
+        output: OutputStream
+    ) {
         val diagnostics = result.diagnostics
             .filter { diagnostic ->
                 val sourcePath = diagnostic.range?.let { compiler.sourcePathFor(it.file) }
-                sourcePath == null || sourcePath == document.path.toAbsolutePath().normalize()
+                sourcePath == null || sourcePath.toAbsolutePath().normalize() == document.path.toAbsolutePath().normalize()
             }
             .map { diagnostic ->
             val range = diagnostic.range?.let { sourceRange -> lspRange(sourceRange, document.text) }
@@ -127,7 +154,7 @@ internal class LspServer(
                 "message" to diagnostic.message
             ).also { values -> diagnostic.code?.let { values["code"] = it } }
         }
-        writeMessage(output, publish(uri, diagnostics))
+        writeMessage(output, publish(document.uri, diagnostics))
     }
 
     private fun initializeResult(): Map<String, Any?> = linkedMapOf(
@@ -143,6 +170,8 @@ internal class LspServer(
             "hoverProvider" to true,
             "definitionProvider" to true,
             "referencesProvider" to true,
+            "documentSymbolProvider" to true,
+            "renameProvider" to true,
             "completionProvider" to linkedMapOf(
                 "triggerCharacters" to listOf(".", "-")
             ),
@@ -161,7 +190,7 @@ internal class LspServer(
         val uri = document["uri"] as? String ?: return linkedMapOf("data" to emptyList<Int>())
         val open = workspace.get(uri) ?: return linkedMapOf("data" to emptyList<Int>())
         return linkedMapOf(
-            "data" to SemanticTokenService.encode(compileWorkspace(open))
+            "data" to SemanticTokenService.encode(compileWorkspace(open), open.path)
         )
     }
 
@@ -181,7 +210,7 @@ internal class LspServer(
     private fun hover(params: Map<*, *>): Map<String, Any?>? {
         val request = requestDocument(params) ?: return null
         val result = compileWorkspace(request.document)
-        val hover = LspLanguageService.hover(result, request.document.text, request.position) ?: return null
+        val hover = LspLanguageService.hover(result, request.document.text, request.position, request.document.path) ?: return null
         return linkedMapOf(
             "contents" to linkedMapOf(
                 "kind" to "markdown",
@@ -196,10 +225,13 @@ internal class LspServer(
         val navigation = LspLanguageService.navigation(
             compileWorkspace(request.document),
             request.document.text,
-            request.position
+            request.position,
+            sourcePath = request.document.path,
+            sourcePathFor = compiler::sourcePathFor,
+            sourceTextFor = ::sourceTextFor
         ) ?: return null
         val definition = navigation.definition ?: return null
-        return location(request.document.uri, definition, request.document.text)
+        return location(definition, request.document)
     }
 
     private fun references(params: Map<*, *>): List<Map<String, Any?>> {
@@ -209,9 +241,68 @@ internal class LspServer(
             compileWorkspace(request.document),
             request.document.text,
             request.position,
-            includeDeclaration
+            includeDeclaration,
+            request.document.path,
+            compiler::sourcePathFor,
+            ::sourceTextFor
         ) ?: return emptyList()
-        return navigation.references.map { range -> location(request.document.uri, range, request.document.text) }
+        return navigation.references.map { range -> location(range, request.document) }
+    }
+
+    private fun documentSymbols(params: Map<*, *>): List<Map<String, Any?>> {
+        val document = requestedDocument(params) ?: return emptyList()
+        val model = compileWorkspace(document).semanticModel ?: return emptyList()
+        val normalizedPath = document.path.toAbsolutePath().normalize()
+        return model.symbols.mapNotNull { symbol ->
+            val range = symbol.origin.primaryRange ?: return@mapNotNull null
+            val path = compiler.sourcePathFor(range.file)?.toAbsolutePath()?.normalize()
+            if (path != normalizedPath) return@mapNotNull null
+            linkedMapOf(
+                "name" to symbol.name,
+                "kind" to lspSymbolKind(symbol.kind),
+                "location" to location(range, document)
+            )
+        }
+    }
+
+    private fun rename(params: Map<*, *>): Map<String, Any?>? {
+        val request = requestDocument(params) ?: return null
+        val newName = params["newName"] as? String ?: return null
+        if (!newName.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))) return null
+        val result = compileWorkspace(request.document)
+        val navigation = LspLanguageService.navigation(
+            result,
+            request.document.text,
+            request.position,
+            includeDeclaration = true,
+            sourcePath = request.document.path,
+            sourcePathFor = compiler::sourcePathFor,
+            sourceTextFor = ::sourceTextFor
+        ) ?: return null
+        val definitionPath = navigation.definition?.file?.let(compiler::sourcePathFor)
+            ?.toAbsolutePath()?.normalize() ?: request.document.path.toAbsolutePath().normalize()
+        if (!isEditableWorkspaceSource(definitionPath)) return null
+        val edits = navigation.references.mapNotNull { range ->
+            val path = compiler.sourcePathFor(range.file)?.toAbsolutePath()?.normalize()
+                ?: request.document.path.toAbsolutePath().normalize()
+            if (!isEditableWorkspaceSource(path)) return@mapNotNull null
+            path to range
+        }.groupBy({ it.first }, { it.second }).map { (path, ranges) ->
+            val open = workspace.snapshot().firstOrNull { it.path.toAbsolutePath().normalize() == path }
+            val uri = open?.uri ?: path.toUri().toString()
+            val text = open?.text ?: runCatching { Files.readString(path) }.getOrDefault("")
+            uri to ranges.map { range ->
+                linkedMapOf<String, Any?>("range" to lspRange(range, text), "newText" to newName)
+            }
+        }.toMap()
+        return linkedMapOf("changes" to edits)
+    }
+
+    private fun isEditableWorkspaceSource(path: Path): Boolean {
+        val normalized = path.toAbsolutePath().normalize()
+        val sdkRoot = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
+            .parent?.parent?.toAbsolutePath()?.normalize()
+        return normalized.fileName.toString().endsWith(".cp") && (sdkRoot == null || !normalized.startsWith(sdkRoot))
     }
 
     private fun signatureHelp(params: Map<*, *>): Map<String, Any?>? {
@@ -219,7 +310,8 @@ internal class LspServer(
         val signature = LspLanguageService.signatureHelp(
             compileWorkspace(request.document),
             request.document.text,
-            request.position
+            request.position,
+            request.document.path
         ) ?: return null
         return linkedMapOf(
             "signatures" to listOf(
@@ -238,10 +330,37 @@ internal class LspServer(
         )
     }
 
-    private fun location(uri: String, range: SourceRange, text: String): Map<String, Any?> = linkedMapOf(
-        "uri" to uri,
-        "range" to lspRange(range, text)
-    )
+    private fun location(range: SourceRange, fallback: WorkspaceDocument): Map<String, Any?> {
+        val path = compiler.sourcePathFor(range.file)?.toAbsolutePath()?.normalize()
+        val open = path?.let { candidate ->
+            workspace.snapshot().firstOrNull { it.path.toAbsolutePath().normalize() == candidate }
+        }
+        val uri = open?.uri ?: path?.toUri()?.toString() ?: fallback.uri
+        val text = open?.text ?: path?.let { runCatching { Files.readString(it) }.getOrNull() } ?: fallback.text
+        return linkedMapOf("uri" to uri, "range" to lspRange(range, text))
+    }
+
+    private fun requestedDocument(params: Map<*, *>): WorkspaceDocument? {
+        val document = params["textDocument"] as? Map<*, *> ?: return null
+        val uri = document["uri"] as? String ?: return null
+        return workspace.get(uri)
+    }
+
+    private fun sourceTextFor(file: cplus.core.SourceFileId): String? {
+        val path = compiler.sourcePathFor(file)?.toAbsolutePath()?.normalize() ?: return null
+        return workspace.snapshot().firstOrNull { it.path.toAbsolutePath().normalize() == path }?.text
+            ?: runCatching { Files.readString(path) }.getOrNull()
+    }
+
+    private fun lspSymbolKind(kind: cplus.semantic.SymbolKind): Int = when (kind) {
+        cplus.semantic.SymbolKind.STRUCT, cplus.semantic.SymbolKind.UNION, cplus.semantic.SymbolKind.ALIAS,
+        cplus.semantic.SymbolKind.FOREIGN_TYPE -> 5
+        cplus.semantic.SymbolKind.METHOD -> 6
+        cplus.semantic.SymbolKind.FIELD -> 8
+        cplus.semantic.SymbolKind.ENUM -> 10
+        cplus.semantic.SymbolKind.FUNCTION, cplus.semantic.SymbolKind.FOREIGN -> 12
+        else -> 13
+    }
 
     private fun requestDocument(params: Map<*, *>): DocumentRequest? {
         val document = params["textDocument"] as? Map<*, *> ?: return null
@@ -253,23 +372,28 @@ internal class LspServer(
 
     private fun compileWorkspace(document: WorkspaceDocument): cplus.compiler.CompileResult {
         val sources = linkedMapOf<Path, String>()
-        val openDocuments = workspace.snapshot().associateBy { it.path.toAbsolutePath().normalize() }
+        val activeDocuments = connectedOpenDocuments(document)
+        val openDocuments = activeDocuments.associateBy { it.path.toAbsolutePath().normalize() }
         fun addSource(path: Path, text: String) {
             sources[path.toAbsolutePath().normalize()] = text
         }
 
         addSource(document.path, document.text)
+        activeDocuments.forEach { open ->
+            if (open.path.toAbsolutePath().normalize() != document.path.toAbsolutePath().normalize()) {
+                addSource(open.path, open.text)
+            }
+        }
 
         val pending = ArrayDeque(sources.keys)
         while (pending.isNotEmpty()) {
             val sourcePath = pending.removeFirst()
             val sourceText = sources.getValue(sourcePath)
-            IMPORT_MODULE.findAll(sourceText).forEach { match ->
-                val reference = (match.groups[1]?.value ?: match.groups[2]?.value)?.trim() ?: return@forEach
-                if (reference.startsWith("c.")) return@forEach
+            importReferences(sourcePath, sourceText).forEach { reference ->
+                if (reference.startsWith("c.") || reference.startsWith("std.")) return@forEach
                 val imported = resolveImportedSource(sourcePath, reference) ?: return@forEach
                 val normalized = imported.toAbsolutePath().normalize()
-                if (normalized !in sources && Files.isRegularFile(normalized)) {
+                if (normalized !in sources && (normalized in openDocuments || Files.isRegularFile(normalized))) {
                     sources[normalized] = openDocuments[normalized]?.text
                         ?: runCatching { Files.readString(normalized) }.getOrNull()
                         ?: return@forEach
@@ -282,6 +406,38 @@ internal class LspServer(
         )
     }
 
+    private fun connectedOpenDocuments(root: WorkspaceDocument): List<WorkspaceDocument> {
+        val openByPath = workspace.snapshot().associateBy { it.path.toAbsolutePath().normalize() }
+        val neighbors = openByPath.keys.associateWith { linkedSetOf<Path>() }.toMutableMap()
+        openByPath.values.forEach { document ->
+            importReferences(document.path, document.text).forEach { reference ->
+                if (reference.startsWith("c.") || reference.startsWith("std.")) return@forEach
+                val dependency = resolveImportedSource(document.path, reference)?.toAbsolutePath()?.normalize()
+                if (dependency != null && dependency in openByPath) {
+                    neighbors.getValue(document.path.toAbsolutePath().normalize()).add(dependency)
+                    neighbors.getValue(dependency).add(document.path.toAbsolutePath().normalize())
+                }
+            }
+        }
+        val start = root.path.toAbsolutePath().normalize()
+        val reached = linkedSetOf<Path>()
+        val pending = ArrayDeque<Path>()
+        pending.add(start)
+        while (pending.isNotEmpty()) {
+            val path = pending.removeFirst()
+            if (reached.add(path)) neighbors[path].orEmpty().forEach(pending::addLast)
+        }
+        return buildList {
+            add(root)
+            openByPath.values.filter { it.path.toAbsolutePath().normalize() in reached && it.uri != root.uri }
+                .forEach(::add)
+        }
+    }
+
+    private fun importReferences(sourcePath: Path, sourceText: String): List<String> =
+        Parser(Lexer().lex(SourceFile(SourceFileId(-1), sourcePath, sourceText, 0))).parse()
+            .syntax.declarations.filterIsInstance<SyntaxImport>().map(SyntaxImport::module)
+
     private fun resolveImportedSource(source: Path, reference: String): Path? {
         val isPathImport = reference.startsWith("./") ||
             reference.startsWith("../") ||
@@ -293,25 +449,37 @@ internal class LspServer(
                 source.parent?.resolve(path),
                 Path.of("").toAbsolutePath().normalize().resolve(path)
             )
-            return candidates.firstOrNull { Files.isRegularFile(it) }
+            return candidates.firstOrNull(::isKnownSource)
         }
         val moduleName = reference
             .substringAfterLast('/')
             .substringAfterLast('.')
             .removeSuffix(".cp")
         val sibling = source.parent?.resolve("$moduleName.cp")
-        if (sibling != null && Files.isRegularFile(sibling)) return sibling
+        if (sibling != null && isKnownSource(sibling)) return sibling
         val directory = source.parent ?: return null
+        val openMatch = workspace.snapshot().map { it.path.toAbsolutePath().normalize() }
+            .filter { it.startsWith(directory.toAbsolutePath().normalize()) && it.fileName.toString() == "$moduleName.cp" }
+            .singleOrNull()
+        if (openMatch != null) return openMatch
         return runCatching {
             Files.walk(directory).use { paths ->
-                paths
+                val matches = paths
                     .filter { candidate ->
                         Files.isRegularFile(candidate) && candidate.fileName.toString() == "$moduleName.cp"
                     }
-                    .findFirst()
-                    .orElse(null)
+                    .sorted()
+                    .toList()
+                matches.singleOrNull()
             }
         }.getOrNull()
+    }
+
+    private fun isKnownSource(path: Path): Boolean {
+        val normalized = path.toAbsolutePath().normalize()
+        return Files.isRegularFile(normalized) || workspace.snapshot().any {
+            it.path.toAbsolutePath().normalize() == normalized
+        }
     }
 
     private fun response(id: Any?, result: Any?): Map<String, Any?> = linkedMapOf(
@@ -388,8 +556,6 @@ internal class LspServer(
     )
 
     companion object {
-        private val IMPORT_MODULE = Regex("""\bfrom\s+(?:"([^"]+)"|([^\s;]+))""")
-
         private fun readMessage(input: InputStream): String? {
             var contentLength: Int? = null
             while (true) {
