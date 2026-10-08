@@ -2,22 +2,6 @@
 #include <errno.h>
 #include <limits.h>
 
-double fabs(double value) { return value < 0.0 ? -value : value; }
-
-double sqrt(double value) {
-    double estimate;
-    int iteration;
-    if (value < 0.0) {
-        errno = EDOM;
-        return 0.0 / 0.0;
-    }
-    if (value == 0.0) return 0.0;
-    estimate = value > 1.0 ? value : 1.0;
-    for (iteration = 0; iteration < 32; iteration++) estimate = (estimate + value / estimate) * 0.5;
-    return estimate;
-}
-
-
 #if !defined(CPLUS_LONG_DOUBLE_FORMAT)
 #if defined(__LDBL_MANT_DIG__) && __LDBL_MANT_DIG__ == 53
 #define CPLUS_LONG_DOUBLE_FORMAT 1
@@ -908,6 +892,242 @@ CPLUS_MATH_DEFINE_REMAINDER(
     cplus_math_scale_long_double, cplus_math_copysign_long_double, cplus_math_sign_long_double)
 
 #undef CPLUS_MATH_DEFINE_REMAINDER
+
+#define CPLUS_MATH_DEFINE_ROOTS(suffix, type, classifier, sign_value, frexp_value, scale_value, copy_sign) \
+    type fabs##suffix(type value) { \
+        return copy_sign(value, (type)1); \
+    } \
+    type sqrt##suffix(type value) { \
+        int kind = classifier(value); \
+        int exponent; \
+        int iteration; \
+        type mantissa; \
+        type estimate; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_ZERO) return value; \
+        if (kind == FP_INFINITE) { \
+            if (!sign_value(value)) return value; \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (sign_value(value)) { \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        mantissa = frexp_value(value, &exponent); \
+        if (exponent % 2 != 0) { \
+            mantissa *= (type)2; \
+            exponent--; \
+        } \
+        estimate = (mantissa + (type)1) * (type)0.5; \
+        for (iteration = 0; iteration < 16; iteration++) \
+            estimate = (estimate + mantissa / estimate) * (type)0.5; \
+        return scale_value(estimate, (long)(exponent / 2)); \
+    } \
+    type cbrt##suffix(type value) { \
+        int kind = classifier(value); \
+        int exponent; \
+        int remainder; \
+        int iteration; \
+        int negative = sign_value(value); \
+        type magnitude; \
+        type mantissa; \
+        type estimate; \
+        if (kind == FP_ZERO || kind == FP_INFINITE || kind == FP_NAN) return value; \
+        magnitude = negative ? -value : value; \
+        mantissa = frexp_value(magnitude, &exponent); \
+        remainder = exponent % 3; \
+        if (remainder < 0) remainder += 3; \
+        mantissa = scale_value(mantissa, (long)remainder); \
+        exponent = (exponent - remainder) / 3; \
+        estimate = (mantissa + (type)2) / (type)3; \
+        for (iteration = 0; iteration < 16; iteration++) \
+            estimate = ((type)2 * estimate + mantissa / (estimate * estimate)) / (type)3; \
+        estimate = scale_value(estimate, (long)exponent); \
+        return copy_sign(estimate, value); \
+    }
+
+CPLUS_MATH_DEFINE_ROOTS(
+    f, float, cplus_math_classify_float, cplus_math_sign_float, frexpf,
+    cplus_math_scale_float, cplus_math_copysign_float)
+CPLUS_MATH_DEFINE_ROOTS(
+    , double, cplus_math_classify_double, cplus_math_sign_double, frexp,
+    cplus_math_scale_double, cplus_math_copysign_double)
+CPLUS_MATH_DEFINE_ROOTS(
+    l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double, frexpl,
+    cplus_math_scale_long_double, cplus_math_copysign_long_double)
+
+#undef CPLUS_MATH_DEFINE_ROOTS
+
+#define CPLUS_MATH_DEFINE_HYPOT(suffix, type, classifier, absolute_value, sqrt_value, copy_sign) \
+    type hypot##suffix(type left, type right) { \
+        int left_kind = classifier(left); \
+        int right_kind = classifier(right); \
+        type larger; \
+        type smaller; \
+        type ratio; \
+        type result; \
+        if (left_kind == FP_INFINITE || right_kind == FP_INFINITE) return (type)HUGE_VALL; \
+        if (left_kind == FP_NAN || right_kind == FP_NAN) \
+            return copy_sign(left_kind == FP_NAN ? left : right, (type)1); \
+        larger = absolute_value(left); \
+        smaller = absolute_value(right); \
+        if (larger < smaller) { \
+            type temporary = larger; \
+            larger = smaller; \
+            smaller = temporary; \
+        } \
+        if (larger == (type)0) return (type)0; \
+        ratio = smaller / larger; \
+        result = larger * sqrt_value((type)1 + ratio * ratio); \
+        if (classifier(result) == FP_INFINITE) errno = ERANGE; \
+        return copy_sign(result, (type)1); \
+    }
+
+CPLUS_MATH_DEFINE_HYPOT(f, float, cplus_math_classify_float, fabsf, sqrtf, cplus_math_copysign_float)
+CPLUS_MATH_DEFINE_HYPOT(, double, cplus_math_classify_double, fabs, sqrt, cplus_math_copysign_double)
+CPLUS_MATH_DEFINE_HYPOT(l, long double, cplus_math_classify_long_double, fabsl, sqrtl, cplus_math_copysign_long_double)
+
+#undef CPLUS_MATH_DEFINE_HYPOT
+
+#define CPLUS_MATH_DEFINE_LOG_EXP(suffix, type, classifier, frexp_value, scale_value, max_exponent, min_subnormal_exponent) \
+    static type cplus_math_log_positive_##suffix(type value) { \
+        const type ln_two = (type)0x1.62e42fefa39ef35793c7673007e6p-1L; \
+        int exponent; \
+        int denominator; \
+        type mantissa = frexp_value(value, &exponent) * (type)2; \
+        type z = (mantissa - (type)1) / (mantissa + (type)1); \
+        type z_squared = z * z; \
+        type term = z; \
+        type sum = z; \
+        exponent--; \
+        for (denominator = 3; denominator <= 95; denominator += 2) { \
+            term *= z_squared; \
+            sum += term / (type)denominator; \
+        } \
+        return (type)2 * sum + (type)exponent * ln_two; \
+    } \
+    static type cplus_math_exp_##suffix(type value) { \
+        const type ln_two = (type)0x1.62e42fefa39ef35793c7673007e6p-1L; \
+        int kind = classifier(value); \
+        int exponent; \
+        int iteration; \
+        type quotient; \
+        type fraction; \
+        type reduced; \
+        type term = (type)1; \
+        type sum = (type)1; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) return value < (type)0 ? (type)0 : (type)HUGE_VALL; \
+        if (value > (type)(max_exponent + 2) * ln_two) { \
+            errno = ERANGE; \
+            return (type)HUGE_VALL; \
+        } \
+        if (value < (type)(min_subnormal_exponent - 2) * ln_two) { \
+            errno = ERANGE; \
+            return (type)0; \
+        } \
+        quotient = value / ln_two; \
+        exponent = (int)quotient; \
+        fraction = quotient - (type)exponent; \
+        if (fraction > (type)0.5 || \
+            (fraction == (type)0.5 && exponent % 2 != 0)) exponent++; \
+        else if (fraction < (type)-0.5 || \
+            (fraction == (type)-0.5 && exponent % 2 != 0)) exponent--; \
+        reduced = value - (type)exponent * ln_two; \
+        for (iteration = 1; iteration <= 48; iteration++) { \
+            term *= reduced / (type)iteration; \
+            sum += term; \
+        } \
+        sum = scale_value(sum, (long)exponent); \
+        if (classifier(sum) == FP_INFINITE || classifier(sum) == FP_ZERO) errno = ERANGE; \
+        return sum; \
+    }
+
+CPLUS_MATH_DEFINE_LOG_EXP(f, float, cplus_math_classify_float, frexpf, cplus_math_scale_float, 127, -149)
+CPLUS_MATH_DEFINE_LOG_EXP(, double, cplus_math_classify_double, frexp, cplus_math_scale_double, 1023, -1074)
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+CPLUS_MATH_DEFINE_LOG_EXP(l, long double, cplus_math_classify_long_double, frexpl, cplus_math_scale_long_double, 1023, -1074)
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+CPLUS_MATH_DEFINE_LOG_EXP(l, long double, cplus_math_classify_long_double, frexpl, cplus_math_scale_long_double, 16383, -16445)
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+CPLUS_MATH_DEFINE_LOG_EXP(l, long double, cplus_math_classify_long_double, frexpl, cplus_math_scale_long_double, 16383, -16494)
+#endif
+
+#undef CPLUS_MATH_DEFINE_LOG_EXP
+
+#define CPLUS_MATH_DEFINE_POW(suffix, type, classifier, sign_value, truncate_value, is_odd, log_positive, exp_value, copy_sign) \
+    static type cplus_math_integer_power_##suffix(type base, type exponent) { \
+        int negative_exponent = exponent < (type)0; \
+        type remaining = negative_exponent ? -exponent : exponent; \
+        type factor = negative_exponent ? (type)1 / base : base; \
+        type result = (type)1; \
+        while (remaining >= (type)1) { \
+            if (is_odd(remaining)) result *= factor; \
+            remaining = truncate_value(remaining * (type)0.5); \
+            if (remaining >= (type)1) factor *= factor; \
+        } \
+        if (classifier(result) == FP_INFINITE || classifier(result) == FP_ZERO) errno = ERANGE; \
+        return result; \
+    } \
+    type pow##suffix(type base, type exponent) { \
+        int base_kind = classifier(base); \
+        int exponent_kind = classifier(exponent); \
+        int base_negative = sign_value(base); \
+        int integer_exponent; \
+        int odd_exponent; \
+        type magnitude; \
+        type logarithm; \
+        type argument; \
+        type result; \
+        if (exponent_kind == FP_ZERO || base == (type)1) return (type)1; \
+        if (exponent_kind == FP_NAN || base_kind == FP_NAN) \
+            return exponent_kind == FP_NAN ? exponent : base; \
+        magnitude = base_negative ? -base : base; \
+        if (exponent_kind == FP_INFINITE) { \
+            if (magnitude == (type)1) return (type)1; \
+            if ((magnitude > (type)1) == (exponent > (type)0)) return (type)HUGE_VALL; \
+            return (type)0; \
+        } \
+        integer_exponent = truncate_value(exponent) == exponent; \
+        odd_exponent = integer_exponent && is_odd(exponent); \
+        if (base_kind == FP_INFINITE) { \
+            result = exponent > (type)0 ? (type)HUGE_VALL : (type)0; \
+            return base_negative && odd_exponent ? -result : result; \
+        } \
+        if (base_kind == FP_ZERO) { \
+            if (exponent < (type)0) { \
+                errno = ERANGE; \
+                result = (type)HUGE_VALL; \
+            } else result = (type)0; \
+            return base_negative && odd_exponent ? -result : result; \
+        } \
+        if (base_negative && !integer_exponent) { \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (integer_exponent) return cplus_math_integer_power_##suffix(base, exponent); \
+        logarithm = log_positive(magnitude); \
+        argument = exponent * logarithm; \
+        if (classifier(argument) == FP_INFINITE) { \
+            errno = ERANGE; \
+            return argument < (type)0 ? (type)0 : (type)HUGE_VALL; \
+        } \
+        result = exp_value(argument); \
+        return copy_sign(result, (type)1); \
+    }
+
+CPLUS_MATH_DEFINE_POW(
+    f, float, cplus_math_classify_float, cplus_math_sign_float, cplus_math_truncate_float,
+    cplus_math_is_odd_float, cplus_math_log_positive_f, cplus_math_exp_f, cplus_math_copysign_float)
+CPLUS_MATH_DEFINE_POW(
+    , double, cplus_math_classify_double, cplus_math_sign_double, cplus_math_truncate_double,
+    cplus_math_is_odd_double, cplus_math_log_positive_, cplus_math_exp_, cplus_math_copysign_double)
+CPLUS_MATH_DEFINE_POW(
+    l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double, cplus_math_truncate_long_double,
+    cplus_math_is_odd_long_double, cplus_math_log_positive_l, cplus_math_exp_l, cplus_math_copysign_long_double)
+
+#undef CPLUS_MATH_DEFINE_POW
 
 static void cplus_math_increment_magnitude(unsigned char* bytes, unsigned int sign_byte) {
     unsigned int index;

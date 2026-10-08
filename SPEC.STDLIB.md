@@ -2486,6 +2486,18 @@ with non-NaN operands SHALL set `errno` to `EDOM` and return a quiet NaN;
 `remquo` SHALL store zero in its quotient output for that case. A NaN operand
 SHALL produce a NaN result without changing `errno`.
 
+The `fabs` family SHALL clear the input sign. `sqrt` SHALL preserve signed
+zero, return positive infinity for positive infinity, and report a negative
+nonzero input as a domain error (`EDOM`) with a quiet NaN result. `cbrt` SHALL
+preserve the signs of zero, infinity, and finite results. For `pow`, a zero
+exponent or positive-one base SHALL produce one, including when the other
+operand is a NaN; a negative finite base with a non-integral exponent SHALL
+report `EDOM` and return a quiet NaN. A zero base with a negative exponent
+SHALL report `ERANGE` and return signed infinity when the base is negative
+and the exponent is an odd integer, otherwise positive infinity. `hypot`
+SHALL return a nonnegative result, with infinity taking precedence over a NaN
+operand.
+
 The SDK SHALL expose the supported real operations through `std.math` with
 explicit C+ declarations and types. It SHALL preserve the selected target's
 floating formats and ABI, including `long double`, and SHALL NOT silently
