@@ -11,10 +11,10 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    84/92 accepted with recorded evidence
-Phase gates:           2/9 complete; 5 active; 2 queued
-Current task:          R7.3 — clean-checkout VS Code extension packaging
-Current milestone:     R7 — LSP and VS Code product completion
+Roadmap leaf tasks:    85/92 accepted with recorded evidence
+Phase gates:           2/9 complete; 7 active; 0 queued
+Current task:          R8.1 — deterministic SDK package generation
+Current milestone:     R8 — SDK packaging, target matrix and release conformance
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -27,11 +27,11 @@ R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pendi
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
 R6 [DOING] 4/4  CLI transcoder/build-product leaves accepted; Windows gate pending
-R7 [DOING] 2/3  LSP and VS Code product completion
-R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
+R7 [DOING] 3/3  Linux extension product accepted; Windows gate pending
+R8 [DOING] 0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       84/92 implementation tasks complete; 2/9 phase gates complete,
-            5 active, 2 queued
+TOTAL       85/92 implementation tasks complete; 2/9 phase gates complete,
+            7 active, 0 queued
 ```
 
 The latest Linux x86_64 C17 report is 51 pass, 0 fail, 0 unsupported, and 0
@@ -355,7 +355,7 @@ below. Its current execution sequence is:
    are accepted for Linux x86_64. R4 remains open for Windows libc validation;
    R6.1–R6.4 implementation leaves are accepted on Linux; the R6 product gate
    remains open for Windows execution/packaging validation. The active work
-   queue has advanced to R7.3 while that final platform gate remains deferred.
+   queue has advanced to R8.1 while those final platform gates remain deferred.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -5312,7 +5312,7 @@ Clean checkouts can build the fat JAR and compile/run representative single-
 file, multi-module, C-interoperability, self-hosted Linux, and self-hosted
 Windows products from documented commands.
 
-## R7 [DOING] [2/3] LSP and VS Code product completion
+## R7 [DOING] [3/3 Linux leaves accepted; Windows gate pending] LSP and VS Code product completion
 
 **Dependency-ordered work queue**
 
@@ -5338,8 +5338,19 @@ Windows products from documented commands.
   scanning. `npm test` passes all six tests, including actual fat-JAR LSP
   initialization and multi-module Run Main execution from temporary workspaces
   with spaces in their paths; `npm run check` passes. Commit: `7233e6b`.
-- R7.3 [TODO] — package and test the extension from a clean checkout against
-  the assembled CLI product.
+- R7.3 [DONE] — package and test the extension from a clean checkout against
+  the assembled CLI product. From a clean `git archive` checkout, system
+  Gradle built `cplus-cli-0.1.0-SNAPSHOT-all.jar`; `npm ci` installed the
+  lockfile, all six `npm test` tests passed (the actual JAR initialized LSP and
+  ran a multi-module program), and `npm run check` passed. `npm run package`
+  produced `cplus-language-support-0.2.0.vsix`; ZIP integrity and packaged
+  manifest entrypoint `./dist/extension.js` were verified, with exactly eight
+  expected extension files. `npm audit --omit=dev` reports zero production
+  vulnerabilities; npm reports six high advisories in development-only tools.
+  Windows extension execution remains deferred and is not credited. The
+  repository wrapper JAR is absent from the clean export, so the installed
+  Gradle command was used. Product commit: no source changes required; evidence
+  recorded in the plan commit.
 
 **Deliverables**
 
@@ -5356,7 +5367,7 @@ The LSP and Run Main flows work for a multi-module workspace on Linux and
 Windows, with external-source locations preserved and no competing parser or
 hard-coded CLI path.
 
-## R8 [TODO] SDK packaging, target matrix and release conformance
+## R8 [DOING] [0/4] SDK packaging, target matrix and release conformance
 
 **Dependency-ordered work queue**
 
