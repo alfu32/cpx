@@ -280,6 +280,71 @@ class RuntimeNetworkPalTest {
     }
 
     @Test
+    fun windowsExecutesTcpLoopbackThroughTheFreestandingPal() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            System.getProperty("os.name").contains("windows", ignoreCase = true)
+        )
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-runtime-windows-network-execution")
+        val source = directory.resolve("network_test.c").also {
+            Files.writeString(it, """
+                #include "cplus_platform.h"
+
+                int main(void) {
+                    cplus_socket_address_t address = {0};
+                    cplus_socket_address_t bound = {0};
+                    cplus_socket_address_t peer = {0};
+                    const char payload[] = "windows-loopback";
+                    char received[sizeof(payload)] = {0};
+                    long long listener;
+                    long long client;
+                    long long accepted;
+                    address.family = CPLUS_SOCKET_IPV4;
+                    address.address[0] = 127;
+                    address.address[3] = 1;
+                    listener = platform_socket_open(CPLUS_SOCKET_IPV4, CPLUS_SOCKET_STREAM);
+                    if (listener < 0 || platform_socket_bind(listener, &address) != 0 ||
+                        platform_socket_get_address(listener, 0, &bound) != 0 || bound.port == 0 ||
+                        platform_socket_listen(listener, 2) != 0) return 1;
+                    client = platform_socket_open(CPLUS_SOCKET_IPV4, CPLUS_SOCKET_STREAM);
+                    if (client < 0 || platform_socket_connect(client, &bound) != 0) return 2;
+                    accepted = platform_socket_accept(listener, &peer);
+                    if (accepted < 0 || peer.family != CPLUS_SOCKET_IPV4 ||
+                        platform_socket_send(client, payload, sizeof(payload) - 1) != sizeof(payload) - 1 ||
+                        platform_socket_receive(accepted, received, sizeof(received) - 1) != sizeof(payload) - 1) return 3;
+                    for (unsigned int index = 0; index < sizeof(payload) - 1; index++)
+                        if (received[index] != payload[index]) return 4;
+                    if (platform_socket_close(client) != 0 || platform_socket_close(accepted) != 0 ||
+                        platform_socket_close(listener) != 0) return 5;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("network_test.exe")
+        try {
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val dependencyAudit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(dependencyAudit.isSuccessful, dependencyAudit.diagnostics.joinToString())
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw AssertionError("Windows socket fixture timed out; artifacts at $directory")
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), "Windows socket fixture failed with output '$output'")
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
+
+    @Test
     fun windowsFreestandingProductLoadsWinsockDynamically() {
         org.junit.jupiter.api.Assumptions.assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val crossToolsAvailable = listOf("x86_64-w64-mingw32-gcc", "x86_64-w64-mingw32-objdump").all { tool ->

@@ -5219,12 +5219,14 @@ errors. `RuntimeLinkerTest` confirms `network.c` is selected only for the
 Windows runtime plan. `RuntimeNetworkPalTest` links the production network PAL
 into a freestanding x86_64 PE fixture and inspects its imports: kernel32 loader
 and once-initialization APIs are present, while `ws2_32.dll` is absent. The
-full Gradle build passes and the Linux C17 report remains 42 pass, 0 fail,
-0 unsupported, and 0 planned. The PE fixture does not contain the complete C+
-runtime and does not execute on Windows; a full Windows runtime link using the
-available MinGW toolchain currently fails on pre-existing emulated-TLS and
-`WaitOnAddress`/wake imports and is tracked in R8.3. No Windows runtime behavior
-or Linux AArch64 runtime execution is claimed.
+native Windows VM now also passes
+`RuntimeNetworkPalTest.windowsExecutesTcpLoopbackThroughTheFreestandingPal`:
+the complete production runtime binds an ephemeral IPv4 loopback port,
+connects, transfers and verifies bytes, and closes all sockets; the executable
+passes `RuntimeDependencyAuditor`. The focused test passes on native Windows
+and Linux. This adds Windows runtime evidence for TCP only; UDP, IPv6, and the
+successful resolver path remain unvalidated on Windows. Linux AArch64 runtime
+execution remains deferred.
 
 R5.3.8.3 acceptance evidence: Windows x86_64 MinGW and Windows AArch64 Clang
 compile the production resolver adapter with warnings as errors. The focused
