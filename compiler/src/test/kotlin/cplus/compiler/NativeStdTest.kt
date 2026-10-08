@@ -29,22 +29,7 @@ class NativeStdTest {
         val directory = Files.createTempDirectory("cplus-native-std-aarch64")
         val generatedSource = directory.resolve("native_std.c")
         val executable = directory.resolve("native_std")
-        Files.writeString(generatedSource, result.generatedUnits.single().text + """
-            int main(void) {
-                char memory[12] = "abcdefgh";
-                struct std_memory_span_t null_span = std_memory_span((void*)0, 4);
-                struct std_range_t full_range = std_range(std_isize_min(), std_isize_max());
-                if (sizeof(usize) != 8 || sizeof(isize) != 8 || std_pointer_width_bits() != 64) return 1;
-                if (std_memory_span_at(null_span, 0) != (void*)0) return 2;
-                if (std_range_length(full_range) != std_usize_max()) return 3;
-                std_mem_move(memory + 2, memory, 9);
-                if (std_string_compare(memory, "ababcdefgh") != 0) return 4;
-                std_mem_move(memory, memory + 2, 9);
-                if (std_string_compare(memory, "abcdefgh") != 0) return 5;
-                if (std_mem_move(memory, memory, 9) != memory) return 6;
-                return 0;
-            }
-        """.trimIndent())
+        Files.writeString(generatedSource, result.generatedUnits.single().text + fullConformanceMain())
 
         try {
             val link = LinkDriver.link(LinkRequest(generatedSource, executable, target, resolution), plan)
@@ -89,7 +74,50 @@ class NativeStdTest {
             .forEach { symbol -> assertTrue(symbol in publicHeader, publicHeader) }
         val directory = Files.createTempDirectory("cplus-native-std")
         val combined = directory.resolve("native_std.c").also {
-            Files.writeString(it, generated + """
+            Files.writeString(it, generated + fullConformanceMain())
+        }
+        val compilers = listOf("cc", "clang").filter(::runCCompiler)
+        assertTrue(compilers.isNotEmpty(), "neither cc nor clang is available")
+        try {
+            compilers.forEach { compiler ->
+                val executable = directory.resolve("native_std_${compiler.replace('/', '_')}")
+                val compile = ProcessBuilder(
+                    compiler, "-std=c17", "-fsanitize=signed-integer-overflow",
+                    "-fno-sanitize-recover=signed-integer-overflow",
+                    "-I", root.resolve("libc/include").toString(),
+                    combined.toString(), "-o", executable.toString()
+                )
+                    .redirectErrorStream(true)
+                    .start()
+                val output = compile.inputStream.bufferedReader().readText()
+                assertEquals(0, compile.waitFor(), "$compiler: $output")
+                val run = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+                val runOutput = run.inputStream.bufferedReader().readText()
+                assertEquals(0, run.waitFor(), "$compiler: $runOutput")
+                Files.deleteIfExists(executable)
+
+                val selfHostedExecutable = directory.resolve("self_hosted_${compiler.replace('/', '_')}")
+                val link = LinkDriver.link(
+                    LinkRequest(combined, selfHostedExecutable, target, resolution, cCompiler = compiler),
+                    runtimePlan
+                )
+                assertTrue(link.isSuccessful, "$compiler self-hosted link: ${link.output}")
+                val descriptor = resolution.targetDescriptor
+                    ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+                val audit = RuntimeDependencyAuditor.inspect(selfHostedExecutable, descriptor, target.buildProfile)
+                assertTrue(audit.isSuccessful, "$compiler: ${audit.diagnostics.joinToString()}")
+                val selfHostedRun = ProcessBuilder(selfHostedExecutable.toString()).redirectErrorStream(true).start()
+                val selfHostedOutput = selfHostedRun.inputStream.bufferedReader().readText()
+                assertEquals(0, selfHostedRun.waitFor(), "$compiler self-hosted run: $selfHostedOutput")
+                Files.deleteIfExists(selfHostedExecutable)
+            }
+        } finally {
+            Files.list(directory).use { paths -> paths.forEach { Files.deleteIfExists(it) } }
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    private fun fullConformanceMain(): String = """
                 int main(void) {
                     char source[32] = "native";
                     char copy[32];
@@ -167,48 +195,7 @@ class NativeStdTest {
                     if (!std_text_is_empty(copy)) return 26;
                     return cplus_std_core_version() != 3;
                 }
-            """.trimIndent())
-        }
-        val compilers = listOf("cc", "clang").filter(::runCCompiler)
-        assertTrue(compilers.isNotEmpty(), "neither cc nor clang is available")
-        try {
-            compilers.forEach { compiler ->
-                val executable = directory.resolve("native_std_${compiler.replace('/', '_')}")
-                val compile = ProcessBuilder(
-                    compiler, "-std=c17", "-fsanitize=signed-integer-overflow",
-                    "-fno-sanitize-recover=signed-integer-overflow",
-                    "-I", root.resolve("libc/include").toString(),
-                    combined.toString(), "-o", executable.toString()
-                )
-                    .redirectErrorStream(true)
-                    .start()
-                val output = compile.inputStream.bufferedReader().readText()
-                assertEquals(0, compile.waitFor(), "$compiler: $output")
-                val run = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
-                val runOutput = run.inputStream.bufferedReader().readText()
-                assertEquals(0, run.waitFor(), "$compiler: $runOutput")
-                Files.deleteIfExists(executable)
-
-                val selfHostedExecutable = directory.resolve("self_hosted_${compiler.replace('/', '_')}")
-                val link = LinkDriver.link(
-                    LinkRequest(combined, selfHostedExecutable, target, resolution, cCompiler = compiler),
-                    runtimePlan
-                )
-                assertTrue(link.isSuccessful, "$compiler self-hosted link: ${link.output}")
-                val descriptor = resolution.targetDescriptor
-                    ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
-                val audit = RuntimeDependencyAuditor.inspect(selfHostedExecutable, descriptor, target.buildProfile)
-                assertTrue(audit.isSuccessful, "$compiler: ${audit.diagnostics.joinToString()}")
-                val selfHostedRun = ProcessBuilder(selfHostedExecutable.toString()).redirectErrorStream(true).start()
-                val selfHostedOutput = selfHostedRun.inputStream.bufferedReader().readText()
-                assertEquals(0, selfHostedRun.waitFor(), "$compiler self-hosted run: $selfHostedOutput")
-                Files.deleteIfExists(selfHostedExecutable)
-            }
-        } finally {
-            Files.list(directory).use { paths -> paths.forEach { Files.deleteIfExists(it) } }
-            Files.deleteIfExists(directory)
-        }
-    }
+            """.trimIndent()
 
     private fun runCCompiler(compiler: String): Boolean = runCatching {
         ProcessBuilder(compiler, "--version").start().waitFor() == 0

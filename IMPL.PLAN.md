@@ -5253,9 +5253,12 @@ claim Windows execution and do not change the R5 completion count.
 Additional target-matrix evidence: a QEMU-conditional `NativeStdTest` compiles
 the same C+ core/memory/string/text/collection modules for Linux AArch64, links
 them with the self-hosted runtime, audits the static product for undeclared
-dependencies, and executes checks for pointer-sized aliases, signed-range
-length, null-backed spans, and overlapping moves in both directions. This
-does not change R5.1 completion status or dashboard counts.
+dependencies, and executes the full shared conformance fixture. It covers the
+error/result/option carriers; normal, empty, reversed, crossing-zero, and
+full-endpoint ranges; slices; pointer and width operations; memory alignment,
+spans, raw views, and overlapping moves; string copy/append/equality; text
+queries; and unsigned-byte operations. This remains R5.1 subtask evidence and
+does not change completion status or dashboard counts.
 
 The complete host-side generated-C fixture now also links and runs through
 `LinkDriver` and the self-hosted runtime with each available GCC/Clang driver;
@@ -5498,9 +5501,10 @@ hard-coded CLI path.
   `RuntimeFilePalTest` executes an AArch64 filesystem roundtrip and dependency
   audit; it found and fixed the Linux AArch64 `renameat` syscall number, with
   both the runtime adapter and syscall catalogue corrected.
-  `NativeStdTest` also executes the foundational C+ memory/string/text and
-  collection modules in a linked AArch64 product under QEMU with a passing
-  dependency audit.
+  `NativeStdTest` also executes the full foundational C+ core/memory/string/
+  text/collection conformance fixture in a linked AArch64 product under QEMU
+  with a passing dependency audit; the same fixture is used for the host
+  sanitizer and self-hosted runtime checks.
   This execution evidence does not close R8.3;
   the Windows target matrix remains pending. The prior x86_64 CLI run also
   exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows
