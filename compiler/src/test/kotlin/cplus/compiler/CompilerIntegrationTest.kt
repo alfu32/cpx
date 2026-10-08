@@ -16,11 +16,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
     @Test
-    fun parsedTraitDeclarationIsRejectedExplicitlyUntilSemanticRegistrationIsImplemented() {
+    fun traitDeclarationIsRegisteredBeforeTheBackendTraitLoweringStage() {
         val source = """
             struct counter_t { int value; };
             comptime trait counter_t {
@@ -30,9 +31,13 @@ class CompilerIntegrationTest {
         """.trimIndent()
         val result = CPlusCompiler().compileText(Files.createTempFile("cplus-trait-parser-stage", ".cp"), source)
 
-        val unsupported = result.diagnostics.single { it.code == "SEM415" }
-        assertTrue(unsupported.message.contains("parsed but not supported"))
-        assertTrue(result.generatedUnits.isEmpty(), "unsupported trait syntax must not silently emit a program")
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = assertNotNull(result.semanticModel)
+        val owner = model.structs.getValue("counter_t")
+        val method = model.lookupMethods(owner, "read", setOf("<main>")).single()
+        assertTrue(method.isExtension)
+        assertEquals("<main>", method.definingModule)
+        assertEquals("counter_t", method.owner.name)
     }
 
     @Test

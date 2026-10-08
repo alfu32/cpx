@@ -193,6 +193,19 @@ enum class ReceiverKind {
     STATIC
 }
 
+enum class ReceiverAdaptation {
+    VALUE,
+    ADDRESS,
+    POINTER,
+    NONE
+}
+
+data class ResolvedMethodCall(
+    val method: MethodSymbol,
+    val receiver: AstExpression,
+    val adaptation: ReceiverAdaptation
+)
+
 data class MethodSymbol(
     val symbol: Symbol,
     val owner: CType,
@@ -228,6 +241,10 @@ data class MethodLookupKey(val receiver: ReceiverIdentity, val name: String)
 class MethodRegistry private constructor(
     private val methodsByKey: Map<MethodLookupKey, List<MethodSymbol>>
 ) {
+    val extensionModules: Set<String> = methodsByKey.values.flatten()
+        .filter(MethodSymbol::isExtension)
+        .mapTo(linkedSetOf(), MethodSymbol::definingModule)
+
     fun lookup(
         receiver: ReceiverIdentity,
         name: String,
@@ -341,7 +358,8 @@ data class SemanticModel(
     val declarationCatalogue: DeclarationCatalogue = DeclarationCatalogue(emptyList()),
     val moduleTypeBindings: Map<String, Map<String, SourceTypeBinding>> = emptyMap(),
     val moduleTypeAliases: Map<String, Map<String, String>> = emptyMap(),
-    val methodRegistry: MethodRegistry = MethodRegistry.from(methods.values.flatMap { it.values })
+    val methodRegistry: MethodRegistry = MethodRegistry.from(methods.values.flatMap { it.values }),
+    val resolvedMethodCalls: Map<AstCall, ResolvedMethodCall> = emptyMap()
 ) {
     val sourceTypeCatalogue: SourceTypeCatalogue
         get() = SourceTypeCatalogue.from(symbols)
@@ -589,7 +607,27 @@ fun buildDeclarationCatalogue(
                 parameters = declaration.arguments,
                 compileTime = true
             )
-            is AstTrait -> Unit
+            is AstTrait -> declaration.methods.forEach { method ->
+                val symbol = symbolFor(method.name, method.origin, SymbolKind.METHOD)
+                val methodScope = symbolScope(symbol, moduleScope, ScopeKind.FUNCTION)
+                add(
+                    method.name,
+                    "extensionMethod",
+                    method.origin,
+                    moduleScope,
+                    symbol,
+                    method.parameters.map { it.name }
+                )
+                method.parameters.forEach { parameter ->
+                    add(
+                        parameter.name,
+                        "parameter",
+                        parameter.origin,
+                        methodScope,
+                        symbolFor(parameter.name, parameter.origin, SymbolKind.PARAMETER)
+                    )
+                }
+            }
             is AstImport -> add(declaration.alias ?: declaration.module, "import", declaration.origin, moduleScope)
         }
     }
@@ -602,6 +640,8 @@ class SemanticAnalyzer(
     private var nextSymbolId = generateSequence(1) { it + 1 }.iterator()
     private var nextTypeId = generateSequence(1) { it + 1 }.iterator()
     private var activeTypeEnvironment: Map<String, CType> = emptyMap()
+    private var activeMethodRegistry: MethodRegistry = MethodRegistry.from(emptyList())
+    private var resolvedMethodCalls: MutableMap<AstCall, ResolvedMethodCall> = IdentityHashMap()
     private val incompleteForeignTypes = mutableSetOf<String>()
 
     fun analyze(
@@ -614,6 +654,8 @@ class SemanticAnalyzer(
         nextSymbolId = generateSequence(1) { it + 1 }.iterator()
         nextTypeId = generateSequence(1) { it + 1 }.iterator()
         activeTypeEnvironment = emptyMap()
+        activeMethodRegistry = MethodRegistry.from(emptyList())
+        resolvedMethodCalls = IdentityHashMap()
         incompleteForeignTypes.clear()
         val diagnostics = DiagnosticBag()
         val symbols = mutableListOf<Symbol>()
@@ -1421,11 +1463,7 @@ class SemanticAnalyzer(
                     }
                 }
                 is AstImport -> Unit
-                is AstTrait -> diagnostics.error(
-                    "compile-time trait methods are parsed but not supported by this compiler stage",
-                    rangeOf(declaration.origin),
-                    "SEM415"
-                )
+                is AstTrait -> Unit
                 is AstComptimeFunction, is AstCpxInvocation -> Unit
             }
         }
@@ -1612,6 +1650,97 @@ class SemanticAnalyzer(
             ModuleTypeEnvironment(moduleStructs, moduleUnions, moduleEnums, moduleAliases)
         }
 
+        val methodRegistryBuilder = MethodRegistry.Builder()
+        methods.values.flatMap { it.values }.forEach(methodRegistryBuilder::add)
+        val extensionMethods = mutableListOf<Pair<AstFunction, MethodSymbol>>()
+        val extensionMethodLocals = IdentityHashMap<AstFunction, Map<String, Symbol>>()
+        program.declarations.filterIsInstance<AstTrait>().forEach { trait ->
+            val moduleName = declarationModules[trait] ?: defaultModule
+            activeTypeEnvironment = moduleTypeEnvironments[moduleName]?.knownTypes.orEmpty()
+            val declaredTarget = resolve(
+                AstTypeRef(trait.targetName, false, 0, trait.targetOrigin),
+                moduleName
+            )
+            val target = canonicalType(declaredTarget)
+            if (target !is StructType && target !is UnionType && target !is EnumType && target !is PrimitiveType ||
+                target is PrimitiveType && target.name == "void"
+            ) {
+                if (target !is UnknownType) diagnostics.error(
+                    "compile-time trait target '${trait.targetName}' must be a complete struct, union, enum, or non-void primitive",
+                    rangeOf(trait.targetOrigin),
+                    "SEM417"
+                )
+                return@forEach
+            }
+            trait.methods.forEach methodLoop@{ method ->
+                val receiver = method.parameters.firstOrNull { it.isReceiver }
+                if (receiver == null) return@methodLoop
+                val returnType = resolve(method.returnType, moduleName)
+                val parameters = method.parameters.filterNot { it.isReceiver }.map { parameter ->
+                    val parameterType = resolve(parameter.type, moduleName, parameter.arrayDimensions)
+                    newSymbol(parameter.name, SymbolKind.PARAMETER, parameterType, parameter.origin, moduleName)
+                }
+                val signature = FunctionType(
+                    TypeId(nextTypeId.next()),
+                    returnType,
+                    parameters.map { it.type },
+                    isVariadic = method.isVariadic,
+                    abi = abiOf(method.attributes, method.origin)
+                ).also(types::add)
+                val methodSymbol = newSymbol(
+                    method.name,
+                    SymbolKind.METHOD,
+                    signature,
+                    method.origin,
+                    moduleName,
+                    if (trait.isPublic) Visibility.PUBLIC else Visibility.PRIVATE,
+                    method.attributes["link_name"] ?: method.attributes["export_name"],
+                    signature.abi
+                )
+                val receiverType = if (receiver.isPointerReceiver) {
+                    PointerType(TypeId(nextTypeId.next()), target).also(types::add)
+                } else target
+                val symbol = MethodSymbol(
+                    methodSymbol,
+                    target,
+                    ReceiverIdentity.of(target),
+                    moduleName,
+                    ReceiverKind.INSTANCE,
+                    returnType,
+                    parameters,
+                    signature,
+                    receiverType,
+                    signature.abi,
+                    isExtension = true
+                )
+                if (!methodRegistryBuilder.add(symbol)) {
+                    diagnostics.error(
+                        "duplicate extension method '${method.name}' for '${target.name}' in module '$moduleName'",
+                        rangeOf(method.origin),
+                        "SEM416"
+                    )
+                    return@methodLoop
+                }
+                val methodScope = scopes.create(ScopeKind.FUNCTION, moduleScope(moduleName), methodSymbol.id)
+                functionScopes[methodSymbol.id] = methodScope
+                val locals = linkedMapOf<String, Symbol>()
+                val parametersByName = parameters.associateBy(Symbol::name)
+                method.parameters.forEach { parameter ->
+                    val local = if (parameter.isReceiver) {
+                        val type = if (parameter.isPointerReceiver) receiverType else target
+                        newSymbol(parameter.name, SymbolKind.PARAMETER, type, parameter.origin, moduleName)
+                    } else {
+                        parametersByName.getValue(parameter.name)
+                    }
+                    locals[parameter.name] = local
+                    scopes.define(methodScope, parameter.name, local.id)
+                }
+                extensionMethods += method to symbol
+                extensionMethodLocals[method] = locals
+            }
+        }
+        activeMethodRegistry = methodRegistryBuilder.build()
+
         program.declarations.filterIsInstance<AstGlobalVariable>().forEach { declaration ->
             val initializer = declaration.initializer ?: return@forEach
             val moduleName = declarationModules[declaration] ?: defaultModule
@@ -1713,6 +1842,34 @@ class SemanticAnalyzer(
             }
         }
 
+        extensionMethods.forEach { (method, methodSymbol) ->
+            val moduleName = methodSymbol.definingModule
+            val availableFunctions = visibleFunctions[moduleName] ?: functions
+            val typeEnvironment = moduleTypeEnvironments[moduleName]
+                ?: ModuleTypeEnvironment(structs, unions, enums, aliases)
+            activeTypeEnvironment = typeEnvironment.knownTypes
+            method.body?.let { statement ->
+                validateStatement(
+                    statement,
+                    methodSymbol.returnType,
+                    LinkedHashMap(extensionMethodLocals.getValue(method)),
+                    availableFunctions,
+                    globals,
+                    typeEnvironment.structs,
+                    typeEnvironment.unions,
+                    typeEnvironment.enums,
+                    typeEnvironment.aliases,
+                    foreignTypes,
+                    methods,
+                    expressionTypes,
+                    diagnostics,
+                    ::primitive,
+                    functionScopes.getValue(methodSymbol.symbol.id),
+                    scopes
+                )
+            }
+        }
+
         // Compile-time declarations have their own lexical boundary even
         // though the expanded AST normally removes them before this phase.
         program.declarations.filterIsInstance<AstComptimeFunction>().forEach { declaration ->
@@ -1792,7 +1949,9 @@ class SemanticAnalyzer(
             modulePackages.entries.groupBy({ it.value }, { it.key }).mapValues { (_, modules) -> modules.toSet() },
             foreignGlobals,
             moduleTypeBindings = resolvedModuleTypeBindings,
-            moduleTypeAliases = moduleTypeAliases.mapValues { (_, aliases) -> aliases.toMap() }
+            moduleTypeAliases = moduleTypeAliases.mapValues { (_, aliases) -> aliases.toMap() },
+            methodRegistry = activeMethodRegistry,
+            resolvedMethodCalls = resolvedMethodCalls
         )
         val cataloguedModel = initialModel.copy(
             declarationCatalogue = buildDeclarationCatalogue(
@@ -2288,8 +2447,25 @@ class SemanticAnalyzer(
                         diagnostics,
                         primitive
                     )
-                    val owner = ownerStruct(methodCall.receiver, receiverType, structs)
-                    owner?.methods?.firstOrNull { it.symbol.name == methodCall.member }
+                    val candidates = activeMethodRegistry.lookup(
+                        ReceiverIdentity.of(receiverType),
+                        methodCall.member,
+                        activeMethodRegistry.extensionModules
+                    )
+                    if (candidates.size > 1) {
+                        diagnostics.error(
+                            "ambiguous method '${methodCall.member}' for receiver '${receiverType.name}'",
+                            rangeOf(methodCall.origin),
+                            "SEM418"
+                        )
+                    }
+                    candidates.firstOrNull()?.also { method ->
+                        resolvedMethodCalls[expression] = ResolvedMethodCall(
+                            method,
+                            methodCall.receiver,
+                            receiverAdaptation(method, receiverType, methodCall.receiver, locals, globals, diagnostics)
+                        )
+                    }
                 } else null
                 val indirectSignature = if (function == null && qualifiedFunction == null && resolvedMethod == null) {
                     callableSignature(
@@ -2618,6 +2794,34 @@ class SemanticAnalyzer(
         is AstUnary -> expression.operator == "*"
         is AstParenthesized -> isAssignable(expression.expression, locals, globals)
         else -> false
+    }
+
+    private fun receiverAdaptation(
+        method: MethodSymbol,
+        actualType: CType,
+        receiver: AstExpression,
+        locals: Map<String, Symbol>,
+        globals: Map<String, Symbol>,
+        diagnostics: DiagnosticBag
+    ): ReceiverAdaptation {
+        val pointerReceiver = isPointerLike(method.receiverType)
+        val pointerValue = isPointerLike(actualType)
+        if (pointerReceiver && !pointerValue) {
+            if (!isAssignable(receiver, locals, globals)) {
+                diagnostics.error(
+                    "pointer receiver for '${method.symbol.name}' requires an addressable value",
+                    rangeOf(receiver.origin),
+                    "SEM419"
+                )
+            }
+            return ReceiverAdaptation.ADDRESS
+        }
+        if (pointerValue) return ReceiverAdaptation.POINTER
+        return if (method.owner is StructType || method.owner is UnionType) {
+            ReceiverAdaptation.ADDRESS
+        } else {
+            ReceiverAdaptation.VALUE
+        }
     }
 
     private val assignmentOperators = setOf("=", "+=", "-=", "*=", "/=", "%=")
