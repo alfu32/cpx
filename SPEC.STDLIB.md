@@ -2434,7 +2434,12 @@ setjmp
 longjmp
 ```
 
-on top of these primitives according to the target ABI.
+on top of these primitives according to the target ABI. The initial
+self-hosted Linux profile provides context adapters for x86_64 and AArch64;
+other targets MUST report the facility as unsupported until a matching ABI
+adapter is implemented and validated. Adapters SHALL preserve the target
+ABI's nonvolatile integer, stack, return-address, and floating-point register
+state. `longjmp` SHALL make a zero resume value observable as one.
 
 ---
 

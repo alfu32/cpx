@@ -4500,9 +4500,9 @@ Implemented and executed on Linux:
 
 The standard-channel implementation and its freestanding Linux behavior test
 are recorded under R5.3.3 below; the full declared C stdio surface is covered
-by the R4.4/R4.5 completion records below. AArch64 and Windows
-`setjmp`/`longjmp` execution, plus final cross-platform validation, remain
-deferred.
+by the R4.4/R4.5 completion records below. AArch64 `setjmp`/`longjmp` was
+subsequently implemented and exercised in the R8.3 Linux matrix; Windows
+context execution and final cross-platform validation remain deferred.
 
 ### R4.4.2 completion record
 
@@ -5496,9 +5496,10 @@ hard-coded CLI path.
   Clang's `__atomic_*_n` builtins reject pointers to C `_Atomic` objects; the
   SDK `stdatomic.h` now selects Clang's `__c11_atomic_*` builtins while keeping
   the existing GCC builtin path. The AArch64 C17 run then reported 43 pass,
-  0 fail, 5 unsupported: the atomic-containing basic fixture and stdio fixture
-  executed successfully and passed dependency/stream checks; context, complex
-  types, tgmath, complex arithmetic runtime, and setjmp remain capability-gated.
+  0 fail, 5 unsupported; the initial unsupported context result was resolved
+  in a later implementation update below. At that stage the basic and stdio
+  fixtures executed successfully and passed dependency/stream checks, while
+  complex types, tgmath, and complex arithmetic remained capability-gated.
   `ConformanceTest` conditionally repeats the AArch64 C17 run, and the CLI
   integration test now executes the built `examples/module_main.cp` product
   through QEMU and checks `Result: 12` when a user-mode runner is available.
@@ -5512,6 +5513,16 @@ hard-coded CLI path.
   text/collection conformance fixture in a linked AArch64 product under QEMU
   with a passing dependency audit; the same fixture is used for the host
   sanitizer and self-hosted runtime checks.
+  The AArch64 context gap is now implemented by `setjmp-aarch64.S`, which saves
+  x19–x29, SP, LR, and the AAPCS64-preserved d8–d15 registers; the target
+  runtime plan and C17 audit select this adapter, and `setjmp.h` declares the
+  corresponding 21-word context only on Linux AArch64. The shared C17 context
+  fixture now checks both a nonzero longjmp result and zero-to-one
+  normalization. Clang assembles the adapter and QEMU executes the linked
+  fixture with a clean dependency audit. The AArch64 C17 report now records
+  46 pass, 0 fail, 3 unsupported; only complex arithmetic, complex types, and
+  tgmath remain capability-gated. This does not close R8.3 or claim Windows
+  context support.
   This execution evidence does not close R8.3;
   the Windows target matrix remains pending. The prior x86_64 CLI run also
   exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows

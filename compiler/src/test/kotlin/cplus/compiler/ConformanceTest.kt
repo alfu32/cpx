@@ -80,7 +80,9 @@ class ConformanceTest {
         assertTrue(report.cases.any { it.id == "fixture.dependencies.basic" && it.status == "pass" })
         assertTrue(report.cases.any { it.id == "fixture.execution.stdio" && it.status == "pass" })
         assertTrue(report.cases.any { it.id == "fixture.streams.stdio" && it.status == "pass" })
-        assertTrue(report.cases.any { it.id == "fixture.execution.context" && it.status == "unsupported" })
+        assertTrue(report.cases.any { it.id == "libc.setjmp-context" && it.status == "pass" })
+        assertTrue(report.cases.any { it.id == "fixture.execution.context" && it.status == "pass" })
+        assertTrue(report.cases.any { it.id == "fixture.dependencies.context" && it.status == "pass" })
     }
 
     @Test

@@ -45,6 +45,7 @@ class RuntimeLinkerTest {
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         assertTrue(result.plan!!.linkerFlags.contains("-static"))
         assertTrue(result.plan.linkerFlags.none { it == "-no-pie" })
+        assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "setjmp-aarch64.S" })
     }
 
     @Test

@@ -30,7 +30,8 @@ class LinuxAarch64SourceValidationTest {
         }
         val assemblySources = listOf(
             resolution.layout.startupSource.resolve("start.S"),
-            resolution.layout.platformSource.resolve("thread-aarch64.S")
+            resolution.layout.platformSource.resolve("thread-aarch64.S"),
+            resolution.layout.runtimeSource.resolve("setjmp-aarch64.S")
         )
         val temporary = Files.createTempDirectory("cplus-linux-aarch64-source-check")
 

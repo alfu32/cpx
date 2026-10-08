@@ -87,7 +87,12 @@ object RuntimeLinker {
                 val networkAddress = resolution.layout.runtimeSource.resolve("net_address.c")
                 val networkFacade = resolution.layout.runtimeSource.resolve("net.c")
                 val platformRuntime = resolution.layout.platformSource.resolve("runtime.c")
-                val setjmp = if (descriptor.os == "linux" && descriptor.architecture == "x86_64") listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S")) else emptyList()
+                val setjmp = when {
+                    descriptor.os != "linux" -> emptyList()
+                    descriptor.architecture == "x86_64" -> listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S"))
+                    descriptor.architecture == "aarch64" -> listOf(resolution.layout.runtimeSource.resolve("setjmp-aarch64.S"))
+                    else -> emptyList()
+                }
                 val threadStartup = if (descriptor.os == "linux") {
                     listOf(resolution.layout.platformSource.resolve("thread-${descriptor.architecture}.S"))
                 } else {

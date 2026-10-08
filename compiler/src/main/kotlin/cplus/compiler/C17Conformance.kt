@@ -107,8 +107,13 @@ object C17ConformanceAudit {
             runtimePlan.diagnostics.joinToString("; ").ifBlank { "runtime source and startup plan is available" }
         )
 
-        val setjmpPath = resolution.layout.runtimeSource.resolve("setjmp-x86_64.S")
-        val supportsSetjmp = descriptor.os == "linux" && descriptor.architecture == "x86_64"
+        val setjmpPath = when (descriptor.architecture) {
+            "x86_64" -> resolution.layout.runtimeSource.resolve("setjmp-x86_64.S")
+            "aarch64" -> resolution.layout.runtimeSource.resolve("setjmp-aarch64.S")
+            else -> null
+        }
+        val supportsSetjmp = descriptor.os == "linux" && setjmpPath != null
+        val setjmpPresent = setjmpPath?.let(Files::isRegularFile) == true
         cases += ConformanceCase(
             "libc.setjmp-context",
             ConformanceArea.LIBC,
@@ -116,12 +121,12 @@ object C17ConformanceAudit {
             "c17",
             when {
                 !supportsSetjmp -> "unsupported"
-                Files.isRegularFile(setjmpPath) -> "pass"
+                setjmpPresent -> "pass"
                 else -> "fail"
             },
             when {
-                supportsSetjmp && Files.isRegularFile(setjmpPath) -> "Linux x86_64 context adapter is present"
-                supportsSetjmp -> "Linux x86_64 context adapter is missing: $setjmpPath"
+                supportsSetjmp && setjmpPresent -> "Linux ${descriptor.architecture} context adapter is present"
+                supportsSetjmp -> "Linux ${descriptor.architecture} context adapter is missing: $setjmpPath"
                 else -> "target-specific setjmp/longjmp adapter is not implemented for this target"
             }
         )
@@ -161,7 +166,7 @@ object C17ConformanceFixtures {
         C17Fixture(
             "context",
             "c17-context.c",
-            { descriptor -> descriptor.os == "linux" && descriptor.architecture == "x86_64" }
+            { descriptor -> descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64") }
         ),
         C17Fixture(
             "stdio",
