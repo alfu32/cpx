@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    33/53 evidenced on Linux
+Roadmap leaf tasks:    34/53 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.2.2 — implement file seek and path metadata adapters
+Current task:          R5.2.3 — implement directory mutation and iteration adapters
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,12 +22,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
-R5 [DOING] 1/9  native std and platform-service work remains open
+R5 [DOING] 2/9  native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       33/53 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       34/53 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -37,7 +37,7 @@ below. Its current execution sequence is:
 
 1. R5.1 — finish Linux-side native std conformance using the verified primitive
    and type-import contracts; retain its open status until the final target gate.
-2. R5.2.2–R5.2.4 and R5.3–R5.5, then R6–R7 — continue Linux implementation
+2. R5.2.3–R5.2.4 and R5.3–R5.5, then R6–R7 — continue Linux implementation
    and target capability modeling without running Windows tests early.
 3. Final validation — run the deferred Windows ABI/caller and PAL checks (including the
    open R3.1.3 LLP64 execution gate), patch platform issues, then close R8.
@@ -4077,7 +4077,7 @@ dependencies.
   the five numbered leaves below and is not counted separately;
   - R5.2.1 [DONE] — define and declare the version-3 file PAL ABI, portable
     metadata and directory-entry contracts, and stable buffer-too-small error;
-  - R5.2.2 [TODO] — implement file seek and path metadata in Linux and Windows
+  - R5.2.2 [DONE] — implement file seek and path metadata in Linux and Windows
     adapters, with executable Linux checks and target-layout validation;
   - R5.2.3 [TODO] — implement directory create/remove and UTF-8 directory
     iteration in Linux and Windows adapters, with executable Linux checks;
@@ -4105,6 +4105,14 @@ declarations agree on version 3, stable error codes, operations, and the
 checks its size, alignment, member offsets, and declarations against Linux and
 Windows x86_64/AArch64 descriptors; `./gradlew build` passes on Linux. The
 Windows entries are descriptor-model checks only, not execution evidence.
+
+R5.2.2 acceptance evidence: Linux x86_64 PAL execution covers seek relative to
+the current position and end-of-file, path metadata size/kind/timestamp fields,
+stable invalid-handle errors, and successful file roundtrip behavior through
+`RuntimeFilePalTest`; Linux/AArch64 syscall selection and Windows ABI layouts
+remain target-modeled. The Linux and Windows adapter implementations are
+present, but Windows execution is explicitly deferred to R5.2.5. The complete
+`./gradlew build` passes on Linux.
 
 ### R5.1 status audit
 

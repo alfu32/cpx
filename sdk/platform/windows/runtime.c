@@ -3,6 +3,22 @@
 typedef void* __cplus_handle;
 typedef unsigned long __cplus_dword;
 typedef int __cplus_bool;
+typedef struct __cplus_filetime {
+    unsigned long low;
+    unsigned long high;
+} __cplus_filetime;
+typedef struct __cplus_by_handle_file_information {
+    __cplus_dword attributes;
+    __cplus_filetime creation_time;
+    __cplus_filetime access_time;
+    __cplus_filetime write_time;
+    __cplus_dword volume_serial_number;
+    __cplus_dword size_high;
+    __cplus_dword size_low;
+    __cplus_dword link_count;
+    __cplus_dword file_index_high;
+    __cplus_dword file_index_low;
+} __cplus_by_handle_file_information;
 
 __declspec(dllimport) __cplus_handle __stdcall GetStdHandle(__cplus_dword kind);
 __declspec(dllimport) __cplus_handle __stdcall GetProcessHeap(void);
@@ -42,6 +58,16 @@ __declspec(dllimport) __cplus_bool __stdcall ReadFile(
     void* overlapped
 );
 __declspec(dllimport) __cplus_bool __stdcall CloseHandle(__cplus_handle handle);
+__declspec(dllimport) __cplus_bool __stdcall GetFileInformationByHandle(
+    __cplus_handle handle,
+    __cplus_by_handle_file_information* information
+);
+__declspec(dllimport) __cplus_bool __stdcall SetFilePointerEx(
+    __cplus_handle handle,
+    long long distance,
+    long long* new_position,
+    __cplus_dword move_method
+);
 __declspec(dllimport) __cplus_bool __stdcall MoveFileExW(
     const unsigned short* existing_path,
     const unsigned short* new_path,
@@ -61,6 +87,9 @@ __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(__cplus_dw
 #define __CPLUS_OPEN_ALWAYS 4UL
 #define __CPLUS_TRUNCATE_EXISTING 5UL
 #define __CPLUS_FILE_ATTRIBUTE_NORMAL 0x80UL
+#define __CPLUS_FILE_ATTRIBUTE_DIRECTORY 0x10UL
+#define __CPLUS_FILE_ATTRIBUTE_DEVICE 0x40UL
+#define __CPLUS_FILE_FLAG_BACKUP_SEMANTICS 0x02000000UL
 #define __CPLUS_MOVEFILE_REPLACE_EXISTING 1UL
 #define __CPLUS_MEM_COMMIT 0x1000UL
 #define __CPLUS_MEM_RESERVE 0x2000UL
@@ -73,6 +102,7 @@ static long cplus_normalize_windows_error(void) {
     if (error == 2 || error == 3) return CPLUS_PAL_NOT_FOUND;
     if (error == 5) return CPLUS_PAL_ACCESS_DENIED;
     if (error == 87) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (error == 1 || error == 50) return CPLUS_PAL_UNSUPPORTED;
     return CPLUS_PAL_IO_ERROR;
 }
 
@@ -167,6 +197,71 @@ long long platform_file_write(long long handle, const void* buffer, unsigned lon
 int platform_file_close(long long handle) {
     if ((void*)handle == __CPLUS_INVALID_HANDLE) return (int)CPLUS_PAL_INVALID_ARGUMENT;
     return CloseHandle((__cplus_handle)handle) ? 0 : (int)cplus_normalize_windows_error();
+}
+
+long long platform_file_seek(long long handle, long long offset, unsigned int origin) {
+    long long position = 0;
+    if ((void*)handle == __CPLUS_INVALID_HANDLE || origin > CPLUS_SEEK_END) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (!SetFilePointerEx((__cplus_handle)handle, offset, &position, origin)) {
+        return cplus_normalize_windows_error();
+    }
+    return position < 0 ? CPLUS_PAL_INVALID_ARGUMENT : position;
+}
+
+int platform_file_metadata(const char* path, cplus_file_metadata_t* metadata) {
+    static const unsigned long long windows_epoch_ticks = 116444736000000000ULL;
+    static const unsigned long long ticks_per_second = 10000000ULL;
+    unsigned short* wide_path;
+    __cplus_handle handle;
+    __cplus_by_handle_file_information information;
+    unsigned long long file_ticks;
+    unsigned long long delta;
+    if (!path || !metadata) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    wide_path = cplus_windows_path(path);
+    if (!wide_path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    handle = CreateFileW(
+        wide_path,
+        0,
+        __CPLUS_FILE_SHARE_ALL,
+        (void*)0,
+        __CPLUS_OPEN_EXISTING,
+        __CPLUS_FILE_ATTRIBUTE_NORMAL | __CPLUS_FILE_FLAG_BACKUP_SEMANTICS,
+        (void*)0
+    );
+    cplus_windows_free_path(wide_path);
+    if (handle == __CPLUS_INVALID_HANDLE) return (int)cplus_normalize_windows_error();
+    if (!GetFileInformationByHandle(handle, &information)) {
+        int error = (int)cplus_normalize_windows_error();
+        CloseHandle(handle);
+        return error;
+    }
+    CloseHandle(handle);
+
+    file_ticks = ((unsigned long long)information.write_time.high << 32) |
+        (unsigned long long)information.write_time.low;
+    metadata->size_bytes = ((unsigned long long)information.size_high << 32) |
+        (unsigned long long)information.size_low;
+    if (file_ticks >= windows_epoch_ticks) {
+        delta = file_ticks - windows_epoch_ticks;
+        if (delta / ticks_per_second > 0x7fffffffffffffffULL) return (int)CPLUS_PAL_IO_ERROR;
+        metadata->modified_seconds_utc = (long long)(delta / ticks_per_second);
+        metadata->modified_nanoseconds = (unsigned int)((delta % ticks_per_second) * 100ULL);
+    } else {
+        delta = windows_epoch_ticks - file_ticks;
+        metadata->modified_seconds_utc = -(long long)(delta / ticks_per_second);
+        if (delta % ticks_per_second != 0) {
+            metadata->modified_seconds_utc -= 1;
+            metadata->modified_nanoseconds = (unsigned int)((ticks_per_second - delta % ticks_per_second) * 100ULL);
+        } else {
+            metadata->modified_nanoseconds = 0;
+        }
+    }
+    if (information.attributes & __CPLUS_FILE_ATTRIBUTE_DIRECTORY) metadata->kind = CPLUS_FILE_KIND_DIRECTORY;
+    else if (information.attributes & __CPLUS_FILE_ATTRIBUTE_DEVICE) metadata->kind = CPLUS_FILE_KIND_OTHER;
+    else metadata->kind = CPLUS_FILE_KIND_REGULAR;
+    metadata->reserved0 = 0;
+    metadata->reserved1 = 0;
+    return 0;
 }
 
 int platform_file_rename(const char* source, const char* target) {

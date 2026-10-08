@@ -93,6 +93,42 @@ static long cplus_linux_syscall6(long number, long first, long second, long thir
 }
 #endif
 
+struct cplus_linux_statx_timestamp {
+    long long seconds;
+    unsigned int nanoseconds;
+    int reserved;
+};
+
+struct cplus_linux_statx {
+    unsigned int mask;
+    unsigned int block_size;
+    unsigned long long attributes;
+    unsigned int link_count;
+    unsigned int user_id;
+    unsigned int group_id;
+    unsigned short mode;
+    unsigned short reserved0;
+    unsigned long long inode;
+    unsigned long long size;
+    unsigned long long blocks;
+    unsigned long long attributes_mask;
+    struct cplus_linux_statx_timestamp access_time;
+    struct cplus_linux_statx_timestamp birth_time;
+    struct cplus_linux_statx_timestamp change_time;
+    struct cplus_linux_statx_timestamp modification_time;
+    unsigned int device_major;
+    unsigned int device_minor;
+    unsigned int filesystem_major;
+    unsigned int filesystem_minor;
+    unsigned long long mount_id;
+    unsigned int direct_io_memory_alignment;
+    unsigned int direct_io_offset_alignment;
+    unsigned long long reserved1[12];
+};
+
+_Static_assert(sizeof(struct cplus_linux_statx_timestamp) == 16, "Linux statx timestamp ABI changed");
+_Static_assert(sizeof(struct cplus_linux_statx) == 256, "Linux statx ABI changed");
+
 void* platform_page_allocate(unsigned long long page_count) {
     unsigned long long bytes;
     if (page_count == 0 || page_count > 0x7fffffffffffffffULL / CPLUS_PAL_PAGE_SIZE) return (void*)0;
@@ -197,6 +233,45 @@ int platform_file_close(long long handle) {
     (void)handle;
     return (int)CPLUS_PAL_UNSUPPORTED;
 #endif
+}
+
+long long platform_file_seek(long long handle, long long offset, unsigned int origin) {
+    if (handle < 0 || origin > CPLUS_SEEK_END) return CPLUS_PAL_INVALID_ARGUMENT;
+#if defined(__x86_64__)
+    return cplus_normalize_linux_result(cplus_linux_syscall3(8, (long)handle, (long)offset, (long)origin));
+#elif defined(__aarch64__)
+    return cplus_normalize_linux_result(cplus_linux_syscall3(62, (long)handle, (long)offset, (long)origin));
+#else
+    (void)offset;
+    (void)origin;
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+}
+
+int platform_file_metadata(const char* path, cplus_file_metadata_t* metadata) {
+    struct cplus_linux_statx status;
+    long result;
+    if (!path || !metadata) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall6(332, -100, (long)path, 0, 0x7ff, (long)&status, 0);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall6(291, -100, (long)path, 0, 0x7ff, (long)&status, 0);
+#else
+    (void)status;
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    result = cplus_normalize_linux_result(result);
+    if (result < 0) return (int)result;
+
+    metadata->size_bytes = status.size;
+    metadata->modified_seconds_utc = status.modification_time.seconds;
+    metadata->modified_nanoseconds = status.modification_time.nanoseconds;
+    if ((status.mode & 0170000) == 0100000) metadata->kind = CPLUS_FILE_KIND_REGULAR;
+    else if ((status.mode & 0170000) == 0040000) metadata->kind = CPLUS_FILE_KIND_DIRECTORY;
+    else metadata->kind = CPLUS_FILE_KIND_OTHER;
+    metadata->reserved0 = 0;
+    metadata->reserved1 = 0;
+    return 0;
 }
 
 int platform_file_rename(const char* source, const char* target) {
