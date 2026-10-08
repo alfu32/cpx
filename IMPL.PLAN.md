@@ -5519,8 +5519,11 @@ hard-coded CLI path.
   corresponding 21-word context only on Linux AArch64. The shared C17 context
   fixture now checks both a nonzero longjmp result and zero-to-one
   normalization. Clang assembles the adapter and QEMU executes the linked
-  fixture with a clean dependency audit. The AArch64 C17 report now records
-  46 pass, 0 fail, 3 unsupported; only complex arithmetic, complex types, and
+  fixture with a clean dependency audit. A dedicated AArch64 ABI stress test
+  additionally seeds x19–x29 and d8–d15 with distinct sentinels, overwrites
+  them after `setjmp`, and verifies `longjmp` restores every value; its linked
+  image also passes the dependency audit. The AArch64 C17 report now records 46
+  pass, 0 fail, 3 unsupported; only complex arithmetic, complex types, and
   tgmath remain capability-gated. This does not close R8.3 or claim Windows
   context support.
   This execution evidence does not close R8.3;
