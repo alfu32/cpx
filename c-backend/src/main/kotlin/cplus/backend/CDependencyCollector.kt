@@ -126,17 +126,14 @@ class CDependencyCollector {
         }
     }
 
-    private fun includeForModule(module: String): String? = when (module) {
-        "c.stdio" -> "stdio.h"
-        "c.stddef" -> "stddef.h"
-        "c.stdlib" -> "stdlib.h"
-        "c.math" -> "math.h"
-        "c.complex" -> "complex.h"
-        "c.string" -> "string.h"
-        "c.ctype" -> "ctype.h"
-        "c.time" -> "time.h"
-        "c.stdint" -> "stdint.h"
-        "c.stdarg" -> "stdarg.h"
-        else -> null
+    private fun includeForModule(module: String): String? {
+        val relative = when {
+            module.startsWith("c.") -> module.removePrefix("c.").replace('.', '/')
+            module.startsWith("c/") -> module.removePrefix("c/")
+            else -> return null
+        }
+        val segments = relative.split('/')
+        if (segments.isEmpty() || segments.any { !it.matches(Regex("[A-Za-z_][A-Za-z0-9_-]*")) }) return null
+        return segments.dropLast(1).plus(segments.last() + ".h").joinToString("/")
     }
 }

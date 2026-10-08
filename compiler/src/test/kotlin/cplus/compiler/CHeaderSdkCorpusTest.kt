@@ -125,6 +125,11 @@ class CHeaderSdkCorpusTest {
                     semanticErrors.isEmpty(),
                     "$module declarations are parseable but not semantically importable: ${semanticErrors.joinToString { "${it.code}: ${it.message}" }}"
                 )
+                if (module == "c.stdio") {
+                    val printf = assertNotNull(semantic.model?.foreignFunctions?.get("printf"))
+                    assertEquals(1, printf.parameters.size, "printf must retain its fixed format parameter")
+                    assertTrue(printf.isVariadic, "printf must retain its variadic tail")
+                }
             }
         }
     }
@@ -164,6 +169,46 @@ class CHeaderSdkCorpusTest {
         assertEquals(header.toAbsolutePath().normalize(), coucou.externalSource)
         assertEquals(1, coucou.externalLine)
         assertNull(CHeaderImportService().declarations("c.demo.coucou")["coucou"])
+    }
+
+    @Test
+    fun compilesAndRunsImportFromDiscoveredCustomHeader() {
+        val compiler = findExecutable("cc") ?: return
+        val includeRoot = Files.createTempDirectory("cplus-custom-header-build")
+        val demo = Files.createDirectories(includeRoot.resolve("demo"))
+        Files.writeString(
+            demo.resolve("coucou.h"),
+            "static inline int coucou(void) { return 42; }\n"
+        )
+        val sourcePath = Files.createTempDirectory("cplus-custom-header-source").resolve("main.cp")
+        val result = CPlusCompiler().compileText(
+            sourcePath,
+            "import { coucou } from c.demo.coucou;\nint main() { return coucou() == 42 ? 0 : 1; }",
+            cCompiler = compiler,
+            cIncludeDirectories = listOf(includeRoot)
+        )
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = assertNotNull(result.generatedUnits.singleOrNull()).text
+        assertTrue(generated.contains("#include <demo/coucou.h>"))
+        assertFalse(generated.contains("static inline int coucou"), "header function bodies must remain provider-owned")
+        val cFile = sourcePath.resolveSibling("main.c")
+        val executable = sourcePath.resolveSibling(if (System.getProperty("os.name").lowercase().contains("windows")) "main.exe" else "main")
+        Files.writeString(cFile, generated)
+        val process = ProcessBuilder(compiler, "-std=c17", "-I", includeRoot.toString(), cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        assertEquals(0, process.waitFor(), output)
+        assertEquals(0, ProcessBuilder(executable.toString()).start().waitFor())
+
+        val missing = CPlusCompiler().compileText(
+            sourcePath.resolveSibling("missing.cp"),
+            "import { not_in_header } from c.demo.coucou;\nint main() { return 0; }",
+            cCompiler = compiler,
+            cIncludeDirectories = listOf(includeRoot)
+        )
+        assertFalse(missing.isSuccessful)
+        assertTrue(missing.diagnostics.any { it.code == "SEM408" })
     }
 
     private fun findExecutable(name: String): String? = System.getenv("PATH").orEmpty()

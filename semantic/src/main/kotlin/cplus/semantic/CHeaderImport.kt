@@ -64,7 +64,7 @@ data class CSourceUnit(
  * semantic catalogue instead of being guessed.
  */
 class CHeaderImportService(
-    private val configuredHeaders: Map<String, String> = defaultHeaders
+    private val configuredHeaders: Map<String, String> = emptyMap()
 ) {
     fun declarations(module: String): Map<String, CHeaderDeclaration> =
         configuredHeaders[module].orEmpty().let(::parse)
@@ -90,7 +90,7 @@ class CHeaderImportService(
 
     private fun safeMacroDeclaration(macro: CHeaderMacro): CHeaderDeclaration? {
         if (macro.parameters != null) return null
-        val value = macro.replacement.trim()
+        val value = macro.replacement.trim().let(::unwrapIntegerParentheses)
         val type = when {
             C_STRING_LITERAL.matches(value) -> "char*"
             C_CHARACTER_LITERAL.matches(value) -> "int"
@@ -134,6 +134,34 @@ class CHeaderImportService(
         parseTypes(text).forEach { declarations[it.name] = it }
         parseGlobals(text).forEach { if (it.name !in declarations) declarations[it.name] = it }
         return declarations
+    }
+
+    private fun unwrapIntegerParentheses(value: String): String {
+        var result = value.trim()
+        while (result.startsWith('(') && result.endsWith(')')) {
+            var depth = 0
+            var enclosesWholeExpression = true
+            result.forEachIndexed { index, character ->
+                when (character) {
+                    '(' -> depth++
+                    ')' -> depth--
+                }
+                if (depth == 0 && index != result.lastIndex) enclosesWholeExpression = false
+            }
+            if (!enclosesWholeExpression || depthIsUnbalanced(result)) break
+            result = result.substring(1, result.lastIndex).trim()
+        }
+        return result
+    }
+
+    private fun depthIsUnbalanced(value: String): Boolean {
+        var depth = 0
+        value.forEach { character ->
+            if (character == '(') depth++
+            if (character == ')') depth--
+            if (depth < 0) return true
+        }
+        return depth != 0
     }
 
     private fun parseGlobals(text: String): List<CHeaderDeclaration> {
@@ -640,7 +668,7 @@ class CHeaderImportService(
     private fun normalizeType(type: String): String = type
         .trim()
         .replace(Regex("\\s+"), " ")
-        .removePrefix("extern ")
+        .replace(Regex("^(?:(?:extern|static|inline|__inline|__inline__)\\s+)+"), "")
         .trim()
 
     companion object {
@@ -649,154 +677,5 @@ class CHeaderImportService(
         private val C_INTEGER_LITERAL = Regex("[+-]?(?:0[xX][0-9A-Fa-f]+|[0-9]+)(?:[uU](?:ll|LL|l|L)?|(?:ll|LL|l|L)[uU]?)?")
         private val C_FLOAT_LITERAL = Regex("[+-]?(?:(?:[0-9]+\\.[0-9]*|\\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?)[fFlL]?")
 
-        private fun complexHeaderDeclarations(): String = buildList {
-            val complexResultFunctions = listOf(
-                "cacos", "casin", "catan", "ccos", "csin", "ctan", "cacosh", "casinh", "catanh",
-                "ccosh", "csinh", "ctanh", "cexp", "clog", "csqrt", "conj", "cproj"
-            )
-            val realResultFunctions = listOf("cabs", "carg", "cimag", "creal")
-            val types = listOf(
-                Triple("float", "f", "float _Complex"),
-                Triple("double", "", "double _Complex"),
-                Triple("long double", "l", "long double _Complex")
-            )
-            types.forEach { (realType, suffix, complexType) ->
-                complexResultFunctions.forEach { name ->
-                    add("extern $complexType $name$suffix($complexType value);")
-                }
-                add("extern $complexType cpow$suffix($complexType left, $complexType right);")
-                realResultFunctions.forEach { name ->
-                    add("extern $realType $name$suffix($complexType value);")
-                }
-            }
-        }.joinToString("\n")
-
-        private fun mathHeaderDeclarations(): String = buildList {
-            add("typedef float float_t;")
-            add("typedef double double_t;")
-            val realTypes = listOf("float" to "f", "double" to "", "long double" to "l")
-
-            fun variants(
-                baseName: String,
-                resultType: (String) -> String,
-                parameters: (String) -> List<String>
-            ) {
-                realTypes.forEach { (type, suffix) ->
-                    val name = "$baseName$suffix"
-                    add("extern ${resultType(type)} $name(${parameters(type).joinToString(", ")});")
-                }
-            }
-
-            listOf(
-                "acos", "asin", "atan", "acosh", "asinh", "atanh", "cos", "sin", "tan",
-                "cosh", "sinh", "tanh", "exp", "exp2", "expm1", "log", "log10", "log1p",
-                "log2", "logb", "cbrt", "fabs", "sqrt", "erf", "erfc", "lgamma", "tgamma",
-                "ceil", "floor", "nearbyint", "rint", "round", "trunc"
-            ).forEach { name -> variants(name, { it }) { type -> listOf("$type value") } }
-
-            listOf("atan2", "fmod", "remainder", "hypot", "pow", "copysign", "nextafter", "fdim", "fmax", "fmin")
-                .forEach { name -> variants(name, { it }) { type -> listOf("$type left", "$type right") } }
-
-            variants("frexp", { it }) { type -> listOf("$type value", "int* exponent") }
-            variants("modf", { it }) { type -> listOf("$type value", "$type* integral") }
-            variants("ilogb", { "int" }) { type -> listOf("$type value") }
-            variants("ldexp", { it }) { type -> listOf("$type value", "int exponent") }
-            variants("scalbn", { it }) { type -> listOf("$type value", "int exponent") }
-            variants("scalbln", { it }) { type -> listOf("$type value", "long int exponent") }
-            variants("lrint", { "long int" }) { type -> listOf("$type value") }
-            variants("llrint", { "long long int" }) { type -> listOf("$type value") }
-            variants("lround", { "long int" }) { type -> listOf("$type value") }
-            variants("llround", { "long long int" }) { type -> listOf("$type value") }
-            variants("nan", { it }) { _ -> listOf("const char* tag") }
-            variants("nexttoward", { it }) { type -> listOf("$type value", "long double direction") }
-            variants("remquo", { it }) { type -> listOf("$type left", "$type right", "int* quotient") }
-            variants("fma", { it }) { type -> listOf("$type first", "$type second", "$type third") }
-        }.joinToString("\n")
-
-        private val defaultHeaders = mapOf(
-            "c.stdio" to """
-                extern int printf(const char* format, ...);
-                extern int fprintf(FILE* stream, const char* format, ...);
-                extern int sprintf(char* buffer, const char* format, ...);
-                extern int snprintf(char* buffer, size_t size, const char* format, ...);
-                extern int vprintf(const char* format, va_list arguments);
-                extern int vfprintf(FILE* stream, const char* format, va_list arguments);
-                extern int vsprintf(char* buffer, const char* format, va_list arguments);
-                extern int vsnprintf(char* buffer, size_t size, const char* format, va_list arguments);
-                extern int puts(const char* text);
-                extern int putchar(int character);
-                extern int getchar(void);
-                extern FILE* fopen(const char* path, const char* mode);
-                extern int fclose(FILE* stream);
-                extern int fflush(FILE* stream);
-                extern int fgetc(FILE* stream);
-                extern int fputc(int character, FILE* stream);
-                extern size_t fread(void* buffer, size_t size, size_t count, FILE* stream);
-                extern size_t fwrite(const void* buffer, size_t size, size_t count, FILE* stream);
-            """.trimIndent(),
-            "c.stddef" to """
-                typedef unsigned long size_t;
-                typedef long ptrdiff_t;
-                typedef long max_align_t;
-            """.trimIndent(),
-            "c.math" to mathHeaderDeclarations(),
-            "c.complex" to complexHeaderDeclarations(),
-            "c.stdlib" to """
-                extern int abs(int value);
-                extern long labs(long value);
-                extern int atoi(const char* text);
-                extern long strtol(const char* text, char** end, int base);
-                extern unsigned long strtoul(const char* text, char** end, int base);
-                extern void* malloc(size_t size);
-                extern void* calloc(size_t count, size_t size);
-                extern void* realloc(void* pointer, size_t size);
-                extern void free(void* pointer);
-                extern int rand(void);
-                extern void srand(unsigned int seed);
-                extern void exit(int status);
-            """.trimIndent(),
-            "c.string" to """
-                extern size_t strlen(const char* text);
-                extern char* strcpy(char* destination, const char* source);
-                extern char* strncpy(char* destination, const char* source, size_t count);
-                extern int strcmp(const char* left, const char* right);
-                extern int strncmp(const char* left, const char* right, size_t count);
-                extern void* memcpy(void* destination, const void* source, size_t count);
-                extern void* memmove(void* destination, const void* source, size_t count);
-                extern void* memset(void* destination, int value, size_t count);
-                extern char* strchr(const char* text, int character);
-                extern char* strstr(const char* text, const char* pattern);
-            """.trimIndent(),
-            "c.ctype" to """
-                extern int isalnum(int character);
-                extern int isalpha(int character);
-                extern int isdigit(int character);
-                extern int isspace(int character);
-                extern int islower(int character);
-                extern int isupper(int character);
-                extern int tolower(int character);
-                extern int toupper(int character);
-            """.trimIndent(),
-            "c.time" to """
-                typedef long time_t;
-                typedef long clock_t;
-                extern time_t time(time_t* result);
-                extern double difftime(time_t end, time_t start);
-                extern clock_t clock(void);
-            """.trimIndent(),
-            "c.stdint" to """
-                typedef signed char int8_t;
-                typedef unsigned char uint8_t;
-                typedef short int16_t;
-                typedef unsigned short uint16_t;
-                typedef int int32_t;
-                typedef unsigned int uint32_t;
-                typedef long long int64_t;
-                typedef unsigned long long uint64_t;
-            """.trimIndent(),
-            "c.stdarg" to """
-                typedef void* va_list;
-            """.trimIndent()
-        )
     }
 }

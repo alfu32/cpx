@@ -191,7 +191,7 @@ class CPlusCompiler(
         val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
         if (request.sources.size <= 1) {
             val artifacts = request.sources.map {
-                compileOne(it, request.options, foreignInputs.units, headerEnvironment)
+                compileOne(it, request.options, foreignInputs, headerEnvironment)
             }
             return resultOf(
                 artifacts,
@@ -268,7 +268,14 @@ class CPlusCompiler(
         }
         val result = if (request.sources.size <= 1) {
             val artifacts = units.map {
-                compileFrontend(it, request.options, foreignInputs.units, headerEnvironment)
+                val headers = discoverCHeaders(listOf(it), headerEnvironment)
+                compileFrontend(
+                    it,
+                    request.options,
+                    foreignInputs.units + headers.units,
+                    headerEnvironment,
+                    headers.diagnostics
+                )
             }
             resultOf(
                 artifacts,
@@ -351,7 +358,16 @@ class CPlusCompiler(
         val frontends = sourceFiles.map { frontend(it, headerEnvironment) }
         if (frontends.size <= 1) {
             return resultOf(
-                frontends.map { compileFrontend(it, options, headerEnvironment = headerEnvironment) },
+                frontends.map { frontend ->
+                    val headers = discoverCHeaders(listOf(frontend), headerEnvironment)
+                    compileFrontend(
+                        frontend,
+                        options,
+                        headers.units,
+                        headerEnvironment,
+                        headers.diagnostics
+                    )
+                },
                 sdkResolution = resolvedSdk
             )
         }
@@ -378,17 +394,26 @@ class CPlusCompiler(
     private fun compileOne(
         path: Path,
         options: CompilerOptions,
-        foreignSources: List<CSourceUnit>,
+        foreignSources: ForeignInputs,
         headerEnvironment: HeaderEnvironment
     ): CompilationArtifacts {
-        return compileFrontend(frontend(path, headerEnvironment), options, foreignSources, headerEnvironment)
+        val unit = frontend(path, headerEnvironment)
+        val headers = discoverCHeaders(listOf(unit), headerEnvironment)
+        return compileFrontend(
+            unit,
+            options,
+            foreignSources.units + headers.units,
+            headerEnvironment,
+            headers.diagnostics
+        )
     }
 
     private fun compileFrontend(
         frontend: FrontendUnit,
         options: CompilerOptions,
         foreignSources: List<CSourceUnit> = emptyList(),
-        headerEnvironment: HeaderEnvironment
+        headerEnvironment: HeaderEnvironment,
+        discoveryDiagnostics: List<Diagnostic> = emptyList()
     ): CompilationArtifacts {
         val source = frontend.source
         val lexed = frontend.lexed
@@ -398,16 +423,20 @@ class CPlusCompiler(
         val semantic = context.analyzerFor(headerEnvironment).analyze(
             ast,
             foreignSources = foreignSources,
+            knownModules = foreignSources.map { it.moduleName }.toSet(),
             targetFeatures = activeTargetAbiDescriptor?.features.orEmpty(),
             targetName = activeTargetAbiDescriptor?.targetTriple ?: "selected target"
         )
         if (!semantic.isSuccessful) {
-            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
+            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics + discoveryDiagnostics)
         }
-        if (frontend.diagnostics().any { it.severity == DiagnosticSeverity.ERROR }) {
-            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
+        if ((frontend.diagnostics() + discoveryDiagnostics).any { it.severity == DiagnosticSeverity.ERROR }) {
+            return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics + discoveryDiagnostics)
         }
-        val model = semantic.model ?: return CompilationArtifacts(source, lexed, parsed, expanded, ast, semantic, null, null, frontend.closureDiagnostics)
+        val model = semantic.model ?: return CompilationArtifacts(
+            source, lexed, parsed, expanded, ast, semantic, null, null,
+            frontend.closureDiagnostics + discoveryDiagnostics
+        )
         val backend = BackendProcessingPipeline(context.cLowererFactory(model), context.cEmitter).run(ast, model)
         return CompilationArtifacts(
             source,
@@ -418,7 +447,7 @@ class CPlusCompiler(
             semantic,
             backend.lowered,
             backend.generated,
-            frontend.closureDiagnostics,
+            frontend.closureDiagnostics + discoveryDiagnostics,
             backend.header
         )
     }
@@ -435,6 +464,8 @@ class CPlusCompiler(
             "workspace compilation requires its resolved header environment"
         }
         val resolvedUnits = units ?: request.sources.map { frontend(it, headerEnvironment) }
+        val discoveredHeaders = discoverCHeaders(resolvedUnits, headerEnvironment)
+        val allForeignUnits = foreignInputs.units + discoveredHeaders.units
         val moduleGraph = ModuleGraphBuilder().build(
             resolvedUnits.map { ModuleSource(it.source, it.expanded?.program ?: it.parsed.syntax) }
         )
@@ -463,14 +494,14 @@ class CPlusCompiler(
         )
         val semantic = context.analyzerFor(headerEnvironment).analyze(
             mergedAst,
-            moduleGraph.moduleNames,
-            foreignInputs.units,
+            moduleGraph.moduleNames + allForeignUnits.map { it.moduleName },
+            allForeignUnits,
             activeTargetAbiDescriptor?.features.orEmpty(),
             activeTargetAbiDescriptor?.targetTriple ?: "selected target"
         )
         val additionalDiagnostics = first.closureDiagnostics + resolvedUnits.drop(1).flatMap { it.diagnostics() } +
             unresolvedImportCycleDiagnostics(moduleGraph, semantic.diagnostics) +
-            foreignInputs.diagnostics +
+            foreignInputs.diagnostics + discoveredHeaders.diagnostics +
             linkDiagnostics
         val base = first
         if (!semantic.isSuccessful) {
@@ -661,6 +692,33 @@ class CPlusCompiler(
                     "CIMP002"
                 )
             }
+        }
+        return ForeignInputs(units, diagnostics)
+    }
+
+    private fun discoverCHeaders(frontends: List<FrontendUnit>, environment: HeaderEnvironment): ForeignInputs {
+        val modules = frontends.asSequence()
+            .flatMap { it.ast.declarations.asSequence() }
+            .filterIsInstance<AstImport>()
+            .map { it.module }
+            .filter { it.startsWith("c.") }
+            .distinct()
+            .sorted()
+            .toList()
+        val units = mutableListOf<CSourceUnit>()
+        val diagnostics = mutableListOf<Diagnostic>()
+        val discovery = CHeaderDiscovery()
+        modules.forEach { module ->
+            val result = discovery.discover(module, environment)
+            diagnostics += result.diagnostics
+            val processed = result.preprocessed ?: return@forEach
+            val source = context.sourceRepository.put(processed.header, processed.text)
+            units += CSourceUnit(
+                source,
+                module,
+                processed.semanticMacros(),
+                processed.semanticSourceLineOrigins()
+            )
         }
         return ForeignInputs(units, diagnostics)
     }

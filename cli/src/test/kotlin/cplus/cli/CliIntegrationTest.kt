@@ -600,11 +600,17 @@ class CliIntegrationTest {
         val directory = Files.createTempDirectory("cplus-cli-foreign-language-service")
         val source = directory.resolve("main.cp")
         val uri = source.toUri().toString()
-        val text = "import { printf } from c.stdio; int main() { return printf(0); }"
-        val printfOffset = text.indexOf("printf(0")
+        val text = "import { printf } from c.stdio; int main() { return printf(\"%d\", 0); }"
+        val direct = cplus.compiler.CPlusCompiler().compileText(source, text)
+        assertTrue(direct.isSuccessful, direct.diagnostics.joinToString())
+        val printfOffset = text.lastIndexOf("printf")
+        assertTrue(
+            LspLanguageService.completion(direct, text, LspPosition(0, printfOffset + 3)).any { it.label == "printf" }
+        )
+        val jsonText = text.replace("\\", "\\\\").replace("\"", "\\\"")
         val input = listOf(
             """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}""",
-            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$text"}}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$jsonText"}}}""",
             """{"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":${printfOffset + 3}}}}""",
             """{"jsonrpc":"2.0","id":3,"method":"textDocument/hover","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":$printfOffset}}}""",
             """{"jsonrpc":"2.0","id":4,"method":"textDocument/signatureHelp","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":${printfOffset + 7}}}}""",
@@ -617,9 +623,9 @@ class CliIntegrationTest {
 
         val responses = output.toString(Charsets.UTF_8)
         assertTrue(responses.contains("signatureHelpProvider"))
-        assertTrue(responses.contains("\"label\":\"printf\""))
+        assertTrue(responses.contains("\"label\":\"printf\""), responses)
         assertTrue(responses.contains("printf("))
-        assertTrue(responses.contains("fn(...)->int"))
+        assertTrue(responses.contains("fn(char*, ...)->int"))
     }
 
     @Test

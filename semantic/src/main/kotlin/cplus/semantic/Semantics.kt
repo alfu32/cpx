@@ -556,6 +556,13 @@ class SemanticAnalyzer(
         val foreignGlobals = linkedMapOf<String, Symbol>()
         val foreignSourceFunctions = linkedMapOf<String, FunctionSymbol>()
         val moduleFunctions = linkedMapOf<String, LinkedHashMap<String, FunctionSymbol>>()
+        val foreignDeclarationsByModule = foreignSources.associate { sourceUnit ->
+            sourceUnit.moduleName to headerImportService.sourceDeclarations(
+                sourceUnit.source.text,
+                sourceUnit.macros,
+                sourceUnit.sourceLineOrigins
+            )
+        }
         val declarationModules = IdentityHashMap<AstDeclaration, String>()
         val defaultModule = "<main>"
         if (program.modules.isEmpty()) {
@@ -930,15 +937,9 @@ class SemanticAnalyzer(
             defineBinding(moduleName, name, symbol.id)
         }
 
-        fun foreignTypeModule(name: String): String? = when (name) {
-            "FILE", "fpos_t" -> "c.stdio"
-            "size_t", "ptrdiff_t", "max_align_t" -> "c.stddef"
-            "va_list" -> "c.stdarg"
-            "time_t", "clock_t" -> "c.time"
-            "int8_t", "uint8_t", "int16_t", "uint16_t",
-            "int32_t", "uint32_t", "int64_t", "uint64_t" -> "c.stdint"
-            else -> null
-        }
+        fun foreignTypeModule(name: String): String? = foreignDeclarationsByModule.entries
+            .firstOrNull { (_, declarations) -> declarations[name]?.kind == ForeignDeclarationKind.TYPE }
+            ?.key
 
         fun foreignTypeFromName(
             typeName: String,
@@ -965,7 +966,7 @@ class SemanticAnalyzer(
                 }
                 foreignTypeModule(baseName) != null -> {
                     val ownerModule = foreignTypeModule(baseName)!!
-                    val declaration = headerImportService.declarations(ownerModule)[baseName]
+                    val declaration = foreignDeclarationsByModule[ownerModule]?.get(baseName)
                     val underlying = if (baseName in CPrimitiveTypes.standardIntegerTypedefNames) {
                         primitive(baseName)
                     } else {
@@ -1074,6 +1075,13 @@ class SemanticAnalyzer(
                                 } else {
                                     primitive("int")
                                 }
+                            } else if (
+                                declaration.typeName?.let { typeName ->
+                                    Regex("^(?:struct|union|enum)\\s+${Regex.escape(declaration.name)}$")
+                                        .matches(typeName.trim())
+                                } == true
+                            ) {
+                                null
                             } else if (declaration.functionPointerType != null) {
                                 val callback = declaration.functionPointerType
                                 val returnType = foreignTypeFromName(callback.returnType, moduleName, origin)
@@ -1196,15 +1204,16 @@ class SemanticAnalyzer(
         }
 
         foreignSources.forEach { sourceUnit ->
-            headerImportService.sourceDeclarations(
-                sourceUnit.source.text,
-                sourceUnit.macros,
-                sourceUnit.sourceLineOrigins
-            ).values.forEach { declaration ->
+            foreignDeclarationsByModule[sourceUnit.moduleName].orEmpty().values.forEach { declaration ->
                 val origin = declaration.sourceRange?.let { range ->
                     Origin.Direct(SourceRange(sourceUnit.source.id, range.first, range.last + 1))
                 } ?: Origin.Synthetic(null)
-                registerHeaderDeclaration(declaration, sourceUnit.moduleName, origin, exposeGlobally = true)
+                registerHeaderDeclaration(
+                    declaration,
+                    sourceUnit.moduleName,
+                    origin,
+                    exposeGlobally = !sourceUnit.moduleName.startsWith("c.") || sourceUnit.moduleName.startsWith("c.source.")
+                )
             }
         }
 
@@ -1213,55 +1222,18 @@ class SemanticAnalyzer(
         // appear before the provider module that imports the C types underlying
         // its exported source aliases.
         program.declarations.filterIsInstance<AstImport>().forEach { declaration ->
-            headerImportService.unsupportedPreprocessorLines(declaration.module).forEach { line ->
-                diagnostics.error(
-                    "unsupported preprocessor construct in ${declaration.module}: $line",
-                    rangeOf(declaration.origin),
-                    "SEM409"
-                )
+            if (declaration.module.startsWith("c.") && declaration.module !in foreignDeclarationsByModule) {
+                headerImportService.unsupportedPreprocessorLines(declaration.module).forEach { line ->
+                    diagnostics.error(
+                        "unsupported preprocessor construct in ${declaration.module}: $line",
+                        rangeOf(declaration.origin),
+                        "SEM409"
+                    )
+                }
             }
-            if (declaration.module == "c.stdio") {
-                declaration.names.forEach { name ->
-                    when (name) {
-                        "printf" -> {
-                            val returnType = primitive("int")
-                            val signature = FunctionType(TypeId(nextTypeId.next()), returnType, emptyList(), isVariadic = true).also(types::add)
-                            val symbol = newSymbol(
-                                name,
-                                SymbolKind.FOREIGN,
-                                signature,
-                                declaration.origin,
-                                declaration.module,
-                                Visibility.PUBLIC,
-                                name
-                            )
-                            val function = FunctionSymbol(symbol, returnType, emptyList(), isVariadic = true, signature = signature)
-                            functions[name] = function
-                            moduleFunctions.getOrPut(declaration.module) { linkedMapOf() }[name] = function
-                            defineBinding(declaration.module, name, symbol.id)
-                        }
-                        "FILE" -> registerForeignType(name, declaration.module, declaration.origin)
-                        "EOF" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN)
-                        "SEEK_SET", "SEEK_CUR", "SEEK_END" -> registerForeignConstant(name, declaration.module, declaration.origin, SymbolKind.FOREIGN_ENUM_VALUE)
-                        else -> headerImportService.declarations(declaration.module)[name]?.let {
-                            registerHeaderDeclaration(it, declaration.module, declaration.origin)
-                        } ?: diagnostics.error("unsupported imported C symbol '$name' from c.stdio", rangeOf(declaration.origin), "SEM401")
-                    }
-                }
-            } else if (declaration.module == "c.stddef") {
-                declaration.names.forEach { name ->
-                    if (name == "size_t") {
-                        headerImportService.declarations(declaration.module)[name]?.let {
-                            registerHeaderDeclaration(it, declaration.module, declaration.origin)
-                        } ?: registerForeignType(name, declaration.module, declaration.origin)
-                    } else {
-                        headerImportService.declarations(declaration.module)[name]?.let {
-                            registerHeaderDeclaration(it, declaration.module, declaration.origin)
-                        } ?: diagnostics.error("unsupported imported C symbol '$name' from c.stddef", rangeOf(declaration.origin), "SEM402")
-                    }
-                }
-            } else if (declaration.module.startsWith("c.")) {
-                val declarations = headerImportService.declarations(declaration.module)
+            if (declaration.module.startsWith("c.")) {
+                val declarations = foreignDeclarationsByModule[declaration.module]
+                    ?: headerImportService.declarations(declaration.module)
                 declaration.names.forEach { name ->
                     declarations[name]?.let { registerHeaderDeclaration(it, declaration.module, declaration.origin) }
                         ?: diagnostics.error("unsupported imported C symbol '$name' from ${declaration.module}", rangeOf(declaration.origin), "SEM408")
@@ -2550,10 +2522,17 @@ class SemanticAnalyzer(
 
     private val logicalOperators = setOf("&&", "||")
 
-    private fun canonicalType(type: CType): CType = when (type) {
-        is AliasType -> canonicalType(type.target)
-        is ForeignType -> type.underlyingType?.let(::canonicalType) ?: type
-        else -> type
+    private fun canonicalType(type: CType): CType {
+        val visited = mutableSetOf<TypeId>()
+        var current = type
+        while (visited.add(current.id)) {
+            current = when (current) {
+                is AliasType -> current.target
+                is ForeignType -> current.underlyingType ?: return current
+                else -> return current
+            }
+        }
+        return current
     }
 
     private fun aggregateFields(type: CType): List<FieldSymbol> = when (val canonical = aggregateType(type)) {
