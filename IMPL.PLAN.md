@@ -5192,9 +5192,14 @@ x86_64/AArch64. Strict warning-as-error C syntax checks pass for Linux x86_64,
 Linux AArch64, Windows x86_64, and Windows AArch64. `RuntimeLinkerTest`
 confirms the common algorithm source is selected for both Linux and Windows
 runtime plans. `./gradlew build --no-daemon` passes, and the C17 report remains
-42 pass, 0 fail, 0 unsupported, and 0 planned. Windows runtime execution and
-Linux AArch64 runtime execution are still deferred; no completion credit is
-claimed for those gates.
+42 pass, 0 fail, 0 unsupported, and 0 planned. The native Windows VM now passes
+`RuntimeSyncPalTest.windowsExecutesSynchronizationAndAtomicWaitWakeThroughProductionPal`,
+covering contended mutex/once state, semaphore wait/post, condition signaling,
+and atomic wait/wake through the full runtime; its product passes dependency
+audit. The test exposed that `WaitOnAddress` and wake exports are not present in
+the VM's `Kernel32.dll` export table. The Windows resolver now searches both
+Kernel32 and KernelBase, preserving dynamic lookup and avoiding static imports.
+Linux AArch64 runtime execution remains unverified.
 
 R5.3.7.1 acceptance evidence: `RuntimeNetworkPalTest` compiles the socket C+
 API for Linux/Windows x86_64/AArch64 and checks all declared function symbols,

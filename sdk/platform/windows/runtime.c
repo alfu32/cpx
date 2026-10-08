@@ -1009,12 +1009,19 @@ static int cplus_windows_valid_atomic32(const volatile int* address) {
     return address && (((unsigned long long)(const void*)address & 3ULL) == 0);
 }
 
-static __cplus_windows_procedure cplus_windows_kernel32_procedure(const char* name) {
-    static const unsigned short module_name[] = {
-        'K', 'E', 'R', 'N', 'E', 'L', '3', '2', '.', 'D', 'L', 'L', 0
+static __cplus_windows_procedure cplus_windows_system_procedure(const char* name) {
+    static const unsigned short module_names[][16] = {
+        {'K', 'E', 'R', 'N', 'E', 'L', '3', '2', '.', 'D', 'L', 'L', 0},
+        {'K', 'E', 'R', 'N', 'E', 'L', 'B', 'A', 'S', 'E', '.', 'D', 'L', 'L', 0}
     };
-    __cplus_handle module = GetModuleHandleW(module_name);
-    return module ? GetProcAddress(module, name) : (__cplus_windows_procedure)0;
+    unsigned int index;
+    for (index = 0; index < 2; index++) {
+        __cplus_handle module = GetModuleHandleW(module_names[index]);
+        __cplus_windows_procedure procedure =
+            module ? GetProcAddress(module, name) : (__cplus_windows_procedure)0;
+        if (procedure) return procedure;
+    }
+    return (__cplus_windows_procedure)0;
 }
 
 #define __CPLUS_WINDOWS_FUNCTION(type, procedure) \
@@ -1024,7 +1031,7 @@ int platform_atomic_wait32(volatile int* address, int expected) {
     __cplus_windows_procedure procedure;
     __cplus_wait_on_address_fn wait_on_address;
     if (!cplus_windows_valid_atomic32(address)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
-    procedure = cplus_windows_kernel32_procedure("WaitOnAddress");
+    procedure = cplus_windows_system_procedure("WaitOnAddress");
     if (!procedure) return (int)CPLUS_PAL_UNSUPPORTED;
     wait_on_address = __CPLUS_WINDOWS_FUNCTION(__cplus_wait_on_address_fn, procedure);
     return wait_on_address(address, &expected, sizeof(expected), __CPLUS_INFINITE)
@@ -1038,13 +1045,13 @@ int platform_atomic_wake32(volatile int* address, unsigned int count) {
     if (!cplus_windows_valid_atomic32(address)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
     if (count == 0) return 0;
     if (count == 0xffffffffU) {
-        procedure = cplus_windows_kernel32_procedure("WakeByAddressAll");
+        procedure = cplus_windows_system_procedure("WakeByAddressAll");
         if (!procedure) return (int)CPLUS_PAL_UNSUPPORTED;
         wake_by_address = __CPLUS_WINDOWS_FUNCTION(__cplus_wake_by_address_fn, procedure);
         wake_by_address((void*)address);
         return 0;
     }
-    procedure = cplus_windows_kernel32_procedure("WakeByAddressSingle");
+    procedure = cplus_windows_system_procedure("WakeByAddressSingle");
     if (!procedure) return (int)CPLUS_PAL_UNSUPPORTED;
     wake_by_address = __CPLUS_WINDOWS_FUNCTION(__cplus_wake_by_address_fn, procedure);
     if (count > 0x7fffffffU) count = 0x7fffffffU;

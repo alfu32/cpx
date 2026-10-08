@@ -9,6 +9,148 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeSyncPalTest {
     @Test
+    fun windowsExecutesSynchronizationAndAtomicWaitWakeThroughProductionPal() {
+        assumeTrue(System.getProperty("os.name").contains("windows", ignoreCase = true))
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-windows-runtime-sync")
+        val source = directory.resolve("sync_test.c").also {
+            Files.writeString(it, """
+                #include "cplus_platform.h"
+
+                static volatile int mutex_state;
+                static volatile int once_state;
+                static volatile int semaphore_count;
+                static volatile int condition_sequence;
+                static volatile int condition_waiting;
+                static volatile int condition_ready;
+                static volatile int atomic_value;
+                static volatile int atomic_waiting;
+                static volatile int protected_count;
+                static volatile int worker_error;
+
+                static void* worker(void* context) {
+                    int index;
+                    int entered;
+                    (void)context;
+                    entered = platform_once_enter(&once_state);
+                    if (entered == 0) {
+                        if (platform_once_complete(&once_state) != 0) {
+                            __atomic_store_n(&worker_error, 1, __ATOMIC_RELEASE);
+                            return (void*)1;
+                        }
+                    } else if (entered != 1) {
+                        __atomic_store_n(&worker_error, 2, __ATOMIC_RELEASE);
+                        return (void*)2;
+                    }
+                    for (index = 0; index < 500; index++) {
+                        if (platform_mutex_lock(&mutex_state) != 0) {
+                            __atomic_store_n(&worker_error, 3, __ATOMIC_RELEASE);
+                            return (void*)3;
+                        }
+                        protected_count++;
+                        if (platform_mutex_unlock(&mutex_state) != 0) {
+                            __atomic_store_n(&worker_error, 4, __ATOMIC_RELEASE);
+                            return (void*)4;
+                        }
+                    }
+                    {
+                        int wait_result = platform_semaphore_wait(&semaphore_count);
+                        if (wait_result != 0) {
+                            __atomic_store_n(&worker_error, -wait_result, __ATOMIC_RELEASE);
+                            return (void*)5;
+                        }
+                    }
+                    return (void*)0;
+                }
+
+                static void* condition_worker(void* context) {
+                    (void)context;
+                    if (platform_mutex_lock(&mutex_state) != 0) return (void*)1;
+                    __atomic_store_n(&condition_waiting, 1, __ATOMIC_RELEASE);
+                    while (!__atomic_load_n(&condition_ready, __ATOMIC_ACQUIRE))
+                        if (platform_condition_wait(&condition_sequence, &mutex_state) != 0) return (void*)2;
+                    return platform_mutex_unlock(&mutex_state) == 0 ? (void*)0 : (void*)3;
+                }
+
+                static void* atomic_worker(void* context) {
+                    (void)context;
+                    __atomic_store_n(&atomic_waiting, 1, __ATOMIC_RELEASE);
+                    while (__atomic_load_n(&atomic_value, __ATOMIC_ACQUIRE) == 0)
+                        if (platform_atomic_wait32(&atomic_value, 0) < 0) return (void*)1;
+                    return (void*)0;
+                }
+
+                static int wait_for(volatile int* value, int target) {
+                    unsigned int attempt;
+                    for (attempt = 0; attempt < 10000000U; attempt++) {
+                        if (__atomic_load_n(value, __ATOMIC_ACQUIRE) == target) return 0;
+                        if (platform_thread_yield() != 0) return 1;
+                    }
+                    return 1;
+                }
+
+                int main(void) {
+                    long long workers[2];
+                    long long thread;
+                    void* result;
+                    int index;
+                    if (platform_mutex_init(&mutex_state) != 0 || platform_once_init(&once_state) != 0 ||
+                        platform_semaphore_init(&semaphore_count, 0) != 0 ||
+                        platform_condition_init(&condition_sequence) != 0) return 1;
+                    for (index = 0; index < 2; index++) {
+                        workers[index] = platform_thread_create(worker, (void*)0);
+                        if (workers[index] <= 0) return 2;
+                    }
+                    if (wait_for(&protected_count, 1000) != 0)
+                        return 80 + __atomic_load_n(&worker_error, __ATOMIC_ACQUIRE);
+                    if (once_state != 2) return 32;
+                    for (index = 0; index < 2; index++) if (platform_semaphore_post(&semaphore_count) != 0) return 4;
+                    for (index = 0; index < 2; index++) {
+                        result = (void*)-1;
+                        if (platform_thread_join(workers[index], &result) != 0 || result != (void*)0) return 5;
+                    }
+                    thread = platform_thread_create(condition_worker, (void*)0);
+                    if (thread <= 0 || wait_for(&condition_waiting, 1) != 0 || platform_mutex_lock(&mutex_state) != 0) return 6;
+                    __atomic_store_n(&condition_ready, 1, __ATOMIC_RELEASE);
+                    if (platform_condition_signal(&condition_sequence) != 0 || platform_mutex_unlock(&mutex_state) != 0) return 7;
+                    result = (void*)-1;
+                    if (platform_thread_join(thread, &result) != 0 || result != (void*)0) return 8;
+                    thread = platform_thread_create(atomic_worker, (void*)0);
+                    if (thread <= 0 || wait_for(&atomic_waiting, 1) != 0) return 9;
+                    __atomic_store_n(&atomic_value, 1, __ATOMIC_RELEASE);
+                    if (platform_atomic_wake32(&atomic_value, 1) != 0 ||
+                        platform_atomic_wait32(&atomic_value, 0) != 0) return 10;
+                    result = (void*)-1;
+                    if (platform_thread_join(thread, &result) != 0 || result != (void*)0) return 11;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("sync_test.exe")
+        try {
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw AssertionError("Windows synchronization fixture timed out; artifacts at $directory")
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), "Windows synchronization fixture failed: $output")
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
+
+    @Test
     fun linuxExecutesContendedSynchronizationAndAtomicWaitWakeWithoutHostRuntime() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
