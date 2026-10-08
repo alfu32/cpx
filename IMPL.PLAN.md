@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    63/88 accepted with recorded evidence
+Roadmap leaf tasks:    64/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.5.5 — implement remainder and quotient-remainder families
+Current task:          R5.4.5.6 — implement absolute value, power, roots, and hypotenuse families
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
-R5 [DOING] 30/41 native std and platform-service leaf tasks evidenced
+R5 [DOING] 31/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       63/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       64/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -225,11 +225,25 @@ specified as deterministic FNV-1a. Commit `e2ba767` moves the roadmap from
 62/88 to 63/88 and R5 from 29/41 to 30/41. Windows runtime execution remains
 deferred and receives no completion credit.
 
+R5.4.5.5 then implemented the real remainder and quotient-remainder functions:
+`fmod`, `remainder`, and `remquo`, with all float/double/long-double variants.
+The freestanding reduction uses binary scaling and subtraction, so extreme
+quotient magnitudes do not require integer conversion or host `libm`; `fmod`
+uses truncation semantics, while `remainder` and `remquo` use nearest integer
+with ties to even. `remquo` returns the signed low three quotient bits. The
+production-linked Linux C17 fixture checks a bounded integer-oracle sweep for
+all precisions, signed zero, ties, special values, errno, subnormals, very
+large exponent gaps, and quotient bits, then audits the executable for host
+symbols. Strict warning-as-error C17 source checks pass for Linux/Windows
+x86_64 and AArch64 target ABIs, and the full Gradle build passes. Commit
+`ad36e09` moves the roadmap from 63/88 to 64/88 and R5 from 30/41 to 31/41.
+Windows runtime execution remains deferred and receives no completion credit.
+
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.4.5.5 onward, then R5.5; Linux C17 stdio and
+1. Continue R5.4.5.6 onward, then R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 pass their recorded Linux checks; R4.6 complex and
    type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
@@ -284,6 +298,7 @@ Latest completed implementation commits:
 - `3817e8e` — implement C17 floating classification, comparisons, and constants (R5.4.5.2; Windows runtime execution deferred).
 - `7ce3908` — implement portable C17 rounding and checked integer conversions (R5.4.5.3; Windows runtime execution deferred).
 - `e2ba767` — implement portable C17 decomposition, scaling, sign, NaN, and adjacent-value functions (R5.4.5.4; Windows runtime execution deferred).
+- `ad36e09` — implement C17 remainder and quotient-remainder functions (R5.4.5.5; Windows runtime execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4609,7 +4624,7 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [DOING] [4/11] — implement the specified portable real `std.math` and
+  - R5.4.5 [DOING] [5/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
     - R5.4.5.1 [DONE] — declare all C17 real `<math.h>` functions and
       float/double/long-double `std.math` entry points. **Depends:** R3.1.3.
@@ -4644,9 +4659,16 @@ dependencies.
       has no undefined host symbols; strict warning-as-error C17 checks pass
       for Linux/Windows x86_64 and AArch64 target ABIs; the full Gradle build
       passes. Windows runtime execution remains deferred.
-    - R5.4.5.5 [DOING] — implement remainder and quotient-remainder families.
-      **Depends:** R5.4.5.1.
-    - R5.4.5.6 [TODO] — implement absolute value, power, roots, and hypotenuse
+    - R5.4.5.5 [DONE] — implement remainder and quotient-remainder families.
+      **Depends:** R5.4.5.1. **Acceptance evidence:** production-linked Linux
+      C17 execution covers `fmod`, `remainder`, and `remquo` at all three real
+      precisions, with a bounded integer-oracle sweep over signs and divisors,
+      nearest-even ties, signed zero, NaNs/infinities, domain errno, subnormal
+      operands, very large exponent gaps, and signed low-three-bit quotients.
+      The executable has no undefined host symbols; strict warning-as-error
+      C17 checks pass for Linux/Windows x86_64 and AArch64 target ABIs; the
+      full Gradle build passes. Windows runtime execution remains deferred.
+    - R5.4.5.6 [DOING] — implement absolute value, power, roots, and hypotenuse
       families. **Depends:** R5.4.5.1.
     - R5.4.5.7 [TODO] — implement exponential and logarithmic families.
       **Depends:** R5.4.5.1.
