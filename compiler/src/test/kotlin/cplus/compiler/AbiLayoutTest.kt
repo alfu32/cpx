@@ -129,13 +129,13 @@ class AbiLayoutTest {
     }
 
     @Test
-    fun versionThreeFileMetadataHasStableTargetIndependentLayout() {
+    fun versionFourPreservesVersionThreeFileMetadataLayout() {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val api = root.resolve("platform/api/fs.cp")
         val header = root.resolve("runtime/include/cplus_platform.h")
         val headerText = java.nio.file.Files.readString(header)
 
-        assertTrue("#define CPLUS_PAL_API_VERSION 3" in headerText)
+        assertTrue("#define CPLUS_PAL_API_VERSION 4" in headerText)
         assertTrue("#define CPLUS_PAL_BUFFER_TOO_SMALL (-7L)" in headerText)
         listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { targetName ->
             val result = CPlusCompiler().compile(
@@ -186,6 +186,16 @@ class AbiLayoutTest {
     }
 
     @Test
+    fun platformApiReportsVersionFour() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val result = CPlusCompiler().compile(
+            CompileRequest(listOf(root.resolve("platform/api/platform.cp")))
+        )
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertTrue(result.generatedUnits.joinToString("\n") { it.text }.contains("return 4;"))
+    }
+
+    @Test
     fun processPalUsesOpaqueSixtyFourBitHandlesAcrossDeclaredTargets() {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val api = root.resolve("platform/api/process.cp")
@@ -201,6 +211,15 @@ class AbiLayoutTest {
             assertEquals("long long", handleType.name, "$targetName process handle type")
             assertEquals(8, layouts.layout(handleType).size, "$targetName process handle size")
             assertEquals("long long", model.functions.getValue("platform_process_wait").parameters.first().type.name)
+            listOf(
+                "platform_clock_wall_nanoseconds",
+                "platform_clock_monotonic_nanoseconds",
+                "platform_clock_process_cpu_nanoseconds"
+            ).forEach { clockName ->
+                val clockType = model.functions.getValue(clockName).returnType
+                assertEquals("long long", clockType.name, "$targetName $clockName return type")
+                assertEquals(8, layouts.layout(clockType).size, "$targetName $clockName result width")
+            }
             assertTrue("platform_process_id" in result.generatedUnits.joinToString("\n") { it.text })
         }
     }

@@ -7,4 +7,8 @@ const char* platform_process_argument(unsigned long long index);
 const char* const* platform_process_environment(void);
 long long platform_process_spawn(const char* executable, const char* const* arguments);
 int platform_process_wait(long long process, int* exit_status);
+long long platform_clock_wall_nanoseconds(void);
+long long platform_clock_monotonic_nanoseconds(void);
+long long platform_clock_process_cpu_nanoseconds(void);
+/// Compatibility alias for monotonic nanoseconds.
 long long platform_clock_ticks(void);

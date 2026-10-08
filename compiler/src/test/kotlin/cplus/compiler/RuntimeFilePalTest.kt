@@ -48,7 +48,7 @@ class RuntimeFilePalTest {
                 cplus_file_metadata_t metadata;
                 (void)argc;
                 (void)argv;
-                if (CPLUS_PAL_API_VERSION != 3) return 10;
+                if (CPLUS_PAL_API_VERSION != 4) return 10;
                 if (platform_directory_create(nested) != 0) return 28;
                 handle = std_fs_open(source, CPLUS_FILE_WRITE | CPLUS_FILE_CREATE | CPLUS_FILE_TRUNCATE);
                 if (handle < 0) return 11;

@@ -2,7 +2,7 @@
 #define CPLUS_PLATFORM_H
 
 /* Uniform PAL ABI consumed by the C+ runtime and native std/libc facades. */
-#define CPLUS_PAL_API_VERSION 3
+#define CPLUS_PAL_API_VERSION 4
 
 #define CPLUS_FILE_READ 0x0001ULL
 #define CPLUS_FILE_WRITE 0x0002ULL
@@ -38,6 +38,10 @@ cplus_process_handle_t platform_process_spawn(
     const char* executable,
     const char* const* arguments);
 int platform_process_wait(cplus_process_handle_t process, int* exit_status);
+long long platform_clock_wall_nanoseconds(void);
+long long platform_clock_monotonic_nanoseconds(void);
+long long platform_clock_process_cpu_nanoseconds(void);
+/* Compatibility alias for the monotonic nanosecond clock. */
 long long platform_clock_ticks(void);
 typedef long long cplus_file_handle_t;
 typedef long long cplus_file_result_t;

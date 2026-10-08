@@ -636,21 +636,41 @@ int platform_process_exit(int status) {
     return status;
 }
 
-long long platform_clock_ticks(void) {
+static long long cplus_linux_timespec_nanoseconds(long long seconds, long long nanoseconds) {
+    if (seconds < 0) return CPLUS_PAL_IO_ERROR;
+    if (nanoseconds < 0 || nanoseconds >= 1000000000LL) return CPLUS_PAL_IO_ERROR;
+    if (seconds > (0x7fffffffffffffffLL - nanoseconds) / 1000000000LL) return CPLUS_PAL_IO_ERROR;
+    return seconds * 1000000000LL + nanoseconds;
+}
+
+static long long cplus_linux_clock_nanoseconds(long long clock_id) {
     struct cplus_timespec { long long seconds; long long nanoseconds; } time;
+    long result;
 #if defined(__x86_64__)
-    register long result __asm__("rax") = 228;
-    register long clock __asm__("rdi") = 1;
-    register void* value __asm__("rsi") = &time;
-    __asm__ volatile("syscall" : "+a"(result) : "D"(clock), "S"(value) : "rcx", "r11", "memory");
+    result = cplus_linux_syscall2(228, clock_id, (long)&time);
 #elif defined(__aarch64__)
-    register long result __asm__("x0") = 1;
-    register long clock __asm__("x8") = 113;
-    register void* value __asm__("x1") = &time;
-    __asm__ volatile("svc 0" : "+r"(result) : "r"(clock), "r"(value) : "memory");
+    result = cplus_linux_syscall2(113, clock_id, (long)&time);
 #else
-    return -1;
+    (void)clock_id;
+    return CPLUS_PAL_UNSUPPORTED;
 #endif
-    if (result < 0) return -1;
-    return time.seconds * 1000000000LL + time.nanoseconds;
+    if (result < 0) return cplus_normalize_linux_result(result);
+    if (clock_id == 0 && time.seconds < 0) return CPLUS_PAL_UNSUPPORTED;
+    return cplus_linux_timespec_nanoseconds(time.seconds, time.nanoseconds);
+}
+
+long long platform_clock_wall_nanoseconds(void) {
+    return cplus_linux_clock_nanoseconds(0);
+}
+
+long long platform_clock_monotonic_nanoseconds(void) {
+    return cplus_linux_clock_nanoseconds(1);
+}
+
+long long platform_clock_process_cpu_nanoseconds(void) {
+    return cplus_linux_clock_nanoseconds(2);
+}
+
+long long platform_clock_ticks(void) {
+    return platform_clock_monotonic_nanoseconds();
 }

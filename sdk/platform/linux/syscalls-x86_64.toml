@@ -13,3 +13,4 @@ renameat = 264
 mmap = 9
 munmap = 11
 exit = 60
+clock_gettime = 228

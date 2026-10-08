@@ -5,5 +5,5 @@ pub long long platform_write_stderr(char* buffer, unsigned long long length);
 pub int platform_process_exit(int status);
 
 pub int cplus_platform_api_version() {
-    return 3;
+    return 4;
 }

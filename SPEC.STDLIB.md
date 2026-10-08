@@ -194,8 +194,8 @@ its native failure space to the shared negative values
 numbers SHALL NOT cross this boundary.
 
 PAL version 3 SHALL preserve every version-2 operation and add the following
-filesystem services. `CPLUS_PAL_API_VERSION` SHALL be 3. The metadata record
-uses fixed-width fields and has a stable 32-byte layout on supported targets:
+filesystem services. The metadata record uses fixed-width fields and has a
+stable 32-byte layout on supported targets:
 
 ```c
 typedef struct cplus_file_metadata_t {
@@ -245,6 +245,9 @@ the next name does not fit, the adapter SHALL return
 `CPLUS_PAL_BUFFER_TOO_SMALL` without consuming that entry. Names that cannot
 be represented as valid UTF-8 SHALL return `CPLUS_PAL_UNSUPPORTED`. Directory
 handles are opaque and SHALL be closed with `platform_directory_close`.
+
+PAL version 4 SHALL preserve every version-3 operation and add the clock
+services specified in §14. `CPLUS_PAL_API_VERSION` SHALL be 4.
 
 Portable runtime and standard-library code SHALL call these PAL operations and
 SHALL NOT contain Linux syscall instructions, Windows DLL declarations, host
@@ -889,6 +892,28 @@ calendar representation
 Platform clocks SHALL be normalized above the PAL.
 
 The libc compatibility layer SHALL implement C time APIs using this service.
+
+PAL version 4 SHALL expose three independent clocks in signed 64-bit
+nanoseconds:
+
+```c
+long long platform_clock_wall_nanoseconds(void);
+long long platform_clock_monotonic_nanoseconds(void);
+long long platform_clock_process_cpu_nanoseconds(void);
+```
+
+Successful values SHALL be non-negative. Wall time is UTC nanoseconds since
+1970-01-01; monotonic time is elapsed nanoseconds from an unspecified steady
+origin and SHALL NOT move backwards due to wall-clock adjustment; process CPU
+time is the current process's accumulated user plus kernel CPU nanoseconds and
+excludes child processes. Negative values SHALL be stable PAL errors.
+
+Adapters SHALL reject a wall time before the Unix epoch as unsupported because
+negative results are reserved for errors. Conversion overflow or malformed
+native clock data SHALL return `CPLUS_PAL_IO_ERROR`; adapters SHALL NOT wrap or
+saturate. The C `time()` façade SHALL return whole wall-clock seconds, while
+`clock()` SHALL return process CPU nanoseconds with `CLOCKS_PER_SEC` equal to
+1,000,000,000. Both SHALL return `(time_t)-1` or `(clock_t)-1` on PAL failure.
 
 ---
 

@@ -68,6 +68,16 @@ typedef struct __cplus_process_information {
 
 __declspec(dllimport) __cplus_handle __stdcall GetStdHandle(__cplus_dword kind);
 __declspec(dllimport) __cplus_dword __stdcall GetCurrentProcessId(void);
+__declspec(dllimport) __cplus_handle __stdcall GetCurrentProcess(void);
+__declspec(dllimport) void __stdcall GetSystemTimeAsFileTime(__cplus_filetime* time);
+__declspec(dllimport) __cplus_bool __stdcall QueryPerformanceCounter(long long* counter);
+__declspec(dllimport) __cplus_bool __stdcall QueryPerformanceFrequency(long long* frequency);
+__declspec(dllimport) __cplus_bool __stdcall GetProcessTimes(
+    __cplus_handle process,
+    __cplus_filetime* creation_time,
+    __cplus_filetime* exit_time,
+    __cplus_filetime* kernel_time,
+    __cplus_filetime* user_time);
 __declspec(dllimport) unsigned short* __stdcall GetCommandLineW(void);
 __declspec(dllimport) unsigned short* __stdcall GetEnvironmentStringsW(void);
 __declspec(dllimport) __cplus_bool __stdcall FreeEnvironmentStringsW(unsigned short* environment);
@@ -160,7 +170,6 @@ __declspec(dllimport) __cplus_bool __stdcall CreateProcessW(
 );
 __declspec(dllimport) __cplus_dword __stdcall WaitForSingleObject(__cplus_handle handle, __cplus_dword milliseconds);
 __declspec(dllimport) __cplus_bool __stdcall GetExitCodeProcess(__cplus_handle process, __cplus_dword* exit_code);
-__declspec(dllimport) unsigned long long __stdcall GetTickCount64(void);
 __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(__cplus_dword code);
 
 #define __CPLUS_CP_UTF8 65001UL
@@ -911,6 +920,62 @@ int platform_process_wait(long long process, int* exit_status) {
     return 0;
 }
 
+static unsigned long long cplus_windows_filetime_ticks(__cplus_filetime time) {
+    return ((unsigned long long)time.high << 32) | (unsigned long long)time.low;
+}
+
+long long platform_clock_wall_nanoseconds(void) {
+    static const unsigned long long windows_epoch_ticks = 116444736000000000ULL;
+    __cplus_filetime current;
+    unsigned long long ticks;
+    unsigned long long delta;
+    GetSystemTimeAsFileTime(&current);
+    ticks = cplus_windows_filetime_ticks(current);
+    if (ticks < windows_epoch_ticks) return CPLUS_PAL_UNSUPPORTED;
+    delta = ticks - windows_epoch_ticks;
+    if (delta > 0x7fffffffffffffffULL / 100ULL) return CPLUS_PAL_IO_ERROR;
+    return (long long)(delta * 100ULL);
+}
+
+long long platform_clock_monotonic_nanoseconds(void) {
+    long long counter;
+    long long frequency;
+    long long seconds;
+    long long remainder;
+    long long fraction;
+    long long base;
+    if (!QueryPerformanceCounter(&counter) || !QueryPerformanceFrequency(&frequency)) {
+        return cplus_normalize_windows_error();
+    }
+    if (counter < 0 || frequency <= 0 || frequency > 0x7fffffffffffffffLL / 1000000000LL) {
+        return CPLUS_PAL_IO_ERROR;
+    }
+    seconds = counter / frequency;
+    remainder = counter % frequency;
+    if (seconds > 0x7fffffffffffffffLL / 1000000000LL) return CPLUS_PAL_IO_ERROR;
+    fraction = remainder * 1000000000LL / frequency;
+    base = seconds * 1000000000LL;
+    if (base > 0x7fffffffffffffffLL - fraction) return CPLUS_PAL_IO_ERROR;
+    return base + fraction;
+}
+
+long long platform_clock_process_cpu_nanoseconds(void) {
+    __cplus_filetime creation;
+    __cplus_filetime exit_time;
+    __cplus_filetime kernel;
+    __cplus_filetime user;
+    unsigned long long kernel_ticks;
+    unsigned long long user_ticks;
+    if (!GetProcessTimes(GetCurrentProcess(), &creation, &exit_time, &kernel, &user)) {
+        return cplus_normalize_windows_error();
+    }
+    kernel_ticks = cplus_windows_filetime_ticks(kernel);
+    user_ticks = cplus_windows_filetime_ticks(user);
+    if (kernel_ticks > 0xffffffffffffffffULL - user_ticks) return CPLUS_PAL_IO_ERROR;
+    if (kernel_ticks + user_ticks > 0x7fffffffffffffffULL / 100ULL) return CPLUS_PAL_IO_ERROR;
+    return (long long)((kernel_ticks + user_ticks) * 100ULL);
+}
+
 long long platform_clock_ticks(void) {
-    return (long long)GetTickCount64() * 1000000LL;
+    return platform_clock_monotonic_nanoseconds();
 }

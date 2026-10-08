@@ -2865,6 +2865,14 @@ after a successful wait. Neither adapter delegates process creation or
 waiting to an installed host libc. The selected runtime link plan includes
 the common process startup state and exactly one target adapter.
 
+The version-4 PAL time adapter exposes separate UTC wall, steady monotonic,
+and current process CPU clocks as checked signed 64-bit nanoseconds. Linux uses
+`clock_gettime` with realtime, monotonic, and process-CPU clock IDs; Windows
+uses system FILETIME, performance-counter, and current-process user/kernel
+FILETIME sources respectively. Overflow and native clock failures map to
+stable PAL errors. The C `time()` and `clock()` façades consume wall and
+process-CPU time rather than aliasing both to a monotonic timer.
+
 The C backend's ABI gate includes an independently compiled C17 caller fixture.
 The fixture MUST consume the generated public header and link against generated
 C, exercising scalar and object-pointer parameters, aggregate by-value
