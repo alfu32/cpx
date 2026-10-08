@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    56/75 accepted with recorded evidence
+Roadmap leaf tasks:    57/75 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.4.3 — implement the std.net UDP façade
+Current task:          R5.4.4.4 — implement std.net address and DNS façade
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 24/31 native std and platform-service work remains open
+R5 [DOING] 25/31 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       56/75 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       57/75 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -131,6 +131,15 @@ Windows x86_64/AArch64; the full Gradle build passes. Commit `89eea32` brings
 the numerator to 56/75 and R5 to 24/31. Windows runtime execution remains
 deferred. R5.4.4.3 is now active; UDP and address/resolver behavior remain
 unimplemented.
+R5.4.4.3 then passed a production-linked C+ UDP loopback caller covering
+empty and non-empty datagrams, source-address copy-out, optional null source,
+invalid handle/buffer/length cases, and close. The Linux executable has no
+undefined host-runtime symbols; strict warning-as-error C17 checks pass for
+the OS-neutral façade on all four Linux/Windows x86_64/AArch64 target triples;
+the full Gradle build passes. Commit `48b342d` brings the numerator to 57/75
+and R5 to 25/31. Windows runtime execution remains deferred. R5.4.4.4 is now
+active; the public address and resolver operations remain declared but have no
+runtime forwarding implementation yet.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -4432,7 +4441,7 @@ dependencies.
         generated assembly contains no `__atomic_*`, `__sync_*`, or AArch64
         atomic-helper calls. The full Gradle build passes. Windows runtime
         execution remains deferred.
-  - R5.4.4 [DOING] [2/4] — implement portable `std.net` address, DNS, socket,
+  - R5.4.4 [DOING] [3/4] — implement portable `std.net` address, DNS, socket,
     TCP and UDP APIs with explicit partial/unavailable capability behavior;
     - **Language:** SPEC.STDLIB §16–§16.2 public networking behavior and PAL
       mapping.
@@ -4468,15 +4477,18 @@ dependencies.
         selection on both operating systems. The full Gradle build passes.
         Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1.
-    - R5.4.4.3 [DOING] — implement and execute the public UDP datagram façade
+    - R5.4.4.3 [DONE] — implement and execute the public UDP datagram façade
       for open, bind, send-to, receive-from, and close.
-      - **Acceptance:** a C+ caller uses only the public API for IPv4 loopback
-        datagrams, including an empty datagram, returned source address,
-        capacity/error behavior, and close; the linked Linux product has no
-        undefined host-runtime symbols; strict C17 checks pass for all four
-        supported target triples.
+      - **Acceptance evidence:** `RuntimeStdNetTest` compiles and runs a public
+        C+ caller through the production PAL for IPv4 loopback empty and
+        non-empty datagrams, source-address copy-out, optional null source,
+        invalid handle/buffer/length cases, and close. The linked Linux
+        executable has no undefined host-runtime symbols. Strict
+        warning-as-error C17 checks pass for the OS-neutral façade on
+        Linux/Windows x86_64 and AArch64; the full Gradle build passes.
+        Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1.
-    - R5.4.4.4 [TODO] — implement the public address parse/format and hostname
+    - R5.4.4.4 [DOING] — implement the public address parse/format and hostname
       resolution façade over the shared codec and platform resolver.
       - **Acceptance:** a C+ caller exercises IPv4/IPv6 parse and canonical
         format, numeric-address resolver bypass, hostname resolution through a
