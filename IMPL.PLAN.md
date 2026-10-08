@@ -4624,8 +4624,10 @@ dependencies.
     component is also checked for `NOT_FOUND` normalization across open,
     metadata, and directory-open operations. The fixture also checks one-level
     directory creation (without synthesizing missing parents) and confirms file
-    removal rejects directories while preserving them. These checks extend
-    Linux evidence only and do not close the cross-platform leaf. A dedicated
+    removal rejects directories while preserving them. Null metadata outputs,
+    null directory-read buffers, and invalid directory handles are checked for
+    stable argument errors. These checks extend Linux evidence only and do not
+    close the cross-platform leaf. A dedicated
     Linux fixture creates a directory entry with an invalid UTF-8 byte and
     verifies production directory iteration returns `UNSUPPORTED`; the linked
     fixture also passes the dependency audit.

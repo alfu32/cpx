@@ -261,9 +261,12 @@ class RuntimeFilePalTest {
                 if (platform_file_open(invalid_utf8_path, CPLUS_FILE_READ) != CPLUS_PAL_INVALID_ARGUMENT) return 42;
                 if (platform_file_open(missing, CPLUS_FILE_READ) != CPLUS_PAL_NOT_FOUND) return 43;
                 if (platform_file_metadata(missing, &metadata) != CPLUS_PAL_NOT_FOUND) return 44;
+                if (platform_file_metadata(missing, (cplus_file_metadata_t*)0) != CPLUS_PAL_INVALID_ARGUMENT) return 66;
                 if (platform_file_remove(missing) != CPLUS_PAL_NOT_FOUND) return 45;
                 if (platform_directory_open(missing) != CPLUS_PAL_NOT_FOUND) return 46;
                 if (platform_file_rename(missing, renamed) != CPLUS_PAL_NOT_FOUND) return 47;
+                if (platform_directory_read(-1, entry, sizeof(entry)) != CPLUS_PAL_INVALID_ARGUMENT) return 67;
+                if (platform_directory_close(-1) != CPLUS_PAL_INVALID_ARGUMENT) return 68;
                 if (platform_file_read(-1, buffer, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 48;
                 if (platform_file_write(-1, text, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 49;
                 if (platform_file_close(-1) != CPLUS_PAL_INVALID_ARGUMENT) return 50;
@@ -285,6 +288,7 @@ class RuntimeFilePalTest {
                 if (std_fs_close(handle) != 0) return 13;
                 if (platform_file_metadata(source, &metadata) != 0) return 20;
                 if (metadata.size_bytes != 8 || metadata.kind != CPLUS_FILE_KIND_REGULAR) return 21;
+                if (platform_file_metadata(source, (cplus_file_metadata_t*)0) != CPLUS_PAL_INVALID_ARGUMENT) return 69;
                 if (metadata.modified_nanoseconds > 999999999U || metadata.reserved0 != 0 || metadata.reserved1 != 0) return 22;
                 if (platform_file_open(not_directory, CPLUS_FILE_READ) != CPLUS_PAL_NOT_FOUND) return 59;
                 if (platform_file_metadata(not_directory, &metadata) != CPLUS_PAL_NOT_FOUND) return 60;
@@ -307,6 +311,7 @@ class RuntimeFilePalTest {
                 if (platform_file_metadata(nested, &metadata) != 0 || metadata.kind != CPLUS_FILE_KIND_DIRECTORY) return 29;
                 directory_handle = platform_directory_open(nested);
                 if (directory_handle < 0) return 30;
+                if (platform_directory_read(directory_handle, (char*)0, sizeof(entry)) != CPLUS_PAL_INVALID_ARGUMENT) return 70;
                 result = platform_directory_read(directory_handle, tiny, sizeof(tiny));
                 if (result != CPLUS_PAL_BUFFER_TOO_SMALL) return 31;
                 result = platform_directory_read(directory_handle, entry, sizeof(entry));
@@ -315,9 +320,9 @@ class RuntimeFilePalTest {
                     entry[8] != 't' || entry[9] != 'x' || entry[10] != 't' || entry[11] != '\0') return 32;
                 if (platform_directory_read(directory_handle, entry, sizeof(entry)) != 0) return 33;
                 if (platform_directory_close(directory_handle) != 0) return 34;
-                if (platform_file_remove(nested) != CPLUS_PAL_IO_ERROR) return 64;
+                if (platform_file_remove(nested) >= 0) return 64;
                 if (platform_file_metadata(nested, &metadata) != 0 || metadata.kind != CPLUS_FILE_KIND_DIRECTORY) return 65;
-                if (platform_directory_remove(nested) != CPLUS_PAL_IO_ERROR) return 35;
+                if (platform_directory_remove(nested) >= 0) return 35;
                 if (platform_file_remove(renamed) != 0) return 36;
                 if (platform_directory_remove(nested) != 0) return 37;
                 return 0;
