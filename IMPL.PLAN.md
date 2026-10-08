@@ -23,7 +23,7 @@ Latest full test suites: Linux `gradle test` passes (1m37s); native Windows
                          VM `gradle test` passes (3m26s)
 Windows runtime evidence: allocator, process, stdio channels, clocks, threads/TLS,
                           atomics/synchronization, TCP/UDP/IPv6, resolver,
-                          std.math façade, and C17 subset
+                          std.math façade, C17 subset, locale/signal/ctype
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
@@ -4482,7 +4482,10 @@ The latest native Windows C17 report is 51 pass, 0 fail, 0 unsupported, and
 0 planned. The native Windows `RuntimeStdAtomicTest` also executes the C+
 atomic facade through concurrent fetch operations, compare/exchange, memory
 orders, thread fences, wait/wake, and runtime-managed workers; its PE passes the
-dependency audit. R4 remains open for broader Windows execution evidence
+dependency audit. `RuntimeLibcFamiliesTest.windowsC17FamiliesExecuteFormattingClockMathClassificationLocaleAndSignals`
+also executes C17 formatting, clocks, math classification, ctype, locale, and
+signal/raise behavior through the production Windows runtime; its PE passes
+the dependency audit. R4 remains open for broader Windows execution evidence
 across the other runtime/libc families, not because these registered checks
 fail.
 
