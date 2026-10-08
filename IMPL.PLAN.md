@@ -55,6 +55,7 @@ Latest completed implementation commits:
 - `3578f06` — bind selective source type imports;
 - `3043cdd` — resolve qualified and aliased source types;
 - `21c7979` — verify source-type import workflows and generated-C execution.
+- `d51c9ce` — add capability-gated Linux x86_64 i128/u128 support.
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
