@@ -114,7 +114,7 @@ object C17ConformanceAudit {
             }
         )
 
-        listOf("c17-basic.c", "c17-context.c").forEach { fixture ->
+        C17ConformanceFixtures.all.map(C17Fixture::sourceName).forEach { fixture ->
             val path = resolution.layout.root.resolve("conformance/c17").resolve(fixture)
             cases += ConformanceCase(
                 "fixture.source.${fixture.removeSuffix(".c")}",
@@ -133,17 +133,32 @@ object C17ConformanceAudit {
 data class C17Fixture(
     val id: String,
     val sourceName: String,
-    val supported: (TargetAbiDescriptor) -> Boolean
+    val supported: (TargetAbiDescriptor) -> Boolean,
+    val stdin: ByteArray = byteArrayOf(),
+    val expectedStdout: String? = null,
+    val expectedStderr: String? = null
 )
 
 object C17ConformanceFixtures {
     val all: List<C17Fixture> = listOf(
-        C17Fixture("basic", "c17-basic.c") { descriptor ->
-            descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64")
-        },
-        C17Fixture("context", "c17-context.c") { descriptor ->
-            descriptor.os == "linux" && descriptor.architecture == "x86_64"
-        }
+        C17Fixture(
+            "basic",
+            "c17-basic.c",
+            { descriptor -> descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64") }
+        ),
+        C17Fixture(
+            "context",
+            "c17-context.c",
+            { descriptor -> descriptor.os == "linux" && descriptor.architecture == "x86_64" }
+        ),
+        C17Fixture(
+            "stdio",
+            "c17-stdio.c",
+            { descriptor -> descriptor.os == "linux" && descriptor.architecture in setOf("x86_64", "aarch64") },
+            byteArrayOf('A'.code.toByte(), 0xff.toByte()),
+            "P:ok\nV:8\nline\n>",
+            "F:9\nW:ok\n!"
+        )
     )
 }
 
@@ -211,7 +226,7 @@ object C17ConformanceRunner {
                     )
                     return@forEach
                 }
-                val process = runCatching { ProcessBuilder(executable.toString()).redirectErrorStream(true).start() }
+                val process = runCatching { ProcessBuilder(executable.toString()).start() }
                     .getOrElse { error ->
                         cases += ConformanceCase(
                             "fixture.execution.${fixture.id}",
@@ -223,7 +238,10 @@ object C17ConformanceRunner {
                         )
                         return@forEach
                     }
-                val output = process.inputStream.bufferedReader().readText().trim()
+                process.outputStream.use { it.write(fixture.stdin) }
+                val stdout = process.inputStream.readBytes().toString(Charsets.UTF_8)
+                val stderr = process.errorStream.readBytes().toString(Charsets.UTF_8)
+                val output = (stdout + stderr).trim()
                 val exitCode = process.waitFor()
                 cases += ConformanceCase(
                     "fixture.execution.${fixture.id}",
@@ -233,6 +251,19 @@ object C17ConformanceRunner {
                     if (exitCode == 0) "pass" else "fail",
                     if (exitCode == 0) "independent C fixture executed successfully" else "fixture exited $exitCode${output.takeIf(String::isNotBlank)?.let { ": $it" }.orEmpty()}"
                 )
+                if (fixture.expectedStdout != null || fixture.expectedStderr != null) {
+                    val stdoutMatches = fixture.expectedStdout == null || stdout == fixture.expectedStdout
+                    val stderrMatches = fixture.expectedStderr == null || stderr == fixture.expectedStderr
+                    cases += ConformanceCase(
+                        "fixture.streams.${fixture.id}",
+                        ConformanceArea.LIBC,
+                        descriptor.targetTriple,
+                        "c17",
+                        if (stdoutMatches && stderrMatches) "pass" else "fail",
+                        if (stdoutMatches && stderrMatches) "stdin/stdout/stderr match the fixture contract"
+                        else "standard-channel mismatch: stdout=${stdout.replace("\n", "\\n")}; stderr=${stderr.replace("\n", "\\n")}"
+                    )
+                }
                 if (exitCode == 0) {
                     val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
                     cases += ConformanceCase(

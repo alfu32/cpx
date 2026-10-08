@@ -24,6 +24,7 @@ class ConformanceTest {
         val report = C17ConformanceRunner.run(resolution, target)
         assertTrue(report.isComplete, report.cases.filter { it.status != "pass" }.joinToString())
         assertTrue(report.cases.any { it.id == "fixture.execution.basic" && it.status == "pass" })
+        assertTrue(report.cases.any { it.id == "fixture.streams.stdio" && it.status == "pass" })
         assertTrue(report.cases.any { it.id == "fixture.dependencies.context" && it.status == "pass" })
     }
 }
