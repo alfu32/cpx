@@ -8,6 +8,63 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class NativeStdTest {
     @Test
+    fun targetNeutralCoreMemoryStringTextAndCollectionsExecuteOnLinuxAarch64WhenAvailable() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val runner = C17TargetRunner.commandPrefix("linux-aarch64")
+        assumeTrue(runner != null, "AArch64 QEMU user-mode runner is unavailable")
+        assumeTrue(runCCompiler("clang"), "Clang is unavailable")
+
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val target = TargetInfo(targetTriple = "linux-aarch64")
+        assumeTrue(CCompilerToolchains.targetLinkerFlags(target, "clang").isNotEmpty(), "LLD is unavailable")
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val sdkSources = listOf("core.cp", "mem.cp", "string.cp", "text.cp", "collections.cp").map {
+            root.resolve("std/src").resolve(it)
+        }
+        val result = CPlusCompiler().compile(CompileRequest(sdkSources, target = target))
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+
+        val directory = Files.createTempDirectory("cplus-native-std-aarch64")
+        val generatedSource = directory.resolve("native_std.c")
+        val executable = directory.resolve("native_std")
+        Files.writeString(generatedSource, result.generatedUnits.single().text + """
+            int main(void) {
+                char memory[12] = "abcdefgh";
+                struct std_memory_span_t null_span = std_memory_span((void*)0, 4);
+                struct std_range_t full_range = std_range(std_isize_min(), std_isize_max());
+                if (sizeof(usize) != 8 || sizeof(isize) != 8 || std_pointer_width_bits() != 64) return 1;
+                if (std_memory_span_at(null_span, 0) != (void*)0) return 2;
+                if (std_range_length(full_range) != std_usize_max()) return 3;
+                std_mem_move(memory + 2, memory, 9);
+                if (std_string_compare(memory, "ababcdefgh") != 0) return 4;
+                std_mem_move(memory, memory + 2, 9);
+                if (std_string_compare(memory, "abcdefgh") != 0) return 5;
+                if (std_mem_move(memory, memory, 9) != memory) return 6;
+                return 0;
+            }
+        """.trimIndent())
+
+        try {
+            val link = LinkDriver.link(LinkRequest(generatedSource, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+
+            val process = ProcessBuilder(runner!! + executable.toString()).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), output)
+        } finally {
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(generatedSource)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test
     fun targetNeutralCoreMemoryStringTextAndCollectionValuesExecute() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
@@ -85,9 +142,7 @@ class NativeStdTest {
                 }
             """.trimIndent())
         }
-        val compilers = listOf("cc", "clang").filter { compiler ->
-            runCatching { ProcessBuilder(compiler, "--version").start().waitFor() == 0 }.getOrDefault(false)
-        }
+        val compilers = listOf("cc", "clang").filter(::runCCompiler)
         assertTrue(compilers.isNotEmpty(), "neither cc nor clang is available")
         try {
             compilers.forEach { compiler ->
@@ -112,4 +167,8 @@ class NativeStdTest {
             Files.deleteIfExists(directory)
         }
     }
+
+    private fun runCCompiler(compiler: String): Boolean = runCatching {
+        ProcessBuilder(compiler, "--version").start().waitFor() == 0
+    }.getOrDefault(false)
 }
