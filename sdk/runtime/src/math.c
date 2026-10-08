@@ -2399,3 +2399,141 @@ double nexttoward(double value, long double direction) {
 long double nexttowardl(long double value, long double direction) {
     return cplus_math_nextafter_long_double(value, direction);
 }
+
+/* Public std.math names are a stable SDK namespace over the C17 math ABI. */
+#define CPLUS_MATH_WRAP_REAL_TRIPLET(name) \
+    float std_math_##name##f(float value) { return name##f(value); } \
+    double std_math_##name(double value) { return name(value); } \
+    long double std_math_##name##l(long double value) { return name##l(value); }
+
+CPLUS_MATH_WRAP_REAL_TRIPLET(acos)
+CPLUS_MATH_WRAP_REAL_TRIPLET(asin)
+CPLUS_MATH_WRAP_REAL_TRIPLET(atan)
+CPLUS_MATH_WRAP_REAL_TRIPLET(acosh)
+CPLUS_MATH_WRAP_REAL_TRIPLET(asinh)
+CPLUS_MATH_WRAP_REAL_TRIPLET(atanh)
+CPLUS_MATH_WRAP_REAL_TRIPLET(cos)
+CPLUS_MATH_WRAP_REAL_TRIPLET(sin)
+CPLUS_MATH_WRAP_REAL_TRIPLET(tan)
+CPLUS_MATH_WRAP_REAL_TRIPLET(cosh)
+CPLUS_MATH_WRAP_REAL_TRIPLET(sinh)
+CPLUS_MATH_WRAP_REAL_TRIPLET(tanh)
+CPLUS_MATH_WRAP_REAL_TRIPLET(exp)
+CPLUS_MATH_WRAP_REAL_TRIPLET(exp2)
+CPLUS_MATH_WRAP_REAL_TRIPLET(expm1)
+CPLUS_MATH_WRAP_REAL_TRIPLET(log)
+CPLUS_MATH_WRAP_REAL_TRIPLET(log10)
+CPLUS_MATH_WRAP_REAL_TRIPLET(log1p)
+CPLUS_MATH_WRAP_REAL_TRIPLET(log2)
+CPLUS_MATH_WRAP_REAL_TRIPLET(logb)
+CPLUS_MATH_WRAP_REAL_TRIPLET(cbrt)
+CPLUS_MATH_WRAP_REAL_TRIPLET(fabs)
+CPLUS_MATH_WRAP_REAL_TRIPLET(sqrt)
+CPLUS_MATH_WRAP_REAL_TRIPLET(erf)
+CPLUS_MATH_WRAP_REAL_TRIPLET(erfc)
+CPLUS_MATH_WRAP_REAL_TRIPLET(lgamma)
+CPLUS_MATH_WRAP_REAL_TRIPLET(tgamma)
+CPLUS_MATH_WRAP_REAL_TRIPLET(ceil)
+CPLUS_MATH_WRAP_REAL_TRIPLET(floor)
+CPLUS_MATH_WRAP_REAL_TRIPLET(nearbyint)
+CPLUS_MATH_WRAP_REAL_TRIPLET(rint)
+CPLUS_MATH_WRAP_REAL_TRIPLET(round)
+CPLUS_MATH_WRAP_REAL_TRIPLET(trunc)
+
+#define CPLUS_MATH_WRAP_BINARY_TRIPLET(name) \
+    float std_math_##name##f(float left, float right) { return name##f(left, right); } \
+    double std_math_##name(double left, double right) { return name(left, right); } \
+    long double std_math_##name##l(long double left, long double right) { return name##l(left, right); }
+
+CPLUS_MATH_WRAP_BINARY_TRIPLET(atan2)
+CPLUS_MATH_WRAP_BINARY_TRIPLET(fmod)
+CPLUS_MATH_WRAP_BINARY_TRIPLET(remainder)
+CPLUS_MATH_WRAP_BINARY_TRIPLET(hypot)
+CPLUS_MATH_WRAP_BINARY_TRIPLET(pow)
+CPLUS_MATH_WRAP_BINARY_TRIPLET(copysign)
+CPLUS_MATH_WRAP_BINARY_TRIPLET(nextafter)
+CPLUS_MATH_WRAP_BINARY_TRIPLET(fdim)
+CPLUS_MATH_WRAP_BINARY_TRIPLET(fmax)
+CPLUS_MATH_WRAP_BINARY_TRIPLET(fmin)
+
+#define CPLUS_MATH_WRAP_FREXP(suffix, type) \
+    type std_math_frexp##suffix(type value, int* exponent) { return frexp##suffix(value, exponent); }
+#define CPLUS_MATH_WRAP_MODF(suffix, type) \
+    type std_math_modf##suffix(type value, type* integral) { return modf##suffix(value, integral); }
+#define CPLUS_MATH_WRAP_ILOGB(suffix, type) \
+    int std_math_ilogb##suffix(type value) { return ilogb##suffix(value); }
+#define CPLUS_MATH_WRAP_EXPONENT_INT(name, suffix, type) \
+    type std_math_##name##suffix(type value, int exponent) { return name##suffix(value, exponent); }
+#define CPLUS_MATH_WRAP_EXPONENT_LONG(name, suffix, type) \
+    type std_math_##name##suffix(type value, long int exponent) { return name##suffix(value, exponent); }
+#define CPLUS_MATH_WRAP_ROUND_LONG(name, suffix, type) \
+    long int std_math_##name##suffix(type value) { return name##suffix(value); }
+#define CPLUS_MATH_WRAP_ROUND_LLONG(name, suffix, type) \
+    long long int std_math_##name##suffix(type value) { return name##suffix(value); }
+#define CPLUS_MATH_WRAP_NAN(suffix, type) \
+    type std_math_nan##suffix(const char* tag) { return nan##suffix(tag); }
+#define CPLUS_MATH_WRAP_NEXTTOWARD(suffix, type) \
+    type std_math_nexttoward##suffix(type value, long double direction) { return nexttoward##suffix(value, direction); }
+#define CPLUS_MATH_WRAP_REMQUO(suffix, type) \
+    type std_math_remquo##suffix(type left, type right, int* quotient) { return remquo##suffix(left, right, quotient); }
+#define CPLUS_MATH_WRAP_FMA(suffix, type) \
+    type std_math_fma##suffix(type first, type second, type third) { return fma##suffix(first, second, third); }
+
+CPLUS_MATH_WRAP_FREXP(f, float)
+CPLUS_MATH_WRAP_FREXP(, double)
+CPLUS_MATH_WRAP_FREXP(l, long double)
+CPLUS_MATH_WRAP_MODF(f, float)
+CPLUS_MATH_WRAP_MODF(, double)
+CPLUS_MATH_WRAP_MODF(l, long double)
+CPLUS_MATH_WRAP_ILOGB(f, float)
+CPLUS_MATH_WRAP_ILOGB(, double)
+CPLUS_MATH_WRAP_ILOGB(l, long double)
+CPLUS_MATH_WRAP_EXPONENT_INT(ldexp, f, float)
+CPLUS_MATH_WRAP_EXPONENT_INT(ldexp, , double)
+CPLUS_MATH_WRAP_EXPONENT_INT(ldexp, l, long double)
+CPLUS_MATH_WRAP_EXPONENT_INT(scalbn, f, float)
+CPLUS_MATH_WRAP_EXPONENT_INT(scalbn, , double)
+CPLUS_MATH_WRAP_EXPONENT_INT(scalbn, l, long double)
+CPLUS_MATH_WRAP_EXPONENT_LONG(scalbln, f, float)
+CPLUS_MATH_WRAP_EXPONENT_LONG(scalbln, , double)
+CPLUS_MATH_WRAP_EXPONENT_LONG(scalbln, l, long double)
+CPLUS_MATH_WRAP_ROUND_LONG(lrint, f, float)
+CPLUS_MATH_WRAP_ROUND_LONG(lrint, , double)
+CPLUS_MATH_WRAP_ROUND_LONG(lrint, l, long double)
+CPLUS_MATH_WRAP_ROUND_LLONG(llrint, f, float)
+CPLUS_MATH_WRAP_ROUND_LLONG(llrint, , double)
+CPLUS_MATH_WRAP_ROUND_LLONG(llrint, l, long double)
+CPLUS_MATH_WRAP_ROUND_LONG(lround, f, float)
+CPLUS_MATH_WRAP_ROUND_LONG(lround, , double)
+CPLUS_MATH_WRAP_ROUND_LONG(lround, l, long double)
+CPLUS_MATH_WRAP_ROUND_LLONG(llround, f, float)
+CPLUS_MATH_WRAP_ROUND_LLONG(llround, , double)
+CPLUS_MATH_WRAP_ROUND_LLONG(llround, l, long double)
+CPLUS_MATH_WRAP_NAN(f, float)
+CPLUS_MATH_WRAP_NAN(, double)
+CPLUS_MATH_WRAP_NAN(l, long double)
+CPLUS_MATH_WRAP_NEXTTOWARD(f, float)
+CPLUS_MATH_WRAP_NEXTTOWARD(, double)
+CPLUS_MATH_WRAP_NEXTTOWARD(l, long double)
+CPLUS_MATH_WRAP_REMQUO(f, float)
+CPLUS_MATH_WRAP_REMQUO(, double)
+CPLUS_MATH_WRAP_REMQUO(l, long double)
+CPLUS_MATH_WRAP_FMA(f, float)
+CPLUS_MATH_WRAP_FMA(, double)
+CPLUS_MATH_WRAP_FMA(l, long double)
+
+double std_math_abs(double value) { return fabs(value); }
+
+#undef CPLUS_MATH_WRAP_REAL_TRIPLET
+#undef CPLUS_MATH_WRAP_BINARY_TRIPLET
+#undef CPLUS_MATH_WRAP_FREXP
+#undef CPLUS_MATH_WRAP_MODF
+#undef CPLUS_MATH_WRAP_ILOGB
+#undef CPLUS_MATH_WRAP_EXPONENT_INT
+#undef CPLUS_MATH_WRAP_EXPONENT_LONG
+#undef CPLUS_MATH_WRAP_ROUND_LONG
+#undef CPLUS_MATH_WRAP_ROUND_LLONG
+#undef CPLUS_MATH_WRAP_NAN
+#undef CPLUS_MATH_WRAP_NEXTTOWARD
+#undef CPLUS_MATH_WRAP_REMQUO
+#undef CPLUS_MATH_WRAP_FMA
