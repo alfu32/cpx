@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    35/53 evidenced on Linux
+Roadmap leaf tasks:    36/53 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.2.4 — add std.fs and std.io stream façades
+Current task:          R5.2.5 — run final Linux/Windows PAL conformance and audit
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,12 +22,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
-R5 [DOING] 3/9  native std and platform-service work remains open
+R5 [DOING] 4/9  native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       35/53 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       36/53 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -37,7 +37,7 @@ below. Its current execution sequence is:
 
 1. R5.1 — finish Linux-side native std conformance using the verified primitive
    and type-import contracts; retain its open status until the final target gate.
-2. R5.2.4 and R5.3–R5.5, then R6–R7 — continue Linux implementation
+2. R5.2.5 and R5.3–R5.5, then R6–R7 — continue Linux implementation
    and target capability modeling without running Windows tests early.
 3. Final validation — run the deferred Windows ABI/caller and PAL checks (including the
    open R3.1.3 LLP64 execution gate), patch platform issues, then close R8.
@@ -4083,7 +4083,7 @@ dependencies.
     adapters, with executable Linux checks and target-layout validation;
   - R5.2.3 [DONE] — implement directory create/remove and UTF-8 directory
     iteration in Linux and Windows adapters, with executable Linux checks;
-  - R5.2.4 [TODO] — add target-independent `std.fs` wrappers and unbuffered
+  - R5.2.4 [DONE] — add target-independent `std.fs` wrappers and unbuffered
     file-stream read/write/seek/close adapters without exposing OS handles;
   - R5.2.5 [TODO] — run the complete Linux/Windows PAL conformance matrix,
     error-normalization and dependency audit, and close remaining platform gaps;
@@ -4122,6 +4122,16 @@ does not consume the entry, reaches end-of-directory, and rejects removal of
 a non-empty directory. `RuntimeFilePalTest` and the full `./gradlew build`
 pass. Linux/AArch64 syscall selection and Windows adapter code are present but
 not executed; Windows execution remains assigned to R5.2.5.
+
+R5.2.4 acceptance evidence: `std.fs` now declares target-size transfer,
+metadata, seek, create/remove, and directory wrappers; the C runtime forwards
+them using the SDK's `size_t`/`ptrdiff_t` definitions and copies metadata into
+the source-level type. `std.io` provides unbuffered open/read/write/seek/close
+and state checks over those wrappers. `RuntimeStdIoTest` compiles and links the
+C+ modules with the self-hosted Linux runtime and executes file and directory
+roundtrips; ABI tests confirm both PAL and std metadata layouts across the four
+declared Linux/Windows x86_64/AArch64 descriptors. `./gradlew build` passes on
+Linux. No Windows execution is claimed; R5.2.5 remains open.
 
 ### R5.1 status audit
 

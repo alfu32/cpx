@@ -18,3 +18,9 @@ and use of these aliases there is diagnosed rather than narrowed.
 types; raw byte operations use `unsigned char` rather than plain `char`. The
 core and memory modules also provide pointer helpers, numeric limits,
 alignment-up checks, byte spans, and non-owning raw-memory views.
+
+`std/src/fs.cp` exposes the portable UTF-8 filesystem façade, including
+target-sized transfers, metadata, seek, directory iteration, and create/remove
+operations. `std/src/io.cp` provides unbuffered file streams layered over that
+façade; it stores only an opaque PAL handle and never exposes an OS descriptor
+or Windows `HANDLE` type.

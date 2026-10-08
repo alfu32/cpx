@@ -11,16 +11,16 @@ pub struct cplus_file_metadata_t {
     uint32_t reserved1;
 };
 
-pub int64_t platform_file_open(char* path, uint64_t mode);
+pub int64_t platform_file_open(const char* path, uint64_t mode);
 pub int64_t platform_file_read(int64_t handle, void* buffer, uint64_t length);
-pub int64_t platform_file_write(int64_t handle, void* buffer, uint64_t length);
+pub int64_t platform_file_write(int64_t handle, const void* buffer, uint64_t length);
 pub int platform_file_close(int64_t handle);
-pub int platform_file_rename(char* source, char* target);
+pub int platform_file_rename(const char* source, const char* target);
 pub int64_t platform_file_seek(int64_t handle, int64_t offset, uint32_t origin);
-pub int platform_file_metadata(char* path, cplus_file_metadata_t* metadata);
-pub int platform_directory_create(char* path);
-pub int platform_file_remove(char* path);
-pub int platform_directory_remove(char* path);
-pub int64_t platform_directory_open(char* path);
+pub int platform_file_metadata(const char* path, cplus_file_metadata_t* metadata);
+pub int platform_directory_create(const char* path);
+pub int platform_file_remove(const char* path);
+pub int platform_directory_remove(const char* path);
+pub int64_t platform_directory_open(const char* path);
 pub int64_t platform_directory_read(int64_t handle, char* utf8_name, uint64_t capacity);
 pub int platform_directory_close(int64_t handle);

@@ -24,11 +24,13 @@ class RuntimeFilePalTest {
         val renamedName = cString(renamedPath.toString().replace('\\', '/'))
         Files.writeString(source, """
             #include "cplus_platform.h"
+            #include <stddef.h>
+            #include <stdint.h>
 
-            long long std_fs_open(const char* path, unsigned long long mode);
-            long long std_fs_read(long long handle, void* buffer, long long size);
-            long long std_fs_write(long long handle, const void* buffer, long long size);
-            int std_fs_close(long long handle);
+            int64_t std_fs_open(const char* path, uint64_t mode);
+            ptrdiff_t std_fs_read(int64_t handle, void* buffer, size_t size);
+            ptrdiff_t std_fs_write(int64_t handle, const void* buffer, size_t size);
+            int std_fs_close(int64_t handle);
             int std_fs_rename(const char* source, const char* target);
 
             int main(int argc, char** argv) {

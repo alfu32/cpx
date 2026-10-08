@@ -715,6 +715,23 @@ HANDLE types.
 
 The implementation of buffering, formatting, stream state and textual conversion SHALL reside above this PAL interface.
 
+The initial C+ `std.io` file-stream façade SHALL provide open, read, write,
+seek, close, and open-state operations over `std.fs`. It SHALL be unbuffered,
+allow partial reads/writes, report end-of-file as a zero-byte read, and return
+stable PAL errors for invalid operations. Its stored handle SHALL remain an
+opaque signed 64-bit C+ value; it SHALL NOT expose a file descriptor, Windows
+`HANDLE`, or target-specific stream structure.
+
+The façade SHALL expose `std_file_stream_open(path, readable, writable,
+create, truncate)`, `std_file_stream_is_open`, `std_file_stream_read`,
+`std_file_stream_write`, `std_file_stream_seek`, and `std_file_stream_close`.
+Open SHALL return a closed stream on failure. Read/write SHALL return an
+`isize` byte count or a stable negative PAL error; seek SHALL return the new
+absolute offset or an error. Close SHALL invalidate the stream only when the
+underlying close succeeds. `std.fs` SHALL provide named mode accessors matching
+the `CPLUS_FILE_*` flags and named error accessors for invalid-argument and
+buffer-too-small results so C+ callers need not duplicate numeric constants.
+
 The libc layer SHALL expose `FILE` and C stdio functions.
 
 ---
@@ -742,19 +759,28 @@ path manipulation
 The first concrete native façade operations are:
 
 ```c
-cplus_file_result_t std_fs_open(const char* path, cplus_file_mode_t mode);
-cplus_file_result_t std_fs_read(
-    cplus_file_handle_t handle, void* buffer, cplus_file_size_t size);
-cplus_file_result_t std_fs_write(
-    cplus_file_handle_t handle, const void* buffer, cplus_file_size_t size);
-int std_fs_close(cplus_file_handle_t handle);
+#include <stddef.h>
+#include <stdint.h>
+
+int64_t std_fs_open(const char* path, uint64_t mode);
+ptrdiff_t std_fs_read(int64_t handle, void* buffer, size_t size);
+ptrdiff_t std_fs_write(int64_t handle, const void* buffer, size_t size);
+int64_t std_fs_seek(int64_t handle, int64_t offset, uint32_t origin);
+int std_fs_metadata(const char* path, struct std_file_metadata_t* metadata);
+int std_fs_create_directory(const char* path);
+int std_fs_remove_file(const char* path);
+int std_fs_remove_directory(const char* path);
+int64_t std_fs_directory_open(const char* path);
+ptrdiff_t std_fs_directory_read(int64_t handle, char* name, size_t capacity);
+int std_fs_directory_close(int64_t handle);
+int std_fs_close(int64_t handle);
 int std_fs_rename(const char* source, const char* target);
 ```
 
-These functions are target-independent forwarding entry points. Their current
-implementation intentionally covers only open, read, write, close, and rename;
-seek, metadata, directory iteration, remove, and stream buffering remain
-separate standard-library stages.
+These functions are target-independent forwarding entry points. Negative
+results SHALL use the stable PAL error values and SHALL NOT expose native OS
+error numbers. `std_file_metadata_t` SHALL have the same field order and
+32-byte layout as `cplus_file_metadata_t`.
 
 The version-3 `std.fs` façade SHALL expose the PAL seek, metadata, create,
 remove, and directory-iteration semantics without exposing native handles or

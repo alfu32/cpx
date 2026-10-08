@@ -151,6 +151,19 @@ class AbiLayoutTest {
             val generated = result.generatedUnits.joinToString("\n") { it.text }
             assertTrue("platform_file_seek" in generated, "$targetName seek declaration")
             assertTrue("platform_directory_read" in generated, "$targetName directory declaration")
+
+            val stdResult = CPlusCompiler().compile(
+                CompileRequest(
+                    listOf(root.resolve("std/src/core.cp"), root.resolve("std/src/fs.cp")),
+                    target = TargetInfo(targetTriple = targetName)
+                )
+            )
+            assertTrue(stdResult.isSuccessful, "$targetName std.fs: ${stdResult.diagnostics.joinToString()}")
+            val stdModel = requireNotNull(stdResult.semanticModel)
+            val stdLayout = AbiLayoutEngine(descriptor).layout(stdModel.structs.getValue("std_file_metadata_t"))
+            assertEquals(layout.size, stdLayout.size, "$targetName std.fs metadata size")
+            assertEquals(layout.alignment, stdLayout.alignment, "$targetName std.fs metadata alignment")
+            assertEquals(layout.fields.map { it.offset }, stdLayout.fields.map { it.offset }, "$targetName std.fs offsets")
         }
     }
 
