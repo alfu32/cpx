@@ -5395,7 +5395,9 @@ hard-coded CLI path.
 - R8.3 [DOING] — run Linux x86_64/AArch64 and Windows x86_64 (plus available
   Windows AArch64/Darwin targets) product validation, including complete
   self-hosted Windows PE cross-linking. Linux x86_64 C17 executable
-  conformance and the libc-family runtime fixture pass. For Linux AArch64,
+  conformance and freestanding runtime fixtures for file I/O/rename,
+  TCP/UDP, independent thread TLS, contended sync/atomic wait-wake, libc
+  families, and math classification pass. For Linux AArch64,
   Clang strict C17 syntax checks passed for every `sdk/runtime/src/*.c` file
   and Linux PAL C source; both AArch64 startup and thread assembly files also
   assemble. The check exposed and removed an unused private formatter helper
