@@ -98,7 +98,7 @@ You should see:
 
 ```text
 C+ CLI transcoder
-usage: cplus <command> <source.cp> [other.cp ...] [--sdk <manifest>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]
+usage: cplus <command> <source.cp> [other.cp ...] [--project <cplus.toml> | --workspace <cplus.workspace.toml>] [--sdk <manifest>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]
 
 commands:
   transcode   translate one C+ source file to C
@@ -1314,6 +1314,46 @@ Build and immediately execute:
 ```bash
 cplus run hello.cp
 ```
+
+---
+
+# Project and workspace manifests
+
+All source commands (`check`, `transcode`, `build`, and `run`) accept the same
+project or workspace manifest. A manifest chooses an entry source and optional
+source roots used to resolve explicitly imported project modules.
+
+For a project, create `cplus.toml`:
+
+```toml
+[project]
+entry = "src/main.cp"
+source_roots = ["src", "modules"]
+```
+
+Then run any source command without repeating the entry path:
+
+```bash
+cplus check --project cplus.toml
+cplus transcode --project cplus.toml --output build/main.c
+cplus build --project cplus.toml --output build/main
+cplus run --project cplus.toml
+```
+
+A workspace manifest uses `[workspace]` and may provide member directories as
+source roots:
+
+```toml
+[workspace]
+entry = "apps/demo/src/main.cp"
+members = ["apps/demo", "libraries"]
+```
+
+Use it with `--workspace cplus.workspace.toml`. Relative entry paths, source
+roots, and members are resolved from the manifest's directory. Explicit
+`std.*` imports are resolved from the selected SDK's `std/src` tree; local
+path imports remain relative to their importing source file. The same source
+discovery is used by all four commands.
 
 ---
 

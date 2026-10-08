@@ -401,6 +401,8 @@ internal class Cli {
     private fun parseFileArguments(arguments: List<String>): FileArguments? {
         var source: Path? = null
         val sources = mutableListOf<Path>()
+        var projectManifest: Path? = null
+        var workspaceManifest: Path? = null
         val cSources = mutableListOf<Path>()
         val libraries = mutableListOf<String>()
         val includeDirectories = mutableListOf<Path>()
@@ -469,6 +471,15 @@ internal class Cli {
                     sdkManifest = Path.of(value)
                     index += 2
                 }
+                "--project", "--workspace" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    if (value == null) {
+                        System.err.println("missing manifest path after $argument")
+                        return null
+                    }
+                    if (argument == "--project") projectManifest = Path.of(value) else workspaceManifest = Path.of(value)
+                    index += 2
+                }
                 "--runtime" -> {
                     val value = arguments.getOrNull(index + 1)
                     runtime = parseRuntime(value, argument) ?: return null
@@ -517,6 +528,14 @@ internal class Cli {
                 }
             }
         }
+        if (projectManifest != null && workspaceManifest != null) {
+            System.err.println("choose either --project or --workspace, not both")
+            return null
+        }
+        val manifestPath = projectManifest ?: workspaceManifest
+        val manifest = if (manifestPath == null) null else loadWorkspaceManifest(manifestPath) ?: return null
+        val manifestEntry = manifest?.let { it.baseDirectory.resolve(it.entry).normalize() }
+        if (source == null && manifestEntry != null) source = manifestEntry
         if (source == null) {
             System.err.println("a source file is required")
             return null
@@ -527,14 +546,21 @@ internal class Cli {
         } else {
             LibcProfile.C17
         }
+        val sdkManifestPath = sdkManifest ?: SdkManifestLocator.defaultManifestPath()
+        val sdkRoot = sdkManifestPath.toAbsolutePath().normalize().parent?.parent
+        val discoveredSources = discoverModuleSources(
+            listOf(source) + sources,
+            manifest?.sourceRoots.orEmpty(),
+            sdkRoot
+        )
         return FileArguments(
-            discoverModuleSources(listOf(source) + sources),
+            discoveredSources,
             cSources,
             output,
             headerOutput,
             libraries,
             includeDirectories,
-            sdkManifest ?: SdkManifestLocator.defaultManifestPath(),
+            sdkManifestPath,
             externalSysroot,
             TargetInfo(buildProfile = BuildProfile(selectedRuntime, selectedLibc), targetTriple = targetTriple),
             cCompiler
@@ -561,7 +587,7 @@ internal class Cli {
         }
     }
 
-    private fun discoverModuleSources(requested: List<Path>): List<Path> {
+    private fun discoverModuleSources(requested: List<Path>, sourceRoots: List<Path>, sdkRoot: Path?): List<Path> {
         val discovered = linkedSetOf<Path>()
 
         fun visit(path: Path) {
@@ -574,7 +600,7 @@ internal class Cli {
                     .toList()
             }.getOrDefault(emptyList())
             imports.forEach { moduleName ->
-                findModuleSource(normalized, moduleName)?.let(::visit)
+                findModuleSource(normalized, moduleName, sourceRoots, sdkRoot)?.let(::visit)
             }
         }
 
@@ -582,7 +608,7 @@ internal class Cli {
         return discovered.toList()
     }
 
-    private fun findModuleSource(source: Path, moduleReference: String): Path? {
+    private fun findModuleSource(source: Path, moduleReference: String, sourceRoots: List<Path>, sdkRoot: Path?): Path? {
         val reference = moduleReference.trim()
         val isPathImport = reference.startsWith(".") ||
             reference.startsWith("/") ||
@@ -599,8 +625,29 @@ internal class Cli {
             .substringAfterLast('/')
             .substringAfterLast('.')
             .removeSuffix(".cp")
+        if ((reference.startsWith("std.") || reference.startsWith("std/")) && sdkRoot != null) {
+            val standardModule = reference.removePrefix("std.").removePrefix("std/")
+                .replace('.', '/')
+                .removeSuffix(".cp")
+            val candidate = sdkRoot.resolve("std/src/$standardModule.cp").normalize()
+            if (candidate.startsWith(sdkRoot) && Files.isRegularFile(candidate)) return candidate
+        }
         val sibling = source.parent?.resolve("$moduleName.cp")
         if (sibling != null && Files.isRegularFile(sibling)) return sibling
+        for (root in sourceRoots) {
+            val normalizedRoot = root.toAbsolutePath().normalize()
+            val direct = normalizedRoot.resolve("$moduleName.cp")
+            if (Files.isRegularFile(direct)) return direct
+            val match = runCatching {
+                Files.walk(normalizedRoot).use { paths ->
+                    paths.filter { Files.isRegularFile(it) && it.fileName.toString() == "$moduleName.cp" }
+                        .sorted()
+                        .findFirst()
+                        .orElse(null)
+                }
+            }.getOrNull()
+            if (match != null) return match
+        }
         val directory = source.parent ?: return null
         return runCatching {
             Files.walk(directory).use { paths ->
@@ -612,6 +659,75 @@ internal class Cli {
                     .orElse(null)
             }
         }.getOrNull()
+    }
+
+    private fun loadWorkspaceManifest(path: Path): WorkspaceManifest? {
+        val normalized = path.toAbsolutePath().normalize()
+        if (!Files.isRegularFile(normalized)) {
+            System.err.println("project/workspace manifest does not exist: $normalized")
+            return null
+        }
+        val contents = runCatching { Files.readString(normalized) }.getOrElse {
+            System.err.println("unable to read project/workspace manifest '$normalized': ${it.message}")
+            return null
+        }
+        val values = linkedMapOf<String, String>()
+        var section: String? = null
+        contents.lineSequence().forEachIndexed { index, rawLine ->
+            val line = rawLine.substringBefore('#').trim()
+            if (line.isEmpty()) return@forEachIndexed
+            if (line.startsWith("[") && line.endsWith("]")) {
+                section = line.substring(1, line.length - 1).trim()
+                if (section !in setOf("project", "workspace")) {
+                    System.err.println("unsupported manifest section on line ${index + 1}: $line")
+                    return null
+                }
+                return@forEachIndexed
+            }
+            val assignment = MANIFEST_ASSIGNMENT.matchEntire(line)
+            if (section == null || assignment == null) {
+                System.err.println("invalid manifest entry on line ${index + 1}: $line")
+                return null
+            }
+            val key = assignment.groupValues[1]
+            if (key !in setOf("entry", "source_roots", "members")) {
+                System.err.println("unsupported manifest key '$key' on line ${index + 1}")
+                return null
+            }
+            if (key in values) {
+                System.err.println("duplicate manifest key '$key' on line ${index + 1}")
+                return null
+            }
+            values[key] = assignment.groupValues[2].trim()
+        }
+        val entry = parseManifestString(values["entry"] ?: "")?.takeIf(String::isNotBlank)
+        if (entry == null) {
+            System.err.println("manifest '$normalized' must declare entry = \"...\"")
+            return null
+        }
+        val roots = mutableListOf<Path>()
+        for (key in listOf("source_roots", "members")) {
+            val raw = values[key] ?: continue
+            val parsed = parseManifestStringArray(raw)
+            if (parsed == null) {
+                System.err.println("manifest key '$key' must be an array of quoted paths")
+                return null
+            }
+            roots += parsed.map { normalized.parent.resolve(it).normalize() }
+        }
+        return WorkspaceManifest(normalized.parent, entry, roots.distinct())
+    }
+
+    private fun parseManifestString(value: String): String? =
+        MANIFEST_STRING.matchEntire(value)?.groupValues?.get(1)
+
+    private fun parseManifestStringArray(value: String): List<String>? {
+        if (!value.startsWith("[") || !value.endsWith("]")) return null
+        val body = value.substring(1, value.length - 1).trim()
+        if (body.isEmpty()) return emptyList()
+        val entries = MANIFEST_STRING.findAll(body).toList()
+        val residue = MANIFEST_STRING.replace(body, "").replace(",", "").trim()
+        return entries.map { it.groupValues[1] }.takeIf { residue.isEmpty() }
     }
 
     private fun printDiagnostics(diagnostics: List<Diagnostic>, source: Path) {
@@ -628,12 +744,12 @@ internal class Cli {
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
         stream.println("C+ CLI transcoder")
-        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--target <triple>] [--runtime <profile>] [--libc <profile>] [--c-compiler <path>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
+        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--project <cplus.toml> | --workspace <cplus.workspace.toml>] [--target <triple>] [--runtime <profile>] [--libc <profile>] [--c-compiler <path>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
         stream.println()
         stream.println("commands:")
         stream.println("  transcode   translate one C+ source file to C")
         stream.println("  emit-c      alias for transcode")
-        stream.println("  check       parse and semantically validate one source file")
+        stream.println("  check       parse and semantically validate one source or project")
         stream.println("  ast         print the normalized AST")
         stream.println("  expand      print the post-CPX normalized AST")
         stream.println("  build       transcode and compile one source file with the target C driver")
@@ -660,8 +776,16 @@ internal class Cli {
         val cCompiler: String?
     )
 
+    private data class WorkspaceManifest(
+        val baseDirectory: Path,
+        val entry: String,
+        val sourceRoots: List<Path>
+    )
+
     private companion object {
         val MODULE_IMPORT = Regex("""\bfrom\s+(?:"([^"]+)"|([^\s;]+))""")
+        val MANIFEST_ASSIGNMENT = Regex("""([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)""")
+        val MANIFEST_STRING = Regex(""""([^"\\]*(?:\\.[^"\\]*)*)"""")
     }
 }
 

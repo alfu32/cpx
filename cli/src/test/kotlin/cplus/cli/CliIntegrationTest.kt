@@ -360,7 +360,48 @@ class CliIntegrationTest {
             )
         }
 
-        assertEquals(3, Cli().run(listOf("run", main.toString(), fixedWidthModule.toString())))
+        assertEquals(3, Cli().run(listOf("run", main.toString())))
+        assertTrue(fixedWidthModule.exists())
+    }
+
+    @Test
+    fun projectAndWorkspaceManifestsShareOneSourceModelAcrossCommands() {
+        val directory = Files.createTempDirectory("cplus-cli-project-manifest")
+        val app = Files.createDirectories(directory.resolve("app"))
+        val modules = Files.createDirectories(directory.resolve("modules"))
+        modules.resolve("math.cp").writeText("pub int add(int left, int right) { return left + right; }")
+        app.resolve("main.cp").writeText(
+            "import { add } from math; int main() { return add(7, 5); }"
+        )
+        val project = directory.resolve("cplus.toml").also {
+            it.writeText(
+                """
+                    [project]
+                    entry = "app/main.cp"
+                    source_roots = ["modules"]
+                """.trimIndent()
+            )
+        }
+        val workspace = directory.resolve("cplus.workspace.toml").also {
+            it.writeText(
+                """
+                    [workspace]
+                    entry = "app/main.cp"
+                    members = ["modules"]
+                """.trimIndent()
+            )
+        }
+        val projectOption = listOf("--project", project.toString())
+
+        assertEquals(0, Cli().run(listOf("check") + projectOption))
+        val generatedC = directory.resolve("main.c")
+        assertEquals(0, Cli().run(listOf("transcode") + projectOption + listOf("--output", generatedC.toString())))
+        assertTrue(generatedC.exists())
+        val executable = directory.resolve("project-program")
+        assertEquals(0, Cli().run(listOf("build") + projectOption + listOf("--output", executable.toString())))
+        assertEquals(12, ProcessBuilder(executable.toString()).start().waitFor())
+        assertEquals(12, Cli().run(listOf("run") + projectOption))
+        assertEquals(0, Cli().run(listOf("check", "--workspace", workspace.toString())))
     }
 
     @Test

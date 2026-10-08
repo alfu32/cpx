@@ -2056,6 +2056,16 @@ cplus emit-c file.cp
 
 `expand` SHOULD display the post-CPX/pre-lowering C+ representation.
 
+Project builds MAY use a `cplus.toml` manifest with `[project]`, an `entry`
+source path, and optional `source_roots`. Multi-module workspaces MAY use a
+`cplus.workspace.toml` manifest with `[workspace]`, an `entry`, and optional
+`members` directories. Manifest-relative paths SHALL be normalized against the
+manifest directory. CLI source commands SHALL share one source-discovery
+model: explicitly imported path modules resolve relative to their importer,
+project modules resolve within declared roots, and explicit `std.*` imports
+resolve from the selected SDK's source tree. `check`, `transcode`, `build`,
+and `run` SHALL consume the same discovered source set.
+
 ---
 
 # 58. Compiler pipeline API
