@@ -820,6 +820,95 @@ CPLUS_MATH_DEFINE_SCALING(l, long double, cplus_math_scale_long_double)
 
 #undef CPLUS_MATH_DEFINE_SCALING
 
+#define CPLUS_MATH_DEFINE_REMAINDER(suffix, type, classifier, ilogb_value, scale, copy_sign, sign_value) \
+    static type cplus_math_reduce_##suffix(type dividend, type divisor, int* quotient_low) { \
+        int shift; \
+        int quotient = 0; \
+        type scaled_divisor; \
+        if (dividend < divisor) { \
+            *quotient_low = 0; \
+            return dividend; \
+        } \
+        shift = ilogb_value(dividend) - ilogb_value(divisor); \
+        scaled_divisor = scale(divisor, (long)shift); \
+        if (scaled_divisor > dividend) { \
+            scaled_divisor *= (type)0.5; \
+            shift--; \
+        } \
+        while (shift >= 0) { \
+            int subtract = dividend >= scaled_divisor; \
+            quotient = ((quotient << 1) | subtract) & 7; \
+            if (subtract) dividend -= scaled_divisor; \
+            if (shift == 0) break; \
+            scaled_divisor *= (type)0.5; \
+            shift--; \
+        } \
+        *quotient_low = quotient; \
+        return dividend; \
+    } \
+    static type cplus_math_remainder_value_##suffix( \
+        type dividend, type divisor, int nearest, int* quotient_output) { \
+        int dividend_kind = classifier(dividend); \
+        int divisor_kind = classifier(divisor); \
+        int quotient_low = 0; \
+        int round_up = 0; \
+        type magnitude; \
+        type divisor_magnitude; \
+        type result; \
+        if (dividend_kind == FP_NAN || divisor_kind == FP_NAN) { \
+            if (quotient_output != (int*)0) *quotient_output = 0; \
+            return dividend_kind == FP_NAN ? dividend : divisor; \
+        } \
+        if (dividend_kind == FP_INFINITE || divisor_kind == FP_ZERO) { \
+            errno = EDOM; \
+            if (quotient_output != (int*)0) *quotient_output = 0; \
+            return (type)NAN; \
+        } \
+        if (dividend_kind == FP_ZERO || divisor_kind == FP_INFINITE) { \
+            if (quotient_output != (int*)0) *quotient_output = 0; \
+            return dividend; \
+        } \
+        divisor_magnitude = divisor < (type)0 ? -divisor : divisor; \
+        magnitude = cplus_math_reduce_##suffix( \
+            dividend < (type)0 ? -dividend : dividend, divisor_magnitude, &quotient_low); \
+        if (nearest) { \
+            type other_distance = divisor_magnitude - magnitude; \
+            if (magnitude > other_distance || \
+                (magnitude == other_distance && (quotient_low & 1) != 0)) { \
+                magnitude = other_distance; \
+                round_up = 1; \
+                quotient_low = (quotient_low + 1) & 7; \
+            } \
+        } \
+        if (quotient_output != (int*)0) { \
+            int quotient_negative = sign_value(dividend) != sign_value(divisor); \
+            *quotient_output = quotient_negative ? -quotient_low : quotient_low; \
+        } \
+        result = copy_sign(magnitude, dividend); \
+        return round_up ? -result : result; \
+    } \
+    type fmod##suffix(type dividend, type divisor) { \
+        return cplus_math_remainder_value_##suffix(dividend, divisor, 0, (int*)0); \
+    } \
+    type remainder##suffix(type dividend, type divisor) { \
+        return cplus_math_remainder_value_##suffix(dividend, divisor, 1, (int*)0); \
+    } \
+    type remquo##suffix(type dividend, type divisor, int* quotient_output) { \
+        return cplus_math_remainder_value_##suffix(dividend, divisor, 1, quotient_output); \
+    }
+
+CPLUS_MATH_DEFINE_REMAINDER(
+    f, float, cplus_math_classify_float, cplus_math_ilogb_float,
+    cplus_math_scale_float, cplus_math_copysign_float, cplus_math_sign_float)
+CPLUS_MATH_DEFINE_REMAINDER(
+    , double, cplus_math_classify_double, cplus_math_ilogb_double,
+    cplus_math_scale_double, cplus_math_copysign_double, cplus_math_sign_double)
+CPLUS_MATH_DEFINE_REMAINDER(
+    l, long double, cplus_math_classify_long_double, cplus_math_ilogb_long_double,
+    cplus_math_scale_long_double, cplus_math_copysign_long_double, cplus_math_sign_long_double)
+
+#undef CPLUS_MATH_DEFINE_REMAINDER
+
 static void cplus_math_increment_magnitude(unsigned char* bytes, unsigned int sign_byte) {
     unsigned int index;
     for (index = 0; index < sign_byte; index++) {

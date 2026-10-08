@@ -2476,6 +2476,16 @@ binary128. This deterministic tag-to-payload mapping is the SDK's
 implementation-defined interpretation of the C `NAN(tag)` form; it does not
 imply support for signaling NaNs or payload preservation by other operations.
 
+The SDK `fmod` family SHALL use a quotient truncated toward zero, returning a
+remainder with the dividend's sign and magnitude less than the divisor's
+magnitude. The `remainder` and `remquo` families SHALL use the nearest integer
+quotient, resolving exact halfway cases to an even quotient; an exact zero
+remainder SHALL retain the dividend's sign. `remquo` SHALL store the signed
+low three bits of that rounded quotient. A zero divisor or infinite dividend
+with non-NaN operands SHALL set `errno` to `EDOM` and return a quiet NaN;
+`remquo` SHALL store zero in its quotient output for that case. A NaN operand
+SHALL produce a NaN result without changing `errno`.
+
 The SDK SHALL expose the supported real operations through `std.math` with
 explicit C+ declarations and types. It SHALL preserve the selected target's
 floating formats and ABI, including `long double`, and SHALL NOT silently
