@@ -4620,7 +4620,8 @@ dependencies.
     symlink and file removal unlinks the symlink without deleting its target;
     it also passes the runtime dependency audit. A separate Linux fixture
     exercises permission-denied normalization for open, metadata, directory
-    open, and directory creation as an unprivileged user; a non-directory path
+    open, directory creation, file removal, and rename as an unprivileged user;
+    a non-directory path
     component is also checked for `NOT_FOUND` normalization across open,
     metadata, and directory-open operations. The fixture also checks one-level
     directory creation (without synthesizing missing parents) and confirms file

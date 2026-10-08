@@ -127,10 +127,12 @@ class RuntimeFilePalTest {
         val directory = Files.createTempDirectory("cplus-file-pal-access")
         val deniedDirectory = Files.createDirectory(directory.resolve("denied"))
         val deniedFile = deniedDirectory.resolve("secret.txt").toAbsolutePath().normalize()
+        val deniedRenameTarget = deniedDirectory.resolve("renamed.txt").toAbsolutePath().normalize()
         val source = directory.resolve("access-pal.c")
         val executable = directory.resolve("access-pal")
         val directoryName = cString(deniedDirectory.toAbsolutePath().normalize().toString())
         val fileName = cString(deniedFile.toString())
+        val renameTargetName = cString(deniedRenameTarget.toString())
         Files.setPosixFilePermissions(deniedDirectory, PosixFilePermissions.fromString("---------"))
         Files.writeString(source, """
             #include "cplus_platform.h"
@@ -138,11 +140,14 @@ class RuntimeFilePalTest {
             int main(void) {
                 const char* directory = "$directoryName";
                 const char* file = "$fileName";
+                const char* rename_target = "$renameTargetName";
                 cplus_file_metadata_t metadata;
                 if (platform_file_open(file, CPLUS_FILE_READ) != CPLUS_PAL_ACCESS_DENIED) return 1;
                 if (platform_file_metadata(file, &metadata) != CPLUS_PAL_ACCESS_DENIED) return 2;
                 if (platform_directory_open(directory) != CPLUS_PAL_ACCESS_DENIED) return 3;
                 if (platform_directory_create(file) != CPLUS_PAL_ACCESS_DENIED) return 4;
+                if (platform_file_remove(file) != CPLUS_PAL_ACCESS_DENIED) return 5;
+                if (platform_file_rename(file, rename_target) != CPLUS_PAL_ACCESS_DENIED) return 6;
                 return 0;
             }
         """.trimIndent())
@@ -160,6 +165,7 @@ class RuntimeFilePalTest {
         } finally {
             Files.setPosixFilePermissions(deniedDirectory, PosixFilePermissions.fromString("rwx------"))
             Files.deleteIfExists(deniedFile)
+            Files.deleteIfExists(deniedRenameTarget)
             Files.deleteIfExists(executable)
             Files.deleteIfExists(source)
             Files.deleteIfExists(deniedDirectory)
