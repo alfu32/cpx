@@ -25,10 +25,16 @@ class RuntimeLibcFamiliesTest {
                 #include <signal.h>
                 #include <stdio.h>
                 #include <time.h>
+                #include <wchar.h>
                 static int seen;
                 static void handler(int value) { seen = value; }
                 int main(void) {
                     char text[32];
+                    wchar_t wide[4];
+                    wchar_t different[2] = {65, 234};
+                    char utf8[8];
+                    const char unicode[] = "A\xC3\xA9";
+                    const char malformed[] = {(char)0xc3, 'x', 0};
                     if (snprintf(text, sizeof(text), "%d:%s", 7, "ok") != 4) return 1;
                     if (text[0] != '7' || text[1] != ':' || text[2] != 'o' || text[3] != 'k' || text[4] != 0) return 2;
                     if (sqrt(9.0) != 3.0 || fabs(-2.5) != 2.5) return 3;
@@ -36,6 +42,11 @@ class RuntimeLibcFamiliesTest {
                     if (setlocale(LC_ALL, "C") == (char*)0) return 5;
                     if (signal(2, handler) == (signal_handler)-1 || raise(2) != 0 || seen != 2) return 6;
                     if (clock() < 0 || time((time_t*)0) < 0) return 7;
+                    if (mbstowcs(wide, unicode, 4) != 2 || wcslen(wide) != 2 ||
+                        wide[0] != 65 || wide[1] != 233 || wcscmp(wide, different) == 0) return 8;
+                    if (wcstombs(utf8, wide, sizeof(utf8)) != 3 || utf8[0] != 'A' ||
+                        (unsigned char)utf8[1] != 0xc3 || (unsigned char)utf8[2] != 0xa9 || utf8[3] != 0) return 9;
+                    if (mbstowcs(wide, malformed, 4) != (size_t)-1) return 10;
                     return 0;
                 }
             """.trimIndent())
@@ -74,10 +85,16 @@ class RuntimeLibcFamiliesTest {
                 #include <signal.h>
                 #include <stdio.h>
                 #include <time.h>
+                #include <wchar.h>
                 static int seen;
                 static void handler(int value) { seen = value; }
                 int main(void) {
                     char text[32];
+                    wchar_t wide[4];
+                    wchar_t different[2] = {65, 234};
+                    char utf8[8];
+                    const char unicode[] = "A\xC3\xA9";
+                    const char malformed[] = {(char)0xc3, 'x', 0};
                     if (snprintf(text, sizeof(text), "%d:%s", 7, "ok") != 4) return 1;
                     if (text[0] != '7' || text[1] != ':' || text[2] != 'o' || text[3] != 'k' || text[4] != 0) return 2;
                     if (sqrt(9.0) != 3.0 || fabs(-2.5) != 2.5) return 3;
@@ -85,6 +102,11 @@ class RuntimeLibcFamiliesTest {
                     if (setlocale(LC_ALL, "C") == (char*)0) return 5;
                     if (signal(2, handler) == (signal_handler)-1 || raise(2) != 0 || seen != 2) return 6;
                     if (clock() < 0 || time((time_t*)0) < 0) return 7;
+                    if (mbstowcs(wide, unicode, 4) != 2 || wcslen(wide) != 2 ||
+                        wide[0] != 65 || wide[1] != 233 || wcscmp(wide, different) == 0) return 8;
+                    if (wcstombs(utf8, wide, sizeof(utf8)) != 3 || utf8[0] != 'A' ||
+                        (unsigned char)utf8[1] != 0xc3 || (unsigned char)utf8[2] != 0xa9 || utf8[3] != 0) return 9;
+                    if (mbstowcs(wide, malformed, 4) != (size_t)-1) return 10;
                     return 0;
                 }
             """.trimIndent())
@@ -100,6 +122,7 @@ class RuntimeLibcFamiliesTest {
             root.resolve("runtime/src/ctype.c").toString(),
             root.resolve("runtime/src/locale.c").toString(),
             root.resolve("runtime/src/signal.c").toString(),
+            root.resolve("runtime/src/wide.c").toString(),
             root.resolve("platform/linux/runtime.c").toString(), "-o", executable.toString()
         ).redirectErrorStream(true).start()
         val output = compile.inputStream.bufferedReader().readText()

@@ -23,7 +23,8 @@ Latest full test suites: Linux `gradle test` passes (1m37s); native Windows
                          VM `gradle test` passes (3m26s)
 Windows runtime evidence: allocator, process, stdio channels, clocks, threads/TLS,
                           atomics/synchronization, TCP/UDP/IPv6, resolver,
-                          std.math façade, C17 subset, locale/signal/ctype
+                          std.math façade, C17 subset, locale/signal/ctype,
+                          UTF-8/wide-character conversion
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
@@ -4484,10 +4485,12 @@ atomic facade through concurrent fetch operations, compare/exchange, memory
 orders, thread fences, wait/wake, and runtime-managed workers; its PE passes the
 dependency audit. `RuntimeLibcFamiliesTest.windowsC17FamiliesExecuteFormattingClockMathClassificationLocaleAndSignals`
 also executes C17 formatting, clocks, math classification, ctype, locale, and
-signal/raise behavior through the production Windows runtime; its PE passes
-the dependency audit. R4 remains open for broader Windows execution evidence
-across the other runtime/libc families, not because these registered checks
-fail.
+signal/raise behavior through the production Windows runtime, plus UTF-8 to
+wide-character conversion, reverse conversion, and malformed-sequence
+rejection; its PE passes the dependency audit. The Linux counterpart also
+passes after explicitly linking the same runtime wide-character adapter. R4
+remains open for broader Windows execution evidence across the other
+runtime/libc families, not because these registered checks fail.
 
 ### R4.1/R4.2 completion record
 
