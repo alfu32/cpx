@@ -4,6 +4,7 @@ import cplus.core.SourceFile
 import cplus.core.Lexer
 import cplus.core.Token
 import cplus.core.TokenKind
+import cplus.core.LineIndex
 import java.nio.file.Path
 
 enum class ForeignDeclarationKind {
@@ -31,6 +32,8 @@ data class CHeaderMacro(
     val line: Int? = null
 )
 
+data class CHeaderSourceLocation(val path: Path, val line: Int)
+
 data class CHeaderDeclaration(
     val name: String,
     val kind: ForeignDeclarationKind,
@@ -51,7 +54,8 @@ data class CHeaderDeclaration(
 data class CSourceUnit(
     val source: SourceFile,
     val moduleName: String,
-    val macros: List<CHeaderMacro> = emptyList()
+    val macros: List<CHeaderMacro> = emptyList(),
+    val sourceLineOrigins: Map<Int, CHeaderSourceLocation> = emptyMap()
 )
 
 /**
@@ -67,8 +71,18 @@ class CHeaderImportService(
 
     fun isKnownModule(module: String): Boolean = module in configuredHeaders
 
-    fun sourceDeclarations(text: String, macros: List<CHeaderMacro> = emptyList()): Map<String, CHeaderDeclaration> =
-        parse(text, allowFunctionDefinitions = true).toMutableMap().also { declarations ->
+    fun sourceDeclarations(
+        text: String,
+        macros: List<CHeaderMacro> = emptyList(),
+        sourceLineOrigins: Map<Int, CHeaderSourceLocation> = emptyMap()
+    ): Map<String, CHeaderDeclaration> =
+        parse(text, allowFunctionDefinitions = true).mapValues { (_, declaration) ->
+            val offset = declaration.sourceRange?.first ?: return@mapValues declaration
+            val generatedLine = LineIndex.from(text).positionAt(offset).line
+            val original = sourceLineOrigins[generatedLine] ?: return@mapValues declaration
+            if (declaration.externalSource != null) declaration
+            else declaration.copy(externalSource = original.path, externalLine = original.line)
+        }.toMutableMap().also { declarations ->
             macros.forEach { macro ->
                 safeMacroDeclaration(macro)?.let { declarations[macro.name] = it }
             }

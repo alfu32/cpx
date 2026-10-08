@@ -496,6 +496,32 @@ class SemanticTypeTest {
     }
 
     @Test
+    fun discoveredForeignFunctionRetainsOriginalHeaderPathAndLine() {
+        val headerPath = Path.of("temporary-sdk/include/demo/coucou.h").toAbsolutePath().normalize()
+        val sourcePath = Path.of("temporary-sdk/preprocessed/coucou.i").toAbsolutePath().normalize()
+        val cSource = SourceFile(
+            SourceFileId(43), sourcePath,
+            "int coucou(void) { int body_local = 1; return body_local; }", 1
+        )
+        val source = SourceFile(SourceFileId(44), Path.of("main.cp"), "int main() { return 0; }", 1)
+        val result = SemanticAnalyzer().analyze(
+            AstBuilder().build(Parser(Lexer().lex(source)).parse().syntax),
+            foreignSources = listOf(
+                CSourceUnit(
+                    cSource,
+                    "c.demo.coucou",
+                    sourceLineOrigins = mapOf(1 to CHeaderSourceLocation(headerPath, 17))
+                )
+            )
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val symbol = result.model!!.foreignFunctions.getValue("coucou").symbol
+        assertEquals(headerPath, symbol.externalSource)
+        assertEquals(17, symbol.externalLine)
+    }
+
+    @Test
     fun unsupportedHeaderPreprocessorContentRemainsDiagnostic() {
         val service = CHeaderImportService(mapOf("c.test" to "#define MAGIC 1\n"))
         val text = "import { MAGIC } from c.test; int main() { return 0; }"

@@ -3,6 +3,7 @@ package cplus.compiler
 import cplus.core.Diagnostic
 import cplus.core.DiagnosticSeverity
 import cplus.semantic.CHeaderMacro
+import cplus.semantic.CHeaderSourceLocation
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.nio.file.Files
@@ -31,6 +32,28 @@ data class CHeaderPreprocessResult(
 
 fun CHeaderPreprocessResult.semanticMacros(): List<CHeaderMacro> = macros.map { macro ->
     CHeaderMacro(macro.name, macro.parameters, macro.replacement, macro.source, macro.line)
+}
+
+fun CHeaderPreprocessResult.semanticSourceLineOrigins(): Map<Int, CHeaderSourceLocation> {
+    val marker = Regex("""^\s*#(?:line\s+)?\s*(\d+)\s+\"((?:\\.|[^\"])*)\".*$""")
+    val origins = linkedMapOf<Int, CHeaderSourceLocation>()
+    var currentPath: Path? = null
+    var currentLine: Int? = null
+    text.lineSequence().forEachIndexed { index, line ->
+        val match = marker.matchEntire(line)
+        if (match != null) {
+            val pathText = match.groupValues[2].replace("\\\\", "\\").replace("\\\"", "\"")
+            currentPath = pathText.takeIf { it.isNotEmpty() && !it.startsWith("<") }
+                ?.let { runCatching { Path.of(it).toAbsolutePath().normalize() }.getOrNull() }
+            currentLine = match.groupValues[1].toIntOrNull()
+        } else {
+            val path = currentPath
+            val sourceLine = currentLine
+            if (path != null && sourceLine != null) origins[index + 1] = CHeaderSourceLocation(path, sourceLine)
+            currentLine = currentLine?.plus(1)
+        }
+    }
+    return origins
 }
 
 /** Runs the selected C driver's real preprocessor; it does not interpret C itself. */

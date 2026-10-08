@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    102/128 accepted with recorded evidence; 26 TODO
+Roadmap leaf tasks:    103/128 accepted with recorded evidence; 25 TODO
 Phase gates:           10/12 complete; 1 active; 1 queued
-Current task:          R10.1.1.3.4 — delivered SDK header coverage audit
+Current task:          R10.1.1.4 — bind discovered symbols and retire function whitelists
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -36,10 +36,10 @@ R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
 R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
-R10 [DOING] 5/19 import discovery, completion and quick fixes
+R10 [DOING] 6/19 import discovery, completion and quick fixes
 R11 [TODO]  0/12 compile-time extension methods
 
-TOTAL       102/128 implementation tasks accepted; 10/12 phase gates complete,
+TOTAL       103/128 implementation tasks accepted; 10/12 phase gates complete,
             1 active, 1 queued
 ```
 
@@ -49,8 +49,8 @@ R10 adds 19 terminal tasks and R11 adds 12, increasing the prior 97-task
 denominator to 128 without changing the accepted numerator. Their broader
 existing task IDs are retained as composites, not double-counted as leaves.
 The recorded Linux/Windows results above apply to the prior R0–R9 baseline, not
-these features. R10.1.1.1 is the first newly accepted leaf; no R10/R11 phase
-gate has passed.
+these features. Six R10 leaves now have recorded Linux evidence; no R10/R11
+phase gate has passed.
 
 R9 adds four independently accepted distribution leaves to the prior 93-task
 roadmap, increasing the denominator to 97. The 10th phase gate records the
@@ -3783,7 +3783,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [10/12 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 102/128 accepted; R10.1.1.1–.3.3 accepted, R10 active, R11 queued
+Roadmap leaf tasks: 103/128 accepted; R10.1.1.1–.3.4 accepted, R10 active, R11 queued
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3795,7 +3795,7 @@ Roadmap leaf tasks: 102/128 accepted; R10.1.1.1–.3.3 accepted, R10 active, R11
 [DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
-[DOING] R10 — import discovery, completion and quick fixes (5/19 leaves)
+[DOING] R10 — import discovery, completion and quick fixes (6/19 leaves)
 [TODO]  R11 — compile-time extension methods (0/12 leaves)
 ```
 
@@ -5893,7 +5893,7 @@ The installable distribution runs from an unrelated project directory without
 manual SDK configuration; an explicit JVM property selects a development SDK;
 the CLI help identifies the JVM option.
 
-## R10 [DOING] [5/19] Discoverable imports and editor fixes
+## R10 [DOING] [6/19] Discoverable imports and editor fixes
 
 **Language:** LS §21 Imports; §22 Importing C; §41.1 Import assistance.
 **Technical:** TS §28 C import architecture; §54.1 Discoverable imports.
@@ -5955,7 +5955,7 @@ and timeout diagnostics. MSVC/clang-cl command adapters are covered without
 claiming native execution; native Windows execution remains assigned to
 R10.3.2.3.
 
-##### R10.1.1.3 [DOING] [3/4] Parse supported C declarations into structured foreign records
+##### R10.1.1.3 [DONE] [4/4] Parse supported C declarations into structured foreign records
 
 **Language:** LS §22.2 Foreign symbols; §22.3 Unsupported C preprocessor constructs; §43.4 C-compatible type qualifiers and declarators.
 **Technical:** TS §28 C import architecture; §30 Reference index.
@@ -6032,7 +6032,7 @@ retained. Function-like macros and expression macros are not exposed as callable
 symbols or guessed constants. Existing EOF/SEEK static import coverage remains
 passing.
 
-###### R10.1.1.3.4 [DOING] Audit declaration coverage against the delivered SDK headers
+###### R10.1.1.3.4 [DONE] Audit declaration coverage against the delivered SDK headers
 
 **Language:** LS §22.1 C header import; §22.3 Unsupported C preprocessor constructs; §28 Source provenance.
 **Technical:** TS §28 C import architecture; §63 Testing architecture.
@@ -6045,6 +6045,18 @@ passing.
 **Acceptance:** Existing required stdio/math/complex/stdint/stdarg declarations are representable or have the already specified capability diagnostic; new parser limitations cannot silently regress supported imports. Selected-header truth replaces old catalogue expectations. Test a custom header definition such as `coucou` in a temporary SDK and prove body locals are absent; no Kotlin name addition. New unsupported required forms keep this leaf open until supported.
 
 **Verify:** `gradle :semantic:test :compiler:test` (SDK corpus and source-range fixtures).
+
+**Evidence:** Linux, 2026-10-08 — `./gradlew :semantic:test` and
+`./gradlew :compiler:test --tests cplus.compiler.CHeaderSdkCorpusTest` pass.
+The corpus test preprocesses every delivered SDK `.h` file with the selected
+target C driver and emits supported/unsupported declaration and opaque-macro
+counts, while the required `c.stdio`, `c.math`, `c.complex`, `c.stdint`, and
+`c.stdarg` modules each pass semantic analysis with zero errors. A temporary
+`demo/coucou.h` is discovered without a Kotlin catalogue entry; its function
+retains the original header path/line and its body-local variable is excluded.
+The selected ABI's `__builtin_va_list` is represented using the SDK's existing
+opaque pointer contract. This evidence is host-Linux only; native Windows
+header-corpus evidence remains at R10.3.2.3.
 
 ##### R10.1.1.4 [TODO] Bind discovered symbols and retire function whitelists
 

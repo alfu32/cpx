@@ -871,7 +871,9 @@ class SemanticAnalyzer(
             name: String,
             moduleName: String,
             origin: Origin,
-            underlyingType: CType? = null
+            underlyingType: CType? = null,
+            externalSource: java.nio.file.Path? = null,
+            externalLine: Int? = null
         ) {
             foreignTypes[name]?.let { existing ->
                 if (existing.underlyingType == null && underlyingType != null) existing.underlyingType = underlyingType
@@ -880,7 +882,16 @@ class SemanticAnalyzer(
             val type = ForeignType(TypeId(nextTypeId.next()), name, underlyingType = underlyingType)
             foreignTypes[name] = type
             types += type
-            val symbol = newSymbol(name, SymbolKind.FOREIGN_TYPE, type, origin, moduleName, Visibility.PUBLIC)
+            val symbol = newSymbol(
+                name,
+                SymbolKind.FOREIGN_TYPE,
+                type,
+                origin,
+                moduleName,
+                Visibility.PUBLIC,
+                externalSource = externalSource,
+                externalLine = externalLine
+            )
             defineBinding(moduleName, name, symbol.id)
         }
 
@@ -945,6 +956,7 @@ class SemanticAnalyzer(
             val taggedAggregate = Regex("^(struct|union|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)$").matchEntire(writtenBaseName)
             val baseName = taggedAggregate?.groupValues?.get(2) ?: writtenBaseName
             var type = when {
+                baseName == "__builtin_va_list" -> PointerType(TypeId(nextTypeId.next()), primitive("void"))
                 taggedAggregate != null -> {
                     foreignTypes[baseName] ?: run {
                         registerForeignType(baseName, moduleName, origin)
@@ -1011,52 +1023,57 @@ class SemanticAnalyzer(
                         declaration.aggregateKind == CHeaderAggregateKind.ENUM
                     if (isAggregate && !declaration.aggregateComplete) {
                         incompleteForeignTypes += declaration.name
-                        registerForeignType(declaration.name, moduleName, origin)
+                            registerForeignType(
+                                declaration.name,
+                                moduleName,
+                                origin,
+                                externalSource = declaration.externalSource,
+                                externalLine = declaration.externalLine
+                            )
                     } else {
                         incompleteForeignTypes -= declaration.name
                         registerForeignType(
                             declaration.name,
                             moduleName,
                             origin,
-                            if (isAggregate) {
-                        val owner = ForeignType(TypeId(nextTypeId.next()), declaration.name)
-                        val aggregate: CType = if (declaration.aggregateKind == CHeaderAggregateKind.STRUCT) {
-                            StructType(owner.id, declaration.name, mutableListOf()).also { structure ->
-                                declaration.fields.forEach { field ->
-                                    val fieldType = foreignTypeFromName(field.typeName, moduleName, origin)
-                                    val fieldSymbol = newSymbol(
-                                        field.name,
-                                        SymbolKind.FIELD,
-                                        fieldType,
-                                        origin,
-                                        moduleName,
-                                        Visibility.PUBLIC
-                                    )
-                                    structure.fields = structure.fields + FieldSymbol(fieldSymbol, structure)
+                            underlyingType = if (isAggregate) {
+                                if (declaration.aggregateKind == CHeaderAggregateKind.STRUCT) {
+                                    val owner = ForeignType(TypeId(nextTypeId.next()), declaration.name)
+                                    val structure = StructType(owner.id, declaration.name, mutableListOf())
+                                    declaration.fields.forEach { field ->
+                                        val fieldType = foreignTypeFromName(field.typeName, moduleName, origin)
+                                        val fieldSymbol = newSymbol(
+                                            field.name,
+                                            SymbolKind.FIELD,
+                                            fieldType,
+                                            origin,
+                                            moduleName,
+                                            Visibility.PUBLIC
+                                        )
+                                        structure.fields = structure.fields + FieldSymbol(fieldSymbol, structure)
+                                    }
+                                    types += structure
+                                    structure
+                                } else if (declaration.aggregateKind == CHeaderAggregateKind.UNION) {
+                                    val owner = ForeignType(TypeId(nextTypeId.next()), declaration.name)
+                                    val union = UnionType(owner.id, declaration.name, mutableListOf())
+                                    declaration.fields.forEach { field ->
+                                        val fieldType = foreignTypeFromName(field.typeName, moduleName, origin)
+                                        val fieldSymbol = newSymbol(
+                                            field.name,
+                                            SymbolKind.FIELD,
+                                            fieldType,
+                                            origin,
+                                            moduleName,
+                                            Visibility.PUBLIC
+                                        )
+                                        union.fields = union.fields + FieldSymbol(fieldSymbol, union)
+                                    }
+                                    types += union
+                                    union
+                                } else {
+                                    primitive("int")
                                 }
-                            }
-                        } else if (declaration.aggregateKind == CHeaderAggregateKind.UNION) {
-                            UnionType(owner.id, declaration.name, mutableListOf()).also { union ->
-                                declaration.fields.forEach { field ->
-                                    val fieldType = foreignTypeFromName(field.typeName, moduleName, origin)
-                                    val fieldSymbol = newSymbol(
-                                        field.name,
-                                        SymbolKind.FIELD,
-                                        fieldType,
-                                        origin,
-                                        moduleName,
-                                        Visibility.PUBLIC
-                                    )
-                                    union.fields = union.fields + FieldSymbol(fieldSymbol, union)
-                                }
-                            }
-                        } else {
-                            primitive("int")
-                        }
-                        if (aggregate !is PrimitiveType || types.none { it.id == aggregate.id }) types += aggregate
-                        aggregate
-                            } else if (declaration.aggregateKind == CHeaderAggregateKind.ENUM) {
-                                primitive("int")
                             } else if (declaration.functionPointerType != null) {
                                 val callback = declaration.functionPointerType
                                 val returnType = foreignTypeFromName(callback.returnType, moduleName, origin)
@@ -1076,7 +1093,9 @@ class SemanticAnalyzer(
                                 primitive(declaration.name)
                             } else {
                                 declaration.typeName?.let { foreignTypeFromName(it, moduleName, origin, allowIncomplete = true) }
-                            }
+                            },
+                            externalSource = declaration.externalSource,
+                            externalLine = declaration.externalLine
                         )
                     }
                 }
@@ -1104,7 +1123,9 @@ class SemanticAnalyzer(
                         origin,
                         moduleName,
                         Visibility.PUBLIC,
-                        declaration.name
+                        declaration.name,
+                        externalSource = declaration.externalSource,
+                        externalLine = declaration.externalLine
                     )
                     val function = FunctionSymbol(symbol, returnType, parameterSymbols, declaration.isVariadic, signature)
                     functions[declaration.name] = function
@@ -1121,7 +1142,9 @@ class SemanticAnalyzer(
                         origin,
                         moduleName,
                         Visibility.PUBLIC,
-                        declaration.name
+                        declaration.name,
+                        externalSource = declaration.externalSource,
+                        externalLine = declaration.externalLine
                     )
                     globals[declaration.name] = symbol
                     foreignGlobals[declaration.name] = symbol
@@ -1173,7 +1196,11 @@ class SemanticAnalyzer(
         }
 
         foreignSources.forEach { sourceUnit ->
-            headerImportService.sourceDeclarations(sourceUnit.source.text, sourceUnit.macros).values.forEach { declaration ->
+            headerImportService.sourceDeclarations(
+                sourceUnit.source.text,
+                sourceUnit.macros,
+                sourceUnit.sourceLineOrigins
+            ).values.forEach { declaration ->
                 val origin = declaration.sourceRange?.let { range ->
                     Origin.Direct(SourceRange(sourceUnit.source.id, range.first, range.last + 1))
                 } ?: Origin.Synthetic(null)
