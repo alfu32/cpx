@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    59/88 accepted with recorded evidence
+Roadmap leaf tasks:    60/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.5.1 — define the real C17 math API
+Current task:          R5.4.5.2 — implement real classification and comparison macros
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
-R5 [DOING] 26/41 native std and platform-service work remains open
+R5 [DOING] 27/41 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       59/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       60/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -175,6 +175,13 @@ integer and floating independent-caller checks, target descriptor layouts,
 and selected-compiler probe recorded below. This adds one verified leaf and
 one separately tracked Windows leaf: the roadmap changes from 58/87 to 59/88.
 R3.1.4 remains TODO; no Windows completion credit is included.
+
+R5.4.5.1 then completed the public real-math declaration stage: the SDK header,
+`std.math`, and `c.math` import catalogue now expose all 57 C17 real function
+families for float, double, and long double. Exact-name/type catalogue tests,
+C+ import/lowering tests, SDK-header syntax checks, and the full build passed.
+This moves the roadmap from 59/88 to 60/88 and R5 from 26/41 to 27/41;
+classification constants/macros and every implementation family remain open.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -4556,13 +4563,17 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [DOING] [0/11] — implement the specified portable real `std.math` and
+  - R5.4.5 [DOING] [1/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
-    - R5.4.5.1 [DOING] — define the complete real C17 `<math.h>` and `std.math`
-      API, including declarations, macros, constants, and float/double/long
-      double signatures. **Depends:** R3.1.3.
-    - R5.4.5.2 [TODO] — implement floating classification and comparison
-      operations/macros for each supported real type. **Depends:** R5.4.5.1.
+    - R5.4.5.1 [DONE] — declare all C17 real `<math.h>` functions and
+      float/double/long-double `std.math` entry points. **Depends:** R3.1.3.
+      **Acceptance evidence:** the C import catalogue test checks the exact
+      171 function names and key pointer/integer/long-double signatures;
+      compiler integration tests import the variants, compile the complete
+      `std.math` module, and syntax-check generated C against the SDK header.
+    - R5.4.5.2 [DOING] — implement floating classification/comparison
+      functions, C17 classification and comparison macros, and math constants
+      for each supported real type. **Depends:** R5.4.5.1.
     - R5.4.5.3 [TODO] — implement rounding and integer-conversion families.
       **Depends:** R5.4.5.1.
     - R5.4.5.4 [TODO] — implement decomposition, scaling, sign, NaN, and

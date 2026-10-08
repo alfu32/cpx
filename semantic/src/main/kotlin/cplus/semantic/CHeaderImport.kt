@@ -134,6 +134,46 @@ class CHeaderImportService(
         .trim()
 
     companion object {
+        private fun mathHeaderDeclarations(): String = buildList {
+            val realTypes = listOf("float" to "f", "double" to "", "long double" to "l")
+
+            fun variants(
+                baseName: String,
+                resultType: (String) -> String,
+                parameters: (String) -> List<String>
+            ) {
+                realTypes.forEach { (type, suffix) ->
+                    val name = "$baseName$suffix"
+                    add("extern ${resultType(type)} $name(${parameters(type).joinToString(", ")});")
+                }
+            }
+
+            listOf(
+                "acos", "asin", "atan", "acosh", "asinh", "atanh", "cos", "sin", "tan",
+                "cosh", "sinh", "tanh", "exp", "exp2", "expm1", "log", "log10", "log1p",
+                "log2", "logb", "cbrt", "fabs", "sqrt", "erf", "erfc", "lgamma", "tgamma",
+                "ceil", "floor", "nearbyint", "rint", "round", "trunc"
+            ).forEach { name -> variants(name, { it }) { type -> listOf("$type value") } }
+
+            listOf("atan2", "fmod", "remainder", "hypot", "pow", "copysign", "nextafter", "fdim", "fmax", "fmin")
+                .forEach { name -> variants(name, { it }) { type -> listOf("$type left", "$type right") } }
+
+            variants("frexp", { it }) { type -> listOf("$type value", "int* exponent") }
+            variants("modf", { it }) { type -> listOf("$type value", "$type* integral") }
+            variants("ilogb", { "int" }) { type -> listOf("$type value") }
+            variants("ldexp", { it }) { type -> listOf("$type value", "int exponent") }
+            variants("scalbn", { it }) { type -> listOf("$type value", "int exponent") }
+            variants("scalbln", { it }) { type -> listOf("$type value", "long int exponent") }
+            variants("lrint", { "long int" }) { type -> listOf("$type value") }
+            variants("llrint", { "long long int" }) { type -> listOf("$type value") }
+            variants("lround", { "long int" }) { type -> listOf("$type value") }
+            variants("llround", { "long long int" }) { type -> listOf("$type value") }
+            variants("nan", { it }) { _ -> listOf("const char* tag") }
+            variants("nexttoward", { it }) { type -> listOf("$type value", "long double direction") }
+            variants("remquo", { it }) { type -> listOf("$type left", "$type right", "int* quotient") }
+            variants("fma", { it }) { type -> listOf("$type first", "$type second", "$type third") }
+        }.joinToString("\n")
+
         private val defaultHeaders = mapOf(
             "c.stdio" to """
                 extern int printf(const char* format, ...);
@@ -160,17 +200,7 @@ class CHeaderImportService(
                 typedef long ptrdiff_t;
                 typedef long max_align_t;
             """.trimIndent(),
-            "c.math" to """
-                extern double sqrt(double value);
-                extern double sin(double value);
-                extern double cos(double value);
-                extern double pow(double left, double right);
-                extern double fabs(double value);
-                extern double floor(double value);
-                extern double ceil(double value);
-                extern double exp(double value);
-                extern double log(double value);
-            """.trimIndent(),
+            "c.math" to mathHeaderDeclarations(),
             "c.stdlib" to """
                 extern int abs(int value);
                 extern long labs(long value);

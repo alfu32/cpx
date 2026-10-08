@@ -706,6 +706,72 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun cMathImportsExposeFloatDoubleAndLongDoubleFunctionVariants() {
+        val source = """
+            import { frexpf, lrintf, nanf, modf, ilogb, remquo, nexttowardl, fmal, llroundl } from c.math;
+
+            float use_float_math(float value) {
+                int exponent;
+                return frexpf(value, &exponent) + nanf("payload") + (float)lrintf(value);
+            }
+
+            double use_double_math(double value) {
+                double integral;
+                int quotient;
+                return modf(value, &integral) + remquo(value, 2.0, &quotient) + (double)ilogb(value);
+            }
+
+            long double use_long_double_math(long double value) {
+                return nexttowardl(value, value) + fmal(value, value, value) + (long double)llroundl(value);
+            }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-c-math-imports", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("#include <math.h>"), generated)
+        val directory = Files.createTempDirectory("cplus-c-math-imports-syntax")
+        val cFile = directory.resolve("math_imports.c").also { it.writeText(generated) }
+        val sdkRoot = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val compile = ProcessBuilder(
+            "cc", "-std=c17", "-Werror=implicit-function-declaration", "-I",
+            sdkRoot.resolve("libc/include").toString(), "-fsyntax-only", cFile.toString()
+        ).redirectErrorStream(true).start()
+        val output = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), output)
+    }
+
+    @Test
+    fun stdMathDeclaresDistinctFloatDoubleAndLongDoubleEntryPoints() {
+        val directory = Files.createTempDirectory("cplus-std-math-api")
+        val source = directory.resolve("main.cp").also {
+            it.writeText(
+                """
+                    import { std_math_sqrtf, std_math_sqrt, std_math_sqrtl } from std.math;
+                    float sqrt_float(float value) { return std_math_sqrtf(value); }
+                    double sqrt_double(double value) { return std_math_sqrt(value); }
+                    long double sqrt_long_double(long double value) { return std_math_sqrtl(value); }
+                """.trimIndent()
+            )
+        }
+        val sdkRoot = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val result = CPlusCompiler().compile(
+            CompileRequest(
+                listOf(source, sdkRoot.resolve("std/src/math.cp")),
+                target = TargetInfo(targetTriple = "linux-x86_64")
+            )
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = requireNotNull(result.semanticModel)
+        assertEquals("float", model.functions.getValue("std_math_sqrtf").returnType.name)
+        assertEquals("double", model.functions.getValue("std_math_sqrt").returnType.name)
+        assertEquals("long double", model.functions.getValue("std_math_sqrtl").returnType.name)
+        val generated = result.generatedUnits.joinToString("\n") { it.text }
+        assertTrue("long double std_math_sqrtl(long double value)" in generated, generated)
+    }
+
+    @Test
     fun runtimeStringTemplatesLowerThroughFormattingHelper() {
         val source = """
             import { puts } from c.stdio;
