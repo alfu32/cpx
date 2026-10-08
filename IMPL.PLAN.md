@@ -63,6 +63,7 @@ Latest completed implementation commits:
 - `b6bc355` — add portable directory PAL services (R5.2.3 Linux-verified; Windows execution deferred).
 - `69bf852` — add portable filesystem and unbuffered stream facades (R5.2.4 Linux-verified; Windows execution deferred).
 - `2d24aed` — validate page-memory PAL failure cases (R5.3.1 Linux-verified; Windows execution deferred).
+- `4d253de` — add portable process spawn and wait adapters (R5.3.2 Linux-verified; Windows execution deferred).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
