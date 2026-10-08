@@ -13,6 +13,11 @@ class ConformanceTest {
         assertTrue(report.cases.none { it.status == "pass" })
         assertTrue(report.cases.all { it.status == "planned" })
         assertTrue(report.cases.any { it.area == ConformanceArea.NATIVE_STD && it.status == "planned" })
+
+        val unsupportedReport = ConformanceMatrix.initial(descriptor.copy(os = "freebsd"), BuildProfile())
+        assertTrue(unsupportedReport.cases.any {
+            it.id == "platform.services" && it.status == "unsupported"
+        })
     }
 
     @Test
