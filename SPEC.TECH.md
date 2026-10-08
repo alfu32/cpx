@@ -2075,6 +2075,16 @@ link names unless path-shaped. `--map` SHALL emit deterministic generated-C
 and source byte ranges with source paths relative to the project root (or the
 invocation directory for standalone sources). `run --output` SHALL retain the
 native executable at that path; without it, the executable is temporary.
+SDK inspection commands SHALL accept an explicit `--sdk` manifest and select
+target artifacts using a canonical `--target` triple. `sdk doctor` SHALL verify
+the manifest, resolved layout, ABI descriptor, intrinsic catalogue, build
+profile, selected runtime link plan, and semantic metadata used by compilation.
+`runtime inspect` SHALL report the selected `RuntimeLinker` plan (startup and
+runtime sources plus compiler/linker flags), not a directory inventory.
+`target`, `abi`, `libc`, and `audit` inspection SHALL resolve descriptors,
+headers, and binary format rules from that same SDK root. `libc test` SHALL run
+the SDK conformance fixtures for the requested target.
+
 The CLI SHALL remove its temporary `run` product directory after build failure
 or process completion and SHALL return the child process exit status. Process-
 start failures SHALL be reported as CLI errors. The distributable fat JAR SHALL

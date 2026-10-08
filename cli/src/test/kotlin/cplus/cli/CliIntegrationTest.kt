@@ -1,6 +1,10 @@
 package cplus.cli
 
 import cplus.compiler.SdkManifestLocator
+import cplus.compiler.SdkManifestLoader
+import cplus.compiler.SdkResolver
+import cplus.compiler.RuntimeLinker
+import cplus.compiler.TargetInfo
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -13,6 +17,103 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class CliIntegrationTest {
+    @Test
+    fun runtimeInspectReportsOnlyTheSelectedBuildLinkPlan() {
+        val manifestPath = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
+        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val manifest = SdkManifestLoader.load(manifestPath).manifest!!
+        val resolution = SdkResolver.resolve(manifest, target).resolution!!
+        val expected = RuntimeLinker.plan(resolution, target).plan!!
+
+        val output = captureStdout {
+            assertEquals(0, Cli().run(listOf("runtime", "inspect", "--target", "LINUX-X86_64", "--sdk", manifestPath.toString())))
+        }
+
+        expected.startupSources.forEach { assertTrue(output.contains("startup: ${it.toAbsolutePath().normalize()}")) }
+        expected.runtimeSources.forEach { assertTrue(output.contains("source: ${it.toAbsolutePath().normalize()}")) }
+        assertTrue(output.contains("compiler-flag: -nostdlib"))
+        assertTrue(!output.contains("cplus_runtime.h"))
+    }
+
+    @Test
+    fun sdkInspectionCommandsUseSelectedManifestAndTargetArtifacts() {
+        val manifest = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
+        val sdkArgs = listOf("--sdk", manifest.toString())
+
+        val doctor = captureStdout {
+            assertEquals(0, Cli().run(listOf("sdk", "doctor") + sdkArgs + listOf("--target", "windows-x86_64")))
+        }
+        assertTrue(doctor.contains("ok: target descriptor"))
+        val target = captureStdout {
+            assertEquals(0, Cli().run(listOf("target", "windows-x86_64") + sdkArgs))
+        }
+        assertTrue(target.contains("windows-x86_64: windows/x86_64"))
+        val abi = captureStdout {
+            assertEquals(0, Cli().run(listOf("abi", "verify") + sdkArgs + listOf("--target", "WINDOWS-X86_64")))
+        }
+        assertTrue(abi.contains("verified 1 target ABI descriptor"))
+        val libc = captureStdout {
+            assertEquals(0, Cli().run(listOf("libc") + sdkArgs))
+        }
+        assertTrue(libc.contains("C17 headers: 22"))
+    }
+
+    @Test
+    fun sdkInspectionRejectsMalformedSelectedManifest() {
+        val directory = Files.createTempDirectory("cplus-cli-invalid-sdk")
+        val manifest = directory.resolve("sdk.toml").also { it.writeText("not a manifest") }
+        val diagnostics = captureStderr {
+            assertEquals(1, Cli().run(listOf("target", "list", "--sdk", manifest.toString())))
+        }
+        assertTrue(diagnostics.contains("SDK002"))
+    }
+
+    @Test
+    fun sdkPackageIndexUsesTheSelectedSdkRootAndExplicitOutput() {
+        val root = Files.createTempDirectory("cplus-cli-sdk-package")
+        val manifest = Files.createDirectories(root.resolve("manifest")).resolve("sdk.toml").also {
+            it.writeText(
+                """
+                    sdk_version = "test"
+                    language_abi_version = "1"
+                    runtime_abi_version = "1"
+                    cplus_abi_version = "1"
+                    libc_profile_version = "c17-1"
+                """.trimIndent()
+            )
+        }
+        val marker = root.resolve("marker.txt").also { it.writeText("package-me") }
+        val output = root.resolveSibling("${root.fileName}-index.txt")
+
+        assertEquals(0, Cli().run(listOf("sdk", "package", output.toString(), "--sdk", manifest.toString())))
+        val index = output.readText()
+        assertTrue(index.startsWith("CPLUS_SDK_PACKAGE_INDEX"))
+        assertTrue(index.contains("manifest/sdk.toml"))
+        assertTrue(index.contains("marker.txt"))
+    }
+
+    @Test
+    fun auditInspectsTheExecutableProducedByBuild() {
+        val directory = Files.createTempDirectory("cplus-cli-audit")
+        val source = directory.resolve("main.cp").also { it.writeText("int main() { return 0; }") }
+        val executable = directory.resolve("program")
+        val manifest = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
+        assertEquals(0, Cli().run(listOf("build", source.toString(), "--output", executable.toString())))
+
+        val output = captureStdout {
+            assertEquals(
+                0,
+                Cli().run(
+                    listOf(
+                        "audit", executable.toString(), "--target", "LINUX-X86_64", "--sdk", manifest.toString(),
+                        "--runtime", "cplus", "--libc", "c17"
+                    )
+                )
+            )
+        }
+        assertTrue(output.contains("observed:"))
+    }
+
     @Test
     fun astAndExpandInspectDifferentCompilerPhaseRepresentations() {
         val directory = Files.createTempDirectory("cplus-cli-inspection")

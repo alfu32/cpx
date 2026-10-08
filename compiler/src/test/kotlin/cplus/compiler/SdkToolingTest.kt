@@ -9,6 +9,7 @@ class SdkToolingTest {
         val manifest = SdkManifestLocator.defaultManifestPath()
         val report = SdkDoctor.inspect(manifest)
         assertTrue(report.isSuccessful, report.diagnostics.joinToString())
+        assertTrue("runtime link plan" in report.checks)
         val root = manifest.toAbsolutePath().normalize().parent!!.parent!!
         val first = SdkPackageIndex.serialize(SdkPackageIndex.build(root))
         val second = SdkPackageIndex.serialize(SdkPackageIndex.build(root))

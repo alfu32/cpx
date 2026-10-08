@@ -29,6 +29,11 @@ object SdkDoctor {
         val intrinsics = IntrinsicRegistry.load(resolution.resolution.layout.intrinsicCatalogue)
         if (!intrinsics.isSuccessful) return SdkDoctorReport(target.targetTriple, checks, intrinsics.diagnostics)
         checks += "intrinsic catalogue"
+        val profileDiagnostics = BuildProfileValidator.validate(target.buildProfile, manifest.manifest!!)
+        if (profileDiagnostics.isNotEmpty()) return SdkDoctorReport(target.targetTriple, checks, profileDiagnostics)
+        val runtimePlan = RuntimeLinker.plan(resolution.resolution, target)
+        if (!runtimePlan.isSuccessful) return SdkDoctorReport(target.targetTriple, checks, runtimePlan.diagnostics)
+        checks += "runtime link plan"
         val metadata = SdkMetadataCache.loadOrBuild(resolution.resolution)
         if (!metadata.isSuccessful) return SdkDoctorReport(target.targetTriple, checks, metadata.diagnostics)
         checks += if (metadata.rebuilt) "metadata rebuilt" else "metadata cache"

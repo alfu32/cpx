@@ -233,14 +233,21 @@ internal class Cli {
     private fun sdk(arguments: List<String>): Int {
         return when (arguments.firstOrNull() ?: "doctor") {
             "doctor", "verify" -> {
-                val report = SdkDoctor.inspect(SdkManifestLocator.defaultManifestPath())
+                val options = arguments.drop(1)
+                val manifest = optionValue(options, "--sdk")?.let(Path::of)
+                    ?: SdkManifestLocator.defaultManifestPath()
+                val target = TargetInfo(targetTriple = (optionValue(options, "--target") ?: defaultHostTargetTriple()).lowercase())
+                val report = SdkDoctor.inspect(manifest, target)
                 report.checks.forEach { println("ok: $it") }
                 report.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
                 if (report.isSuccessful) 0 else 1
             }
             "package" -> {
-                val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
-                val output = arguments.drop(1).firstOrNull()?.let(Path::of)
+                val options = arguments.drop(1)
+                val manifest = optionValue(options, "--sdk")?.let(Path::of)
+                    ?: SdkManifestLocator.defaultManifestPath()
+                val root = resolveSdkRoot(manifest) ?: return 1
+                val output = positionalArguments(options, setOf("--sdk")).firstOrNull()?.let(Path::of)
                     ?: root.resolve("sdk-package.index")
                 output.parent?.let(Files::createDirectories)
                 output.writeText(SdkPackageIndex.serialize(SdkPackageIndex.build(root)))
@@ -255,8 +262,9 @@ internal class Cli {
     }
 
     private fun target(arguments: List<String>): Int {
-        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
-        val name = arguments.firstOrNull()
+        val manifest = optionValue(arguments, "--sdk")?.let(Path::of) ?: SdkManifestLocator.defaultManifestPath()
+        val root = resolveSdkRoot(manifest) ?: return 1
+        val name = positionalArguments(arguments, setOf("--sdk")).firstOrNull { it != "list" }
         val paths = if (name == null || name == "list") TargetRegistry.list(root.resolve("abi")) else listOf(root.resolve("abi/$name.toml"))
         paths.forEach { path ->
             val result = TargetRegistry.load(path)
@@ -272,36 +280,109 @@ internal class Cli {
             System.err.println("abi expects verify or show")
             return 2
         }
-        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
-        val failures = TargetRegistry.list(root.resolve("abi")).map { TargetRegistry.load(it) }.filterNot { it.isSuccessful }
+        val manifest = optionValue(arguments, "--sdk")?.let(Path::of) ?: SdkManifestLocator.defaultManifestPath()
+        val root = resolveSdkRoot(manifest) ?: return 1
+        val targetName = optionValue(arguments, "--target")?.lowercase()
+        val descriptors = TargetRegistry.list(root.resolve("abi"))
+        val selected = if (targetName == null) descriptors else descriptors.filter { it.fileName.toString() == "$targetName.toml" }
+        if (selected.isEmpty()) {
+            System.err.println("no ABI descriptor found for target '${targetName ?: "<none>"}'")
+            return 1
+        }
+        val failures = selected.map { TargetRegistry.load(it) }.filterNot { it.isSuccessful }
         failures.flatMap { it.diagnostics }.forEach { System.err.println("error [${it.code}]: ${it.message}") }
-        if (failures.isEmpty()) println("verified ${TargetRegistry.list(root.resolve("abi")).size} target ABI descriptors")
+        if (failures.isEmpty()) println("verified ${selected.size} target ABI descriptor${if (selected.size == 1) "" else "s"}")
         return if (failures.isEmpty()) 0 else 1
     }
 
     private fun runtime(arguments: List<String>): Int {
-        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
-        val runtimeRoot = root.resolve("runtime")
-        val files = Files.walk(runtimeRoot).use { stream -> stream.filter(Files::isRegularFile).sorted().toList() }
-        files.forEach { println(it) }
-        return if (files.isNotEmpty()) 0 else 1
+        val options = if (arguments.firstOrNull() == "inspect") arguments.drop(1) else arguments
+        val targetName = optionValue(options, "--target") ?: defaultHostTargetTriple()
+        val runtimeName = optionValue(options, "--runtime") ?: "cplus"
+        val libcName = optionValue(options, "--libc") ?: "c17"
+        val manifestPath = optionValue(options, "--sdk")?.let(Path::of)
+            ?: SdkManifestLocator.defaultManifestPath()
+        val runtimeProfile = parseRuntime(runtimeName, "--runtime") ?: return 2
+        val libcProfile = parseLibc(libcName, "--libc") ?: return 2
+        val manifestResult = SdkManifestLoader.load(manifestPath)
+        if (!manifestResult.isSuccessful) {
+            manifestResult.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            return 1
+        }
+        val target = TargetInfo(
+            targetTriple = targetName.lowercase(),
+            buildProfile = BuildProfile(runtimeProfile, libcProfile)
+        )
+        val resolution = SdkResolver.resolve(manifestResult.manifest!!, target)
+        if (!resolution.isSuccessful) {
+            resolution.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            return 1
+        }
+        val plan = RuntimeLinker.plan(resolution.resolution!!, target)
+        if (!plan.isSuccessful) {
+            plan.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            return 1
+        }
+        val runtimePlan = plan.plan ?: return 1
+        println("runtime: ${runtimePlan.profile.name.lowercase()}")
+        runtimePlan.startupSources.forEach { println("startup: ${it.toAbsolutePath().normalize()}") }
+        runtimePlan.runtimeSources.forEach { println("source: ${it.toAbsolutePath().normalize()}") }
+        runtimePlan.compilerFlags.forEach { println("compiler-flag: $it") }
+        runtimePlan.linkerFlags.forEach { println("linker-flag: $it") }
+        return 0
+    }
+
+    private fun optionValue(arguments: List<String>, option: String): String? =
+        arguments.windowed(2).firstOrNull { it[0] == option }?.get(1)
+
+    private fun resolveSdkRoot(manifestPath: Path): Path? {
+        val loaded = SdkManifestLoader.load(manifestPath)
+        if (!loaded.isSuccessful) {
+            loaded.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            return null
+        }
+        val manifest = loaded.manifest ?: return null
+        return manifest.path.parent?.parent ?: run {
+            System.err.println("SDK manifest path has no SDK root: ${manifest.path}")
+            null
+        }
+    }
+
+    private fun positionalArguments(arguments: List<String>, valueOptions: Set<String>): List<String> = buildList {
+        var index = 0
+        while (index < arguments.size) {
+            val argument = arguments[index]
+            if (argument in valueOptions) index += 2
+            else if (argument.startsWith("--")) index++
+            else {
+                add(argument)
+                index++
+            }
+        }
     }
 
     private fun libc(arguments: List<String>): Int {
-        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         if (arguments.firstOrNull() == "test") return libcTest(arguments.drop(1))
+        val manifest = optionValue(arguments, "--sdk")?.let(Path::of) ?: SdkManifestLocator.defaultManifestPath()
+        val root = resolveSdkRoot(manifest) ?: return 1
         val include = root.resolve("libc/include")
         val files = if (Files.isDirectory(include)) Files.list(include).use { it.filter(Files::isRegularFile).sorted().toList() } else emptyList()
+        if (files.isEmpty()) {
+            System.err.println("SDK libc include directory is missing or empty: $include")
+            return 1
+        }
         println("C17 headers: ${files.size}")
         files.forEach { println(it.fileName) }
         return if (files.isNotEmpty()) 0 else 1
     }
 
     private fun libcTest(arguments: List<String>): Int {
-        val targetName = arguments.windowed(2).firstOrNull { it[0] == "--target" }?.get(1)
+        val targetName = optionValue(arguments, "--target")?.lowercase()
             ?: defaultHostTargetTriple()
         val target = TargetInfo(targetTriple = targetName)
-        val manifestResult = SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath())
+        val manifestPath = optionValue(arguments, "--sdk")?.let(Path::of)
+            ?: SdkManifestLocator.defaultManifestPath()
+        val manifestResult = SdkManifestLoader.load(manifestPath)
         if (!manifestResult.isSuccessful) {
             manifestResult.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
             return 1
@@ -323,16 +404,35 @@ internal class Cli {
     }
 
     private fun audit(arguments: List<String>): Int {
-        val binary = arguments.firstOrNull { !it.startsWith("--") }?.let(Path::of)
+        val binary = positionalArguments(arguments, setOf("--target", "--sdk", "--runtime", "--libc"))
+            .firstOrNull { it != "inspect" }?.let(Path::of)?.toAbsolutePath()?.normalize()
         if (binary == null) {
             System.err.println("audit requires a binary path")
             return 2
         }
-        val targetName = arguments.windowed(2).firstOrNull { it[0] == "--target" }?.get(1) ?: defaultHostTargetTriple()
-        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
-        val descriptor = TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor
-            ?: return 1
-        val report = RuntimeDependencyAuditor.inspect(binary, descriptor, BuildProfile())
+        val targetName = (optionValue(arguments, "--target") ?: defaultHostTargetTriple()).lowercase()
+        val runtime = parseRuntime(optionValue(arguments, "--runtime") ?: "cplus", "--runtime") ?: return 2
+        val libc = parseLibc(optionValue(arguments, "--libc") ?: "c17", "--libc") ?: return 2
+        val manifest = optionValue(arguments, "--sdk")?.let(Path::of) ?: SdkManifestLocator.defaultManifestPath()
+        val manifestResult = SdkManifestLoader.load(manifest)
+        if (!manifestResult.isSuccessful) {
+            manifestResult.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            return 1
+        }
+        val loadedManifest = manifestResult.manifest ?: return 1
+        val target = TargetInfo(targetTriple = targetName, buildProfile = BuildProfile(runtime, libc))
+        val resolution = SdkResolver.resolve(loadedManifest, target)
+        if (!resolution.isSuccessful) {
+            resolution.diagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            return 1
+        }
+        val profileDiagnostics = cplus.compiler.BuildProfileValidator.validate(target.buildProfile, loadedManifest)
+        if (profileDiagnostics.isNotEmpty()) {
+            profileDiagnostics.forEach { System.err.println("error [${it.code}]: ${it.message}") }
+            return 1
+        }
+        val descriptor = TargetRegistry.load(resolution.resolution!!.layout.abiDescriptor).descriptor ?: return 1
+        val report = RuntimeDependencyAuditor.inspect(binary, descriptor, target.buildProfile)
         println("observed: ${report.observed.sorted().joinToString(", ")}")
         report.diagnostics.forEach { System.err.println("error: $it") }
         return if (report.isSuccessful) 0 else 1

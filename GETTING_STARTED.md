@@ -1047,8 +1047,17 @@ declared Windows system-DLL imports used by the PAL; the C runtime is not
 linked. Inspect a product with:
 
 ```text
-cplus audit product --target windows-x86_64
+cplus audit product --target windows-x86_64 --runtime cplus --libc c17
+cplus sdk doctor --target windows-x86_64
+cplus runtime inspect --target windows-x86_64
+cplus abi verify --target windows-x86_64
+cplus libc test --target linux-x86_64
 ```
+
+SDK inspection commands accept `--sdk <manifest>` to inspect the same SDK as a
+build. `runtime inspect` prints the selected link-plan inputs rather than a
+filesystem inventory, and `audit` checks the requested target/profile against
+the chosen SDK before inspecting a binary.
 
 OS-specific facilities are added behind the uniform PAL ABI, so portable
 `std` and runtime code does not change when an adapter uses a syscall, a
