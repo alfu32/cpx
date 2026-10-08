@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    69/88 accepted with recorded evidence
+Roadmap leaf tasks:    70/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.5.11 — expose and verify the complete real-math façade
+Current task:          R5.4.6 — propagate target capabilities, stable unavailable-service diagnostics, and unused-module dependency audit
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 5/7  Linux runtime/libc leaf tasks evidenced; complex/tgmath and Windows gates pending
-R5 [DOING] 36/41 native std and platform-service leaf tasks evidenced
+R5 [DOING] 37/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       69/88 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       70/88 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -296,11 +296,22 @@ x86_64/AArch64 target formats; the full Gradle build passes. Commit `cb7469e`
 moves the roadmap from 68/88 to 69/88 and R5 from 35/41 to 36/41. Windows
 runtime execution remains deferred and receives no completion credit.
 
+R5.4.5.11 then connected the public `std.math` declarations to bundled runtime
+exports. The production-linked C+ façade test imports and executes representative
+operations across real precisions and function families, verifies all 172
+declared `std_math_*` names (the 171 C17 function variants plus the existing
+`std_math_abs` compatibility alias) are defined by the runtime, and confirms
+the executable has no undefined host symbols. All `RuntimeStdMath*` tests pass,
+including strict warning-as-error C17 checks for Linux/Windows x86_64 and
+AArch64 target formats; the full Gradle build passes. Commit `fa0eed7` moves the
+roadmap from 69/88 to 70/88 and R5 from 36/41 to 37/41. Windows runtime
+execution remains deferred and receives no completion credit.
+
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.4.5.11 onward, then R5.5; Linux C17 stdio and
+1. Continue R5.4.6 onward, then R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 pass their recorded Linux checks; R4.6 complex and
    type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
@@ -4686,7 +4697,7 @@ dependencies.
         pass for the common façade on Linux/Windows x86_64 and AArch64; the full
         Gradle build passes. Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1 and R5.3.8.
-  - R5.4.5 [DOING] [10/11] — implement the specified portable real `std.math` and
+  - R5.4.5 [DONE] [11/11] — implement the specified portable real `std.math` and
     C `<math.h>` surface without requiring a host `libm` dependency.
     - R5.4.5.1 [DONE] — declare all C17 real `<math.h>` functions and
       float/double/long-double `std.math` entry points. **Depends:** R3.1.3.
@@ -4774,10 +4785,16 @@ dependencies.
       undefined host symbols; strict warning-as-error C17 checks pass for
       Linux/Windows x86_64 and AArch64 target formats; the full Gradle build
       passes. Windows runtime execution remains deferred.
-    - R5.4.5.11 [TODO] — expose the implemented real operations through the
+    - R5.4.5.11 [DONE] — expose the implemented real operations through the
       self-hosted `std.math` façade and pass the complete real-math runtime,
       C17 fixture, and host-library dependency audits. **Depends:**
-      R5.4.5.2–R5.4.5.10.
+      R5.4.5.2–R5.4.5.10. **Acceptance evidence:** `RuntimeStdMathFacadeTest`
+      links and executes C+ imports across representative signatures and
+      precision variants, checks every declared façade symbol is defined by
+      the bundled runtime, and verifies the executable has no undefined host
+      symbols. All `RuntimeStdMath*` tests pass, including strict C17 checks
+      for Linux/Windows x86_64 and AArch64; the full Gradle build passes.
+      Windows runtime execution remains deferred.
   - R5.4.6 [TODO] — propagate target capabilities and stable unavailable-service
     diagnostics, and audit that unused modules add no platform dependencies;
 - R5.5 [TODO] — record Darwin as either executablely supported or explicitly

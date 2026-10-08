@@ -24,3 +24,8 @@ target-sized transfers, metadata, seek, directory iteration, and create/remove
 operations. `std/src/io.cp` provides unbuffered file streams layered over that
 façade; it stores only an opaque PAL handle and never exposes an OS descriptor
 or Windows `HANDLE` type.
+
+`std/src/math.cp` declares the public real-valued `std_math_*` API for all C17
+`<math.h>` functions and preserves the selected target's `float`, `double`, and
+`long double` signatures. The runtime exports each declaration through the
+bundled math implementation, so consumers do not link against a host `libm`.

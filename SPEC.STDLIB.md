@@ -2550,6 +2550,14 @@ substitute a lower-precision type. The C17 profile SHALL NOT claim IEC 60559 /
 Annex F conformance unless that additional behavior has its own verified
 conformance gate.
 
+`std.math` SHALL provide linkable `std_math_*` runtime entry points for all
+171 C17 real-valued `<math.h>` function declarations, preserving each
+function's C signature, target ABI, result behavior, and `errno` policy.
+Declaration-only entry points that fail at link time are non-conforming. The
+runtime façade SHALL dispatch to the SDK's bundled math implementation and
+SHALL NOT require the host system's `libm`. The existing
+`std_math_abs(double)` compatibility alias SHALL behave like `std_math_fabs`.
+
 Implementations MAY use portable algorithms, architecture intrinsics, or
 hardware floating-point instructions. A complete self-hosted profile SHALL
 NOT require the host system `libm`; conformance binaries SHALL be checked for
