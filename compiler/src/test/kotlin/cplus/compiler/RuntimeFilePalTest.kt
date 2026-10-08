@@ -309,6 +309,8 @@ class RuntimeFilePalTest {
                 if (platform_file_metadata(absent_parent, &metadata) != CPLUS_PAL_NOT_FOUND) return 63;
                 handle = std_fs_open(source, CPLUS_FILE_WRITE | CPLUS_FILE_CREATE | CPLUS_FILE_TRUNCATE);
                 if (handle < 0) return 11;
+                if (platform_file_seek(handle, 0, 3) != CPLUS_PAL_INVALID_ARGUMENT) return 71;
+                if (platform_file_seek(handle, -1, CPLUS_SEEK_BEGIN) != CPLUS_PAL_INVALID_ARGUMENT) return 72;
                 if (platform_file_read(handle, (void*)0, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 52;
                 if (platform_file_write(handle, (const void*)0, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 53;
                 if (platform_file_read(handle, (void*)0, 0) != 0 || platform_file_write(handle, (const void*)0, 0) != 0) return 54;

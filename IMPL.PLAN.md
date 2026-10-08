@@ -4635,7 +4635,9 @@ dependencies.
     runtime execution. A dedicated Linux fixture creates a directory entry
     with an invalid UTF-8 byte and
     verifies production directory iteration returns `UNSUPPORTED`; the linked
-    fixture also passes the dependency audit.
+    fixture also passes the dependency audit. The fixture additionally checks
+    invalid seek origins and negative begin offsets on a valid file handle;
+    these extend Linux evidence only and do not change R5.2.5 completion status.
 - R5.3 [DONE] 12/12 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
