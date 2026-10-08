@@ -5127,9 +5127,14 @@ inheritance, argv delivery, inherited stdout, synchronous invalid/missing
 executable errors, child wait/reap, normal exit status, and signal status
 normalization. `AbiLayoutTest` verifies the opaque `long long` process handle
 and declarations across Linux/Windows x86_64/AArch64 descriptors. Linux x86_64
-runtime execution passes; Linux AArch64 and Windows adapters pass cross-target
-syntax compilation. Windows execution remains deferred. The full
-`./gradlew build --no-daemon` passes.
+runtime execution passes; Linux AArch64 adapter syntax compilation passes. The
+native Windows VM also passes
+`RuntimeProcessPalTest.windowsProcessPalSpawnsWaitsAndNormalizesLaunchFailures`:
+it checks process identity, invalid wait/executable inputs, missing-program
+normalization, self-spawned argv delivery, and child exit-status propagation;
+the linked product passes the dependency audit. Full inherited-environment and
+standard-stream behavior remains Linux-verified only. The full
+`./gradlew build --no-daemon` passes on Linux and Windows.
 
 R5.3.3 acceptance evidence: `RuntimeEnvironmentAndStreamsTest` builds a static
 Linux executable from production startup, runtime, libc, allocator, and PAL

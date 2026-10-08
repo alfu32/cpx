@@ -5,8 +5,60 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
+import java.util.concurrent.TimeUnit
 
 class RuntimeProcessPalTest {
+    @Test
+    fun windowsProcessPalSpawnsWaitsAndNormalizesLaunchFailures() {
+        assumeTrue(System.getProperty("os.name").contains("windows", ignoreCase = true))
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-windows-process-pal")
+        val source = directory.resolve("process_test.c").also {
+            Files.writeString(it, """
+                #include "cplus_platform.h"
+
+                int main(int argc, char** argv) {
+                    const char* arguments[] = {"process-test", "--child", (const char*)0};
+                    int status = -1;
+                    long long child;
+                    if (argc == 2 && argv[1][0] == '-' && argv[1][1] == '-' &&
+                        argv[1][2] == 'c' && argv[1][3] == 'h' && argv[1][4] == 'i' &&
+                        argv[1][5] == 'l' && argv[1][6] == 'd' && argv[1][7] == '\0') return 37;
+                    if (platform_process_id() <= 0) return 1;
+                    if (platform_process_spawn((const char*)0, (const char* const*)0) != CPLUS_PAL_INVALID_ARGUMENT ||
+                        platform_process_wait(-1, &status) != CPLUS_PAL_INVALID_ARGUMENT ||
+                        platform_process_wait(1, (int*)0) != CPLUS_PAL_INVALID_ARGUMENT) return 2;
+                    if (platform_process_spawn("C:/cplus/no-such-program.exe", arguments) != CPLUS_PAL_NOT_FOUND) return 3;
+                    child = platform_process_spawn(argv[0], arguments);
+                    if (child <= 0 || platform_process_wait(child, &status) != 0 || status != 37) return 4;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("process_test.exe")
+        try {
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw AssertionError("Windows process fixture timed out; artifacts at $directory")
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), "Windows process fixture failed: $output")
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
+
     @Test
     fun linuxProcessPalSpawnsWaitsAndNormalizesLaunchFailures() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
