@@ -10,24 +10,24 @@ runtime, SDK, LSP, and release products.
 ### Release roadmap dashboard
 
 ```text
-Historical foundation: 143/146 evidenced; target-aware core and native stdio audit remain open
-Roadmap leaf tasks:    37/65 evidenced on Linux
+Historical foundation: 144/146 evidenced; target-aware core audit remains open
+Roadmap leaf tasks:    39/65 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R4.4/R4.5 — audit the advertised C stdio surface and integrate stream fixtures into the libc report
-Current milestone:     R4 — runtime, allocator and libc behavior
+Current task:          R5.3.4 — implement distinct wall, monotonic and process-CPU clocks
+Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
-R4 [DOING] 3/5  C stdio implementation audit and conformance-report integration remain open
+R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
 R5 [DOING] 7/21 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       37/65 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       39/65 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,11 +35,10 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Audit the advertised C `FILE`/stdio surface against its implementations;
-   extend the independent C17 fixtures and `cplus libc test` report with real
-   stdin reads, stream-specific output, stable failures, and dependency checks.
-2. Close R4.4/R4.5 only when both the implementation audit and executable
-   report acceptance criteria pass; then continue R5.3.4–R5.5 and R6–R7.
+1. Continue R5 with R5.3.4 clocks, then R5.3.5–R5.5; Linux C17 stdio and
+   report tasks R4.4/R4.5 now pass their stated acceptance checks.
+2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
+   pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
    execution remains deferred and receives no completion credit meanwhile.
 4. Final validation — run the deferred Windows ABI/caller and PAL checks (including the
@@ -70,6 +69,7 @@ Latest completed implementation commits:
 - `5ec70b7` — expose process context and standard streams (R5.3.3 Linux-verified; Windows execution deferred).
 - `bd26d05` — verify standard-channel error mapping and host-runtime isolation.
 - `c39c402` — preserve the target `size_t` ABI in stdio formatting functions.
+- `4952b4d` — verify declared stdio channels in the independent C17 report (Linux x86_64).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -3083,7 +3083,7 @@ they are explicitly reopened as R1.4 below.
 - 6.3.1.1–6.3.1.3
 - 6.2.1.4
 
-#### 6.3.2.3 [DOING] Implement libc stdio, time, math, locale, Unicode and signal compatibility
+#### 6.3.2.3 [DONE] Implement libc stdio, time, math, locale, Unicode and signal compatibility
 
 **SDK**
 - SDK §11–15
@@ -3094,7 +3094,7 @@ they are explicitly reopened as R1.4 below.
 - SDK §55 Signals
 
 **Acceptance**
-- `FILE` buffering/stdio is implemented above native I/O/PAL primitives.
+- Every stdio function declared by the SDK C17 profile is implemented above native I/O/PAL primitives; the initial channel implementation is explicitly unbuffered.
 - C time/math APIs are backed by native C+ services and do not require system `libm` in complete self-hosted profiles.
 - initial locale/conversion/signals behavior has explicit conformance status and no silent host-libc fallback.
 - external C conformance fixtures exercise representative interfaces.
@@ -3102,7 +3102,7 @@ they are explicitly reopened as R1.4 below.
 **Implementation**
 - Added stdio stream markers, a flush hook, time, math, locale, Unicode, and signal compatibility source/header contracts.
 - Normal runtime termination calls the libc-owned stream flush hook; immediate and abort paths do not.
-- Reopened after audit found that `fgetc` was a hardcoded EOF stub and stream-directed `fprintf`/`fputc` writes were routed to stdout. R5.3.3 now implements and tests the standard-channel behavior; this item remains open until the broader C `FILE` surface audit and R4.5 report gate are satisfied.
+- Reopened after audit found that `fgetc` was a hardcoded EOF stub and stream-directed `fprintf`/`fputc` writes were routed to stdout. R5.3.3 implemented the standard-channel behavior; R4.4/R4.5 then audited every declared `stdio.h` operation and integrated an independent executable fixture into the libc report. Linux acceptance evidence is recorded below; deferred Windows execution is tracked by the target gates.
 
 **Depends**
 - 6.3.1.4
@@ -3381,7 +3381,7 @@ authoritative work queue for completing the working CLI transcoder and
 self-hosted SDK described by the specifications.
 
 ```text
-Foundation tasks: 143/146 (6.3.1.1, 6.3.1.4 and 6.3.2.3 remain open: target-aware core, executable native services and the full C stdio surface audit)
+Foundation tasks: 144/146 (6.3.1.1 and 6.3.1.4 remain open: target-aware core acceptance and executable native service coverage)
 Completion phases: [DOING] [2/9 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -3967,11 +3967,11 @@ layout, source-map, and dependency audits.
   operations with overflow, double-free, and invalid-range diagnostics;
 - R4.3 [DONE] — implement the C+ memory/string/conversion core and thread-local
   errno boundary without importing host libc behavior into native APIs;
-- R4.4 [DOING] — implement and audit the claimed Linux C17 compatibility
+- R4.4 [DONE] — implement and audit the claimed Linux C17 compatibility
   families in dependency order: stdio/varargs, time/math/locale, Unicode,
-  signal, atomics, TLS, and setjmp/longjmp; standard-channel routing is now
-  implemented, while the full advertised `FILE` surface still needs an audit;
-- R4.5 [DOING] — execute independent C17 conformance fixtures, audit compiler
+  signal, atomics, TLS, and setjmp/longjmp, including every function declared
+  by the SDK `stdio.h` surface;
+- R4.5 [DONE] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and ensure the report exercises every advertised stdio
   operation rather than treating declarations or stubs as complete.
 
@@ -3979,10 +3979,12 @@ The Linux x86_64 conformance command reports the individual header, runtime
 source, fixture execution, and binary dependency checks; it returns non-zero
 for missing, planned, or unsupported checks. R4.4/R4.5 were reopened after the
 audit found that `fgetc` always returned EOF and `fprintf`/`fputc` ignored
-their stream argument. R5.3.3 now implements and directly tests those
-standard-channel behaviors, but its focused fixture is not yet part of the
-38-pass `cplus libc test` report, and the complete advertised `FILE` surface
-has not been audited. Neither R4.4 nor R4.5 is closed by that focused test.
+their stream argument. R5.3.3 fixed those behaviors; the independent
+`c17-stdio.c` fixture now exercises every function declared by the SDK's
+`stdio.h`, and `cplus libc test --target linux-x86_64` reports 42 pass, 0 fail,
+0 unsupported, and 0 planned, including exact stdin/stdout/stderr checks and a
+binary dependency audit. The Linux R4.4/R4.5 leaves are complete; the R4 phase
+gate remains open for deferred Windows validation.
 
 ### R4.1/R4.2 completion record
 
@@ -4035,10 +4037,10 @@ Implemented and executed on Linux:
   basic signal registration/raise behavior have executable Linux coverage.
 
 The standard-channel implementation and its freestanding Linux behavior test
-are recorded under R5.3.3 below. R4.4 remains open pending an audit of the full
-advertised C `FILE` surface and any implementation gaps that audit finds.
-AArch64 and Windows `setjmp`/`longjmp` execution, plus final cross-platform
-validation, remain deferred.
+are recorded under R5.3.3 below; the full declared C stdio surface is covered
+by the R4.4/R4.5 completion records below. AArch64 and Windows
+`setjmp`/`longjmp` execution, plus final cross-platform validation, remain
+deferred.
 
 ### R4.4.2 completion record
 
@@ -4067,9 +4069,33 @@ Implemented and executed on Linux x86_64:
   for undeclared host-library or compiler-runtime dependencies;
 - missing, planned, and unsupported checks are retained in the report and make
   the command fail rather than being silently counted as delivered;
-- the current Linux x86_64 report shows 38 pass, 0 fail, 0 unsupported, and
-  0 planned checks, but its fixtures omit stream-specific `fprintf`/`fputc`
-  behavior and real `fgetc`; R4.5 remains open until those are represented.
+- at the time of this partial record, the Linux x86_64 report showed 38 pass
+  and omitted stream-specific `fprintf`/`fputc` behavior and real `fgetc`; the
+  updated 42-pass report and full stdio fixture are recorded below.
+
+### R4.4 Linux implementation completion record
+
+The declared C stdio surface is implemented over PAL-backed standard channels.
+`c17-stdio.c` exercises every function in `sdk/libc/include/stdio.h`: all
+formatted and varargs output variants, `fgetc`, `fputc`, `puts`, and `fflush`.
+It verifies input bytes including `0xff`, EOF, invalid-stream sentinels, and
+separate stdout/stderr routing. `c17-basic.c` and `c17-context.c` continue to
+cover the other claimed Linux C17 families and setjmp context behavior. The
+Linux x86_64 implementation leaf is complete; Windows/AArch64 execution is not
+claimed here.
+
+### R4.5 Linux report completion record
+
+`C17ConformanceRunner` now supplies fixture stdin, captures stdout and stderr
+independently, checks exact expected channel bytes, and records a separate
+stream case. The fixture also passes `RuntimeDependencyAuditor` with no
+undeclared host/compiler-runtime dependency. `ConformanceTest` asserts the
+stream case is present and passing. Running
+`./gradlew :cli:run --no-daemon --args='libc test --target linux-x86_64'`
+reports 42 pass, 0 fail, 0 unsupported, and 0 planned; `./gradlew build
+--no-daemon` passes. This completes R4.4/R4.5 for the Linux x86_64 claim. The
+parent R4 phase gate remains `DOING` until deferred Windows runtime/libc
+validation passes.
 
 Windows and AArch64 execution remains deferred until the final cross-platform
 validation pass.
