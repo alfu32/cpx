@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    54/72 accepted with recorded evidence
+Roadmap leaf tasks:    54/75 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.4 — implement portable std.net APIs
+Current task:          R5.4.4.1 — define public std.net types and ABI
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 22/28 native std and platform-service work remains open
+R5 [DOING] 22/31 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       54/72 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       54/75 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -113,6 +113,11 @@ C17 checks pass on all four target compilers; generated assembly for each
 target contains no atomic helper or `libatomic` references; the full Gradle
 build passes. Commit `6cb217a` brings the numerator to 54/72 and R5 to 22/28.
 Windows runtime execution remains deferred, and R5.4.4 is now active.
+
+R5.4.4 was decomposed into public types/API, TCP, UDP, and address/DNS façade
+leaves. This increases the roadmap denominator from 72 to 75 and R5 from 28 to
+31 without adding completion credit. The public facade declaration/ABI task
+R5.4.4.1 is now active; transport and address/resolver tasks remain queued.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -4414,8 +4419,52 @@ dependencies.
         generated assembly contains no `__atomic_*`, `__sync_*`, or AArch64
         atomic-helper calls. The full Gradle build passes. Windows runtime
         execution remains deferred.
-  - R5.4.4 [TODO] — implement portable `std.net` address, DNS, socket, TCP and
-    UDP APIs with explicit partial/unavailable capability behavior;
+  - R5.4.4 [DOING] [0/4] — implement portable `std.net` address, DNS, socket,
+    TCP and UDP APIs with explicit partial/unavailable capability behavior;
+    - **Language:** SPEC.STDLIB §16–§16.1 public networking behavior and PAL
+      mapping.
+    - **Technical:** SPEC.TECH §78 public SDK/runtime boundary, stable ABI and
+      target-specific runtime source selection.
+    - **Acceptance:** C+ callers exercise the public façade against the
+      production-linked PAL on Linux; public type layouts and declarations
+      compile for Linux/Windows x86_64/AArch64; strict warning-as-error C17
+      checks pass for shared forwarding code on all four targets; production
+      Linux executables have no undefined host-runtime symbols. Windows runtime
+      execution remains deferred to final validation.
+    - R5.4.4.1 [DOING] — define public `std.net` address, socket, family,
+      transport, shutdown, and error types/constants plus the façade
+      declarations; verify the public ABI before transport implementation.
+      - **Acceptance:** C+ code explicitly imports the public types and enum
+        constants and compiles every declared API; address layout is 28 bytes,
+        four-byte aligned, with offsets `[0,4,6,8,24]`; handle width is 64 bits;
+        enum widths and all signatures agree across the four target
+        descriptors. This is declaration/ABI acceptance only and does not claim
+        executable socket behavior.
+    - R5.4.4.2 [TODO] — implement and execute the public TCP stream façade for
+      open, bind, listen, accept, connect, local/peer address, send, receive,
+      shutdown, and close.
+      - **Acceptance:** a C+ caller uses only the public `std.net` API for IPv4
+        loopback transfer and lifecycle/error cases; the linked Linux product
+        has no undefined host-runtime symbols; strict C17 checks pass for all
+        four supported target triples.
+      - **Depends:** R5.4.4.1.
+    - R5.4.4.3 [TODO] — implement and execute the public UDP datagram façade
+      for open, bind, send-to, receive-from, and close.
+      - **Acceptance:** a C+ caller uses only the public API for IPv4 loopback
+        datagrams, including an empty datagram, returned source address,
+        capacity/error behavior, and close; the linked Linux product has no
+        undefined host-runtime symbols; strict C17 checks pass for all four
+        supported target triples.
+      - **Depends:** R5.4.4.1.
+    - R5.4.4.4 [TODO] — implement the public address parse/format and hostname
+      resolution façade over the shared codec and platform resolver.
+      - **Acceptance:** a C+ caller exercises IPv4/IPv6 parse and canonical
+        format, numeric-address resolver bypass, hostname resolution through a
+        deterministic local DNS fixture, caller-owned result capacity, and
+        unchanged outputs on errors; the linked Linux product has no undefined
+        host-runtime symbols; strict C17 checks pass for all four supported
+        target triples.
+      - **Depends:** R5.4.4.1 and R5.3.8.
   - R5.4.5 [TODO] — implement the specified portable `std.math` and C math
     surface without requiring a host `libm` dependency;
   - R5.4.6 [TODO] — propagate target capabilities and stable unavailable-service
