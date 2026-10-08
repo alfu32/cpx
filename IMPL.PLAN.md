@@ -11,11 +11,11 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    73/92 accepted with recorded evidence
+Roadmap leaf tasks:    74/92 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R4.6.2.1 — C+ complex arithmetic and conversion semantics
+Current task:          R4.6.2.2 — C17 complex component and projection functions
 Current milestone:     R4 — runtime, allocator and libc behavior
-Latest C17 Linux report: 46 pass, 0 fail, 0 unsupported, 0 planned
+Latest C17 Linux report: 47 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
                            __emutls_get_address and WaitOnAddress/wake imports
@@ -24,17 +24,17 @@ R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
-R4 [DOING] 6/11 Linux runtime/libc leaf tasks evidenced; complex math and Windows gates pending
+R4 [DOING] 7/11 Linux runtime/libc leaf tasks evidenced; complex math and Windows gates pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       73/92 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       74/92 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
-The latest Linux x86_64 C17 report is 46 pass, 0 fail, 0 unsupported, and 0
+The latest Linux x86_64 C17 report is 47 pass, 0 fail, 0 unsupported, and 0
 planned. Per-leaf historical records below retain the report totals measured
 when those leaves were accepted; they are not claims about the latest count.
 
@@ -42,7 +42,9 @@ R4.6.2 was decomposed into five independently testable leaves for C+ complex
 operators, component/projection functions, exponential/root functions,
 trigonometric/hyperbolic functions, and `<tgmath.h>` dispatch. This increases
 the denominator from 88 to 92 and R4 from 7 to 11 without adding completion
-credit; the current aggregate is 73/92 overall and 6/11 for R4.
+credit; after R4.6.2.1 acceptance the current aggregate is 74/92 overall and
+7/11 for R4. The task was credited only after the independent C caller,
+runtime dependency audit, target-capability checks, and full build passed.
 
 The roadmap denominator increased from 65 to 67 during R5.3.7 planning when
 one broad socket work item was decomposed into three verifiable leaves. That
@@ -346,9 +348,10 @@ below. Its current execution sequence is:
    remains open for final target validation; R5.2.5 is DOING for Linux PAL
    conformance and remains open for final Windows runtime/import validation.
    Linux C17 stdio and report tasks R4.4/R4.5 pass their recorded checks;
-   R4.6.1 complex scalar/header support is accepted for its Linux x86_64
-   capability; R4.6.2.1 C+ complex operators/conversions are next, followed by
-   the four separately tracked function-family and type-generic leaves. R4
+   R4.6.1 complex scalar/header support and R4.6.2.1 C+ complex
+   operators/conversions are accepted for the Linux x86_64 capability;
+   R4.6.2.2 component/projection functions are next, followed by the three
+   remaining function-family and type-generic leaves. R4
    remains open for Windows libc validation.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
@@ -409,6 +412,7 @@ Latest completed implementation commits:
 - `bcd78d7` — implement C17 error and gamma functions (R5.4.5.9; Windows runtime execution deferred).
 - `cb7469e` — implement C17 extrema and exact fused multiply-add families (R5.4.5.10; Windows runtime execution deferred).
 - `a6ab00d` — add target-gated C17 complex scalar ABI, SDK header, and independent Linux x86_64 caller coverage (R4.6.1).
+- `6af6820` — implement target-gated C+ complex conversions/operators and compiler-owned multiply/divide helper ABIs (R4.6.2.1 Linux x86_64).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4316,8 +4320,8 @@ layout, source-map, and dependency audits.
 - R4.5 [DONE] — execute independent C17 conformance fixtures, audit compiler
   runtime symbols, and ensure the report exercises every advertised stdio
   operation rather than treating declarations or stubs as complete.
-- R4.6 [DOING] [1/6] — complete the currently missing C17 complex and type-generic
-  math headers; the current 46-pass Linux report covers its registered subset
+- R4.6 [DOING] [2/6] — complete the currently missing C17 complex and type-generic
+  math headers; the current 47-pass Linux report covers its registered subset
   and is not evidence that every header family listed in SPEC.STDLIB §18 is
   complete.
   - R4.6.1 [DONE] — add target-described C complex types and the C17
@@ -4330,13 +4334,24 @@ layout, source-map, and dependency audits.
     `c.complex` import, and round-trips complex parameters/returns through an
     independent C caller. The selected compiler probe and C17 fixture verify
     component-based size/alignment, all construction macros, and `I`; the
-    fixture passes dependency audit. The Linux C17 report is 46/0/0/0 and
-    `./gradlew build --no-daemon` passes. No Windows or AArch64 complex support
-    or execution is claimed.
-  - R4.6.2.1 [TODO] — implement C+ complex usual arithmetic conversions,
+    fixture passes dependency audit. At R4.6.1 acceptance the Linux C17 report
+    was 46/0/0/0 and `./gradlew build --no-daemon` passed. No Windows or
+    AArch64 complex support or execution is claimed.
+  - R4.6.2.1 [DONE] — implement C+ complex usual arithmetic conversions,
     supported arithmetic/equality/logical operators, and invalid-operator
-    diagnostics. Verify result types, emitted C, and independent C caller
-    behavior without introducing undeclared compiler-runtime symbols.
+    diagnostics. `ComplexAbiIntegrationTest` verifies float/double/long-double
+    result selection for mixed complex, real, and integer operands; conditional
+    result typing; arithmetic and compound addition; equality/inequality and
+    logical truth operations; and rejection of ordered/integer-only complex
+    operators, including `%=`. An independent C caller compiled and executed
+    through both available Linux C compilers; the linked product passed the
+    runtime dependency audit. The C17 runtime helpers provide the GCC/Clang
+    multiply/divide ABI entry points and are linked only when `c17_complex` is
+    enabled. Strict C17 warning-as-error syntax checks pass under GCC and
+    Clang, the Linux C17 report is 47/0/0/0, and `./gradlew build --no-daemon`
+    passes. A separate audit test confirms the helper check is unsupported on
+    Linux AArch64 where complex capability is not enabled. No Windows or
+    AArch64 complex execution is claimed.
     **Depends:** R4.6.1.
   - R4.6.2.2 [TODO] — implement and execute `cabs`, `carg`, `creal`, `cimag`,
     `conj`, and `cproj` for all three complex precisions, including component,
@@ -4364,7 +4379,7 @@ for missing, planned, or unsupported checks. R4.4/R4.5 were reopened after the
 audit found that `fgetc` always returned EOF and `fprintf`/`fputc` ignored
 their stream argument. R5.3.3 fixed those behaviors; the independent
 `c17-stdio.c` fixture now exercises every function declared by the SDK's
-`stdio.h`, and `cplus libc test --target linux-x86_64` currently reports 46
+`stdio.h`, and `cplus libc test --target linux-x86_64` currently reports 47
 pass, 0 fail, 0 unsupported, and 0 planned, including exact stdin/stdout/stderr
 checks, complex type/header checks, and binary dependency audits. These
 registered checks do not cover the full C17 header list: `<tgmath.h>` and
