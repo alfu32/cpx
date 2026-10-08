@@ -1801,6 +1801,414 @@ CPLUS_MATH_DEFINE_ERROR_GAMMA(
 
 #undef CPLUS_MATH_DEFINE_ERROR_GAMMA
 
+#define CPLUS_MATH_BIG_WORD_COUNT 32
+typedef struct cplus_math_big_uint {
+    unsigned int words[CPLUS_MATH_BIG_WORD_COUNT];
+} cplus_math_big_uint;
+
+static unsigned int cplus_math_big_bit(const cplus_math_big_uint* value, int bit) {
+    if (bit < 0 || bit >= CPLUS_MATH_BIG_WORD_COUNT * 32) return 0;
+    return (value->words[(unsigned int)bit / 32] >> ((unsigned int)bit % 32)) & 1u;
+}
+
+static unsigned int cplus_math_big_bit_length(const cplus_math_big_uint* value) {
+    int word;
+    for (word = CPLUS_MATH_BIG_WORD_COUNT - 1; word >= 0; word--) {
+        unsigned int current = value->words[word];
+        unsigned int count = 0;
+        if (current == 0) continue;
+        while (current != 0) {
+            current >>= 1;
+            count++;
+        }
+        return (unsigned int)word * 32 + count;
+    }
+    return 0;
+}
+
+static int cplus_math_big_compare(
+    const cplus_math_big_uint* left, const cplus_math_big_uint* right) {
+    int word;
+    for (word = CPLUS_MATH_BIG_WORD_COUNT - 1; word >= 0; word--) {
+        if (left->words[word] > right->words[word]) return 1;
+        if (left->words[word] < right->words[word]) return -1;
+    }
+    return 0;
+}
+
+static void cplus_math_big_add(
+    cplus_math_big_uint* result, const cplus_math_big_uint* left,
+    const cplus_math_big_uint* right) {
+    unsigned int word;
+    unsigned long long carry = 0;
+    for (word = 0; word < CPLUS_MATH_BIG_WORD_COUNT; word++) {
+        unsigned long long sum = (unsigned long long)left->words[word] +
+            (unsigned long long)right->words[word] + carry;
+        result->words[word] = (unsigned int)sum;
+        carry = sum >> 32;
+    }
+}
+
+static void cplus_math_big_subtract(
+    cplus_math_big_uint* result, const cplus_math_big_uint* left,
+    const cplus_math_big_uint* right) {
+    unsigned int word;
+    unsigned long long borrow = 0;
+    for (word = 0; word < CPLUS_MATH_BIG_WORD_COUNT; word++) {
+        unsigned long long minuend = left->words[word];
+        unsigned long long subtrahend = (unsigned long long)right->words[word] + borrow;
+        result->words[word] = (unsigned int)(minuend - subtrahend);
+        borrow = minuend < subtrahend;
+    }
+}
+
+static void cplus_math_big_shift_left(
+    cplus_math_big_uint* result, const unsigned int* source,
+    unsigned int source_words, int shift) {
+    unsigned int index;
+    unsigned int word_shift = (unsigned int)shift / 32;
+    unsigned int bit_shift = (unsigned int)shift % 32;
+    unsigned long long carry = 0;
+    for (index = 0; index < source_words; index++) {
+        unsigned long long shifted = ((unsigned long long)source[index] << bit_shift) | carry;
+        unsigned int target = index + word_shift;
+        if (target < CPLUS_MATH_BIG_WORD_COUNT) result->words[target] = (unsigned int)shifted;
+        carry = shifted >> 32;
+    }
+    if (carry != 0 && source_words + word_shift < CPLUS_MATH_BIG_WORD_COUNT)
+        result->words[source_words + word_shift] = (unsigned int)carry;
+}
+
+static void cplus_math_big_shift_right(
+    cplus_math_big_uint* result, const cplus_math_big_uint* source, int shift) {
+    unsigned int bit;
+    if (shift < CPLUS_MATH_BIG_WORD_COUNT * 32) {
+        for (bit = (unsigned int)shift; bit < CPLUS_MATH_BIG_WORD_COUNT * 32; bit++) {
+            if (cplus_math_big_bit(source, (int)bit) != 0) {
+                unsigned int target = bit - (unsigned int)shift;
+                result->words[target / 32] |= 1u << (target % 32);
+            }
+        }
+    }
+}
+
+static void cplus_math_big_increment(cplus_math_big_uint* value) {
+    unsigned int word;
+    for (word = 0; word < CPLUS_MATH_BIG_WORD_COUNT; word++) {
+        value->words[word]++;
+        if (value->words[word] != 0) return;
+    }
+}
+
+static int cplus_math_big_any_below(const cplus_math_big_uint* value, int bit_limit) {
+    int bit;
+    if (bit_limit > CPLUS_MATH_BIG_WORD_COUNT * 32)
+        bit_limit = CPLUS_MATH_BIG_WORD_COUNT * 32;
+    for (bit = 0; bit < bit_limit; bit++)
+        if (cplus_math_big_bit(value, bit) != 0) return 1;
+    return 0;
+}
+
+static int cplus_math_big_round_right(
+    cplus_math_big_uint* result, const cplus_math_big_uint* source, int shift) {
+    int guard;
+    int sticky;
+    int inexact;
+    cplus_math_big_shift_right(result, source, shift);
+    if (shift <= 0) return 0;
+    guard = (int)cplus_math_big_bit(source, shift - 1);
+    sticky = cplus_math_big_any_below(source, shift - 1);
+    inexact = guard || sticky;
+    if (guard && (sticky || cplus_math_big_bit(source, shift) != 0))
+        cplus_math_big_increment(result);
+    return inexact;
+}
+
+static void cplus_math_multiply_significands(
+    unsigned int result[8], const unsigned int left[4], const unsigned int right[4]) {
+    unsigned int left_word;
+    for (left_word = 0; left_word < 4; left_word++) {
+        unsigned int right_word;
+        unsigned long long carry = 0;
+        for (right_word = 0; right_word < 4; right_word++) {
+            unsigned int target = left_word + right_word;
+            unsigned long long product = (unsigned long long)left[left_word] * right[right_word] +
+                result[target] + carry;
+            result[target] = (unsigned int)product;
+            carry = product >> 32;
+        }
+        for (right_word = left_word + 4; carry != 0 && right_word < 8; right_word++) {
+            unsigned long long sum = (unsigned long long)result[right_word] + carry;
+            result[right_word] = (unsigned int)sum;
+            carry = sum >> 32;
+        }
+    }
+}
+
+static void cplus_math_extract_significand(
+    unsigned int result[4], long double magnitude, int precision,
+    int* exponent, int* bit_length) {
+    int index;
+    long double fraction = frexpl(magnitude, exponent);
+    for (index = 0; index < precision; index++) {
+        unsigned int bit_position = (unsigned int)(precision - index - 1);
+        fraction *= 2.0L;
+        if (fraction >= 1.0L) {
+            result[bit_position / 32] |= 1u << (bit_position % 32);
+            fraction -= 1.0L;
+        }
+    }
+    *exponent -= precision;
+    {
+        cplus_math_big_uint temporary = {{0}};
+        unsigned int word;
+        for (word = 0; word < 4; word++) temporary.words[word] = result[word];
+        *bit_length = (int)cplus_math_big_bit_length(&temporary);
+    }
+}
+
+static int cplus_math_fma_round_exact(
+    const unsigned int x[4], const unsigned int y[4], const unsigned int z[4],
+    int x_exponent, int y_exponent, int z_exponent, int precision,
+    int minimum_normal_exponent, int maximum_exponent, int product_negative,
+    int z_negative, unsigned int rounded[4], int* output_exponent,
+    int* output_negative) {
+    unsigned int product_words[8] = {0};
+    int product_exponent = x_exponent + y_exponent;
+    int product_bits;
+    int z_bits;
+    int base_exponent;
+    int product_top;
+    int z_top;
+    cplus_math_big_uint product = {{0}};
+    cplus_math_big_uint addend = {{0}};
+    cplus_math_big_uint magnitude = {{0}};
+    cplus_math_big_uint temporary = {{0}};
+    int magnitude_negative;
+    int magnitude_bits;
+    int top_exponent;
+    int inexact = 0;
+    unsigned int word;
+
+    cplus_math_multiply_significands(product_words, x, y);
+    {
+        cplus_math_big_uint product_view = {{0}};
+        for (word = 0; word < 8; word++) product_view.words[word] = product_words[word];
+        product_bits = (int)cplus_math_big_bit_length(&product_view);
+    }
+    {
+        cplus_math_big_uint z_view = {{0}};
+        for (word = 0; word < 4; word++) z_view.words[word] = z[word];
+        z_bits = (int)cplus_math_big_bit_length(&z_view);
+    }
+    product_top = product_exponent + product_bits - 1;
+    z_top = z_bits == 0 ? product_top : z_exponent + z_bits - 1;
+    if (z_bits == 0) {
+        base_exponent = product_exponent;
+        cplus_math_big_shift_left(&product, product_words, 8, 0);
+        magnitude = product;
+        magnitude_negative = product_negative;
+    } else {
+        int top = product_top > z_top ? product_top : z_top;
+        int bottom = product_exponent < z_exponent ? product_exponent : z_exponent;
+        int span = top - bottom + 1;
+        if (span > CPLUS_MATH_BIG_WORD_COUNT * 32) {
+            int product_dominates = product_top > z_top;
+            const unsigned int* dominant_words = product_dominates ? product_words : z;
+            unsigned int dominant_count = product_dominates ? 8u : 4u;
+            int dominant_negative = product_dominates ? product_negative : z_negative;
+            base_exponent = (product_dominates ? product_exponent : z_exponent) - 256;
+            cplus_math_big_shift_left(&magnitude, dominant_words, dominant_count, 256);
+            temporary.words[0] = 1;
+            if (dominant_negative == (product_dominates ? z_negative : product_negative))
+                cplus_math_big_add(&magnitude, &magnitude, &temporary);
+            else
+                cplus_math_big_subtract(&magnitude, &magnitude, &temporary);
+            magnitude_negative = dominant_negative;
+        } else {
+            base_exponent = product_exponent < z_exponent ? product_exponent : z_exponent;
+            cplus_math_big_shift_left(&product, product_words, 8, product_exponent - base_exponent);
+            cplus_math_big_shift_left(&addend, z, 4, z_exponent - base_exponent);
+            if (product_negative == z_negative) {
+                cplus_math_big_add(&magnitude, &product, &addend);
+                magnitude_negative = product_negative;
+            } else {
+                int comparison = cplus_math_big_compare(&product, &addend);
+                if (comparison == 0) {
+                    *output_exponent = 0;
+                    *output_negative = 0;
+                    for (word = 0; word < 4; word++) rounded[word] = 0;
+                    return 0;
+                }
+                if (comparison > 0) {
+                    cplus_math_big_subtract(&magnitude, &product, &addend);
+                    magnitude_negative = product_negative;
+                } else {
+                    cplus_math_big_subtract(&magnitude, &addend, &product);
+                    magnitude_negative = z_negative;
+                }
+            }
+        }
+    }
+    magnitude_bits = (int)cplus_math_big_bit_length(&magnitude);
+    if (magnitude_bits == 0) {
+        *output_exponent = 0;
+        *output_negative = 0;
+        for (word = 0; word < 4; word++) rounded[word] = 0;
+        return 0;
+    }
+    top_exponent = base_exponent + magnitude_bits - 1;
+    *output_negative = magnitude_negative;
+    if (top_exponent >= minimum_normal_exponent) {
+        int shift = magnitude_bits - precision;
+        cplus_math_big_uint result = {{0}};
+        if (shift > 0) inexact = cplus_math_big_round_right(&result, &magnitude, shift);
+        else cplus_math_big_shift_left(&result, magnitude.words, CPLUS_MATH_BIG_WORD_COUNT, -shift);
+        *output_exponent = base_exponent + shift;
+        if ((int)cplus_math_big_bit_length(&result) > precision) {
+            cplus_math_big_uint shifted = {{0}};
+            cplus_math_big_shift_right(&shifted, &result, 1);
+            result = shifted;
+            (*output_exponent)++;
+        }
+        if (*output_exponent + precision - 1 > maximum_exponent) {
+            errno = ERANGE;
+            return 1;
+        }
+        for (word = 0; word < 4; word++) rounded[word] = result.words[word];
+    } else {
+        int subnormal_exponent = minimum_normal_exponent - precision + 1;
+        int shift = subnormal_exponent - base_exponent;
+        cplus_math_big_uint result = {{0}};
+        if (shift > 0) inexact = cplus_math_big_round_right(&result, &magnitude, shift);
+        else cplus_math_big_shift_left(&result, magnitude.words, CPLUS_MATH_BIG_WORD_COUNT, -shift);
+        *output_exponent = subnormal_exponent;
+        if (inexact && (int)cplus_math_big_bit_length(&result) < precision) errno = ERANGE;
+        for (word = 0; word < 4; word++) rounded[word] = result.words[word];
+    }
+    *output_negative = magnitude_negative;
+    return 0;
+}
+
+#define CPLUS_MATH_DEFINE_FMA( \
+    suffix, type, classifier, sign_value, absolute_value, frexp_value, scale_value, \
+    precision, minimum_exponent, maximum_exponent) \
+    type fma##suffix(type left, type right, type addend) { \
+        int left_kind = classifier(left); \
+        int right_kind = classifier(right); \
+        int addend_kind = classifier(addend); \
+        int product_negative = sign_value(left) != sign_value(right); \
+        unsigned int left_significand[4] = {0}; \
+        unsigned int right_significand[4] = {0}; \
+        unsigned int addend_significand[4] = {0}; \
+        unsigned int rounded[4] = {0}; \
+        int left_exponent = 0; \
+        int right_exponent = 0; \
+        int addend_exponent = 0; \
+        int left_bits = 0; \
+        int right_bits = 0; \
+        int addend_bits = 0; \
+        int result_exponent = 0; \
+        int result_negative = 0; \
+        int result_kind; \
+        int rounded_zero = 1; \
+        type result = (type)0; \
+        unsigned int bit; \
+        if (left_kind == FP_NAN || right_kind == FP_NAN || addend_kind == FP_NAN) \
+            return left_kind == FP_NAN ? left : (right_kind == FP_NAN ? right : addend); \
+        if (left_kind == FP_INFINITE || right_kind == FP_INFINITE) { \
+            if ((left_kind == FP_INFINITE && right_kind == FP_ZERO) || \
+                (right_kind == FP_INFINITE && left_kind == FP_ZERO)) { errno = EDOM; return (type)NAN; } \
+            if (addend_kind == FP_INFINITE && sign_value(addend) != product_negative) { \
+                errno = EDOM; return (type)NAN; \
+            } \
+            return (product_negative ? (type)-HUGE_VALL : (type)HUGE_VALL); \
+        } \
+        if (addend_kind == FP_INFINITE) return addend; \
+        if (left_kind == FP_ZERO || right_kind == FP_ZERO) { \
+            if (addend_kind != FP_ZERO) return addend; \
+            return product_negative && sign_value(addend) ? (type)-0.0 : (type)0.0; \
+        } \
+        cplus_math_extract_significand(left_significand, (long double)absolute_value(left), \
+            (precision), &left_exponent, &left_bits); \
+        cplus_math_extract_significand(right_significand, (long double)absolute_value(right), \
+            (precision), &right_exponent, &right_bits); \
+        if (addend_kind != FP_ZERO) \
+            cplus_math_extract_significand(addend_significand, (long double)absolute_value(addend), \
+                (precision), &addend_exponent, &addend_bits); \
+        result_kind = cplus_math_fma_round_exact(left_significand, right_significand, \
+            addend_significand, left_exponent, right_exponent, addend_exponent, (precision), \
+            (minimum_exponent), (maximum_exponent), product_negative, sign_value(addend), \
+            rounded, &result_exponent, &result_negative); \
+        if (result_kind != 0) return result_negative ? (type)-HUGE_VALL : (type)HUGE_VALL; \
+        for (bit = 0; bit < 4u; bit++) if (rounded[bit] != 0) rounded_zero = 0; \
+        for (bit = 4u * 32u; bit > 0; bit--) \
+            result = result * (type)2 + (type)((rounded[(bit - 1) / 32] >> ((bit - 1) % 32)) & 1u); \
+        if (rounded_zero) return result_negative ? (type)-0.0 : (type)0.0; \
+        result = scale_value(result, (long)result_exponent); \
+        return result_negative ? -result : result; \
+    }
+
+CPLUS_MATH_DEFINE_FMA(f, float, cplus_math_classify_float, cplus_math_sign_float,
+    fabsf, frexpf, cplus_math_scale_float, 24, -126, 127)
+CPLUS_MATH_DEFINE_FMA(, double, cplus_math_classify_double, cplus_math_sign_double,
+    fabs, frexp, cplus_math_scale_double, 53, -1022, 1023)
+#if CPLUS_LONG_DOUBLE_FORMAT == 1
+CPLUS_MATH_DEFINE_FMA(l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double,
+    fabsl, frexpl, cplus_math_scale_long_double, 53, -1022, 1023)
+#elif CPLUS_LONG_DOUBLE_FORMAT == 2
+CPLUS_MATH_DEFINE_FMA(l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double,
+    fabsl, frexpl, cplus_math_scale_long_double, 64, -16382, 16383)
+#elif CPLUS_LONG_DOUBLE_FORMAT == 3
+CPLUS_MATH_DEFINE_FMA(l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double,
+    fabsl, frexpl, cplus_math_scale_long_double, 113, -16382, 16383)
+#endif
+
+#undef CPLUS_MATH_DEFINE_FMA
+
+#define CPLUS_MATH_DEFINE_EXTREMA(suffix, type, classifier, sign_value) \
+    type fdim##suffix(type left, type right) { \
+        int left_kind = classifier(left); \
+        int right_kind = classifier(right); \
+        type result; \
+        if (left_kind == FP_NAN) return left; \
+        if (right_kind == FP_NAN) return right; \
+        if (!(left > right)) return (type)0; \
+        result = left - right; \
+        if (classifier(result) == FP_INFINITE && left_kind != FP_INFINITE && right_kind != FP_INFINITE) \
+            errno = ERANGE; \
+        return result; \
+    } \
+    type fmax##suffix(type left, type right) { \
+        int left_kind = classifier(left); \
+        int right_kind = classifier(right); \
+        if (left_kind == FP_NAN) return right_kind == FP_NAN ? left : right; \
+        if (right_kind == FP_NAN) return left; \
+        if (left == right) { \
+            if (left == (type)0) return sign_value(left) && sign_value(right) ? left : (type)0; \
+            return left; \
+        } \
+        return left > right ? left : right; \
+    } \
+    type fmin##suffix(type left, type right) { \
+        int left_kind = classifier(left); \
+        int right_kind = classifier(right); \
+        if (left_kind == FP_NAN) return right_kind == FP_NAN ? left : right; \
+        if (right_kind == FP_NAN) return left; \
+        if (left == right) { \
+            if (left == (type)0) return sign_value(left) || sign_value(right) ? (type)-0.0 : left; \
+            return left; \
+        } \
+        return left < right ? left : right; \
+    }
+
+CPLUS_MATH_DEFINE_EXTREMA(f, float, cplus_math_classify_float, cplus_math_sign_float)
+CPLUS_MATH_DEFINE_EXTREMA(, double, cplus_math_classify_double, cplus_math_sign_double)
+CPLUS_MATH_DEFINE_EXTREMA(l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double)
+
+#undef CPLUS_MATH_DEFINE_EXTREMA
+#undef CPLUS_MATH_BIG_WORD_COUNT
+
 static void cplus_math_increment_magnitude(unsigned char* bytes, unsigned int sign_byte) {
     unsigned int index;
     for (index = 0; index < sign_byte; index++) {
