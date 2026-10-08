@@ -5449,9 +5449,18 @@ hard-coded CLI path.
   exposed that `--gc-sections` could remove an empty `.tdata` section required
   by the TLS linker script; Linux startup now retains a minimal initialized
   TLS anchor. Linux x86_64 TLS/C17 regression tests and a fresh module run
-  (`Result: 12`, exit 0) pass after that change. AArch64 execution remains
-  unverified: QEMU system emulation is installed, but no AArch64 user-mode
-  runner or configured guest system is available. The prior x86_64 CLI run also
+  (`Result: 12`, exit 0) pass after that change. AArch64 execution was enabled
+  for this validation without a system install by unpacking the static
+  `qemu-user-static` package under `/tmp`. The first C17 run exposed that
+  Clang's `__atomic_*_n` builtins reject pointers to C `_Atomic` objects; the
+  SDK `stdatomic.h` now selects Clang's `__c11_atomic_*` builtins while keeping
+  the existing GCC builtin path. The AArch64 C17 run then reported 43 pass,
+  0 fail, 5 unsupported: the atomic-containing basic fixture and stdio fixture
+  executed successfully and passed dependency/stream checks; context, complex
+  types, tgmath, complex arithmetic runtime, and setjmp remain capability-gated.
+  `ConformanceTest` conditionally repeats the AArch64 run when a QEMU
+  user-mode runner is available. This execution evidence does not close R8.3;
+  the Windows target matrix remains pending. The prior x86_64 CLI run also
   exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows
   testing and patching remain deferred; the last MinGW full-runtime link
   evidence reports unresolved `__emutls_get_address`, `WaitOnAddress`,

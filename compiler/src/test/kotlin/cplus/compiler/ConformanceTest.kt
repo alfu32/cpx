@@ -67,6 +67,23 @@ class ConformanceTest {
     }
 
     @Test
+    fun linuxAarch64C17AuditExecutesSupportedFixturesWhenRunnerIsAvailable() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        assumeTrue(C17TargetRunner.commandPrefix("linux-aarch64") != null, "AArch64 QEMU user-mode runner is unavailable")
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-aarch64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val report = C17ConformanceRunner.run(resolution, target)
+
+        assertTrue(report.cases.none { it.status == "fail" }, report.cases.filter { it.status == "fail" }.joinToString())
+        assertTrue(report.cases.any { it.id == "fixture.execution.basic" && it.status == "pass" })
+        assertTrue(report.cases.any { it.id == "fixture.dependencies.basic" && it.status == "pass" })
+        assertTrue(report.cases.any { it.id == "fixture.execution.stdio" && it.status == "pass" })
+        assertTrue(report.cases.any { it.id == "fixture.streams.stdio" && it.status == "pass" })
+        assertTrue(report.cases.any { it.id == "fixture.execution.context" && it.status == "unsupported" })
+    }
+
+    @Test
     fun complexRuntimeAuditIsCapabilityGated() {
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
         val target = TargetInfo(targetTriple = "linux-aarch64")
