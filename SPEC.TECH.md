@@ -2899,6 +2899,12 @@ the version-4 PAL. It preserves the 64-bit opaque handle and stable status
 values without exposing native thread types. `RuntimeLinker` includes this
 façade with the common runtime so C+ callers need no pthread or host C runtime.
 
+Typed `std.sync` declarations are forwarded by
+`sdk/runtime/src/sync_std.c` to the shared state-word algorithms in
+`sdk/runtime/src/sync.c`. Each public object has the PAL state at offset zero;
+the adapter therefore adds no platform-specific object representation or
+dependency. `RuntimeLinker` includes both the algorithm and façade sources.
+
 Portable synchronization algorithms are shared in `sdk/runtime/src/sync.c`:
 32-bit state-word mutexes, sequence-based condition variables, counting
 semaphores, and once initialization use compiler atomic intrinsics for their

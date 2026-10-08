@@ -1047,6 +1047,40 @@ identity and yield SHALL preserve the PAL's positive identity and zero-success
 semantics. The façade SHALL not expose native OS handle types or add a host
 thread-library dependency.
 
+The public `std.sync` module SHALL provide typed objects and operations over
+the version-4 state-word PAL:
+
+```c
+struct std_mutex_t { volatile int state; };
+struct std_condition_t { volatile int sequence; };
+struct std_semaphore_t { volatile int count; };
+struct std_once_t { volatile int state; };
+
+int std_mutex_init(std_mutex_t* mutex);
+int std_mutex_lock(std_mutex_t* mutex);
+int std_mutex_unlock(std_mutex_t* mutex);
+int std_condition_init(std_condition_t* condition);
+int std_condition_wait(std_condition_t* condition, std_mutex_t* mutex);
+int std_condition_signal(std_condition_t* condition);
+int std_condition_broadcast(std_condition_t* condition);
+int std_semaphore_init(std_semaphore_t* semaphore, int initial_count);
+int std_semaphore_wait(std_semaphore_t* semaphore);
+int std_semaphore_post(std_semaphore_t* semaphore);
+int std_once_init(std_once_t* once);
+int std_once_enter(std_once_t* once);
+int std_once_complete(std_once_t* once);
+```
+
+Each object SHALL contain exactly one four-byte, four-byte-aligned state word
+at offset zero and SHALL be initialized before concurrent use. The typed
+façade SHALL forward to the matching PAL operation and preserve its status.
+Condition wait SHALL require the mutex to be held and return with it reacquired;
+semaphore counts SHALL remain within `[0, INT_MAX]`. `std_once_enter` SHALL
+return zero to the initializer, one if initialization is complete, or a
+negative PAL error. `std_once_complete` SHALL publish completion and wake
+waiters. The once operation is non-recursive; cancellation recovery is not
+provided if an initializer exits without completion.
+
 Creation SHALL start `entry(context)` on a runtime-managed thread and return an
 opaque positive handle, or a stable negative PAL error. A successful join
 SHALL wait for termination, optionally write the entry's return value to

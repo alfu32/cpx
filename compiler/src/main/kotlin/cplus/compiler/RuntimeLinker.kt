@@ -79,6 +79,7 @@ object RuntimeLinker {
                 val wctype = resolution.layout.runtimeSource.resolve("wctype.c")
                 val filesystem = resolution.layout.runtimeSource.resolve("fs.c")
                 val synchronization = resolution.layout.runtimeSource.resolve("sync.c")
+                val synchronizationFacade = resolution.layout.runtimeSource.resolve("sync_std.c")
                 val process = resolution.layout.runtimeSource.resolve("process.c")
                 val thread = resolution.layout.runtimeSource.resolve("thread.c")
                 val networkAddress = resolution.layout.runtimeSource.resolve("net_address.c")
@@ -102,7 +103,7 @@ object RuntimeLinker {
                 val commonRuntime = listOf(
                     startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time,
                     math, ctype, locale, signal, wide, wctype, filesystem, synchronization,
-                    process, thread, networkAddress, platformRuntime
+                    synchronizationFacade, process, thread, networkAddress, platformRuntime
                 )
                 val missing = (commonRuntime + setjmp + threadStartup + platformNetworkRuntime + threadTlsScript)
                     .filterNot(Files::isRegularFile)
