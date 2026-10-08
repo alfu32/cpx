@@ -1,8 +1,16 @@
 package cplus.cli
 
 import cplus.compiler.CPlusCompiler
+import cplus.compiler.CompileRequest
+import cplus.compiler.HeaderEnvironment
+import cplus.compiler.ImportIndex
 import cplus.compiler.SdkManifestLocator
+import cplus.compiler.SdkManifestLoader
+import cplus.compiler.SdkResolver
+import cplus.compiler.TargetInfo
+import cplus.compiler.TargetRegistry
 import cplus.compiler.TextSource
+import cplus.compiler.defaultHostTargetTriple
 import cplus.core.DiagnosticSeverity
 import cplus.core.LineIndex
 import cplus.core.SourceRange
@@ -27,6 +35,7 @@ internal class LspServer(
 ) {
     private val workspace = LspWorkspace()
     private val workspaceRoots = linkedSetOf<Path>()
+    private val importIndex = ImportIndex()
     private var sdkManifest: Path = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
     private var shutdownRequested = false
     private data class PendingRequest(
@@ -259,7 +268,7 @@ internal class LspServer(
             "documentSymbolProvider" to true,
             "renameProvider" to true,
             "completionProvider" to linkedMapOf(
-                "triggerCharacters" to listOf(".", "-")
+                "triggerCharacters" to listOf(".", "/", "{", ",", "\"")
             ),
             "signatureHelpProvider" to linkedMapOf(
                 "triggerCharacters" to listOf("(", ",")
@@ -290,15 +299,87 @@ internal class LspServer(
 
     private fun completion(params: Map<*, *>): Map<String, Any?> {
         val request = requestDocument(params) ?: return linkedMapOf("isIncomplete" to false, "items" to emptyList<Any>())
+        val context = ImportCompletionContextFinder.find(request.document.text, request.position)
+        if (context != null) {
+            val index = discoverImports(request.document)
+            val overlays = workspace.snapshot().associate { it.path.toAbsolutePath().normalize() to it.text }
+            val resolver = moduleSourceResolver(request.document.path)
+            val canonicalProvider = context.provider?.let { reference ->
+                val importedPath = resolver.resolveImport(request.document.path, reference, overlays.keys)
+                val providerFromPath = importedPath?.let { path ->
+                    index.exports.firstOrNull { export ->
+                        runCatching { Path.of(URI.create(export.sourceUri)).toAbsolutePath().normalize() == path.toAbsolutePath().normalize() }
+                            .getOrDefault(false)
+                    }?.provider
+                }
+                providerFromPath ?: when {
+                    reference.startsWith("stdlib/") -> "std." + reference.removePrefix("stdlib/").replace('/', '.')
+                    reference.startsWith("std/") -> "std." + reference.removePrefix("std/").replace('/', '.')
+                    reference.startsWith("c/") -> "c." + reference.removePrefix("c/").replace('/', '.')
+                    else -> reference.replace('/', '.')
+                }
+            }
+            val pathProviders = if (context.kind == ImportCompletionKind.PROVIDER) {
+                sourcePathProviders(request.document, overlays.keys)
+            } else emptyList()
+            val items = LspLanguageService.importCompletion(context, index, canonicalProvider, pathProviders)
+                .map { completionItem(it, request.document.text) }
+            return linkedMapOf("isIncomplete" to false, "items" to items)
+        }
         val result = compileWorkspace(request.document)
         val items = LspLanguageService.completion(result, request.document.text, request.position).map { item ->
-            linkedMapOf<String, Any?>(
-                "label" to item.label,
-                "kind" to item.kind,
-                "detail" to item.detail
-            )
+            completionItem(item, request.document.text)
         }
         return linkedMapOf("isIncomplete" to false, "items" to items)
+    }
+
+    private fun completionItem(item: CompletionItem, text: String): Map<String, Any?> = linkedMapOf<String, Any?>(
+        "label" to item.label,
+        "kind" to item.kind,
+        "detail" to item.detail
+    ).also { values ->
+        item.documentation?.let { values["documentation"] = linkedMapOf("kind" to "markdown", "value" to it) }
+        val range = item.replacementRange
+        val insertText = item.insertText
+        if (range != null && insertText != null) {
+            values["textEdit"] = linkedMapOf(
+                "range" to lspRange(SourceRange(cplus.core.SourceFileId(0), range.startOffset, range.endOffset), text),
+                "newText" to insertText
+            )
+        }
+    }
+
+    private fun discoverImports(document: WorkspaceDocument): cplus.compiler.ImportIndexResult {
+        val roots = (workspaceRoots + listOfNotNull(document.path.toAbsolutePath().normalize().parent)).toList()
+        val sdkRoot = sdkManifest.parent?.parent
+        val overlays = workspace.snapshot().associate { it.path.toAbsolutePath().normalize() to it.text }
+        val headerEnvironment = runCatching {
+            val loaded = SdkManifestLoader.load(sdkManifest).manifest ?: return@runCatching null
+            val target = TargetInfo(targetTriple = defaultHostTargetTriple())
+            val sdk = SdkResolver.resolve(loaded, target).resolution ?: return@runCatching null
+            val abi = TargetRegistry.load(sdk.layout.abiDescriptor).descriptor ?: return@runCatching null
+            HeaderEnvironment.create(
+                CompileRequest(emptyList(), target = target, sdkManifest = sdkManifest, cIncludeDirectories = roots),
+                sdk,
+                abi
+            )
+        }.getOrNull()
+        return importIndex.build(roots, sdkRoot, overlays, headerEnvironment)
+    }
+
+    private fun sourcePathProviders(document: WorkspaceDocument, overlays: Set<Path>): List<String> {
+        val parent = document.path.toAbsolutePath().normalize().parent ?: return emptyList()
+        val sdkRoot = sdkManifest.parent?.parent?.toAbsolutePath()?.normalize()
+        return moduleSourceResolver(document.path).candidatePaths(overlays)
+            .asSequence()
+            .map { it.toAbsolutePath().normalize() }
+            .filter { it != document.path.toAbsolutePath().normalize() }
+            .filter { sdkRoot == null || !it.startsWith(sdkRoot) }
+            .mapNotNull { path -> runCatching { parent.relativize(path).toString().replace('\\', '/') }.getOrNull() }
+            .map { relative -> if (relative.startsWith("../")) relative else "./$relative" }
+            .distinct()
+            .sorted()
+            .toList()
     }
 
     private fun hover(params: Map<*, *>): Map<String, Any?>? {

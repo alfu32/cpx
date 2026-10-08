@@ -1,6 +1,9 @@
 package cplus.cli
 
 import cplus.compiler.CompileResult
+import cplus.compiler.ImportExport
+import cplus.compiler.ImportExportKind
+import cplus.compiler.ImportIndexResult
 import cplus.core.LineIndex
 import cplus.core.Origin
 import cplus.core.SourceRange
@@ -26,7 +29,10 @@ import java.nio.file.Path
 internal data class CompletionItem(
     val label: String,
     val kind: Int,
-    val detail: String
+    val detail: String,
+    val documentation: String? = null,
+    val replacementRange: ImportTextRange? = null,
+    val insertText: String? = null
 )
 
 internal data class HoverInfo(
@@ -51,6 +57,56 @@ internal data class SignatureInfo(
 )
 
 internal object LspLanguageService {
+    fun importCompletion(
+        context: ImportCompletionContext,
+        index: ImportIndexResult,
+        canonicalProvider: String? = context.provider,
+        pathProviders: List<String> = emptyList()
+    ): List<CompletionItem> {
+        val candidates = when (context.kind) {
+            ImportCompletionKind.PROVIDER -> {
+                val moduleItems = index.exports.groupBy(ImportExport::provider).map { (provider, exports) ->
+                    CompletionItem(
+                        label = provider,
+                        kind = 9,
+                        detail = "${exports.size} public exports",
+                        documentation = exports.take(8).joinToString("\n") { "`${it.signature}`" },
+                        replacementRange = context.replacementRange,
+                        insertText = provider
+                    )
+                }
+                val pathItems = pathProviders.map { reference ->
+                    CompletionItem(
+                        label = reference,
+                        kind = 9,
+                        detail = "C+ source module",
+                        replacementRange = context.replacementRange,
+                        insertText = reference
+                    )
+                }
+                (moduleItems + pathItems).filter { it.label.startsWith(context.prefix) }
+            }
+            ImportCompletionKind.SELECTIVE_NAME -> {
+                val provider = canonicalProvider ?: return emptyList()
+                index.exports.asSequence()
+                    .filter { it.provider == provider && it.name !in context.existingNames }
+                    .filter { it.name.startsWith(context.prefix) }
+                    .map { export ->
+                        CompletionItem(
+                            label = export.name,
+                            kind = exportCompletionKind(export.kind),
+                            detail = "${export.signature} — ${export.provider}",
+                            documentation = export.documentation,
+                            replacementRange = context.replacementRange,
+                            insertText = export.name
+                        )
+                    }
+                    .toList()
+            }
+        }
+        return candidates.distinctBy { it.label to it.kind }.sortedBy { it.label }
+    }
+
     fun completion(result: CompileResult, text: String, position: LspPosition): List<CompletionItem> {
         val model = result.semanticModel ?: return emptyList()
         val offset = offsetAt(text, position) ?: return emptyList()
@@ -232,5 +288,12 @@ internal object LspLanguageService {
         SymbolKind.FIELD -> 5
         SymbolKind.PARAMETER -> 6
         else -> 6
+    }
+
+    private fun exportCompletionKind(kind: ImportExportKind): Int = when (kind) {
+        ImportExportKind.FUNCTION, ImportExportKind.C_FUNCTION -> 3
+        ImportExportKind.VALUE, ImportExportKind.ENUM_VALUE, ImportExportKind.C_VALUE -> 6
+        ImportExportKind.STRUCT, ImportExportKind.UNION, ImportExportKind.ENUM,
+        ImportExportKind.TYPE_ALIAS, ImportExportKind.C_TYPE -> 7
     }
 }

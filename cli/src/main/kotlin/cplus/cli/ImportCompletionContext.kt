@@ -18,7 +18,9 @@ internal data class ImportTextRange(val startOffset: Int, val endOffset: Int)
 internal data class ImportCompletionContext(
     val kind: ImportCompletionKind,
     val prefix: String,
-    val replacementRange: ImportTextRange
+    val replacementRange: ImportTextRange,
+    val provider: String? = null,
+    val existingNames: Set<String> = emptySet()
 )
 
 /** Classifies import completion positions using the compiler's lexer tokens. */
@@ -46,6 +48,10 @@ internal object ImportCompletionContextFinder {
             it.kind != TokenKind.END_OF_FILE && it.range.startOffset < offset && offset < it.range.endOffset
         }
 
+        val completeSegment = tokens.asSequence()
+            .filter { it.kind != TokenKind.END_OF_FILE && it.range.startOffset >= preceding[importIndex].range.startOffset }
+            .takeWhile { !it.isLexeme(";") }
+            .toList()
         val kind = classify(importTokens) ?: return null
         val tokenForPrefix = currentToken?.takeIf { it.range.endOffset > offset }
         val quotedProvider = kind == ImportCompletionKind.PROVIDER &&
@@ -65,7 +71,30 @@ internal object ImportCompletionContextFinder {
             }
             else -> rawWordRange(text, offset, if (kind == ImportCompletionKind.PROVIDER) providerCharacter else identifierCharacter)
         }
-        return ImportCompletionContext(kind, text.substring(range.startOffset, offset), range)
+        val selective = kind == ImportCompletionKind.SELECTIVE_NAME
+        val provider = if (selective) providerAfterFrom(completeSegment) else null
+        val existingNames = if (selective) existingSelectiveNames(importTokens, offset) else emptySet()
+        return ImportCompletionContext(kind, text.substring(range.startOffset, offset), range, provider, existingNames)
+    }
+
+    private fun providerAfterFrom(tokens: List<Token>): String? {
+        val close = tokens.indexOfFirst { it.isLexeme("}") }
+        if (close < 0) return null
+        val from = tokens.drop(close + 1).indexOfFirst { it.isLexeme("from") }
+        if (from < 0) return null
+        val target = tokens.drop(close + 2 + from).takeWhile { !it.isLexeme("as") }
+        if (target.isEmpty()) return null
+        return target.joinToString("") { token ->
+            if (token.kind == TokenKind.STRING_LITERAL) token.lexeme.removeSurrounding("\"", "\"") else token.lexeme
+        }
+    }
+
+    private fun existingSelectiveNames(tokens: List<Token>, offset: Int): Set<String> {
+        val close = tokens.indexOfFirst { it.isLexeme("}") }
+        val names = tokens.drop(2).let { if (close >= 0) it.take(close - 2) else it }
+        return names.filter { token ->
+            token.kind == TokenKind.IDENTIFIER && !(token.range.startOffset < offset && token.range.endOffset >= offset)
+        }.map(Token::lexeme).toSet()
     }
 
     private fun classify(importTokens: List<Token>): ImportCompletionKind? {

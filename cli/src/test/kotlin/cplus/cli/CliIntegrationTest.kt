@@ -665,6 +665,47 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun lspCompletesRealProvidersAndSelectiveExportsInsideIncompleteImports() {
+        val root = Files.createTempDirectory("cplus-cli-lsp-import-completion")
+        root.resolve("helper.cp").writeText("pub int helper_fn() { return 42; }\n")
+        val main = root.resolve("main.cp")
+        val uri = main.toUri().toString()
+        val source = listOf(
+            "import std.;",
+            "import c.st;",
+            "import { std_fs_open, std_fs_o } from std.fs;",
+            "import { pri } from c.stdio;",
+            "import { helper_fn } from ./he;"
+        ).joinToString("\n")
+        fun completionRequest(id: Int, line: Int, marker: String): String {
+            val character = source.lines()[line].lastIndexOf(marker) + marker.length
+            return """{"jsonrpc":"2.0","id":$id,"method":"textDocument/completion","params":{"textDocument":{"uri":"$uri"},"position":{"line":$line,"character":$character}}}"""
+        }
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"${root.toUri()}"}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$source"}}}""",
+            completionRequest(2, 0, "std."),
+            completionRequest(3, 1, "c.st"),
+            completionRequest(4, 2, "std_fs_o"),
+            completionRequest(5, 3, "pri"),
+            completionRequest(6, 4, "./he"),
+            """{"jsonrpc":"2.0","id":7,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString("") { frame(it) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("\"id\":2") && responses.contains("\"label\":\"std.fs\""), responses)
+        assertTrue(responses.contains("\"id\":3") && responses.contains("\"label\":\"c.stdio\""), responses)
+        assertTrue(responses.contains("\"id\":4") && !responseFor(responses, 4).contains("\"label\":\"std_fs_open\""), responses)
+        assertTrue(responseFor(responses, 5).contains("\"label\":\"printf\""), responses)
+        assertTrue(responseFor(responses, 6).contains("\"label\":\"./helper.cp\""), responses)
+        assertTrue(responses.contains("\"textEdit\""), responses)
+    }
+
+    @Test
     fun lspNavigationUsesCompilerReferenceIndex() {
         val directory = Files.createTempDirectory("cplus-cli-navigation")
         val source = directory.resolve("main.cp")
@@ -1108,6 +1149,14 @@ class CliIntegrationTest {
             assertTrue(cliDiagnostics.contains(testCase.message), cliDiagnostics)
             assertTrue(lspDiagnostics.contains(testCase.message), lspDiagnostics)
         }
+    }
+
+    private fun responseFor(responses: String, id: Int): String {
+        val start = responses.indexOf("\"id\":$id")
+        if (start < 0) return ""
+        val messageStart = responses.lastIndexOf("Content-Length:", start).takeIf { it >= 0 } ?: start
+        val nextMessage = responses.indexOf("Content-Length:", start).takeIf { it >= 0 } ?: responses.length
+        return responses.substring(messageStart, nextMessage)
     }
 
     private fun frame(message: String): String =

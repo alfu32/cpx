@@ -58,6 +58,16 @@ class ImportCompletionContextTest {
         assertEquals("name", unicodeText.substring(unicode.replacementRange.startOffset, unicode.replacementRange.endOffset))
     }
 
+    @Test
+    fun capturesSelectiveProviderAndPreviouslyImportedNames() {
+        val (text, position) = marked("import { first, se|cond } from \"./helpers.cp\"")
+        val context = requireNotNull(ImportCompletionContextFinder.find(text, position))
+
+        assertEquals("./helpers.cp", context.provider)
+        assertEquals(setOf("first"), context.existingNames)
+        assertEquals("se", context.prefix)
+    }
+
     private data class Case(
         val source: String,
         val kind: ImportCompletionKind,
