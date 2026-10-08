@@ -5423,7 +5423,9 @@ hard-coded CLI path.
   families, and math classification pass. For Linux AArch64,
   Clang strict C17 syntax checks passed for every `sdk/runtime/src/*.c` file
   and Linux PAL C source; both AArch64 startup and thread assembly files also
-  assemble. The check exposed and removed an unused private formatter helper
+  assemble. `LinuxAarch64SourceValidationTest` now repeats those warning-as-error
+  source checks and assembly steps when Clang is installed. The check exposed
+  and removed an unused private formatter helper
   that failed `-Werror`. The CLI/LinkDriver now discovers versioned LLD
   executables for Clang/Linux-AArch64 linking. The actual CLI built
   `examples/module_main.cp` as a static AArch64 ELF product; `readelf` reports
