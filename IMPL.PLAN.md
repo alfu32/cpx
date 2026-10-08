@@ -17,8 +17,8 @@ Current task:          R8.3 — Linux/Windows target-matrix product validation
 Current milestone:     R8 — SDK packaging, target matrix and release conformance
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
-Windows full-runtime link: open in R8.3; local MinGW reports unresolved
-                           __emutls_get_address and WaitOnAddress/wake imports
+Windows full-runtime link: local MinGW PE link now passes; Windows execution
+                           remains open (VM currently unreachable)
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
@@ -5534,10 +5534,23 @@ hard-coded CLI path.
   This execution evidence does not close R8.3;
   the Windows target matrix remains pending. The prior x86_64 CLI run also
   exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows
-  testing and patching remain deferred; the last MinGW full-runtime link
-  evidence reports unresolved `__emutls_get_address`, `WaitOnAddress`,
-  `WakeByAddressSingle`, and `WakeByAddressAll` symbols. R8.3 remains open and
-  receives no completion credit.
+  Windows runtime testing remains deferred to the final validation gate. A
+  local MinGW x86_64 full-runtime CLI cross-build now emits a PE executable.
+  The Windows runtime plan includes the GCC-compatible emulated-TLS adapter,
+  implemented with per-thread FLS storage; its TLS helper links without
+  `__emutls_get_address` remaining unresolved. Atomic wait/wake calls now
+  resolve `WaitOnAddress`/wake functions dynamically, so older Windows
+  releases do not impose those imports and report unsupported if unavailable.
+  The resulting PE imports only `KERNEL32.dll`; the import table contains no
+  UCRT/MSVCRT, `WaitOnAddress`/wake, `__emutls_get_address`, or `___chkstk_ms`
+  dependency. The first full-link attempt exposed MinGW's `___chkstk_ms`
+  dependency from a 256-entry automatic socket-address buffer; the resolver
+  now allocates that bounded temporary buffer through the C+ runtime allocator.
+  `RuntimeLinkerTest` verifies Windows TLS-adapter selection, and the complete
+  `examples/minimal.cp` PE product links locally. This is cross-link and import
+  evidence only—not Windows runtime execution. SSH to the requested Windows VM
+  currently fails with `No route to host`; R8.3 remains open and receives no
+  completion credit.
 - R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
   builds, documented examples, and upgrade/ABI compatibility rules.
 

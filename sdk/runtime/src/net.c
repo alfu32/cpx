@@ -1,4 +1,5 @@
 #include "cplus_std_net.h"
+#include "cplus_runtime.h"
 
 static void __cplus_net_copy_address_to_pal(
     const struct std_net_address_t* source,
@@ -131,7 +132,7 @@ int std_net_resolve(
     struct std_net_address_t* addresses,
     unsigned long long capacity,
     unsigned long long* count) {
-    cplus_socket_address_t pal_addresses[256];
+    cplus_socket_address_t* pal_addresses;
     unsigned long long resolved_count = 0;
     unsigned long long pal_capacity = capacity > 256ULL ? 256ULL : capacity;
     unsigned long long index;
@@ -139,6 +140,11 @@ int std_net_resolve(
     if (!hostname || !count || (capacity > 0 && !addresses)) {
         return CPLUS_PAL_INVALID_ARGUMENT;
     }
+    pal_addresses = pal_capacity == 0
+        ? (cplus_socket_address_t*)0
+        : (cplus_socket_address_t*)__cplus_alloc(
+            pal_capacity * (unsigned long long)sizeof(cplus_socket_address_t));
+    if (pal_capacity > 0 && !pal_addresses) return CPLUS_PAL_IO_ERROR;
     status = platform_network_resolve(
         hostname,
         (unsigned int)family,
@@ -152,5 +158,6 @@ int std_net_resolve(
         }
         *count = resolved_count;
     }
+    __cplus_free(pal_addresses);
     return status;
 }

@@ -87,6 +87,7 @@ object RuntimeLinker {
                 val networkAddress = resolution.layout.runtimeSource.resolve("net_address.c")
                 val networkFacade = resolution.layout.runtimeSource.resolve("net.c")
                 val platformRuntime = resolution.layout.platformSource.resolve("runtime.c")
+                val windowsEmulatedTls = resolution.layout.runtimeSource.resolve("emutls_windows.c")
                 val setjmp = when {
                     descriptor.os != "linux" -> emptyList()
                     descriptor.architecture == "x86_64" -> listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S"))
@@ -108,12 +109,14 @@ object RuntimeLinker {
                 } else {
                     emptyList()
                 }
+                val targetSpecificRuntime = if (descriptor.os == "windows") listOf(windowsEmulatedTls) else emptyList()
                 val commonRuntime = listOf(
                     startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time,
                     math, ctype, locale, signal, wide, wctype, filesystem, synchronization,
                     synchronizationFacade, atomics, process, thread, networkAddress, networkFacade,
                     platformRuntime
-                ) + if ("c17_complex" in descriptor.features) listOf(complexArithmetic) else emptyList()
+                ) + targetSpecificRuntime +
+                    if ("c17_complex" in descriptor.features) listOf(complexArithmetic) else emptyList()
                 val missing = (commonRuntime + setjmp + threadStartup + platformNetworkRuntime + threadTlsScript)
                     .filterNot(Files::isRegularFile)
                 if (missing.isNotEmpty()) {

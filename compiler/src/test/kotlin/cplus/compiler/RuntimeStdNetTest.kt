@@ -413,6 +413,10 @@ class RuntimeStdNetTest {
         val source = directory.resolve("resolver_bridge_test.c").also {
             Files.writeString(it, """
                 #include "cplus_std_net.h"
+                #include <stdlib.h>
+
+                void* __cplus_alloc(unsigned long long size) { return malloc((size_t)size); }
+                void __cplus_free(void* value) { free(value); }
 
                 static int text_equals(const char* left, const char* right) {
                     unsigned int index = 0;
