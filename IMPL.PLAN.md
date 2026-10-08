@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    115/129 accepted with recorded evidence; 14 TODO
-Phase gates:           11/13 complete; 1 active; 1 queued
-Current task:          R10.3.2.2 — exercise import suggestions and fixes in the packaged VS Code extension
+Roadmap leaf tasks:    116/129 accepted with recorded evidence; 13 TODO
+Phase gates:           11/13 complete; 2 active; 0 queued
+Current task:          R11.1.1.1 — parse the exact singular trait syntax
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -36,12 +36,12 @@ R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
 R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
-R10 [DOING] 17/19 import discovery, completion and quick fixes
-R11 [TODO]  0/12 compile-time extension methods
+R10 [DOING] 18/19 import discovery, completion and quick fixes
+R11 [DOING] 0/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 
-TOTAL       115/129 implementation tasks accepted; 11/13 phase gates complete,
-            1 active, 1 queued
+TOTAL       116/129 implementation tasks accepted; 11/13 phase gates complete,
+            2 active, 0 queued
 ```
 
 The Luna 6 Medium execution runbook is
@@ -51,8 +51,8 @@ denominator to 128. R12 adds one independently accepted generated-version
 task, bringing the current denominator to 129. Their broader existing task IDs
 are retained as composites, not double-counted as leaves.
 The recorded Linux/Windows results above apply to the prior R0–R9 baseline, not
-these features. Seventeen R10 leaves now have recorded Linux evidence; R10 remains
-active and R11 remains queued.
+these features. Eighteen R10 leaves now have recorded Linux evidence; R10 and
+R11 are active while their product and implementation gates remain open.
 
 R9 adds four independently accepted distribution leaves to the prior 93-task
 roadmap, increasing the denominator to 97. The 10th phase gate records the
@@ -3784,10 +3784,10 @@ self-hosted SDK described by the specifications.
 
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
-Completion phases: [DOING] [11/13 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 115/129 accepted; R10.1 (10/10), R10.2 (4/4),
-                     R10.3.1 (2/2) accepted; R10.3.2 (1/3) active,
-                     R11 queued, R12 accepted
+Completion phases: [DOING] [11/13 gates complete; 2 active, 0 queued]
+Roadmap leaf tasks: 116/129 accepted; R10.1 (10/10), R10.2 (4/4),
+                     R10.3.1 (2/2), R10.3.2 (2/3) accepted/in progress;
+                     R10 and R11 active, R12 accepted
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3799,8 +3799,8 @@ Roadmap leaf tasks: 115/129 accepted; R10.1 (10/10), R10.2 (4/4),
 [DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
-[DOING] R10 — import discovery, completion and quick fixes (17/19 leaves)
-[TODO]  R11 — compile-time extension methods (0/12 leaves)
+[DOING] R10 — import discovery, completion and quick fixes (18/19 leaves)
+[DOING] R11 — compile-time extension methods (0/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 ```
 
@@ -3808,8 +3808,8 @@ The completion phase counter counts only the thirteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix.
 The overall roadmap is DOING because it contains both DONE and TODO phases;
-the active R10 phase is represented by its current leaf in the primary
-dashboard.
+the active R10 and R11 phases are represented by their current leaves in the
+primary dashboard.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -5898,7 +5898,7 @@ The installable distribution runs from an unrelated project directory without
 manual SDK configuration; an explicit JVM property selects a development SDK;
 the CLI help identifies the JVM option.
 
-## R10 [DOING] [17/19] Discoverable imports and editor fixes
+## R10 [DOING] [18/19] Discoverable imports and editor fixes
 
 **Language:** LS §21 Imports; §22 Importing C; §41.1 Import assistance.
 **Technical:** TS §28 C import architecture; §54.1 Discoverable imports.
@@ -6312,7 +6312,7 @@ that subsequently passes `cplus check`.
 
 **Evidence:** `./gradlew :cli:test --tests cplus.cli.CliIntegrationTest.lspExposesVersionedImportQuickFixesAndClearsDiagnosticAfterApply --no-daemon` passes. Framed JSON-RPC confirms initialization advertises `quickfix`, a non-overlapping requested range yields no action, and an overlapping unresolved call yields a provider-specific action with a versioned `documentChanges` edit and matching diagnostic. Opening the edited source in a fresh protocol session yields no duplicate fix; the import edit is separately applied and checked by the R10.3.1.1 compiler fixture. Request scheduling rejects stale versions.
 
-#### R10.3.2 [DOING] [1/3] Import discovery release gate
+#### R10.3.2 [DOING] [2/3] Import discovery release gate
 
 **Language:** LS §22.1 C header import; §41.1 Import assistance.
 **Technical:** TS §54.1 Discoverable imports; §63 Testing architecture; §78 SDK, ABI, runtime and platform architecture.
@@ -6333,7 +6333,7 @@ that subsequently passes `cplus check`.
 
 **Evidence:** `./gradlew :cli:test :cli:fatJar :cli:installDist --no-daemon` passes; `./gradlew :compiler:test --tests cplus.compiler.ImportIndexTest --no-daemon` passes, including header dependency fingerprint invalidation. A CLI protocol fixture confirms configured `includeDirectories` reach both compiler header discovery and export indexing, aliased path-imported types compile/run, custom-header declarations resolve, and go-to-definition returns the real header URI. From `/tmp`, the installed launcher resolves the bundled SDK, while the fat JAR resolves the explicit `-Dcplus.sdk.manifest=...` development override; both check the same path-imported module example. The installed launcher's LSP process advertises code actions, publishes clean diagnostics for the imported example and returns an empty action list for its clean document. Linux only; VS Code host and Windows gates remain open.
 
-##### R10.3.2.2 [DOING] Exercise suggestions and fixes in the packaged VS Code extension
+##### R10.3.2.2 [DONE] Exercise suggestions and fixes in the packaged VS Code extension
 
 **Language:** LS §41.1 Import assistance; §42 TextMate and editor lexical highlighting.
 **Technical:** TS §50 LSP architecture; §75 Architectural rule for IDE support.
@@ -6346,6 +6346,8 @@ that subsequently passes `cplus check`.
 **Acceptance:** Packaged VSIX exposes stdlib provider/signature choices and an import quick fix; accepting each yields clean diagnostics and a runnable fixture. Existing extension tests, checks and packaging pass; an old activation-only test is not sufficient evidence.
 
 **Verify:** In `vscode-extension`: `npm test`, `npm run check`, `xvfb-run -a npm run test:host` on Linux.
+
+**Evidence:** In `vscode-extension`, `npm test` passes (7 tests), `npm run check` passes, and `xvfb-run -a npm run test:host` passes against the packaged/installed VSIX and configured fat JAR. The real extension host requests an indexed public function completion with an import edit, applies it, retrieves the second function's quick fix from the LSP, applies the versioned workspace edit, and observes all diagnostics clear. Existing configured JAR/Java/SDK/cwd and Run Main tests remain green. Linux only; final Windows packaging/product gate remains R10.3.2.3.
 
 ##### R10.3.2.3 [TODO] Close import regression, documentation and platform evidence
 
@@ -6361,22 +6363,22 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle test :cli:fatJar :cli:installDist`; extension checks/host tests; native Windows equivalents at the final platform pass.
 
-## R11 [TODO] [0/12] Compile-time extension methods
+## R11 [DOING] [0/12] Compile-time extension methods
 
 **Language:** LS §6.3.1 Compile-time extension methods; §21 Imports.
 **Technical:** TS §13.1 Compile-time traits; §33 Method lowering; §54 Completion.
 
-### R11.1 [TODO] [0/6] Trait declarations and semantic ownership
+### R11.1 [DOING] [0/6] Trait declarations and semantic ownership
 
 **Language:** LS §6.3.1 Compile-time extension methods; §18 Type-universe barrier.
 **Technical:** TS §13.1 Compile-time traits; §24 Type-universe stabilization; §29 Semantic model.
 
-#### R11.1.1 [TODO] [0/3] Explicit trait syntax and pass traversal
+#### R11.1.1 [DOING] [0/3] Explicit trait syntax and pass traversal
 
 **Language:** LS §6.3.1 Compile-time extension methods; §28 Source provenance.
 **Technical:** TS §6 Parser; §8 AST architecture; §13.1 Compile-time traits.
 
-##### R11.1.1.1 [TODO] Parse the exact singular trait syntax
+##### R11.1.1.1 [DOING] Parse the exact singular trait syntax
 
 **Language:** LS §6.3.1 Compile-time extension methods.
 **Technical:** TS §6 Parser; §7 Syntax tree versus AST; §13.1 Compile-time traits.

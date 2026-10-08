@@ -3,7 +3,7 @@
 ## Start here
 
 This is the active implementation runbook. The current leaf is tracked in
-`IMPL.PLAN.md` (currently `R10.3.2.2`); consult that file for status and evidence.
+`IMPL.PLAN.md` (currently `R11.1.1.1`); consult that file for status and evidence.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
@@ -15,7 +15,7 @@ The requested outcomes are:
   `comptime trait type_identifier { ... }`.
 
 Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1–
-R10.1.2.3, R10.2, R10.3.1 and R10.3.2.1 are accepted; resume at **R10.3.2.2**, not by restarting
+R10.1.2.3, R10.2, R10.3.1, R10.3.2.1 and R10.3.2.2 are accepted; resume at **R11.1.1.1**, not by restarting
 the parser foundation or jumping ahead to the VS Code UI. Do not restart R0–R9
 or rewrite the compiler.
 
@@ -260,7 +260,7 @@ Windows test. Their task dependencies permit this order.
 15. `R10.3.1.1` — Map unresolved-symbol diagnostics to compatible providers. (Accepted.)
 16. `R10.3.1.2` — Expose import quick fixes through the LSP server. (Accepted.)
 17. `R10.3.2.1` — Verify installed CLI and LSP import parity. (Accepted.)
-18. `R10.3.2.2` — Exercise suggestions and fixes in the packaged VS Code extension.
+18. `R10.3.2.2` — Exercise suggestions and fixes in the packaged VS Code extension. (Accepted.)
 19. `R11.1.1.1` — Parse the exact singular trait syntax.
 20. `R11.1.1.2` — Traverse trait bodies in ordinary compiler passes.
 21. `R11.1.1.3` — Preserve traits through CPX and stabilization.
@@ -389,7 +389,7 @@ Counting rules:
 Implement the next dependency-ready terminal task in IMPL.PLAN.md R10/R11.
 Read AGENTS.md and IMPL.PLAN.RULES.md, then
 IMPL.HANDOFF.IMPORTS-TRAITS.md and that task's referenced spec sections.
-Resume at R10.3.2.2, the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
+Resume at R11.1.1.1, the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
 especially sdk/libc/include/stdio.h. Use comptime trait type_identifier { ... }.
 Implement one leaf, add/run its acceptance tests, record evidence, update all
 counts honestly, and make a Conventional Commit before proceeding.
