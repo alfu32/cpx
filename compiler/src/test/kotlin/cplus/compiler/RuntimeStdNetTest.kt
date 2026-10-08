@@ -8,6 +8,74 @@ import java.util.concurrent.TimeUnit
 
 class RuntimeStdNetTest {
     @Test
+    fun windowsStdNetResolverExecutesThroughProductionPal() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            System.getProperty("os.name").contains("windows", ignoreCase = true)
+        )
+        val manifestPath = SdkManifestLocator.defaultManifestPath()
+        val manifest = requireNotNull(SdkManifestLoader.load(manifestPath).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val root = manifestPath.toAbsolutePath().normalize().parent!!.parent!!
+        val directory = Files.createTempDirectory("cplus-windows-std-net-resolver")
+        val source = directory.resolve("main.cp").also {
+            Files.writeString(it, """
+                import {
+                    std_net_address_t,
+                    std_net_resolve,
+                    STD_NET_FAMILY_ANY,
+                    STD_NET_FAMILY_IPV4,
+                    STD_NET_FAMILY_IPV6,
+                    STD_NET_INVALID_ARGUMENT
+                } from std.net;
+                import { uint64_t } from c.stdint;
+
+                int main() {
+                    std_net_address_t addresses[8];
+                    uint64_t count = 0;
+                    if (std_net_resolve("localhost", STD_NET_FAMILY_ANY, 43127,
+                            addresses, 8, &count) != 0 || count == 0 || count > 8) return 1;
+                    for (uint64_t index = 0; index < count; index++) {
+                        if ((addresses[index].family != STD_NET_FAMILY_IPV4 &&
+                             addresses[index].family != STD_NET_FAMILY_IPV6) || addresses[index].port != 43127 ||
+                            addresses[index].reserved != 0) return 2;
+                    }
+                    count = 91;
+                    if (std_net_resolve((const char*)0, STD_NET_FAMILY_IPV4, 80,
+                            addresses, 8, &count) != STD_NET_INVALID_ARGUMENT || count != 91) return 3;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val generatedC = directory.resolve("resolver.c")
+        val executable = directory.resolve("resolver.exe")
+        try {
+            val compilation = CPlusCompiler().compile(
+                CompileRequest(listOf(root.resolve("std/src/net.cp"), source), target)
+            )
+            assertTrue(compilation.isSuccessful, compilation.diagnostics.joinToString())
+            Files.writeString(generatedC, compilation.generatedUnits.single().text)
+            val link = LinkDriver.link(LinkRequest(generatedC, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val dependencyAudit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(dependencyAudit.isSuccessful, dependencyAudit.diagnostics.joinToString())
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw AssertionError("Windows resolver fixture timed out; artifacts at $directory")
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), "Windows resolver fixture failed with output '$output'")
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
+
+    @Test
     fun cplusStdNetTcpFacadeRunsThroughProductionPal() {
         org.junit.jupiter.api.Assumptions.assumeTrue(
             System.getProperty("os.name").contains("linux", ignoreCase = true)

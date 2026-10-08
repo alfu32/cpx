@@ -5234,11 +5234,15 @@ compile the production resolver adapter with warnings as errors. The focused
 codec into a freestanding x86_64 PE image; import inspection confirms the
 kernel32 loader, once-initialization, and heap APIs are present, while static
 `GetAddrInfoW`, `FreeAddrInfoW`, and `ws2_32.dll` imports are absent. The PE
-fixture checks resolver argument validation but does not execute the successful
-Unicode resolver path. The focused test and full Gradle build pass. Windows
-resolver runtime behavior and the complete Windows runtime PE link remain
-unverified and receive no completion claim here; runtime execution is deferred
-to final validation and full-runtime linking is tracked by R8.3.
+fixture checks resolver argument validation. The native Windows VM now passes
+`RuntimeStdNetTest.windowsStdNetResolverExecutesThroughProductionPal`: the
+production C+ facade successfully resolves `localhost`, validates every
+returned address family, port, and reserved field, and checks that invalid
+arguments preserve caller-owned output state. The linked executable passes the
+runtime dependency audit. Together with the existing PE import inspection,
+this verifies the successful Windows Unicode system-resolver path without a
+static Winsock import. The complete Windows runtime PE link and other Windows
+network behaviors remain separately tracked; UDP/IPv6 execution is not claimed.
 
 ### R5.1 status audit
 
