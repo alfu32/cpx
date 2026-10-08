@@ -5261,7 +5261,11 @@ The complete host-side generated-C fixture now also links and runs through
 `LinkDriver` and the self-hosted runtime with each available GCC/Clang driver;
 each product passes `RuntimeDependencyAuditor`. The sanitizer-backed hosted
 compiler runs remain additional signed-overflow checks, not evidence for
-host-independent linking.
+host-independent linking. The fixture exercises both error/result paths,
+present/absent options, empty and reversed ranges/slices/spans, string
+equality/copy/append, text empty/prefix queries, and unsigned-byte memory
+comparison as well as the previously listed operations. It remains subtask
+evidence only; no R5.1 completion credit is added.
 
 Follow-up audit found that the value-carrier and collection structures were
 not exported for named imports and `std_text_is_ascii` was not public; range

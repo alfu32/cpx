@@ -93,22 +93,36 @@ class NativeStdTest {
                 int main(void) {
                     char source[32] = "native";
                     char copy[32];
+                    char copied_string[32];
+                    char appended_string[32] = "native";
                     char overlap[10] = "abcdef";
                     char utf8[] = "\xC3\xA9";
                     unsigned char high_bytes[2];
+                    struct std_error_t good_error = std_error_ok();
+                    struct std_error_t bad_error = std_error_from_code(9);
                     struct std_result_t ok = std_result_ok(7);
+                    struct std_result_t error_result = std_result_error(11);
                     struct std_option_t some = std_option_some(11);
+                    struct std_option_t none = std_option_none();
                     struct std_range_t range = std_range(2, 6);
+                    struct std_range_t empty_range = std_range(3, 3);
+                    struct std_range_t reversed_range = std_range(6, 2);
                     struct std_range_t crossing_zero = std_range(-1, 1);
                     struct std_range_t full_range = std_range(std_isize_min(), std_isize_max());
                     struct std_slice_t slice = std_slice_of(source, 6);
+                    struct std_slice_t empty_slice = std_slice_empty();
                     usize maximum_size = std_usize_max();
                     isize maximum_index = std_isize_max();
                     if (!std_result_is_ok(ok) || ok.value != 7) return 1;
+                    if (!std_error_is_ok(good_error) || std_error_is_ok(bad_error) || bad_error.code != 9) return 32;
+                    if (std_result_is_ok(error_result) || error_result.error.code != 11 || error_result.value != 0) return 33;
                     if (!std_option_is_some(some) || some.value != 11) return 2;
+                    if (std_option_is_some(none) || none.value != 0) return 34;
                     if (std_range_length(range) != 4 || !std_range_contains(range, 5)) return 3;
+                    if (std_range_contains(range, 6) || std_range_length(empty_range) != 0 ||
+                        std_range_contains(reversed_range, 4)) return 35;
                     if (std_range_length(crossing_zero) != 2 || std_range_length(full_range) != std_usize_max()) return 27;
-                    if (std_slice_is_empty(slice)) return 4;
+                    if (std_slice_is_empty(slice) || !std_slice_is_empty(empty_slice) || empty_slice.data != (void*)0) return 4;
                     if (sizeof(usize) != sizeof(void*) || sizeof(isize) != sizeof(void*)) return 5;
                     if (std_size_width_bits() != 64 || std_pointer_width_bits() != 64) return 6;
                     if (maximum_size != (usize)-1 || std_isize_min() != -maximum_index - 1) return 7;
@@ -135,11 +149,20 @@ class NativeStdTest {
                     if (std_string_compare(overlap, "abcdef") != 0) return 30;
                     if (std_mem_move(overlap, overlap, 7) != overlap) return 31;
                     if (std_string_length(copy) != 6 || std_string_compare(copy, "native") != 0) return 22;
+                    if (!std_string_equal(copy, "native") || std_string_equal(copy, "Native")) return 36;
+                    std_string_copy(copied_string, "copy");
+                    std_string_append(appended_string, " text");
+                    if (std_string_compare(copied_string, "copy") != 0 ||
+                        std_string_compare(appended_string, "native text") != 0) return 37;
                     if (!std_text_is_ascii(copy) || std_text_is_ascii(utf8)) return 28;
                     if (std_text_byte_length(copy) != 6 || !std_text_has_ascii_prefix(copy, "nat")) return 23;
                     if (std_text_byte_length(utf8) != 2 || std_text_is_ascii(utf8)) return 24;
+                    if (!std_text_is_empty("") || std_text_is_empty(copy) || std_text_has_ascii_prefix(copy, "natx")) return 38;
                     std_mem_set(high_bytes, 255, 2);
                     if (high_bytes[0] != 255 || high_bytes[1] != 255) return 25;
+                    if (std_mem_compare(high_bytes, (unsigned char[]){127, 255}, 2) <= 0) return 39;
+                    if (!std_memory_span_is_empty(std_memory_span_empty()) ||
+                        !std_raw_memory_is_empty(std_raw_memory_view((void*)0, 0))) return 40;
                     std_mem_zero(copy, 7);
                     if (!std_text_is_empty(copy)) return 26;
                     return cplus_std_core_version() != 3;
