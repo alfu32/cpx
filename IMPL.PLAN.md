@@ -5158,7 +5158,11 @@ contract preserves v3 filesystem services. Linux AArch64 runtime syntax and
 startup assembly checks pass; Windows x86_64 adapter/runtime sources pass
 strict MinGW syntax checking. The full `./gradlew build --no-daemon` passes,
 and `cplus libc test --target linux-x86_64` reports 42 pass, 0 fail,
-0 unsupported, and 0 planned. Windows runtime execution remains deferred.
+0 unsupported, and 0 planned. The native Windows VM also passes
+`RuntimeClockPalTest.windowsProvidesWallMonotonicAndProcessCpuClocksThroughProductionPal`:
+the full runtime validates wall/monotonic/process-CPU nanoseconds, `time()`,
+`clock()`, and the monotonic compatibility alias, with a successful executable
+dependency audit. Linux AArch64 clock execution remains unverified.
 
 R5.3.5 acceptance evidence: `RuntimeThreadPalTest` links and executes a
 freestanding static Linux x86_64 program with no host runtime dependencies. It

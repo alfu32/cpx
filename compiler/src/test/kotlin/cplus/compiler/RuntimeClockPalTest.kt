@@ -1,12 +1,71 @@
 package cplus.compiler
 
 import java.nio.file.Files
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeClockPalTest {
+    @Test
+    fun windowsProvidesWallMonotonicAndProcessCpuClocksThroughProductionPal() {
+        assumeTrue(System.getProperty("os.name").contains("windows", ignoreCase = true))
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-windows-runtime-clocks")
+        val source = directory.resolve("clock_test.c").also {
+            Files.writeString(it, """
+                #include "cplus_platform.h"
+                #include <time.h>
+
+                int main(void) {
+                    long long wall = platform_clock_wall_nanoseconds();
+                    long long monotonic = platform_clock_monotonic_nanoseconds();
+                    long long cpu_before = platform_clock_process_cpu_nanoseconds();
+                    long long cpu_after;
+                    time_t stored = -1;
+                    time_t seconds = time(&stored);
+                    clock_t ticks;
+                    volatile unsigned long long work = 0;
+                    unsigned long long index;
+                    if (wall <= 0 || monotonic < 0 || cpu_before < 0 || wall <= monotonic) return 1;
+                    if (platform_clock_monotonic_nanoseconds() < monotonic) return 2;
+                    if (seconds < 0 || stored != seconds || seconds < wall / 1000000000LL) return 3;
+                    if (time((time_t*)0) < 0 || CLOCKS_PER_SEC != 1000000000LL) return 4;
+                    for (index = 0; index < 3000000ULL; index++) work += index;
+                    if (work == 0) return 5;
+                    ticks = clock();
+                    cpu_after = platform_clock_process_cpu_nanoseconds();
+                    if (cpu_after < cpu_before || ticks < 0 || ticks > cpu_after) return 6;
+                    if (platform_clock_ticks() < monotonic) return 7;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("clock_test.exe")
+        try {
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw AssertionError("Windows clock fixture timed out; artifacts at $directory")
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), "Windows clock fixture failed: $output")
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
+
     @Test
     fun linuxProvidesDistinctCheckedWallMonotonicAndProcessCpuNanoseconds() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
