@@ -292,13 +292,20 @@ class RuntimeNetworkPalTest {
         val planResult = RuntimeLinker.plan(resolution, target)
         assertTrue(planResult.isSuccessful, planResult.diagnostics.joinToString())
         val directory = Files.createTempDirectory("cplus-runtime-windows-network")
+        val windowsNetworkSource = Files.readString(resolution.layout.platformSource.resolve("network.c"))
+        listOf("GetAddrInfoW", "FreeAddrInfoW", "wide_hostname[ascii_length]").forEach {
+            assertTrue(it in windowsNetworkSource, "Windows resolver source is missing $it")
+        }
         val source = directory.resolve("windows_network_test.c").also {
             Files.writeString(it, """
                 #include "cplus_platform.h"
                 __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(unsigned long status);
 
                 void mainCRTStartup(void) {
-                    int status = platform_socket_open(0, CPLUS_SOCKET_STREAM) == CPLUS_PAL_UNSUPPORTED ? 0 : 1;
+                    unsigned long long count = 0;
+                    int status = platform_socket_open(0, CPLUS_SOCKET_STREAM) == CPLUS_PAL_UNSUPPORTED &&
+                        platform_network_resolve((const char*)0, CPLUS_SOCKET_ANY_FAMILY, 0,
+                            (cplus_socket_address_t*)0, 0, &count) == CPLUS_PAL_INVALID_ARGUMENT ? 0 : 1;
                     ExitProcess((unsigned long)status);
                 }
             """.trimIndent())
@@ -309,9 +316,11 @@ class RuntimeNetworkPalTest {
                 listOf(
                     "x86_64-w64-mingw32-gcc", "-std=c17", "-nostdlib", "-nodefaultlibs",
                     "-nostartfiles", "-ffreestanding", "-fno-builtin", "-fno-stack-protector",
+                    "-Wall", "-Wextra", "-Werror",
                     "-Wl,--entry,mainCRTStartup", "-Wl,--subsystem,console",
                     "-I", resolution.layout.runtimeInclude.toString(), source.toString(),
-                    resolution.layout.platformSource.resolve("network.c").toString(), "-lkernel32",
+                    resolution.layout.platformSource.resolve("network.c").toString(),
+                    resolution.layout.runtimeSource.resolve("net_address.c").toString(), "-lkernel32",
                     "-o", executable.toString()
                 )
             ).redirectErrorStream(true).start()
@@ -328,6 +337,10 @@ class RuntimeNetworkPalTest {
             assertTrue("loadlibraryexw" in normalizedImports, importTable)
             assertTrue("getprocaddress" in normalizedImports, importTable)
             assertTrue("initonceexecuteonce" in normalizedImports, importTable)
+            assertTrue("heapalloc" in normalizedImports, importTable)
+            assertTrue("heapfree" in normalizedImports, importTable)
+            assertTrue("getaddrinfow" !in normalizedImports, importTable)
+            assertTrue("freeaddrinfow" !in normalizedImports, importTable)
             assertTrue("ws2_32.dll" !in normalizedImports, importTable)
         } finally {
             Files.deleteIfExists(executable)

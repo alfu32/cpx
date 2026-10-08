@@ -1184,12 +1184,13 @@ deadline. A response producing more than 256 unique addresses or exceeding the
 CNAME bound SHALL fail with `CPLUS_PAL_NETWORK_ERROR`; unavailable kernel
 entropy SHALL fail rather than fall back to predictable transaction IDs.
 Native resolver, socket, and DNS response codes SHALL be translated to stable
-PAL results. The Windows resolver SHALL use the Unicode Winsock resolver API via
-the dynamically loaded `ws2_32.dll` module and SHALL copy and release its
-native result list before returning. Neither resolver SHALL require a host C
-runtime or expose native error codes. A name with no address result SHALL
-return `CPLUS_PAL_NOT_FOUND`; unsupported families SHALL return
-`CPLUS_PAL_UNSUPPORTED`; other resolver or transport failures SHALL return
+PAL results. The Windows resolver SHALL convert the common A-label name to an
+absolute UTF-16 spelling (including its terminal root dot) and call the
+Unicode Winsock resolver API via the dynamically loaded `ws2_32.dll` module.
+It SHALL copy and release its native result list before returning. Neither
+resolver SHALL require a host C runtime or expose native error codes. A name
+with no address result SHALL return `CPLUS_PAL_NOT_FOUND`; unsupported families
+SHALL return `CPLUS_PAL_UNSUPPORTED`; other resolver or transport failures SHALL return
 `CPLUS_PAL_NETWORK_ERROR`. DNSSEC validation and search-list expansion are
 outside this API contract.
 

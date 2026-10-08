@@ -2913,14 +2913,14 @@ and formats IPv4/IPv6 text, performs UTF-8 validation and IDNA A-label encoding,
 and returns canonical text without locale or host-library dependencies,
 including mixed dotted-decimal formatting for IPv4-mapped IPv6 addresses. Linux
 uses the configured numeric nameservers, kernel-entropy transaction IDs,
-ephemeral ports, nonblocking direct socket syscalls, and `poll` against an
-absolute two-second query deadline; truncated UDP messages retry over TCP
-within that same deadline. CNAME and result counts are bounded by the language
-contract. Windows uses the Unicode
-Winsock resolver after lazy module initialization and copies/frees the native
-result list before returning. Both implementations expose the same caller-owned
-address-array ABI and stable PAL error values; neither leaks native resolver
-structures or allocator ownership.
+ephemeral ports, nonblocking direct socket syscalls, and `poll`/`ppoll`
+readiness waits against an absolute two-second query deadline; truncated UDP
+messages retry over TCP within that same deadline. CNAME and result counts are bounded by the language
+contract. Windows converts the shared A-label to an absolute UTF-16 hostname
+and calls dynamically resolved `GetAddrInfoW` after lazy module initialization;
+it copies/frees the native result list before returning. Both implementations
+expose the same caller-owned address-array ABI and stable PAL error values;
+neither leaks native resolver structures or allocator ownership.
 
 The C backend's ABI gate includes an independently compiled C17 caller fixture.
 The fixture MUST consume the generated public header and link against generated

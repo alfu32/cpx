@@ -1,4 +1,5 @@
 #include "cplus_platform.h"
+#include "cplus_network_internal.h"
 
 typedef unsigned long long __cplus_windows_native_socket;
 typedef long long (__stdcall *__cplus_windows_procedure)(void);
@@ -17,6 +18,17 @@ typedef struct __cplus_windows_sockaddr_ipv6 {
     unsigned char address[16];
     unsigned int scope_id;
 } __cplus_windows_sockaddr_ipv6;
+
+typedef struct __cplus_windows_addrinfo_w {
+    int flags;
+    int family;
+    int socket_type;
+    int protocol;
+    unsigned long long address_length;
+    unsigned short* canonical_name;
+    void* address;
+    struct __cplus_windows_addrinfo_w* next;
+} __cplus_windows_addrinfo_w;
 
 typedef union __cplus_windows_sockaddr_storage {
     unsigned long long alignment;
@@ -80,6 +92,12 @@ typedef int (__stdcall *__cplus_wsa_receive_from_fn)(
 typedef int (__stdcall *__cplus_wsa_shutdown_fn)(__cplus_windows_native_socket socket, int direction);
 typedef int (__stdcall *__cplus_wsa_close_fn)(__cplus_windows_native_socket socket);
 typedef int (__stdcall *__cplus_wsa_get_error_fn)(void);
+typedef int (__stdcall *__cplus_wsa_get_addr_info_w_fn)(
+    const unsigned short* node_name,
+    const unsigned short* service_name,
+    const __cplus_windows_addrinfo_w* hints,
+    __cplus_windows_addrinfo_w** results);
+typedef void (__stdcall *__cplus_wsa_free_addr_info_w_fn)(__cplus_windows_addrinfo_w* results);
 
 typedef struct __cplus_windows_winsock_api {
     __cplus_wsa_startup_fn startup;
@@ -98,6 +116,8 @@ typedef struct __cplus_windows_winsock_api {
     __cplus_wsa_shutdown_fn shutdown;
     __cplus_wsa_close_fn close;
     __cplus_wsa_get_error_fn get_error;
+    __cplus_wsa_get_addr_info_w_fn get_addr_info_w;
+    __cplus_wsa_free_addr_info_w_fn free_addr_info_w;
 } __cplus_windows_winsock_api;
 
 __declspec(dllimport) void* __stdcall LoadLibraryExW(
@@ -112,11 +132,19 @@ __declspec(dllimport) int __stdcall InitOnceExecuteOnce(
     __cplus_windows_init_callback callback,
     void* parameter,
     void** context);
+__declspec(dllimport) void* __stdcall GetProcessHeap(void);
+__declspec(dllimport) void* __stdcall HeapAlloc(void* heap, unsigned long flags, unsigned long long bytes);
+__declspec(dllimport) int __stdcall HeapFree(void* heap, unsigned long flags, void* memory);
 
 _Static_assert(sizeof(__cplus_windows_sockaddr_ipv4) == 16, "Windows IPv4 socket address ABI");
 _Static_assert(sizeof(__cplus_windows_sockaddr_ipv6) == 28, "Windows IPv6 socket address ABI");
 _Static_assert(sizeof(__cplus_windows_native_socket) == 8, "Windows socket handle ABI");
 _Static_assert(sizeof(__cplus_windows_procedure) == 8, "Windows procedure pointer ABI");
+_Static_assert(sizeof(__cplus_windows_addrinfo_w) == 48, "Windows ADDRINFOW ABI");
+_Static_assert(__builtin_offsetof(__cplus_windows_addrinfo_w, address_length) == 16, "ADDRINFOW length offset");
+_Static_assert(__builtin_offsetof(__cplus_windows_addrinfo_w, canonical_name) == 24, "ADDRINFOW canonical-name offset");
+_Static_assert(__builtin_offsetof(__cplus_windows_addrinfo_w, address) == 32, "ADDRINFOW address offset");
+_Static_assert(__builtin_offsetof(__cplus_windows_addrinfo_w, next) == 40, "ADDRINFOW next offset");
 
 #define __CPLUS_WINDOWS_AF_INET 2
 #define __CPLUS_WINDOWS_AF_INET6 23
@@ -129,6 +157,12 @@ _Static_assert(sizeof(__cplus_windows_procedure) == 8, "Windows procedure pointe
 #define __CPLUS_WINDOWS_INVALID_SOCKET 0xffffffffffffffffULL
 #define __CPLUS_WINDOWS_SOCKET_VERSION 0x0202U
 #define __CPLUS_WINDOWS_MAX_TRANSFER 0x7fffffffULL
+#define __CPLUS_WINDOWS_MAX_RESOLVED_ADDRESSES 256U
+#define __CPLUS_WINDOWS_MAX_RESOLVER_NODES 4096U
+#define __CPLUS_WINDOWS_AF_UNSPEC 0
+#define __CPLUS_WINDOWS_WSA_HOST_NOT_FOUND 11001
+#define __CPLUS_WINDOWS_WSA_NO_DATA 11004
+#define __CPLUS_WINDOWS_WSA_AF_NO_SUPPORT 10047
 /* FARPROC is pointer-sized; retain its full value while assigning a typed signature. */
 #define __CPLUS_WINDOWS_FUNCTION(type, procedure) \
     (((union { __cplus_windows_procedure generic; type typed; }){ .generic = (procedure) }).typed)
@@ -160,13 +194,14 @@ static int __stdcall __cplus_windows_initialize_winsock(
     static const char* const symbol_names[] = {
         "WSAStartup", "WSACleanup", "socket", "bind", "listen", "accept",
         "connect", "getsockname", "getpeername", "send", "recv", "sendto",
-        "recvfrom", "shutdown", "closesocket", "WSAGetLastError"
+        "recvfrom", "shutdown", "closesocket", "WSAGetLastError",
+        "GetAddrInfoW", "FreeAddrInfoW"
     };
     union {
         unsigned long long alignment;
         unsigned char bytes[512];
     } startup_data;
-    __cplus_windows_procedure procedures[16];
+    __cplus_windows_procedure procedures[18];
     unsigned int index;
     int startup_result;
     (void)once;
@@ -183,7 +218,7 @@ static int __stdcall __cplus_windows_initialize_winsock(
         __cplus_windows_winsock_result = CPLUS_PAL_UNSUPPORTED;
         return 1;
     }
-    for (index = 0; index < 16; index++) {
+    for (index = 0; index < 18; index++) {
         procedures[index] = GetProcAddress(__cplus_windows_winsock_module, symbol_names[index]);
         if (!procedures[index]) {
             __cplus_windows_winsock_result = CPLUS_PAL_UNSUPPORTED;
@@ -206,6 +241,10 @@ static int __stdcall __cplus_windows_initialize_winsock(
     __cplus_windows_winsock.shutdown = __CPLUS_WINDOWS_FUNCTION(__cplus_wsa_shutdown_fn, procedures[13]);
     __cplus_windows_winsock.close = __CPLUS_WINDOWS_FUNCTION(__cplus_wsa_close_fn, procedures[14]);
     __cplus_windows_winsock.get_error = __CPLUS_WINDOWS_FUNCTION(__cplus_wsa_get_error_fn, procedures[15]);
+    __cplus_windows_winsock.get_addr_info_w =
+        __CPLUS_WINDOWS_FUNCTION(__cplus_wsa_get_addr_info_w_fn, procedures[16]);
+    __cplus_windows_winsock.free_addr_info_w =
+        __CPLUS_WINDOWS_FUNCTION(__cplus_wsa_free_addr_info_w_fn, procedures[17]);
 
     startup_result = __cplus_windows_winsock.startup(
         __CPLUS_WINDOWS_SOCKET_VERSION,
@@ -497,4 +536,171 @@ int platform_socket_close(cplus_socket_handle_t socket) {
     if (__cplus_windows_ensure_winsock() < 0) return (int)__cplus_windows_winsock_result;
     return __cplus_windows_winsock.close((unsigned long long)socket) == 0
         ? 0 : (int)__cplus_windows_socket_error();
+}
+
+static int __cplus_windows_resolver_error(int error) {
+    if (error == __CPLUS_WINDOWS_WSA_HOST_NOT_FOUND || error == __CPLUS_WINDOWS_WSA_NO_DATA) {
+        return (int)CPLUS_PAL_NOT_FOUND;
+    }
+    if (error == __CPLUS_WINDOWS_WSA_AF_NO_SUPPORT) return (int)CPLUS_PAL_UNSUPPORTED;
+    if (error == 10022) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    return (int)CPLUS_PAL_NETWORK_ERROR;
+}
+
+static int __cplus_windows_resolved_address_equal(
+    const cplus_socket_address_t* left,
+    const cplus_socket_address_t* right) {
+    unsigned int length;
+    unsigned int index;
+    if (left->family != right->family || left->port != right->port ||
+        left->scope_id != right->scope_id) return 0;
+    if (left->family == CPLUS_SOCKET_IPV4) length = 4U;
+    else if (left->family == CPLUS_SOCKET_IPV6) length = 16U;
+    else return 0;
+    for (index = 0; index < length; index++) {
+        if (left->address[index] != right->address[index]) return 0;
+    }
+    return 1;
+}
+
+static int __cplus_windows_store_resolved_address(
+    cplus_socket_address_t results[__CPLUS_WINDOWS_MAX_RESOLVED_ADDRESSES],
+    unsigned int* result_count,
+    const cplus_socket_address_t* address) {
+    unsigned int index;
+    for (index = 0; index < *result_count; index++) {
+        if (__cplus_windows_resolved_address_equal(&results[index], address)) return 0;
+    }
+    if (*result_count >= __CPLUS_WINDOWS_MAX_RESOLVED_ADDRESSES) {
+        return (int)CPLUS_PAL_NETWORK_ERROR;
+    }
+    results[(*result_count)++] = *address;
+    return 0;
+}
+
+static int __cplus_windows_copy_resolved_addresses(
+    const cplus_socket_address_t* source,
+    unsigned int result_count,
+    cplus_socket_address_t* destination,
+    unsigned long long capacity,
+    unsigned long long* count) {
+    unsigned int index;
+    *count = result_count;
+    for (index = 0; index < result_count && (unsigned long long)index < capacity; index++) {
+        destination[index] = source[index];
+    }
+    return (unsigned long long)result_count > capacity
+        ? (int)CPLUS_PAL_BUFFER_TOO_SMALL : 0;
+}
+
+int platform_network_resolve(
+    const char* hostname,
+    unsigned int family,
+    unsigned short port,
+    cplus_socket_address_t* addresses,
+    unsigned long long capacity,
+    unsigned long long* count) {
+    cplus_socket_address_t* results = (void*)0;
+    cplus_socket_address_t numeric = {0};
+    __cplus_windows_addrinfo_w hints = {0};
+    __cplus_windows_addrinfo_w* native_results = (void*)0;
+    void* heap = (void*)0;
+    unsigned short wide_hostname[256];
+    char ascii_hostname[254];
+    long long ascii_length;
+    unsigned int result_count = 0;
+    unsigned int index;
+    unsigned int native_count = 0;
+    int native_status;
+    int status;
+    if (!hostname || !count || (capacity > 0 && !addresses)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    *count = 0;
+    if (family != CPLUS_SOCKET_ANY_FAMILY && family != CPLUS_SOCKET_IPV4 && family != CPLUS_SOCKET_IPV6) {
+        return (int)CPLUS_PAL_UNSUPPORTED;
+    }
+    if (family == CPLUS_SOCKET_IPV4 || family == CPLUS_SOCKET_ANY_FAMILY) {
+        status = platform_network_parse_address(CPLUS_SOCKET_IPV4, hostname, &numeric);
+        if (status == 0) {
+            numeric.port = port;
+            return __cplus_windows_copy_resolved_addresses(&numeric, 1U, addresses, capacity, count);
+        }
+    }
+    if (family == CPLUS_SOCKET_IPV6 || family == CPLUS_SOCKET_ANY_FAMILY) {
+        status = platform_network_parse_address(CPLUS_SOCKET_IPV6, hostname, &numeric);
+        if (status == 0) {
+            numeric.port = port;
+            return __cplus_windows_copy_resolved_addresses(&numeric, 1U, addresses, capacity, count);
+        }
+    }
+    ascii_length = __cplus_network_hostname_to_ascii(
+        hostname, ascii_hostname, sizeof(ascii_hostname));
+    if (ascii_length < 0) return (int)ascii_length;
+    for (index = 0; index < (unsigned int)ascii_length; index++) {
+        wide_hostname[index] = (unsigned short)(unsigned char)ascii_hostname[index];
+    }
+    wide_hostname[ascii_length] = (unsigned short)'.';
+    wide_hostname[ascii_length + 1] = 0;
+    hints.family = family == CPLUS_SOCKET_IPV4 ? __CPLUS_WINDOWS_AF_INET
+        : family == CPLUS_SOCKET_IPV6 ? __CPLUS_WINDOWS_AF_INET6 : __CPLUS_WINDOWS_AF_UNSPEC;
+    status = (int)__cplus_windows_ensure_winsock();
+    if (status < 0) return status;
+    heap = GetProcessHeap();
+    if (!heap) return (int)CPLUS_PAL_IO_ERROR;
+    results = (cplus_socket_address_t*)HeapAlloc(
+        heap, 0, (unsigned long long)sizeof(cplus_socket_address_t) *
+            __CPLUS_WINDOWS_MAX_RESOLVED_ADDRESSES);
+    if (!results) return (int)CPLUS_PAL_IO_ERROR;
+    native_status = __cplus_windows_winsock.get_addr_info_w(
+        wide_hostname, (const unsigned short*)0, &hints, &native_results);
+    if (native_status != 0) {
+        if (native_results) __cplus_windows_winsock.free_addr_info_w(native_results);
+        HeapFree(heap, 0, results);
+        return __cplus_windows_resolver_error(native_status);
+    }
+    for (__cplus_windows_addrinfo_w* item = native_results; item; item = item->next) {
+        cplus_socket_address_t address = {0};
+        if (native_count++ >= __CPLUS_WINDOWS_MAX_RESOLVER_NODES) {
+            status = (int)CPLUS_PAL_NETWORK_ERROR;
+            break;
+        }
+        if (!item->address) {
+            status = (int)CPLUS_PAL_NETWORK_ERROR;
+            break;
+        }
+        if (item->family == __CPLUS_WINDOWS_AF_INET &&
+            (family == CPLUS_SOCKET_IPV4 || family == CPLUS_SOCKET_ANY_FAMILY) &&
+            item->address_length >= sizeof(__cplus_windows_sockaddr_ipv4)) {
+            const __cplus_windows_sockaddr_ipv4* native_address =
+                (const __cplus_windows_sockaddr_ipv4*)item->address;
+            address.family = CPLUS_SOCKET_IPV4;
+            address.port = port;
+            for (index = 0; index < 4U; index++) address.address[index] = native_address->address[index];
+        } else if (item->family == __CPLUS_WINDOWS_AF_INET6 &&
+            (family == CPLUS_SOCKET_IPV6 || family == CPLUS_SOCKET_ANY_FAMILY) &&
+            item->address_length >= sizeof(__cplus_windows_sockaddr_ipv6)) {
+            const __cplus_windows_sockaddr_ipv6* native_address =
+                (const __cplus_windows_sockaddr_ipv6*)item->address;
+            address.family = CPLUS_SOCKET_IPV6;
+            address.port = port;
+            address.scope_id = native_address->scope_id;
+            for (index = 0; index < 16U; index++) address.address[index] = native_address->address[index];
+        } else {
+            continue;
+        }
+        status = __cplus_windows_store_resolved_address(results, &result_count, &address);
+        if (status < 0) break;
+    }
+    if (native_results) __cplus_windows_winsock.free_addr_info_w(native_results);
+    if (status < 0) {
+        HeapFree(heap, 0, results);
+        return status;
+    }
+    if (result_count == 0) {
+        HeapFree(heap, 0, results);
+        return (int)CPLUS_PAL_NOT_FOUND;
+    }
+    status = __cplus_windows_copy_resolved_addresses(
+        results, result_count, addresses, capacity, count);
+    HeapFree(heap, 0, results);
+    return status;
 }
