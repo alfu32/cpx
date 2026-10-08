@@ -4704,18 +4704,21 @@ dependencies.
     alignment, preserving the already-tested allocation/libc behavior;
   - R5.3.2 [DONE] — implement the specified process identity/spawn/wait ABI,
     UTF-8 argv, inherited environment/standard streams, synchronous launch
-    errors and normalized exit status;
+    errors and normalized exit status; Linux and native Windows process paths
+    have focused executable coverage;
   - R5.3.3 [DONE] — implement environment and argument access plus portable
-    standard-input/output/error service contracts, with Linux execution and
-    Windows source/ABI checks;
+    standard-input/output/error service contracts, with native Linux and
+    Windows startup/channel execution coverage;
   - R5.3.4 [DONE] — provide distinct wall, monotonic and process-CPU clocks
     with documented nanosecond units, checked overflow behavior, and the
-    C `time()`/`clock()` mappings;
+    C `time()`/`clock()` mappings; native Linux and Windows PAL execution passes;
   - R5.3.5 [DONE] — implement thread create/join/current/yield and runtime TLS
-    setup without requiring pthreads on Windows;
+    setup without requiring pthreads on Windows; native Linux and Windows
+    create/join/TLS execution passes;
   - R5.3.6 [DONE] — implement mutex, condition, semaphore, once and supported
     atomic wait/wake services; ordinary atomic operations remain compiler/runtime
-    intrinsics, not OS calls;
+    intrinsics, not OS calls; native Windows synchronization/wait-wake execution
+    passes alongside Linux coverage;
   - R5.3.7 [DONE] [3/3] — define and implement the fixed-layout binary
     socket-address ABI and blocking IPv4/IPv6 socket lifecycle, TCP stream, and
     UDP datagram operations with stable errors;
@@ -4790,7 +4793,8 @@ dependencies.
         warning-as-error C17 source checks pass for Linux x86_64/AArch64; the
         full Gradle build passes. Windows execution remains deferred.
     - R5.3.8.3 [DONE] — integrate the Windows Unicode system resolver through
-      dynamically resolved Winsock APIs and copy results into caller storage.
+      dynamically resolved Winsock APIs and copy results into caller storage;
+      native Windows `localhost` resolution and ownership checks pass.
       - **Acceptance evidence:** strict Windows x86_64 MinGW and AArch64 Clang
         source checks pass with warnings as errors. The focused
         `RuntimeNetworkPalTest` links the production resolver and shared codec
@@ -4873,10 +4877,12 @@ dependencies.
         bitwise fetch operations, fences, and concurrent wait/wake. Its linked
         Linux executable has no unresolved host-runtime symbols. Atomic object
         and memory-order enum ABI checks pass for Linux/Windows x86_64/AArch64.
+        The same C+ caller now executes natively on Windows x86_64, including
+        concurrent workers and wait/wake; the PE product passes
+        `RuntimeDependencyAuditor`.
         Warning-as-error C17 checks pass on all four target compilers, and
         generated assembly contains no `__atomic_*`, `__sync_*`, or AArch64
-        atomic-helper calls. The full Gradle build passes. Windows runtime
-        execution remains deferred.
+        atomic-helper calls. The full Linux and Windows test suites pass.
   - R5.4.4 [DONE] [4/4] — implement portable `std.net` address, DNS, socket,
     TCP and UDP APIs with explicit partial/unavailable capability behavior;
     - **Language:** SPEC.STDLIB §16–§16.2 public networking behavior and PAL
