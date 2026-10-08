@@ -56,6 +56,7 @@ class RuntimeNetworkAddressTest {
                     char hostname_output[8] = {'Q', 'R', 'S', 0, 0, 0, 0, 0};
                     char boundary_name[256];
                     char boundary_output[254];
+                    char overlong_label[65];
                     unsigned int lengths[4] = {63, 63, 63, 61};
                     unsigned int index;
                     unsigned int label;
@@ -90,6 +91,10 @@ class RuntimeNetworkAddressTest {
                         hostname_output[1] != 'R' || hostname_output[2] != 'S') return 14;
                     if (__cplus_network_hostname_to_ascii("a..example", hostname_output,
                         sizeof(hostname_output)) != CPLUS_PAL_INVALID_ARGUMENT) return 15;
+                    for (index = 0; index < 64; index++) overlong_label[index] = 'a';
+                    overlong_label[64] = '\0';
+                    if (__cplus_network_hostname_to_ascii(overlong_label, hostname_output,
+                        sizeof(hostname_output)) != CPLUS_PAL_INVALID_ARGUMENT) return 18;
 
                     index = 0;
                     for (label = 0; label < 4; label++) {
