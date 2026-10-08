@@ -48,29 +48,32 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
   and basic signal behavior through the SDK runtime;
 - Linux x86_64 atomics, UTF-8/wide conversion, wide classification, and
   setjmp/longjmp context switching;
-- Linux and Windows basic PAL file open/read/write/close/rename with canonical
-  UTF-8 slash paths, including the `std_fs_*` forwarding façade.
+- Linux and Windows PAL file open/read/write/seek/close/rename, metadata, and
+  directory iteration with canonical UTF-8 slash paths, stable error mapping,
+  and the `std_fs_*` forwarding façade; Windows execution is native x86_64.
 
 ### Contracted but incomplete
 
-- `std.alloc` now delegates to the page-backed runtime allocator; allocator
-  behavior is executable-tested on Linux and Windows execution remains in the
-  final cross-platform pass;
-- broad C17 conformance, target-specific context adapters, and final Windows
-  execution remain incomplete even though the named Linux families have
-  executable coverage.
+- `std.alloc` delegates to the page-backed runtime allocator; executable
+  allocator coverage is Linux-only. Windows allocator behavior remains
+  unverified.
+- Broad C17 conformance and target-specific context adapters remain
+  incomplete. Native Windows x86_64 ABI, CLI, file-PAL, std.io, and product
+  smoke tests pass, but this is not a claim that every runtime family has
+  Windows execution coverage.
 - `cplus libc test` now aggregates the Linux x86_64 C17 header/source audit,
   independently compiled C fixtures, and post-link dependency checks; its
   output is the evidence source for the R4.5 conformance gate.
 - Linux executable coverage now also includes the target-neutral `std.core`,
   `std.mem`, `std.string`, `std.text`, and slice/range collection value layer;
   PAL-backed filesystem extensions remain in the next R5.2 stage.
-- `std.io`, process, time, thread, synchronization, networking, and math
-  sources are primarily API contracts or declarations;
+- Windows process, time, thread, synchronization, networking, and full C17
+  behavior remain partially contracted or unverified; Linux has broader
+  executable coverage than Windows;
 - C17 headers are delivered, but broad behavioral libc and independent-C ABI
   conformance is not complete;
-- Linux/Windows memory, environment, time, thread/synchronization, networking,
-  remaining filesystem services, and Darwin concrete execution are incomplete;
+- cross-platform memory, environment, time, thread/synchronization, and
+  networking conformance and Darwin concrete execution remain incomplete;
 - CLI workspace/product packaging and workspace-wide LSP source mapping need
   release-grade evidence.
 

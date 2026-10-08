@@ -2899,6 +2899,15 @@ collection (`--gc-sections` or `/OPT:REF`) so unused service adapters do not
 pull their platform dependencies into minimal products. The system profile
 does not enable this self-hosted dead stripping.
 
+For Windows x86_64 self-hosted products, the currently validated compiler
+profile is GCC/UCRT64 and the target descriptor uses the GNU x87
+`long double` representation. A driver with the MSVC binary64 `long double`
+profile MUST fail ABI validation rather than silently link against an
+incompatible descriptor. This is a compiler/ABI restriction, not a dependency
+on UCRT as the C+ runtime; produced PE products are checked for forbidden C
+runtime imports. Adding a separate MSVC ABI profile requires its own target
+descriptor, ABI callers, and native execution evidence.
+
 For a target that advertises C17 complex support, the runtime link plan SHALL
 include the C+ definitions for compiler-emitted complex multiply/divide helper
 ABIs (currently the GCC/Clang `__mul*3` and `__div*3` families). These

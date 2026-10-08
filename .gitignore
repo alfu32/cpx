@@ -16,11 +16,14 @@ vscode-extension/node_modules/
 vscode-extension/dist/
 vscode-extension/*.vsix
 .kotlin/
-gradle
+gradle/*
+!gradle/wrapper/
+gradle/wrapper/*
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 sdk/cache/
 build/
 **/build/
 .kode
 .kode.json
 rc0
-

@@ -11,10 +11,10 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    90/92 accepted with recorded evidence
-Phase gates:           3/9 complete; 6 active; 0 queued
-Current task:          R8.4 — release reproducibility and compatibility audit
-Current milestone:     R8 — SDK packaging, target matrix and release conformance
+Roadmap leaf tasks:    91/92 accepted with recorded evidence
+Phase gates:           4/9 complete; 5 active; 0 queued
+Current task:          R4 — native Windows runtime/libc conformance gate
+Current milestone:     R4 — native runtime and C17 compatibility
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
 Windows full-runtime link: native Windows and local MinGW PE products pass
@@ -27,10 +27,10 @@ R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
 R5 [DOING] 40/41 native std and platform-service leaf tasks evidenced
 R6 [DOING] 4/4  CLI transcoder/build-product leaves accepted; Windows gate pending
 R7 [DOING] 3/3  Linux extension product accepted; Windows gate pending
-R8 [DOING] 3/4  SDK packaging, target matrix and release conformance
+R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 
-TOTAL       90/92 implementation tasks complete; 3/9 phase gates complete,
-            6 active, 0 queued
+TOTAL       91/92 implementation tasks complete; 4/9 phase gates complete,
+            5 active, 0 queued
 ```
 
 The latest Linux x86_64 C17 report is 51 pass, 0 fail, 0 unsupported, and 0
@@ -337,35 +337,28 @@ capability-gated rather than represented as a partially implemented runtime.
 empty Darwin service set and stable unsupported-self-host diagnostic; the
 technical architecture records this boundary. No Darwin execution is claimed.
 This moves the roadmap from 71/88 to 72/88 and R5 from 38/41 to 39/41; R5
-remains open for R5.1 and R5.2.5.
+remains open for R5.1; R5.2.5 is now accepted with native Windows evidence.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current dependency sequence is:
 
-1. R5.1 has Linux implementation and execution evidence but remains open for
-   full acceptance and final target validation. R5.2.5 has Linux filesystem-PAL
-   conformance evidence but remains open for Windows runtime, import, and error
-   mapping validation. Neither leaf receives completion credit before its full
-   acceptance gate passes.
-2. R8.1 and R8.2 are accepted. R8.3 is the active roadmap task: Linux x86_64
-   runtime/product checks pass, and Linux AArch64 strict source checks and
-   static cross-link checks pass; AArch64 runtime execution remains unverified.
-  Windows testing and patching are deferred to the final validation pass by
-  request. R8.3 receives no completion credit until its target-matrix gate is
-  satisfied. `C17ConformanceRunner` now distinguishes execution failure from
-  a missing target runner: it selects native execution or an installed Linux
-  QEMU user-mode runner (including both regular and `-static` executable
-  names) and reports cross-target execution as `unsupported`
-  when none is available. The Linux AArch64 CLI audit reports 0 failures and
-  8 unsupported cases on this x86_64 host (including the unavailable runner);
-  this is an explicit capability result, not AArch64 execution evidence.
-3. R8.4 remains queued behind R8.3. R4, R5, R6, and R7 phase gates also remain
-   open where their recorded Windows runtime/product checks are pending; Linux
-   leaf acceptance does not imply cross-platform completion.
-4. Final validation — run the deferred Windows ABI/caller and PAL checks,
-   including the open R3.1.4 LLP64 execution gate; patch platform issues; then
-   update only the roadmap leaves whose complete acceptance evidence passes.
+1. R5.1 remains open for its complete `std.core`, memory, string, text, and
+   collection acceptance. R5.2.5 is now accepted after native Windows file-PAL
+   and std.io execution; no remaining R5.2.5 Windows gate is implied.
+2. R8.1–R8.3 are accepted. Linux x86_64 runtime/product checks and Linux
+   AArch64 QEMU execution/source checks pass; native Windows x86_64 ABI, file
+   PAL, CLI, and fat-JAR product checks pass. Windows AArch64 and Darwin are
+   unavailable and remain explicitly unclaimed.
+3. R8.4 is accepted. R1, R4, R5.1, R6, and R7 retain their separately listed
+   open compatibility/conformance gates; acceptance of the release audit does
+   not imply those phase gates are complete. The `C17ConformanceRunner` distinguishes
+   execution failure from a missing target runner and reports unavailable
+   cross-target execution as `unsupported` rather than a pass.
+4. R4 is the next open phase gate: execute the existing Linux runtime/libc
+   conformance families on native Windows where supported, correct platform
+   differences, and keep unsupported profiles explicit. Then continue the
+   remaining R5.1, R6, and R7 leaves in dependency order.
 
 Latest completed implementation commits:
 
@@ -5026,10 +5019,10 @@ dependencies.
 
 R5.2 implementation is sequenced after R1.1.1–R1.2.5 and R1.4 because it
 extends public SDK function signatures and must use the verified C primitive,
-type-import, and alias boundaries. R5.2.1 freezes the ABI before adapter work;
-R5.2.2–R5.2.4 may be implemented and Linux-tested while Windows execution,
-including the R3.1.4 LLP64 caller check, remains deferred to final validation.
-R5.2.5 is not complete until that deferred Windows execution and audit pass.
+type-import, and alias boundaries. R5.2.1 freezes the ABI before adapter work.
+R5.2.5 subsequently closed the Windows filesystem execution and audit gate;
+the separate subsystem Windows gates below remain open only where their own
+acceptance evidence is still missing.
 The R5.3/R5.4 leaves may close on their explicitly listed Linux execution and
 target-model acceptance evidence, but no such leaf or aggregate closes the
 Windows target gates; the R5 phase gate remains open until final Windows
@@ -5095,7 +5088,9 @@ and state checks over those wrappers. `RuntimeStdIoTest` compiles and links the
 C+ modules with the self-hosted Linux runtime and executes file and directory
 roundtrips; ABI tests confirm both PAL and std metadata layouts across the four
 declared Linux/Windows x86_64/AArch64 descriptors. `./gradlew build` passes on
-Linux. No Windows execution is claimed; R5.2.5 remains open.
+Linux. At this subtask checkpoint Windows execution had not yet been performed;
+the later R5.2.5 acceptance record documents native Windows PAL and std.io
+execution.
 
 R5.3.1 acceptance evidence: Linux `RuntimeAllocatorTest` now exercises
 zero/overflow page counts, invalid release arguments, successful page release,
@@ -5443,7 +5438,7 @@ The LSP and Run Main flows work for a multi-module workspace on Linux and
 Windows, with external-source locations preserved and no competing parser or
 hard-coded CLI path.
 
-## R8 [DOING] [2/4] SDK packaging, target matrix and release conformance
+## R8 [DONE] [4/4] SDK packaging, target matrix and release conformance
 
 **Dependency-ordered work queue**
 
@@ -5538,11 +5533,12 @@ hard-coded CLI path.
   for Linux AArch64 using Clang/QEMU; all optimized products pass dependency
   audits. `setjmp.h` now declares returns-twice and no-return compiler
   attributes, and the fixture uses a volatile saved return value per the C
-  setjmp/longjmp rules. This does not close R8.3 or claim Windows context
-  support.
-  The prior x86_64 CLI run also
-  exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows
-  Windows runtime testing remains deferred to the final validation gate. A
+  setjmp/longjmp rules. This Linux-only fixture does not claim Windows context
+  support; native product validation is recorded below. The prior x86_64 CLI
+  run also exposed a missing GNU-stack note in
+  setjmp assembly, now fixed. At the point of this cross-build work Windows
+  runtime testing was still pending; its subsequent native validation is
+  recorded at the end of this R8.3 entry. A
   local MinGW x86_64 full-runtime CLI cross-build now emits a PE executable.
   The Windows runtime plan includes the GCC-compatible emulated-TLS adapter,
   implemented with per-thread FLS storage; its TLS helper links without
@@ -5581,8 +5577,26 @@ hard-coded CLI path.
   natively as `java -jar ... run examples/module_main.cp`; it built a temporary
   Windows PE, printed `Result: 12`, and returned successfully through
   PowerShell.
-- R8.4 [TODO] — verify no host contamination, reproducibility, clean-tree
-  builds, documented examples, and upgrade/ABI compatibility rules.
+- R8.4 [DONE] — verify no host contamination, reproducibility, clean-tree
+  builds, documented examples, and upgrade/ABI compatibility rules. A fresh
+  Git worktree initially exposed that `.gitignore` excluded the Gradle wrapper
+  JAR and properties, making the checked-in wrapper scripts unusable from a
+  clone. The ignore rules now preserve those two wrapper inputs. A clean
+  worktree passed the full build using installed Gradle 9.2.1 and again with
+  the repository wrapper pinned to Gradle 9.3.0. Two forced wrapper fat-JAR
+  builds produced the identical SHA-256
+  `4a137b490399b116827f6e5d07926ea9c280652a962e8ba6cdb10c2235bdfe68`.
+  From that checkout, the packaged CLI checked `examples/minimal.cp` and ran
+  `examples/module_main.cp`, printing `Result: 12` and returning the expected
+  program exit status. The VS Code extension's six tests passed and
+  `npm run package` produced the expected eight-file VSIX. README and
+  GETTING_STARTED now point to `COMPATIBILITY.md`, which records the current
+  SDK/language/runtime/PAL ABI versions, rebuild requirements, Windows GNU x87
+  profile restriction, and unclaimed targets. `SPEC.COVERAGE.md` was aligned
+  with the latest Linux and native Windows evidence; Linux/PE dependency audits
+  and capability-gated unsupported targets are recorded under R8.2/R8.3. The
+  full Linux/Windows Gradle and extension verification passes. R8.4 closes the
+  release audit without closing the separate R1, R4, R5.1, R6, or R7 gates.
 
 **Deliverables**
 

@@ -1032,19 +1032,26 @@ Most standard-library code remains platform-independent C+.
 
 The `cplus` runtime owns startup, compiler support, and the PAL. You do not
 select glibc, musl, MinGW, MSVCRT, or UCRT for a C+ standard-library build.
-The CLI selects a target C driver automatically and accepts an explicit driver
-only for toolchain integration:
+The CLI selects a C driver profile that matches the target ABI. The validated
+Windows x86_64 profile is GCC/UCRT64; an arbitrary Windows driver cannot be
+substituted unless it passes the target ABI checks. In particular, MSVC's
+binary64 `long double` is not interchangeable with the currently declared GNU
+x87 profile.
 
 ```text
 cplus build main.cp --target linux-x86_64
 cplus build main.cp --target windows-x86_64
-cplus build main.cp --target windows-x86_64 --c-compiler clang-cl
 ```
 
 Linux self-hosted products are static ELF executables with direct PAL syscall
 adapters. Windows self-hosted products are PE/COFF executables with only the
 declared Windows system-DLL imports used by the PAL; the C runtime is not
 linked. Inspect a product with:
+
+On Windows, an extensionless `--output` path is normalized to `.exe`; the
+generated C file keeps the source stem (for example, `program.c`). The
+self-hosted product has no UCRT/MSVCRT import dependency, although the C
+compiler/linker toolchain is still required to build it.
 
 ```text
 cplus audit product --target windows-x86_64 --runtime cplus --libc c17
@@ -1062,6 +1069,9 @@ the chosen SDK before inspecting a binary.
 OS-specific facilities are added behind the uniform PAL ABI, so portable
 `std` and runtime code does not change when an adapter uses a syscall, a
 documented DLL API, or a future platform shim.
+
+Current target support and ABI upgrade rules are documented in
+[COMPATIBILITY.md](COMPATIBILITY.md).
 
 ---
 

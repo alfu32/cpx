@@ -537,8 +537,14 @@ cplus build main.cp --target windows-x86_64
 
 Linux products are static ELF executables with direct PAL syscall adapters;
 Windows products are PE/COFF executables with only declared Windows system-DLL
-imports and no C runtime dependency. Use `cplus audit product --target
-windows-x86_64` to verify a Windows product.
+imports and no C runtime dependency. The validated Windows x86_64 compiler
+profile is GCC/UCRT64; MSVC's binary64 `long double` does not match the current
+GNU x87 target ABI. Extensionless Windows output paths receive an `.exe`
+suffix, while generated C keeps the source stem. Use `cplus audit product
+--target windows-x86_64` to verify a Windows product.
+
+The current target/compiler support boundary and ABI upgrade rules are in
+[COMPATIBILITY.md](COMPATIBILITY.md).
 
 ---
 
