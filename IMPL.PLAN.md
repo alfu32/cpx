@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    48/69 accepted with recorded evidence
+Roadmap leaf tasks:    49/69 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.1 — implement std.process over the verified PAL
+Current task:          R5.4.2 — implement std.time over the verified clocks
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 16/25 native std and platform-service work remains open
+R5 [DOING] 17/25 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       48/69 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       49/69 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -56,6 +56,16 @@ import audit, and the focused network test plus full Gradle build; commit
 `3c1667e` brings the numerator to 48/69. This is source/link acceptance only:
 Windows resolver execution remains deferred to final validation, and full
 Windows runtime PE linking remains open in R8.3.
+
+R5.4.1 then passed a compiled C+ parent/child process fixture covering process
+identity, argument and environment views, synchronous API errors, inherited
+environment and standard channels, child exit status, and façade forwarding;
+the linked Linux product has no unresolved host-runtime symbols. Strict C17
+source checks pass for Linux/Windows x86_64/AArch64, and the full Gradle build
+passes. Commit `f5159ef` brings the numerator to 49/69. Windows process runtime
+execution remains deferred; the source checks do not claim Windows behavior.
+Commit `f79c654` adds explicit coverage that missing-executable lookup errors
+remain synchronous through the public façade.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -106,6 +116,8 @@ Latest completed implementation commits:
 - `34d322f` — verify rejection at the DNS label-length boundary.
 - `ff39ba6` — implement bounded freestanding Linux DNS resolution.
 - `3c1667e` — integrate the Windows Unicode resolver (source/PE-import verified; Windows execution deferred).
+- `f5159ef` — implement the native `std.process` façade (Linux C+ execution; Windows execution deferred).
+- `f79c654` — verify synchronous not-found errors through `std.process`.
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -4277,9 +4289,21 @@ dependencies.
         network test and full Gradle build pass. Successful Windows resolver
         execution remains deferred to final validation; full-runtime PE linking
         remains open in R8.3.
-- R5.4 [TODO] — connect native std façades to the verified PAL services;
-  - R5.4.1 [TODO] — implement `std.process` identity, spawn/wait, exit,
+- R5.4 [DOING] — connect native std façades to the verified PAL services;
+  - R5.4.1 [DONE] — implement `std.process` identity, spawn/wait, exit,
     arguments, environment and standard-stream APIs;
+    - **Acceptance evidence:** the C+ integration fixture compiles and runs a
+      parent and spawned child through the public façade. It verifies positive
+      process identity; argument count, lookup and out-of-range behavior;
+      inherited environment; invalid-argument passthrough; inherited standard
+      input/output/error; child exit status and wait behavior; and zero-length
+      channel operations. The statically linked Linux executable has no
+      undefined host-runtime symbols. The full Gradle build passes. Strict
+      warning-as-error C17 checks pass for the forwarding source on Linux and
+      Windows x86_64/AArch64; Windows runtime execution remains deferred.
+    - The first caller compilation exposed and fixed parser lookahead that
+      treated `local = functionCall(...)` as an inner-function declaration;
+      a focused parser regression test passes.
   - R5.4.2 [TODO] — implement `std.time` wall/monotonic/duration APIs and
     complete C time façade behavior tests over the version-4 clock services;
   - R5.4.3 [TODO] — implement `std.thread`/`std.sync` and map atomic APIs to
