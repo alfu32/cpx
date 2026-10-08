@@ -915,7 +915,7 @@ int platform_file_rename(const char* source, const char* target) {
 #if defined(__x86_64__)
     return (int)cplus_normalize_linux_file_result(cplus_linux_syscall4(264, -100, (long)source, -100, (long)target));
 #elif defined(__aarch64__)
-    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall4(276, -100, (long)source, -100, (long)target));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall4(38, -100, (long)source, -100, (long)target));
 #else
     return (int)CPLUS_PAL_UNSUPPORTED;
 #endif

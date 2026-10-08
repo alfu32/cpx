@@ -4631,8 +4631,13 @@ dependencies.
     stable argument errors. These checks extend Linux evidence only and do not
     close the cross-platform leaf. `RuntimeFilePalTest` also repeats
     warning-as-error C17 syntax checks for the production Linux adapter with
-    Clang targeting x86_64 and AArch64; these are source checks, not AArch64
-    runtime execution. A dedicated Linux fixture creates a directory entry
+    Clang targeting x86_64 and AArch64. An AArch64 QEMU-linked filesystem
+    fixture now exercises canonical slash-path write/read, metadata, rename,
+    removal, and dependency auditing. It exposed an incorrect AArch64
+    `renameat` syscall number (`276`, a different five-argument syscall); the
+    adapter and syscall catalogue now use syscall `38`, and the fixture passes.
+    This adds Linux/AArch64 evidence only and does not close R5.2.5. A dedicated
+    Linux fixture creates a directory entry
     with an invalid UTF-8 byte and
     verifies production directory iteration returns `UNSUPPORTED`; the linked
     fixture also passes the dependency audit. The fixture additionally checks
@@ -5464,6 +5469,9 @@ hard-coded CLI path.
   `RuntimeThreadPalTest` also cross-links and executes an AArch64 thread/TLS
   fixture under QEMU, verifying runtime attachment, independent initialized
   TLS, join results, parent TLS preservation, and a clean dependency audit.
+  `RuntimeFilePalTest` executes an AArch64 filesystem roundtrip and dependency
+  audit; it found and fixed the Linux AArch64 `renameat` syscall number, with
+  both the runtime adapter and syscall catalogue corrected.
   This execution evidence does not close R8.3;
   the Windows target matrix remains pending. The prior x86_64 CLI run also
   exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows

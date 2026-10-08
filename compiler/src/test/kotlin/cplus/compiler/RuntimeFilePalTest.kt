@@ -10,6 +10,72 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeFilePalTest {
     @Test
+    fun linuxAarch64FilesystemPalRoundTripsCanonicalSlashPathsWhenRunnerIsAvailable() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val runner = C17TargetRunner.commandPrefix("linux-aarch64")
+        assumeTrue(runner != null, "AArch64 QEMU user-mode runner is unavailable")
+
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-aarch64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-aarch64-file-pal")
+        val path = directory.resolve("slash-path.txt").toAbsolutePath().normalize().toString()
+            .replace('\\', '/')
+        val renamed = directory.resolve("renamed.txt").toAbsolutePath().normalize().toString()
+            .replace('\\', '/')
+        val source = directory.resolve("file_pal.c").also {
+            Files.writeString(it, """
+                #include "cplus_platform.h"
+
+                int main(void) {
+                    const char* path = "$path";
+                    const char* renamed = "$renamed";
+                    const char content[] = "aarch64-pal";
+                    char buffer[sizeof(content)];
+                    cplus_file_metadata_t metadata;
+                    long long handle = platform_file_open(path, CPLUS_FILE_WRITE | CPLUS_FILE_CREATE | CPLUS_FILE_TRUNCATE);
+                    if (handle < 0) return 1;
+                    if (platform_file_write(handle, content, sizeof(content)) != sizeof(content)) return 2;
+                    if (platform_file_close(handle) != 0) return 3;
+                    if (platform_file_metadata(path, &metadata) != 0 || metadata.size_bytes != sizeof(content)) return 4;
+                    if (platform_file_rename(path, renamed) != 0) return 5;
+                    handle = platform_file_open(renamed, CPLUS_FILE_READ);
+                    if (handle < 0) return 6;
+                    if (platform_file_read(handle, buffer, sizeof(buffer)) != sizeof(buffer)) return 7;
+                    if (platform_file_close(handle) != 0) return 8;
+                    for (unsigned int index = 0; index < sizeof(content); index++) {
+                        if (buffer[index] != content[index]) return 9;
+                    }
+                    if (platform_file_remove(renamed) != 0) return 10;
+                    if (platform_file_metadata(renamed, &metadata) != CPLUS_PAL_NOT_FOUND) return 11;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("file_pal")
+
+        try {
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+
+            val process = ProcessBuilder(runner!! + executable.toString()).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), output)
+        } finally {
+            Files.deleteIfExists(directory.resolve("slash-path.txt"))
+            Files.deleteIfExists(directory.resolve("renamed.txt"))
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(source)
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test
     fun linuxPlatformAdapterIsWarningFreeForX86AndAarch64Targets() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
         val clangAvailable = runCatching {
