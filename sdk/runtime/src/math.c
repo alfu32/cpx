@@ -1278,6 +1278,354 @@ CPLUS_MATH_DEFINE_EXP_LOG_API(
 
 #undef CPLUS_MATH_DEFINE_EXP_LOG_API
 
+#define CPLUS_MATH_DEFINE_TRIG( \
+    suffix, type, classifier, sign_value, absolute_value, sqrt_value, copy_sign, reduction_limit) \
+    static type cplus_math_sin_series_##suffix(type value) { \
+        int iteration; \
+        type square = value * value; \
+        type term = value; \
+        type sum = value; \
+        for (iteration = 1; iteration <= 16; iteration++) { \
+            term *= -square / ((type)(2 * iteration) * (type)(2 * iteration + 1)); \
+            sum += term; \
+        } \
+        return sum; \
+    } \
+    static type cplus_math_cos_series_##suffix(type value) { \
+        int iteration; \
+        type square = value * value; \
+        type term = (type)1; \
+        type sum = (type)1; \
+        for (iteration = 1; iteration <= 16; iteration++) { \
+            term *= -square / ((type)(2 * iteration - 1) * (type)(2 * iteration)); \
+            sum += term; \
+        } \
+        return sum; \
+    } \
+    static void cplus_math_sincos_##suffix(type value, type* sine, type* cosine) { \
+        int kind = classifier(value); \
+        int quotient = 0; \
+        int quadrant; \
+        type reduced; \
+        type small_sine; \
+        type small_cosine; \
+        if (kind == FP_NAN) { \
+            *sine = value; \
+            *cosine = value; \
+            return; \
+        } \
+        if (kind == FP_INFINITE) { \
+            errno = EDOM; \
+            *sine = (type)NAN; \
+            *cosine = (type)NAN; \
+            return; \
+        } \
+        if (kind == FP_ZERO) { \
+            *sine = value; \
+            *cosine = (type)1; \
+            return; \
+        } \
+        if (absolute_value(value) <= (type)(reduction_limit)) { \
+            const type pio2_high = (type)1.57079632673412561417L; \
+            const type pio2_low = (type)6.07710050630396597660e-11L; \
+            const type pio2_tail = (type)2.02226624879595063154e-21L; \
+            type ratio = value / (type)1.570796326794896619231321691639751442L; \
+            type fraction; \
+            quotient = (int)ratio; \
+            fraction = ratio - (type)quotient; \
+            if (fraction > (type)0.5 || \
+                (fraction == (type)0.5 && quotient % 2 != 0)) quotient++; \
+            else if (fraction < (type)-0.5 || \
+                (fraction == (type)-0.5 && quotient % 2 != 0)) quotient--; \
+            reduced = ((value - (type)quotient * pio2_high) - \
+                (type)quotient * pio2_low) - (type)quotient * pio2_tail; \
+        } else { \
+            reduced = (type)remquol((long double)value, \
+                0x1.921fb54442d18469898cc51701b8p+0L, &quotient); \
+        } \
+        quadrant = quotient % 4; \
+        if (quadrant < 0) quadrant += 4; \
+        small_sine = cplus_math_sin_series_##suffix(reduced); \
+        small_cosine = cplus_math_cos_series_##suffix(reduced); \
+        if (quadrant == 0) { \
+            *sine = small_sine; \
+            *cosine = small_cosine; \
+        } else if (quadrant == 1) { \
+            *sine = small_cosine; \
+            *cosine = -small_sine; \
+        } else if (quadrant == 2) { \
+            *sine = -small_sine; \
+            *cosine = -small_cosine; \
+        } else { \
+            *sine = -small_cosine; \
+            *cosine = small_sine; \
+        } \
+    } \
+    type sin##suffix(type value) { \
+        type sine; \
+        type cosine; \
+        cplus_math_sincos_##suffix(value, &sine, &cosine); \
+        return sine; \
+    } \
+    type cos##suffix(type value) { \
+        type sine; \
+        type cosine; \
+        cplus_math_sincos_##suffix(value, &sine, &cosine); \
+        return cosine; \
+    } \
+    type tan##suffix(type value) { \
+        type sine; \
+        type cosine; \
+        cplus_math_sincos_##suffix(value, &sine, &cosine); \
+        if (cosine == (type)0 && classifier(sine) != FP_NAN) { \
+            errno = ERANGE; \
+            return copy_sign((type)HUGE_VALL, sine); \
+        } \
+        return sine / cosine; \
+    } \
+    static type cplus_math_atan_series_##suffix(type value) { \
+        int denominator; \
+        type square = value * value; \
+        type term = value; \
+        type sum = value; \
+        for (denominator = 3; denominator <= 129; denominator += 2) { \
+            term *= -square; \
+            sum += term / (type)denominator; \
+        } \
+        return sum; \
+    } \
+    static type cplus_math_atan_positive_##suffix(type value) { \
+        const type pi_over_four = (type)0x1.921fb54442d18469898cc51701b8p-1L; \
+        if (value > (type)2) \
+            return (type)0x1.921fb54442d18469898cc51701b8p+0L - \
+                cplus_math_atan_series_##suffix((type)1 / value); \
+        if (value > (type)0.5) \
+            return pi_over_four + cplus_math_atan_series_##suffix( \
+                (value - (type)1) / (value + (type)1)); \
+        return cplus_math_atan_series_##suffix(value); \
+    } \
+    type atan##suffix(type value) { \
+        int kind = classifier(value); \
+        type result; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) \
+            return copy_sign((type)0x1.921fb54442d18469898cc51701b8p+0L, value); \
+        result = cplus_math_atan_positive_##suffix(absolute_value(value)); \
+        return copy_sign(result, value); \
+    } \
+    type atan2##suffix(type ordinate, type abscissa) { \
+        const type pi = (type)0x1.921fb54442d18469898cc51701b8p+1L; \
+        const type pi_over_two = (type)0x1.921fb54442d18469898cc51701b8p+0L; \
+        int ordinate_kind = classifier(ordinate); \
+        int abscissa_kind = classifier(abscissa); \
+        int ordinate_negative = sign_value(ordinate); \
+        int abscissa_negative = sign_value(abscissa); \
+        type ordinate_magnitude; \
+        type abscissa_magnitude; \
+        type angle; \
+        if (ordinate_kind == FP_NAN || abscissa_kind == FP_NAN) \
+            return ordinate_kind == FP_NAN ? ordinate : abscissa; \
+        if (ordinate_kind == FP_INFINITE && abscissa_kind == FP_INFINITE) { \
+            angle = abscissa_negative ? (type)3 * pi / (type)4 : pi / (type)4; \
+            return copy_sign(angle, ordinate); \
+        } \
+        if (ordinate_kind == FP_INFINITE) return copy_sign(pi_over_two, ordinate); \
+        if (abscissa_kind == FP_INFINITE) \
+            return abscissa_negative ? copy_sign(pi, ordinate) : copy_sign((type)0, ordinate); \
+        if (ordinate_kind == FP_ZERO) { \
+            if (abscissa_negative) return copy_sign(pi, ordinate); \
+            return ordinate; \
+        } \
+        if (abscissa_kind == FP_ZERO) return copy_sign(pi_over_two, ordinate); \
+        ordinate_magnitude = absolute_value(ordinate); \
+        abscissa_magnitude = absolute_value(abscissa); \
+        if (ordinate_magnitude > abscissa_magnitude) \
+            angle = pi_over_two - cplus_math_atan_positive_##suffix( \
+                abscissa_magnitude / ordinate_magnitude); \
+        else \
+            angle = cplus_math_atan_positive_##suffix(ordinate_magnitude / abscissa_magnitude); \
+        if (abscissa_negative) angle = pi - angle; \
+        return ordinate_negative ? -angle : angle; \
+    } \
+    type asin##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        if (kind == FP_NAN) return value; \
+        magnitude = absolute_value(value); \
+        if (magnitude > (type)1) { \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (value == (type)1) return (type)0x1.921fb54442d18469898cc51701b8p+0L; \
+        if (value == (type)-1) return (type)-0x1.921fb54442d18469898cc51701b8p+0L; \
+        if (kind == FP_ZERO) return value; \
+        return atan2##suffix(value, sqrt_value(((type)1 - value) * ((type)1 + value))); \
+    } \
+    type acos##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        if (kind == FP_NAN) return value; \
+        magnitude = absolute_value(value); \
+        if (magnitude > (type)1) { \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (value == (type)1) return (type)0; \
+        if (value == (type)-1) return (type)0x1.921fb54442d18469898cc51701b8p+1L; \
+        return atan2##suffix(sqrt_value(((type)1 - value) * ((type)1 + value)), value); \
+    }
+
+CPLUS_MATH_DEFINE_TRIG(f, float, cplus_math_classify_float, cplus_math_sign_float,
+    fabsf, sqrtf, cplus_math_copysign_float, 512.0f)
+CPLUS_MATH_DEFINE_TRIG(, double, cplus_math_classify_double, cplus_math_sign_double,
+    fabs, sqrt, cplus_math_copysign_double, 0x1p20)
+CPLUS_MATH_DEFINE_TRIG(l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double,
+    fabsl, sqrtl, cplus_math_copysign_long_double, 0x1p20L)
+
+#undef CPLUS_MATH_DEFINE_TRIG
+
+#define CPLUS_MATH_DEFINE_HYPERBOLIC( \
+    suffix, type, classifier, sign_value, absolute_value, exp_value, \
+    log_value, log1p_value, sqrt_value, copy_sign) \
+    static type cplus_math_sinh_series_##suffix(type value) { \
+        int iteration; \
+        type square = value * value; \
+        type term = value; \
+        type sum = value; \
+        for (iteration = 1; iteration <= 16; iteration++) { \
+            term *= square / ((type)(2 * iteration) * (type)(2 * iteration + 1)); \
+            sum += term; \
+        } \
+        return sum; \
+    } \
+    static type cplus_math_cosh_series_##suffix(type value) { \
+        int iteration; \
+        type square = value * value; \
+        type term = (type)1; \
+        type sum = (type)1; \
+        for (iteration = 1; iteration <= 16; iteration++) { \
+            term *= square / ((type)(2 * iteration - 1) * (type)(2 * iteration)); \
+            sum += term; \
+        } \
+        return sum; \
+    } \
+    type sinh##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        type result; \
+        if (kind == FP_NAN || kind == FP_INFINITE || kind == FP_ZERO) return value; \
+        magnitude = absolute_value(value); \
+        if (magnitude < (type)0.5) return cplus_math_sinh_series_##suffix(value); \
+        result = (exp_value(magnitude) - exp_value(-magnitude)) * (type)0.5; \
+        if (classifier(result) == FP_INFINITE) errno = ERANGE; \
+        return copy_sign(result, value); \
+    } \
+    type cosh##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        type result; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) return (type)HUGE_VALL; \
+        magnitude = absolute_value(value); \
+        if (magnitude < (type)0.5) return cplus_math_cosh_series_##suffix(value); \
+        result = (exp_value(magnitude) + exp_value(-magnitude)) * (type)0.5; \
+        if (classifier(result) == FP_INFINITE) errno = ERANGE; \
+        return result; \
+    } \
+    type tanh##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        type exponential; \
+        type result; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) return copy_sign((type)1, value); \
+        if (kind == FP_ZERO) return value; \
+        magnitude = absolute_value(value); \
+        if (magnitude > (type)40) return copy_sign((type)1, value); \
+        exponential = exp_value((type)-2 * magnitude); \
+        result = ((type)1 - exponential) / ((type)1 + exponential); \
+        return copy_sign(result, value); \
+    } \
+    type asinh##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        type result; \
+        if (kind == FP_NAN || kind == FP_INFINITE || kind == FP_ZERO) return value; \
+        magnitude = absolute_value(value); \
+        if (magnitude > (type)1) { \
+            type reciprocal = (type)1 / magnitude; \
+            result = log_value(magnitude) + log1p_value( \
+                sqrt_value((type)1 + reciprocal * reciprocal)); \
+        } else { \
+            type square = magnitude * magnitude; \
+            result = log1p_value(magnitude + square / \
+                ((type)1 + sqrt_value((type)1 + square))); \
+        } \
+        return copy_sign(result, value); \
+    } \
+    type acosh##suffix(type value) { \
+        int kind = classifier(value); \
+        if (kind == FP_NAN) return value; \
+        if (sign_value(value) && kind == FP_INFINITE) { \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (kind == FP_INFINITE) return value; \
+        if (value < (type)1) { \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (value == (type)1) return (type)0; \
+        if (value > (type)2) { \
+            type reciprocal = (type)1 / value; \
+            return log_value(value) + log1p_value( \
+                sqrt_value((type)1 - reciprocal * reciprocal)); \
+        } \
+        { \
+            type difference = value - (type)1; \
+            return log1p_value(difference + sqrt_value(difference * (value + (type)1))); \
+        } \
+    } \
+    type atanh##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_ZERO) return value; \
+        magnitude = absolute_value(value); \
+        if (magnitude > (type)1) { \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (magnitude == (type)1) { \
+            errno = ERANGE; \
+            return copy_sign((type)HUGE_VALL, value); \
+        } \
+        if (magnitude < (type)0.5) { \
+            int denominator; \
+            type term = value; \
+            type sum = value; \
+            type square = value * value; \
+            for (denominator = 3; denominator <= 95; denominator += 2) { \
+                term *= square; \
+                sum += term / (type)denominator; \
+            } \
+            return sum; \
+        } \
+        return ((type)0.5) * (log1p_value(value) - log1p_value(-value)); \
+    }
+
+CPLUS_MATH_DEFINE_HYPERBOLIC(
+    f, float, cplus_math_classify_float, cplus_math_sign_float, fabsf,
+    expf, logf, log1pf, sqrtf, cplus_math_copysign_float)
+CPLUS_MATH_DEFINE_HYPERBOLIC(
+    , double, cplus_math_classify_double, cplus_math_sign_double, fabs,
+    exp, log, log1p, sqrt, cplus_math_copysign_double)
+CPLUS_MATH_DEFINE_HYPERBOLIC(
+    l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double, fabsl,
+    expl, logl, log1pl, sqrtl, cplus_math_copysign_long_double)
+
+#undef CPLUS_MATH_DEFINE_HYPERBOLIC
+
 static void cplus_math_increment_magnitude(unsigned char* bytes, unsigned int sign_byte) {
     unsigned int index;
     for (index = 0; index < sign_byte; index++) {
