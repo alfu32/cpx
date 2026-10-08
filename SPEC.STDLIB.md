@@ -2767,6 +2767,15 @@ It is a cache.
 
 It SHALL remain reproducible from C+ source.
 
+The SDK source tree and delivered headers SHALL also feed the shared import
+discovery index described in SPEC.TECH.md §54.1. Completion and import fixes
+SHALL reflect the selected SDK's actual public exports, not a separate list
+embedded in the CLI or extension. Editing a development SDK selected by the
+existing override SHALL invalidate affected entries. Cached metadata SHALL
+record source/configuration fingerprints and SHALL NOT conceal removed APIs
+or invent implementations absent from the selected SDK. This requirement does
+not make binary export names sufficient to infer callable signatures.
+
 ---
 
 # 59. Additional compiler tooling

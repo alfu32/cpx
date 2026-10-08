@@ -630,7 +630,8 @@ caller test. No Windows or AArch64 support is implied by this initial boundary.
 
 # 13. Method model
 
-Methods are declared inside structs but stored semantically as callable symbols associated with an owning type.
+Methods are declared inside structs or compile-time trait blocks and stored
+semantically as callable symbols associated with a canonical receiver type.
 
 ```kotlin
 data class MethodSymbol(
@@ -660,6 +661,39 @@ pointer type, so member access resolves through the pointee aggregate and the
 backend can emit `self->field`.
 
 ---
+
+## 13.1 Compile-time traits
+
+The parser SHALL accept `comptime trait type_identifier { method definitions }`
+and the public form `pub comptime trait type_identifier { ... }`. It SHALL
+represent the block explicitly as syntax/AST declarations containing shared
+method declarations, target spelling, visibility, and origins. It SHALL NOT
+represent the block as a new structure or as a compile-time function to execute.
+Existing `comptime cpx` parsing SHALL remain unchanged.
+
+Structural CPX expansion SHALL preserve and traverse trait blocks, including
+fingerprinting, hygiene, reorigin, and expansion replay. Traits register callable
+members of existing types, not new fields or layout descriptors. Registration
+and conflict checks SHALL use the stabilized type catalogue and the existing
+structural/reflective phase barrier; a late expansion SHALL NOT bypass that
+barrier. All AST visitors and body-rewriting passes SHALL traverse the methods.
+
+The method model SHALL support canonical type identity beyond `StructType`,
+while preserving module identity for nominal types and canonicalizing typedefs.
+An extension retains its defining module separately from its receiver's module.
+A module-scoped lookup SHALL combine native methods with visible local/directly
+imported extensions under LS §6.3.1. A global mutation of a structure's method
+list SHALL NOT make private or unimported extensions visible everywhere.
+Same-name methods SHALL NOT disappear through last-write-wins map insertion.
+
+Resolved calls SHALL identify the exact method symbol and receiver adaptation.
+Lowering SHALL emit ordinary uniquely named C functions with explicit receiver
+arguments, preserving the existing `self` storage semantics and `self*` pointer
+semantics. Receiver evaluation occurs once; primitive receivers require typed
+storage/dereference lowering rather than a fabricated C struct. No trait object,
+vtable, or layout mutation is introduced. Completion, hover, references,
+navigation, reflection where applicable, and source maps consume these same
+method identities, including imported, aliased, and primitive target types.
 
 # 14. Member-call resolution
 
@@ -1249,12 +1283,33 @@ each pointer declarator separately. Backend type records SHALL preserve that
 placement when rendering C. Semantic compatibility and ABI layout SHALL ignore
 qualifier-only differences while retaining them for diagnostics and emission.
 
-The bootstrap adapter SHALL catalogue the standard C modules `c.stdio`,
-`c.stddef`, `c.stdlib`, `c.math`, `c.string`, `c.ctype`, `c.time`, `c.stdint`,
-and `c.stdarg`, mapping each module to its corresponding system header. It
-SHALL reject an imported symbol absent from the selected catalogue rather than
-creating an untyped or guessed foreign declaration. Additional header
-catalogues MAY be supplied through the `CImportService` configuration.
+The adapter SHALL resolve `c.*` providers to header paths in the effective
+include environment and derive declarations from those files, as specified in
+LS §22.1. A hand-maintained function catalogue is not an authoritative source.
+Compiler-owned intrinsic/ABI type knowledge remains separate from discovery
+of library symbols; intrinsic handling SHALL NOT fabricate library functions.
+
+The compiler orchestration layer SHALL construct an immutable per-request
+header environment from the selected SDK, target/ABI/profile, compiler driver,
+include roots, and external sysroot. The same environment SHALL reach full,
+incremental, text-workspace, and provisional semantic analysis. Filesystem
+lookup and external preprocessing belong in compiler services; the semantic
+module consumes declaration records and SHALL NOT depend on the compiler.
+
+Preprocessing SHALL use an adapter for the selected C driver, with the same
+target defines and include policy as C compilation. It SHALL retain source
+locations and transitive include dependencies, bound process duration/output,
+and reject unsupported driver/target combinations explicitly. It SHALL NOT
+concatenate conditional branches, invoke a shell with header-supplied text,
+or silently search host headers in a self-hosted profile. Unsupported macros
+remain opaque dependencies or receive reference diagnostics under LS §22.3;
+only safely typed constants/intrinsics may enter the callable/value index.
+
+Foreign declaration records SHALL retain original path/range, provider include,
+linkage, qualifiers, declarator structure, and typedef dependencies. Only
+top-level declarations are exported; bodies are skipped structurally without
+indexing their local variables. Headers remain includes, and C source units
+remain separately owned build inputs, preventing duplicate emitted definitions.
 
 Foreign declarations SHALL never be renamed at the ABI boundary.
 
@@ -2022,6 +2077,45 @@ inside CPX template
 ```
 
 ---
+
+## 54.1 Discoverable imports
+
+The compiler SHALL discover C declarations from the selected SDK headers and
+configured include/source paths. A hand-maintained function-name catalogue
+SHALL NOT determine whether a header function exists. Binary libraries supply
+link symbols but do not supply callable type signatures without corresponding
+headers or source declarations.
+
+A shared import index SHALL expose public C+ module exports, supported C header
+declarations, their signatures, and import references. The LSP SHALL use it for
+module-path and imported-name completion, suggestions for unimported symbols,
+and quick fixes that insert the necessary import. Existing imports and aliases
+SHALL be respected; competing providers SHALL be offered as separate choices.
+Index contents SHALL reflect source changes, including unsaved C+ documents.
+SDK `std.*` imports SHALL resolve identically in CLI and LSP compilation.
+
+The compiler module SHALL own shared project/module discovery and the immutable
+export index; neither the VS Code extension nor a second LSP parser owns import
+semantics. The resolver SHALL use project roots, workspace folders, the selected
+SDK, relative importer paths, and live document overlays, preserving canonical
+module identity and terminating cyclic graphs. Indexing an export SHALL NOT
+implicitly import it or compile unrelated entry-point files together.
+
+Index/cache identity SHALL include SDK and compiler selection, target ABI and
+profile, ordered search roots, source content/overlay versions, and transitive
+header dependencies. Header or configuration changes SHALL invalidate compiler
+results as well as editor suggestions. Workspace scans SHALL be bounded,
+exclude generated/VCS directories, and support request cancellation. Missing
+C preprocessing support SHALL leave C+ module assistance available, with an
+explicit C discovery diagnostic instead of guessed or stale declarations.
+
+A shared import-edit builder SHALL serve completion and code actions. It SHALL
+use source ranges from shared syntax/lexing, avoid overlapping edits, respect
+UTF-16 LSP positions and current document versions, and preserve existing aliases.
+Code actions SHALL be connected to compatible unresolved-symbol diagnostics;
+they SHALL NOT suggest imports for arbitrary parse errors, strings, comments,
+or missing receiver members. Header navigation SHALL use the header's URI and
+original range, not a range projected into the requesting C+ document.
 
 # 55. Hover
 

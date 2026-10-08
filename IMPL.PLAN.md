@@ -11,15 +11,16 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    97/97 accepted with recorded evidence
-Phase gates:           10/10 complete; 0 active; 0 queued
-Current task:          none — installable CLI/SDK distribution accepted
-Current milestone:     CLI and source SDK distribution
+Roadmap leaf tasks:    97/128 accepted with recorded evidence; 31 TODO
+Phase gates:           10/12 complete; 0 active; 2 queued
+Current task:          none — planning handoff prepared; implementation not started
+Next task:             R10.1.1.1 — immutable per-request header environment
+Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
 Windows full-runtime link: native Windows and local MinGW PE products pass
-Latest full test suites: Linux `gradle test --rerun-tasks` passes (4m10s);
+Prior R0–R9 test suites: Linux `gradle test --rerun-tasks` passes (4m10s);
                          clean native Windows VM `gradle test` passes (11m23s)
 Windows runtime evidence: allocator, process, stdio channels, clocks, threads/TLS,
                           atomics/synchronization, TCP/UDP/IPv6, resolver,
@@ -36,10 +37,20 @@ R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
 R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
+R10 [TODO]  0/19 import discovery, completion and quick fixes
+R11 [TODO]  0/12 compile-time extension methods
 
-TOTAL       97/97 implementation tasks accepted; 10/10 phase gates complete,
-            0 active, 0 queued
+TOTAL       97/128 implementation tasks accepted; 10/12 phase gates complete,
+            0 active, 2 queued; no new implementation acceptance credited
 ```
+
+The Luna 6 Medium execution runbook is
+[IMPL.HANDOFF.IMPORTS-TRAITS.md](IMPL.HANDOFF.IMPORTS-TRAITS.md).
+R10 adds 19 terminal tasks and R11 adds 12, increasing the prior 97-task
+denominator to 128 without changing the accepted numerator. Their broader
+existing task IDs are retained as composites, not double-counted as leaves.
+This is a planning-only update: all 31 new leaves are TODO, and the recorded
+Linux/Windows results above apply to the prior R0–R9 baseline, not these features.
 
 R9 adds four independently accepted distribution leaves to the prior 93-task
 roadmap, increasing the denominator to 97. The 10th phase gate records the
@@ -359,9 +370,11 @@ technical architecture records this boundary. No Darwin execution is claimed.
 This moves the roadmap from 71/88 to 72/88 and R5 from 38/41 to 39/41; R5
 remains open for R5.1; R5.2.5 is now accepted with native Windows evidence.
 
-The detailed, authoritative R0–R9 work queue is in the
+The detailed, authoritative R0–R11 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
-below. Its current dependency sequence is:
+below. The current queue starts at R10.1.1.1; the execution runbook above lists
+the remaining dependency order. The following sequence is a historical
+checkpoint, superseded by the current dashboard and final R0–R9 validation:
 
 1. R5.1 remains open for its complete `std.core`, memory, string, text, and
    collection acceptance. R5.2.5 is now accepted after native Windows file-PAL
@@ -380,7 +393,7 @@ below. Its current dependency sequence is:
    differences, and keep unsupported profiles explicit. Then continue the
    remaining R5.1, R6, and R7 leaves in dependency order.
 
-Latest completed implementation commits:
+Historical implementation commits at that checkpoint:
 
 - `60047dc` — central C primitive metadata and reopen R5.1 on audit;
 - `76a1876` — preserve parsed integer identity across target ABI layouts;
@@ -3769,7 +3782,8 @@ self-hosted SDK described by the specifications.
 
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
-Completion phases: [DONE] [10/10 gates complete]
+Completion phases: [DOING] [10/12 gates complete; 0 active, 2 queued]
+Roadmap leaf tasks: 97/128 accepted; R10 and R11 implementation not started
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3781,11 +3795,16 @@ Completion phases: [DONE] [10/10 gates complete]
 [DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
+[TODO]  R10 — import discovery, completion and quick fixes (0/19 leaves)
+[TODO]  R11 — compile-time extension methods (0/12 leaves)
 ```
 
-The completion phase counter counts only the ten phase gates above. A phase
-MUST remain `DOING` until every acceptance gate inside it passes on the claimed
-target matrix. Source declarations, headers, platform contracts, or a green
+The completion phase counter counts only the twelve phase gates above. A phase
+with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
+until every acceptance gate inside it passes on the claimed target matrix.
+The overall roadmap is DOING because it contains both DONE and TODO phases;
+that does not imply a new implementation leaf is active.
+Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
 
@@ -5873,13 +5892,561 @@ The installable distribution runs from an unrelated project directory without
 manual SDK configuration; an explicit JVM property selects a development SDK;
 the CLI help identifies the JVM option.
 
+## R10 [TODO] [0/19] Discoverable imports and editor fixes
+
+**Language:** LS §21 Imports; §22 Importing C; §41.1 Import assistance.
+**Technical:** TS §28 C import architecture; §54.1 Discoverable imports.
+
+All new work is planned, not started. The implementation runbook is
+[IMPL.HANDOFF.IMPORTS-TRAITS.md](IMPL.HANDOFF.IMPORTS-TRAITS.md).
+The existing R10/R11 IDs are retained as composites; only terminal children
+count. File paths using `...` are expanded in the runbook's repository map.
+
+### R10.1 [TODO] [0/10] Shared discovery foundations
+
+**Language:** LS §21 Imports; §22 Importing C.
+**Technical:** TS §27 Import resolver; §28 C import architecture; §47 Incremental compilation model.
+
+#### R10.1.1 [TODO] [0/7] Source-driven C declarations
+
+**Language:** LS §22.1 C header import; §22.2 Foreign symbols; §22.3 Unsupported C preprocessor constructs.
+**Technical:** TS §28 C import architecture; §45 Compiler context.
+
+##### R10.1.1.1 [TODO] Thread one immutable header environment through compiler entry points
+
+**Language:** LS §22.1 C header import; §43.2 ABI identity and platform contracts.
+**Technical:** TS §28 C import architecture; §45 Compiler context.
+
+**Depends:** R9.
+**Files:** `compiler/.../Compiler.kt`, `SdkResolver.kt`, `CCompilerToolchain.kt`; `cli/.../Main.kt`.
+
+**Deliverable:** An immutable request-owned environment carrying selected SDK, target/ABI/profile, ordered include roots, external sysroot, and selected C driver. Preserve SDK override/distribution discovery. Wire full, incremental, text-workspace, and provisional semantic paths without a semantic→compiler dependency.
+
+**Acceptance:** Tests inspect identical environments across all four paths; two requests selecting different SDKs/targets cannot contaminate one another. Explicit compiler/include/SDK choices survive CLI parsing. No header whitelist is removed in this leaf.
+
+**Verify:** `gradle :compiler:test :cli:test` (environment/SDK/request tests).
+
+##### R10.1.1.2 [TODO] Resolve and preprocess real headers with target-aware provenance
+
+**Language:** LS §22.1 C header import; §22.3 Unsupported C preprocessor constructs; §28 Source provenance.
+**Technical:** TS §28 C import architecture; §44 External C compiler diagnostics.
+
+**Depends:** R10.1.1.1.
+**Files:** New `compiler/.../CHeaderDiscovery.kt` and `CHeaderPreprocessor.kt`; existing `CCompilerToolchain.kt` and runtime compile-flag construction.
+
+**Deliverable:** Resolve `c.vendor.api`/`c/vendor/api` to `vendor/api.h`, using the effective compile include order. Adapt the selected compiler's preprocessor; retain original file/line mapping, active macro information, and transitive include dependencies. Bound duration/output and use argument lists, not a shell.
+
+**Acceptance:** Isolated fixtures cover nested headers, include guards, inactive declarations, conflicting search roots, target defines, slash paths and paths with spaces. Missing header/toolchain, timeout, and unsupported profile are distinguishable diagnostics. Self-hosted discovery never silently uses host libc. Unit-test every driver adapter; execute available local drivers, leaving native Windows evidence to R10.3.2.3.
+
+**Verify:** `gradle :compiler:test` (new discovery/preprocessor fixtures).
+
+##### R10.1.1.3 [TODO] [0/4] Parse supported C declarations into structured foreign records
+
+**Language:** LS §22.2 Foreign symbols; §22.3 Unsupported C preprocessor constructs; §43.4 C-compatible type qualifiers and declarators.
+**Technical:** TS §28 C import architecture; §30 Reference index.
+
+###### R10.1.1.3.1 [TODO] Read function declarators and skip bodies structurally
+
+**Language:** LS §22.2 Foreign symbols; §43.4 C-compatible type qualifiers and declarators.
+**Technical:** TS §28 C import architecture; §30 Reference index.
+
+**Depends:** R10.1.1.2.
+**Files:** `semantic/.../CHeaderImport.kt`; shared `language-core` token/type helpers; new foreign-declaration tests.
+
+**Deliverable:** Structured foreign records with provider, origin, linkage and C declarators. Parse prototypes and header definitions, including multiword/qualified types, named/unnamed parameters, nested callback parameters and variadics. Skip bodies structurally, not with a brace regex.
+
+**Acceptance:** Focused fixtures cover multiline signatures, callback nesting, static-inline bodies, comments/strings containing braces and body-local declarations. Only top-level functions are exported; types and source ranges match. Unsupported declarators are recorded explicitly, never flattened into guessed signatures.
+
+**Verify:** `gradle :language-core:test :semantic:test` (function declaration fixtures).
+
+###### R10.1.1.3.2 [TODO] Resolve typedef and aggregate declaration dependencies
+
+**Language:** LS §22.2 Foreign symbols; §43.1 ABI and layout queries; §43.4 C-compatible type qualifiers and declarators.
+**Technical:** TS §12 Type system model; §28 C import architecture.
+
+**Depends:** R10.1.1.3.1.
+**Files:** `semantic/.../CHeaderImport.kt`; foreign type resolution helpers and semantic tests.
+
+**Deliverable:** Read typedefs, forward declarations, struct/union/enum declarations and typedef dependency edges. Reuse canonical qualifier/declarator and target-layout representations; do not maintain independent host-size tables.
+
+**Acceptance:** Fixtures cover chained typedefs, tagged/anonymous aggregates, pointer and callback typedefs, enum values, opaque handles and cycles. Selected target layout is respected; incomplete types are usable only in allowed contexts. Unsupported layout forms receive reference diagnostics rather than guessed sizes.
+
+**Verify:** `gradle :semantic:test :compiler:test` (foreign type and ABI regression fixtures).
+
+###### R10.1.1.3.3 [TODO] Index globals and safely representable header constants
+
+**Language:** LS §22.2 Foreign symbols; §22.3 Unsupported C preprocessor constructs.
+**Technical:** TS §28 C import architecture; §54.1 Discoverable imports.
+
+**Depends:** R10.1.1.3.2.
+**Files:** `semantic/.../CHeaderImport.kt`; preprocessor macro records from `compiler/.../CHeaderPreprocessor.kt`; semantic constant adapters.
+
+**Deliverable:** Read top-level globals and enum/object-like constants using active preprocessor records and target-aware constant typing. Keep unsupported function-like macros opaque except for explicitly compiler-owned intrinsic handling.
+
+**Acceptance:** Tests cover extern globals, pointer qualifiers, enum arithmetic, simple typed numeric/string constants, inactive/redefined macros and function-body locals. Safe constants retain origins/types; unsupported macro expansion referenced by C+ diagnoses instead of pretending to be a variadic function. Existing SDK EOF/SEEK and varargs behavior is checked explicitly.
+
+**Verify:** `gradle :semantic:test :compiler:test` (global/constant/macro fixtures).
+
+###### R10.1.1.3.4 [TODO] Audit declaration coverage against the delivered SDK headers
+
+**Language:** LS §22.1 C header import; §22.3 Unsupported C preprocessor constructs; §28 Source provenance.
+**Technical:** TS §28 C import architecture; §63 Testing architecture.
+
+**Depends:** R10.1.1.3.3.
+**Files:** New semantic/compiler SDK-header corpus tests; `semantic/.../CHeaderImport.kt`; selected SDK fixtures (do not edit user headers).
+
+**Deliverable:** A reproducible supported/opaque/unsupported declaration inventory for each currently delivered standard header, with original-source locations and explicit reasons for rejected forms.
+
+**Acceptance:** Existing required stdio/math/complex/stdint/stdarg declarations are representable or have the already specified capability diagnostic; new parser limitations cannot silently regress supported imports. Selected-header truth replaces old catalogue expectations. Test a custom header definition such as `coucou` in a temporary SDK and prove body locals are absent; no Kotlin name addition. New unsupported required forms keep this leaf open until supported.
+
+**Verify:** `gradle :semantic:test :compiler:test` (SDK corpus and source-range fixtures).
+
+##### R10.1.1.4 [TODO] Bind discovered symbols and retire function whitelists
+
+**Language:** LS §22.1 C header import; §22.4 C source import; §27 Include and dependency generation.
+**Technical:** TS §28 C import architecture; §40 Dependency collector.
+
+**Depends:** R10.1.1.3.
+**Files:** `semantic/.../Semantics.kt`, `CHeaderImport.kt`; `compiler/.../Compiler.kt`; `c-backend/.../CDependencyCollector.kt`.
+
+**Deliverable:** Supply discovered records to semantic analysis, remove the default function inventory and name-specific library-function exceptions (including `printf`), and derive generated include dependencies from provider metadata. Keep genuinely compiler-owned ABI/intrinsic mappings explicitly separate. Preserve separately linked C source/library ownership.
+
+**Acceptance:** Add/rename/remove a fixture header function and import it without editing Kotlin. Real `printf` fixed arguments plus variadics are checked. Header definitions are not copied into generated C; an external C source is linked once. A binary-only library cannot manufacture signatures. Missing declarations and missing link definitions fail at the correct stage. Run existing C math/complex/stdint/stdio/compiler regressions; document any unsupported SDK declaration rather than restoring a whitelist.
+
+**Verify:** `gradle :semantic:test :c-backend:test :compiler:test :cli:test` plus a native custom-header compile/run fixture.
+
+#### R10.1.2 [TODO] [0/3] Shared module resolver and export index
+
+**Language:** LS §21 Imports; §41.1 Import assistance.
+**Technical:** TS §27 Import resolver; §47 Incremental compilation model; §54.1 Discoverable imports.
+
+##### R10.1.2.1 [TODO] Unify CLI and LSP source graph discovery
+
+**Language:** LS §21.1 Import declaration; §21.2 Import semantics; §21.5 Cyclic imports.
+**Technical:** TS §27 Import resolver; §51 Workspace model.
+
+**Depends:** R10.1.1.1.
+**Files:** New `compiler/.../ModuleSourceResolver.kt`; extract relevant `cli/.../Main.kt` project/discovery code; `LspServer.kt` and `LspWorkspace.kt`.
+
+**Deliverable:** One resolver for entry/import closures and a separate bounded list of candidate modules. Honor project/workspace roots, selected SDK `std.*`, relative/logical imports, source overlays, and canonical module identity. Read LSP initialization roots instead of searching only the requesting file's directory.
+
+**Acceptance:** CLI and LSP resolve the same stdlib and source-path providers from a project outside the installation. Unsaved imported modules take precedence over disk. Cycles terminate, same-basename modules stay distinct, and two unrelated files containing `main` are never compiled together merely to index them.
+
+**Verify:** `gradle :compiler:test :cli:test` (resolver and JSON-RPC diagnostics fixtures).
+
+##### R10.1.2.2 [TODO] Build a shared typed export inventory
+
+**Language:** LS §21.2 Import semantics; §22.2 Foreign symbols; §41.1 Import assistance.
+**Technical:** TS §30 Reference index; §54.1 Discoverable imports.
+
+**Depends:** R10.1.1.4, R10.1.2.1.
+**Files:** New `compiler/.../ImportIndex.kt`; `SdkMetadata.kt`; semantic export models; `cli/.../LspLanguageService.kt`.
+
+**Deliverable:** Immutable entries containing stable symbol identity, name/kind/signature/docs, provider/import reference, visibility, source URI/range, and configuration fingerprint. Index SDK, project/source-path, and supported C-header exports through shared parser/semantic results. Separate candidate inventory from imported lexical bindings.
+
+**Acceptance:** Public functions, values, enum constants, structures and typedefs appear with correct providers; private declarations do not. Ambiguous providers remain distinct; discovering a symbol never makes it visible without an import. Invalid/unsupported C declarations are not offered as callable functions. CPX-generated exports use validated expansion metadata, not regex guesses or executing arbitrary bodies during a scan.
+
+**Verify:** `gradle :compiler:test :cli:test` (new import-index fixtures).
+
+##### R10.1.2.3 [TODO] Invalidate discovery and compilation consistently
+
+**Language:** LS §39 Determinism; §41.1 Import assistance.
+**Technical:** TS §47 Incremental compilation model; §54.1 Discoverable imports; §62 Caching.
+
+**Depends:** R10.1.2.2.
+**Files:** `compiler/.../ImportIndex.kt`, `IncrementalCompiler.kt`, `SdkMetadata.kt`; `cli/.../LspServer.kt`, `LspWorkspace.kt`.
+
+**Deliverable:** Content/configuration-keyed cache entries, dependency invalidation, live-buffer overlays and cancellation. Include compiler identity, target/profile, SDK, ordered roots and transitive header hashes. Bound scans and exclude generated/VCS trees; do not require writing into a read-only installed SDK.
+
+**Acceptance:** Editing/removing a header declaration, editing a nested include, changing SDK/target/root order, and changing an unsaved C+ export each refresh both suggestions and semantic diagnostics. Identical requests reuse work; cancelled/stale requests cannot publish older results. Missing C preprocessing leaves C+ completion usable, with an explicit C diagnostic.
+
+**Verify:** `gradle :compiler:test :cli:test` (incremental and workspace invalidation fixtures).
+
+### R10.2 [TODO] [0/4] Import and auto-import completion
+
+**Language:** LS §41.1 Import assistance.
+**Technical:** TS §54 Completion; §54.1 Discoverable imports.
+
+#### R10.2.1 [TODO] [0/2] Provider and selective-name completion
+
+**Language:** LS §21.1 Import declaration; §41.1 Import assistance.
+**Technical:** TS §54.1 Discoverable imports.
+
+##### R10.2.1.1 [TODO] Identify incomplete import contexts from shared tokens
+
+**Language:** LS §21.1 Import declaration; §41.1 Import assistance.
+**Technical:** TS §5 Lexer; §54 Completion.
+
+**Depends:** R10.1.2.3.
+**Files:** `cli/.../LspLanguageService.kt`; shared `language-core` lexer/parser APIs.
+
+**Deliverable:** Import context and replacement-range classification for module references and selective names, including incomplete braces/quotes and alias positions, without a second language parser.
+
+**Acceptance:** Table tests cover dotted/slash std and C providers, quoted/relative paths, multiline imports, incomplete source, UTF-16 positions, and `as` aliases. Comments and ordinary string contents do not trigger import completion. No complete semantic model is required to complete an unfinished import.
+
+**Verify:** `gradle :cli:test` (new context/range tests).
+
+##### R10.2.1.2 [TODO] Serialize provider and export completion through JSON-RPC
+
+**Language:** LS §41.1 Import assistance.
+**Technical:** TS §50 LSP architecture; §54.1 Discoverable imports.
+
+**Depends:** R10.2.1.1.
+**Files:** `cli/.../LspLanguageService.kt`, `LspServer.kt`; `CliIntegrationTest.kt`.
+
+**Deliverable:** Completion items with safe replacement edits, symbol kinds, signatures, provider detail and documentation from the shared index; advertise appropriate triggers and retain ordinary member completion.
+
+**Acceptance:** Framed JSON-RPC tests complete `std.`/`c.`/relative module references and names inside `import { ... } from ...`. Results include real SDK symbols such as `std_fs_open` from `std.fs`, not invented friendly names. Applying the completion creates the expected import text; private and duplicate imported names are excluded.
+
+**Verify:** `gradle :cli:test` (protocol completion fixtures).
+
+#### R10.2.2 [TODO] [0/2] Safe auto-import edits
+
+**Language:** LS §21.3 Aliased import; §21.4 Selective import; §41.1 Import assistance.
+**Technical:** TS §54.1 Discoverable imports.
+
+##### R10.2.2.1 [TODO] Implement one import-edit builder
+
+**Language:** LS §21.3 Aliased import; §21.4 Selective import; §41.1 Import assistance.
+**Technical:** TS §51 Workspace model; §54.1 Discoverable imports.
+
+**Depends:** R10.2.1.2.
+**Files:** New `cli/.../ImportEdits.kt`; shared syntax/import records; focused edit tests.
+
+**Deliverable:** A pure edit builder reused by completion and quick fixes. Prefer merging a compatible selective import; otherwise insert after package/existing imports without moving comments. Reuse aliases/qualified bindings, reject collisions, preserve line endings/BOM, and return non-overlapping version-appropriate edits.
+
+**Acceptance:** Apply edits in tests covering empty files, leading comments, package declarations, CRLF, multiline/trailing-comment imports, existing aliases/module imports, name conflicts, and non-BMP characters. Reapplication is idempotent; formatting/parse ambiguity yields no unsafe edit. Symbol replacement edits never overlap import edits.
+
+**Verify:** `gradle :cli:test` (new `ImportEditsTest`).
+
+##### R10.2.2.2 [TODO] Offer unimported symbols with additional import edits
+
+**Language:** LS §41.1 Import assistance.
+**Technical:** TS §54 Completion; §54.1 Discoverable imports.
+
+**Depends:** R10.2.2.1.
+**Files:** `cli/.../LspLanguageService.kt`, `LspServer.kt`; import-index and edit-builder APIs.
+
+**Deliverable:** Context-compatible unimported identifier completion with provider labels, replacement text and `additionalTextEdits`. Existing visible symbols retain priority; receiver-member contexts stay separate.
+
+**Acceptance:** Apply a stdlib function completion and a public type completion, then check the edited program successfully. Two providers yield two choices. Aliases do not create duplicate imports; missing members, comments and strings do not receive unrelated global auto-imports. Protocol tests inspect actual serialized edits.
+
+**Verify:** `gradle :cli:test` plus compiler checks of the edited fixtures.
+
+### R10.3 [TODO] [0/5] Quick fixes and product acceptance
+
+**Language:** LS §41.1 Import assistance; §43 C interoperability.
+**Technical:** TS §50 LSP architecture; §54.1 Discoverable imports; §63 Testing architecture.
+
+#### R10.3.1 [TODO] [0/2] Import code actions
+
+**Language:** LS §41.1 Import assistance.
+**Technical:** TS §50 LSP architecture; §54.1 Discoverable imports.
+
+##### R10.3.1.1 [TODO] Map unresolved-symbol diagnostics to compatible providers
+
+**Language:** LS §21.2 Import semantics; §41.1 Import assistance.
+**Technical:** TS §46 Diagnostic system; §54.1 Discoverable imports.
+
+**Depends:** R10.2.2.2.
+**Files:** `cli/.../LspLanguageService.kt`; semantic diagnostic/range information; `ImportEdits.kt`.
+
+**Deliverable:** Provider-specific quick-fix candidates for unresolved type/value/callable names at their exact source token, reusing the index and edit builder. Preserve ambiguity as explicit choices.
+
+**Acceptance:** Fixtures cover unresolved calls/types/constants, two providers, aliases, private exports, already resolved symbols, wrong arity/type errors and malformed syntax. Only compatible unresolved-name cases receive fixes; edits preserve bindings and remove the targeted diagnostic after reanalysis.
+
+**Verify:** `gradle :cli:test` (quick-fix logic and apply/recheck fixtures).
+
+##### R10.3.1.2 [TODO] Expose import quick fixes through the LSP server
+
+**Language:** LS §41.1 Import assistance.
+**Technical:** TS §50 LSP architecture; §51 Workspace model.
+
+**Depends:** R10.3.1.1.
+**Files:** `cli/.../LspServer.kt`, `CliIntegrationTest.kt`; existing language-client integration.
+
+**Deliverable:** Advertise code-action capability and handle `textDocument/codeAction`, request ranges/diagnostics/kind filtering, cancellation and version-safe workspace edits. VS Code remains a thin consumer of server-provided actions.
+
+**Acceptance:** Framed JSON-RPC tests open a failing document, request a fix, apply its edit, send change notification, and observe the unresolved diagnostic disappear. No duplicate action/import on repetition; stale or unsupported requests do not crash the server.
+
+**Verify:** `gradle :cli:test` (end-to-end protocol fixture).
+
+#### R10.3.2 [TODO] [0/3] Import discovery release gate
+
+**Language:** LS §22.1 C header import; §41.1 Import assistance.
+**Technical:** TS §54.1 Discoverable imports; §63 Testing architecture; §78 SDK, ABI, runtime and platform architecture.
+
+##### R10.3.2.1 [TODO] Verify installed CLI and LSP import parity
+
+**Language:** LS §21 Imports; §22.1 C header import; §41.1 Import assistance.
+**Technical:** TS §54.1 Discoverable imports; §57 CLI architecture.
+
+**Depends:** R10.3.1.2.
+**Files:** `cli/.../CliIntegrationTest.kt`; compiler integration tests; installDist test fixtures.
+
+**Deliverable:** Outside-repository acceptance fixtures using the installed SDK and an explicit development-SDK override, custom include root, source library, and source-path module with an aliased type.
+
+**Acceptance:** The same edited source checks/runs through CLI and receives equivalent LSP diagnostics. SDK header edits appear without rebuilding Kotlin. Compare generated includes/linking and real header definition URIs. Exercise the fat JAR with its existing supported SDK-selection behavior; do not assume fatJar embeds the source SDK.
+
+**Verify:** `gradle :cli:test :cli:fatJar :cli:installDist`; installed-launcher native run and LSP protocol fixture.
+
+##### R10.3.2.2 [TODO] Exercise suggestions and fixes in the packaged VS Code extension
+
+**Language:** LS §41.1 Import assistance; §42 TextMate and editor lexical highlighting.
+**Technical:** TS §50 LSP architecture; §75 Architectural rule for IDE support.
+
+**Depends:** R10.3.2.1.
+**Files:** `vscode-extension/extension.js`, `test/extension.test.js`, `test/extension-host.js`, `test/run-extension-host.js`; settings only if required.
+
+**Deliverable:** Real extension-host tests invoking completion and code-action providers against the configured CLI JAR, applying edits and checking diagnostics. Preserve configured Java/SDK/JAR/cwd and Run Main behavior; do not add an extension-side catalogue.
+
+**Acceptance:** Packaged VSIX exposes stdlib provider/signature choices and an import quick fix; accepting each yields clean diagnostics and a runnable fixture. Existing extension tests, checks and packaging pass; an old activation-only test is not sufficient evidence.
+
+**Verify:** In `vscode-extension`: `npm test`, `npm run check`, `xvfb-run -a npm run test:host` on Linux.
+
+##### R10.3.2.3 [TODO] Close import regression, documentation and platform evidence
+
+**Language:** LS §22 Importing C; §41.1 Import assistance.
+**Technical:** TS §54.1 Discoverable imports; §63 Testing architecture; §78 SDK, ABI, runtime and platform architecture.
+
+**Depends:** R10.3.2.2.
+**Files:** `README.md`, `SPEC.COVERAGE.md`, `IMPL.PLAN.md`; relevant compiler/CLI/VSIX fixtures.
+
+**Deliverable:** User examples for discovery, explicit include/library configuration, C-driver preprocessing requirements, supported/unsupported forms and SDK overrides. Record actual full-suite/product evidence and any driver/target gaps.
+
+**Acceptance:** Local full Gradle and extension suites pass, followed by native Windows x86_64 checks for new preprocessing paths, slash/space paths, installed CLI and packaged import actions. If Windows or a required driver is unavailable, record that limitation and leave this leaf/phase open; historical R0–R9 evidence does not count for changed paths. Arbitrary binary ABI inference and exhaustive C/C++ preprocessing support are not claimed.
+
+**Verify:** `gradle test :cli:fatJar :cli:installDist`; extension checks/host tests; native Windows equivalents at the final platform pass.
+
+## R11 [TODO] [0/12] Compile-time extension methods
+
+**Language:** LS §6.3.1 Compile-time extension methods; §21 Imports.
+**Technical:** TS §13.1 Compile-time traits; §33 Method lowering; §54 Completion.
+
+### R11.1 [TODO] [0/6] Trait declarations and semantic ownership
+
+**Language:** LS §6.3.1 Compile-time extension methods; §18 Type-universe barrier.
+**Technical:** TS §13.1 Compile-time traits; §24 Type-universe stabilization; §29 Semantic model.
+
+#### R11.1.1 [TODO] [0/3] Explicit trait syntax and pass traversal
+
+**Language:** LS §6.3.1 Compile-time extension methods; §28 Source provenance.
+**Technical:** TS §6 Parser; §8 AST architecture; §13.1 Compile-time traits.
+
+##### R11.1.1.1 [TODO] Parse the exact singular trait syntax
+
+**Language:** LS §6.3.1 Compile-time extension methods.
+**Technical:** TS §6 Parser; §7 Syntax tree versus AST; §13.1 Compile-time traits.
+
+**Depends:** R10.1.2.3.
+**Files:** `language-core/.../Parser.kt`, `Syntax.kt`, `Ast.kt`, `AstBuilder.kt`; `AstGoldenTest.kt`.
+
+**Deliverable:** Explicit `SyntaxTrait`/`AstTrait` with target identifier, visibility, methods and origins. Dispatch `comptime trait` before `comptime cpx`; reuse method/receiver parsing. Keep consumer dispatch exhaustive and explicitly reject not-yet-supported trait processing rather than silently dropping blocks.
+
+**Acceptance:** Parse `comptime trait counter_t`, `pub comptime trait int`, `self` and `self*`, with accurate nested ranges. Reject plural/angle-bracket syntax, missing/repeated receiver, fields, static methods, nested blocks and missing bodies with recovery at the next declaration. Existing CPX syntax remains green.
+
+**Verify:** `gradle :language-core:test` and compile affected dependent modules to catch exhaustive `when` sites.
+
+##### R11.1.1.2 [TODO] Traverse trait bodies in ordinary compiler passes
+
+**Language:** LS §6.3.1 Compile-time extension methods; §14 Inner functions and lexical capture; §15 Deferred execution; §16 String templates; §28 Source provenance.
+**Technical:** TS §13.1 Compile-time traits; §32 AST rewrite framework; §34 Inner-function lowering.
+
+**Depends:** R11.1.1.1.
+**Files:** `compiler/.../AstRewrite.kt`, `ClosureLowering.kt`, `SdkMetadata.kt`; `cli/.../Main.kt` (`AstPrinter`); all relevant declaration visitors found with `rg`.
+
+**Deliverable:** Recursive visits for trait methods across rewrite/closure/string/defer preparation, printing, source dependency and metadata collection. Preserve grouping and origins until the designated lowering; enumerate all sealed syntax/AST consumers.
+
+**Acceptance:** Visitor unit tests reach nested method bodies and retain target/origins. Trait blocks round-trip in inspection output; methods are not mistaken for free exported functions or new types. No `else -> ignore` hole hides the new declaration; existing ordinary method regressions remain green.
+
+**Verify:** `gradle :compiler:test :cli:test` (visitor/rewrite/metadata tests).
+
+##### R11.1.1.3 [TODO] Preserve traits through CPX and stabilization
+
+**Language:** LS §10 CPX expansion model; §12 Hygiene; §17 Structural compile-time phase; §18 Type-universe barrier; §29 CPX and source provenance.
+**Technical:** TS §13.1 Compile-time traits; §19 Expansion identity; §24 Type-universe stabilization.
+
+**Depends:** R11.1.1.2.
+**Files:** `comptime/.../CpxExpansion.kt`; CPX scheduler/reflection consumers; `CpxExpansionTest.kt`.
+
+**Deliverable:** Trait-aware fingerprinting, expansion, replay, reorigin and hygiene; methods attach only through semantic registration against the stabilized target catalogue. Keep target binding distinct from generated local-name hygiene.
+
+**Acceptance:** CPX-generated trait methods preserve declaration/call-site origin chains and stable identities across replay. Target declarations generated earlier resolve after stabilization; cycles and late forbidden structural mutations diagnose. Traits do not create new layout fields or fake structural type descriptors.
+
+**Verify:** `gradle :comptime:test :compiler:test` (trait expansion and barrier fixtures).
+
+#### R11.1.2 [TODO] [0/3] Canonical receiver and visibility resolution
+
+**Language:** LS §6.3.1 Compile-time extension methods; §6.5 Member conflict; §21.2 Import semantics.
+**Technical:** TS §13.1 Compile-time traits; §14 Member-call resolution; §29 Semantic model.
+
+##### R11.1.2.1 [TODO] Generalize method ownership without changing native methods
+
+**Language:** LS §6 Structures and methods; §23 Symbol identity and C symbol generation.
+**Technical:** TS §12 Type system model; §13 Method model; §14 Member-call resolution.
+
+**Depends:** R11.1.1.3.
+**Files:** `semantic/.../Semantics.kt` (`MethodSymbol`, `SemanticModel`, method maps); backend/naming/tooling consumers of owner types.
+
+**Deliverable:** Canonical receiver identity independent of `StructType`, with defining-module identity retained separately. A single lookup API supports native methods and future visible extensions; aliases share a receiver key while unrelated same-name nominal types do not.
+
+**Acceptance:** All existing instance/static/pointer struct-method tests pass unchanged. Focused tests distinguish same-spelling types from different modules and equate imported/typedef aliases. Duplicate insertion is detected rather than overwritten by `associate`; no global struct mutation grants extension visibility.
+
+**Verify:** `gradle :semantic:test :compiler:test :c-backend:test :cli:test`.
+
+##### R11.1.2.2 [TODO] Resolve targets, receivers and method bodies
+
+**Language:** LS §6.3.1 Compile-time extension methods; §6.2.1 Pointer receivers; §32 Name lookup.
+**Technical:** TS §13.1 Compile-time traits; §14 Member-call resolution; §29 Semantic model.
+
+**Depends:** R11.1.2.1.
+**Files:** `semantic/.../Semantics.kt`; semantic reference/type model and call-resolution consumers.
+
+**Deliverable:** Resolve local/imported/aliased struct, union, enum and non-void primitive targets; bind `self`/`self*` in the defining module's body scope and type-check normal parameters/results. Record selected method and receiver adaptation on semantic call results.
+
+**Acceptance:** Positive fixtures cover every target kind and multiword primitives via typedef; negative fixtures cover unknown/private/incomplete/pointer/array/function/void targets, invalid self use, wrong arguments, and nonaddressable pointer receivers. Expressions with side effects are represented for single evaluation. Existing field/function-pointer member-call resolution is unchanged.
+
+**Verify:** `gradle :semantic:test :compiler:test` (trait semantic/reference fixtures).
+
+##### R11.1.2.3 [TODO] Enforce extension import activation and collisions
+
+**Language:** LS §6.3.1 Compile-time extension methods; §6.5 Member conflict; §21.2 Import semantics; §21.5 Cyclic imports.
+**Technical:** TS §13.1 Compile-time traits; §27 Import resolver; §30 Reference index.
+
+**Depends:** R11.1.2.2.
+**Files:** `semantic/.../Semantics.kt`; module/import visibility models; shared import-index export metadata.
+
+**Deliverable:** Module-local default visibility and block-level `pub`; direct imports activate public extension sets without creating extra type/value bindings. No transitive re-export. Deterministic native/field/local duplicate errors and imported-provider ambiguity diagnostics.
+
+**Acceptance:** Multi-module tests cover private leakage, selective/module/aliased imports, two providers, typedef-equivalent receivers, same-name distinct nominal types, cycles and reversed import order. A local duplicate fails at declaration; an ambiguous imported name fails when called, naming both providers. Unrelated extension names remain usable.
+
+**Verify:** `gradle :semantic:test :compiler:test :cli:test` (multi-module visibility fixtures).
+
+### R11.2 [TODO] [0/6] C lowering and editor/product acceptance
+
+**Language:** LS §6.3.1 Compile-time extension methods; §28 Source provenance; §30 Lowering model; §41 Language-server model.
+**Technical:** TS §33 Method lowering; §41 C symbol naming; §54 Completion; §63 Testing architecture.
+
+#### R11.2.1 [TODO] [0/3] Lower and execute extension methods
+
+**Language:** LS §6.3.1 Compile-time extension methods; §30 Lowering model; §31 Final C-subset validation.
+**Technical:** TS §33 Method lowering; §41 C symbol naming; §43 Source-map builder.
+
+##### R11.2.1.1 [TODO] Emit one typed C function per extension definition
+
+**Language:** LS §6.3.1 Compile-time extension methods; §23 Symbol identity and C symbol generation; §26 Header generation.
+**Technical:** TS §33 Method lowering; §38 Header synthesis; §41 C symbol naming.
+
+**Depends:** R11.1.2.3.
+**Files:** `c-backend/.../CBackend.kt`; existing symbol-name and C type/dependency emitters.
+
+**Deliverable:** Emit extension definitions/prototypes from selected semantic symbols with receiver types valid for aggregate, enum and primitive targets. Include defining module and canonical receiver identity in stable C names; preserve linkage and origins. Remove trait nodes before C-subset validation.
+
+**Acceptance:** Generated-C tests show exactly one definition across aliases and cyclic imports, distinct names for unrelated providers, necessary cross-module prototypes, and no fabricated struct for `int`/enum receivers. Target field order/size/alignment and existing native-method C names remain unchanged.
+
+**Verify:** `gradle :c-backend:test :compiler:test` (C snapshots and C-subset validation).
+
+##### R11.2.1.2 [TODO] Lower resolved calls with correct receiver storage
+
+**Language:** LS §6.3.1 Compile-time extension methods; §6.2.1 Pointer receivers; §37 Referential safety of generated expressions.
+**Technical:** TS §14 Member-call resolution; §33 Method lowering.
+
+**Depends:** R11.2.1.1.
+**Files:** `c-backend/.../CBackend.kt`; semantic resolved-call/receiver adaptation records.
+
+**Deliverable:** Use the resolved method identity, not a second backend name lookup. Pass existing pointers directly; take an address only where valid. Lower implicit `self` storage access for scalars/aggregates and explicit pointer access for `self*`; materialize supported non-pointer temporaries only under ordinary receiver rules.
+
+**Acceptance:** Runtime fixtures prove mutations reach the original variable where specified, a pointer is not addressed twice, and side-effecting receiver expressions execute exactly once. Invalid pointer-receiver temporaries fail before emission. Field callbacks and native methods still select their original path.
+
+**Verify:** `gradle :c-backend:test :compiler:test` plus native compile/execute receiver fixtures.
+
+##### R11.2.1.3 [TODO] Verify the complete trait execution and provenance matrix
+
+**Language:** LS §6.3.1 Compile-time extension methods; §28 Source provenance; §29 CPX and source provenance.
+**Technical:** TS §33 Method lowering; §43 Source-map builder; §63 Testing architecture.
+
+**Depends:** R11.2.1.2.
+**Files:** `compiler/.../CompilerIntegrationTest.kt`, CPX/compiler integration fixtures; new `examples/traits.cp` and isolated multi-module fixtures.
+
+**Deliverable:** End-to-end executable tests for existing/imported structs, union/enum/scalar receivers, imported aliases, pointer mutation, and CPX-generated extensions; source-map and diagnostics assertions.
+
+**Acceptance:** Native C products produce asserted results, not just nonempty output. An error in a trait method maps to its real method declaration/expansion origin. Before/after layout checks match. Cross-module and closure/defer/string-template trait bodies execute correctly. Unsupported cases retain stable diagnostics.
+
+**Verify:** `gradle :comptime:test :semantic:test :c-backend:test :compiler:test :cli:test` with native fixture execution.
+
+#### R11.2.2 [TODO] [0/3] Expose and release extension methods
+
+**Language:** LS §6.3.1 Compile-time extension methods; §40 Formatting and IDE representation; §41 Language-server model; §42 TextMate and editor lexical highlighting.
+**Technical:** TS §13.1 Compile-time traits; §53 Navigation; §54 Completion; §63 Testing architecture.
+
+##### R11.2.2.1 [TODO] Use visible extension symbols in language tooling
+
+**Language:** LS §6.3.1 Compile-time extension methods; §41 Language-server model.
+**Technical:** TS §13.1 Compile-time traits; §30 Reference index; §53 Navigation; §54 Completion; §55 Hover.
+
+**Depends:** R11.2.1.3, R10.3.1.2.
+**Files:** `cli/.../LspLanguageService.kt`, `LspServer.kt`; semantic references and shared import index.
+
+**Deliverable:** Member completion, hover, signature help, definition/references and rename use canonical receiver/method identities and real declaration URIs. Metadata exposes public extension providers without pretending their methods are top-level importable functions.
+
+**Acceptance:** JSON-RPC fixtures cover scalar/struct/imported/alias receivers, self* parameter display, cross-file definition and method rename. Private/unimported extensions do not appear as resolved members; ambiguous providers never resolve by order. Both native and extension methods remain available through the shared lookup.
+
+**Verify:** `gradle :cli:test :compiler:test` (member tooling and apply-rename fixtures).
+
+##### R11.2.2.2 [TODO] Document and highlight the exact trait syntax
+
+**Language:** LS §6.3.1 Compile-time extension methods; §40 Formatting and IDE representation; §42 TextMate and editor lexical highlighting.
+**Technical:** TS §13.1 Compile-time traits; §52 Semantic tokens; §75 Architectural rule for IDE support.
+
+**Depends:** R11.2.2.1.
+**Files:** `README.md`, `examples/traits.cp`, `vscode-extension/syntaxes/cplus.tmLanguage.json`, extension tests; specification examples.
+
+**Deliverable:** Syntax highlighting and runnable documentation for singular unbracketed traits, local aliases for multiword targets, public/private direct-import activation, pointer receivers and explicit limitations. No named-interface or type-layout promises.
+
+**Acceptance:** All documented positive examples parse/check/run; negative examples assert diagnostics. TextMate and semantic token tests distinguish `trait`, type identifiers and receivers without embedding semantic resolution in the grammar. SDK/import examples use real exported names.
+
+**Verify:** `gradle :cli:test`; in `vscode-extension`: `npm test`, `npm run check`.
+
+##### R11.2.2.3 [TODO] Close trait regression and packaged cross-platform gates
+
+**Language:** LS §6.3.1 Compile-time extension methods; §41 Language-server model; §51 Required compiler invariants.
+**Technical:** TS §13.1 Compile-time traits; §60 Phase invariants; §63 Testing architecture; §78 SDK, ABI, runtime and platform architecture.
+
+**Depends:** R11.2.2.2, R10.3.2.3.
+**Files:** Compiler/CLI/VSIX product fixtures; `SPEC.COVERAGE.md`; `IMPL.PLAN.md`.
+
+**Deliverable:** A final evidence ledger with exact commands, results, target/driver versions, commits and any limitations. Packaged VSIX tests call the configured JAR for trait completion/navigation and Run Main.
+
+**Acceptance:** Full local suites and native C trait execution pass, then final native Windows x86_64 product/trait/VSIX checks pass for claimed configurations. Changed paths require fresh evidence. Every R11 leaf is accepted and both dashboards/coverage agree before R11 becomes DONE; unavailable Windows testing leaves this gate open, not optimistically complete.
+
+**Verify:** `gradle test :cli:fatJar :cli:installDist`; packaged VSIX host tests on Linux and native Windows at the final platform pass.
+
+### Planning validation checkpoint — 2026-10-08
+
+This checkpoint validates documentation only. The R10/R11 hierarchy contains
+49 task nodes and 31 terminal leaves (R10: 19; R11: 12), all TODO. A read-only
+check verified unique IDs, every ancestor subtotal, explicit leaf fields, and
+the runbook's complete dependency-respecting execution order. Dashboard totals
+are 97/128 accepted leaves and 10/12 accepted phase gates. No feature tests
+were run or credited during this planning update; existing implementation
+evidence remains historical. `git diff --check` passes.
+
 ## Execution order and commit policy
 
 The work proceeds vertically in this order:
 
 ```text
 R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8 → R9
+   → R10 local work → R11 local work → final R10/R11 platform gates
 ```
+
+For the new queue, execute R10 in dependency order through R10.3.2.2, then
+R11 through R11.2.2.2. Perform the final Windows pass in R10.3.2.3 followed by
+R11.2.2.3. Their prerequisites explicitly permit this order. An unstarted
+final gate remains TODO while local implementation advances; do not count it
+DONE merely because Linux passes. If unavailable at final validation, record
+the missing evidence and leave the gate open. The runbook gives the complete
+ordered leaf list and resumption instructions.
 
 Each phase is split into small implementation commits. A phase may be
 reordered only when a dependency is discovered and recorded here first. Every

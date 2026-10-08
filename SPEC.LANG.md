@@ -228,6 +228,7 @@ The catalogue contains sufficient information to identify:
 - named types;
 - functions;
 - methods;
+- compile-time trait blocks and their extension methods (§6.3.1);
 - compile-time functions;
 - global declarations;
 - externally imported declarations.
@@ -367,6 +368,60 @@ A valid lowering is equivalent to:
 ```c
 vector_t__zero();
 ```
+
+### 6.3.1 Compile-time extension methods
+
+`comptime trait type_identifier { ... }` SHALL define extension methods for an
+existing type without changing its fields, layout, or runtime representation.
+The keyword is singular `trait`; the target is not enclosed in angle brackets.
+The target SHALL be a single type name visible in the declaring module. It MAY
+name a structure, union, enumeration, non-void primitive, or a typedef alias of
+one of these. A single-token primitive spelling such as `int` is permitted;
+multiword primitives and qualified imported types SHALL first be given a local
+typedef or selective-import alias. Pointer, array, function, incomplete, and
+`void` targets are outside this initial trait form and SHALL be diagnosed.
+Each method SHALL have a body and a distinguished first receiver `self` or
+`self*`; the latter receives a pointer to the target type. These are ordinary
+runtime method bodies registered at compile time, not an interface or vtable.
+
+```c
+comptime trait counter_t {
+    int read(self) { return self.value; }
+    void increment(self*) { self->value += 1; }
+}
+```
+
+Extensions SHALL use ordinary member-call syntax and the existing receiver
+adaptation rules. `self` exposes the target type in the body; `self*` exposes
+its pointer type. The former SHALL NOT silently introduce copy-by-value
+semantics in place of ordinary method receiver semantics. An explicit pointer
+receiver accepts an existing pointer or an addressable value, not a temporary
+requiring an escaping or dangling address. Receiver expressions SHALL be
+evaluated exactly once.
+
+Aliases identify the same underlying receiver type, but distinct nominal types
+from different modules remain distinct even when their names match. A duplicate
+method name for the same canonical receiver type in the same module, a conflict
+with an existing declared method, or a field/method conflict under §6.5 SHALL
+be diagnosed rather than silently replaced. If multiple imported providers
+supply the same visible extension name for a receiver, a call selecting that
+name SHALL produce an ambiguity diagnostic identifying the providers; import
+order SHALL NOT select a winner. Unknown targets, missing or repeated receivers,
+fields, nested trait blocks, static methods, and declarations without bodies
+SHALL be diagnosed before C emission. Source provenance SHALL refer to each
+method's original declaration, including CPX expansion origins.
+
+A block is module-private by default.
+`pub comptime trait type_identifier { ... }` exports all its methods;
+per-method visibility modifiers are not part of this initial form.
+Importing that module, including by a selective import,
+activates its public extensions in the importer without introducing additional
+type or value name bindings. This activation is direct, not a transitive
+re-export. Private extensions remain local. An exported extension's target and
+signature SHALL satisfy the ordinary public-declaration visibility rules.
+There is no separately named trait symbol to import and no interface contract,
+conformance declaration, overload selection, or dynamic dispatch introduced
+by this syntax.
 
 ## 6.4 Method invocation syntax
 
@@ -1128,6 +1183,8 @@ through a selective import or a module import and qualified name. A module
 import alias SHALL permit qualified access to the target module's public type
 and value declarations. Private declarations SHALL NOT be importable. These
 rules apply equally to source-path imports and logical package imports.
+Activation of public extension methods follows §6.3.1 separately from these
+name bindings; it does not introduce unselected type or value names.
 
 Imports SHALL participate in:
 
@@ -1202,14 +1259,33 @@ A C import SHALL have two effects:
 1. make imported C declarations available to the C+ semantic model;
 2. ensure required C dependencies are represented in generated output.
 
-The implementation SHALL provide built-in adapters for the standard C header
+The implementation SHALL resolve the standard C header
 modules `c.stdio`, `c.stddef`, `c.stdlib`, `c.math`, `c.complex`, `c.string`,
 `c.ctype`, `c.time`, `c.stdint`, and `c.stdarg`. Their imported declarations SHALL retain
-their C spelling and SHALL cause the corresponding system header to be emitted
+their C spelling and SHALL cause the corresponding header include to be emitted
 (`stdio.h`, `stddef.h`, `stdlib.h`, `math.h`, `string.h`, `ctype.h`, `time.h`,
-`complex.h`, `stdint.h`, or `stdarg.h`). Implementations MAY add configured header adapters.
-An imported symbol that is not declared by the selected adapter SHALL produce a
-diagnostic; the compiler SHALL NOT guess a foreign signature.
+`complex.h`, `stdint.h`, or `stdarg.h`). Under the C+ SDK profile these are the
+selected SDK's headers, not an implicit host-libc catalogue. Additional headers
+SHALL be discoverable through explicitly configured include roots. A logical
+`c.vendor.api` reference denotes `vendor/api.h` in the effective include search
+environment; slash separators MAY be used as for other logical imports.
+
+The selected header's declarations SHALL be the authority for symbol presence
+and signatures. Adding a supported declaration to that header SHALL NOT
+require adding its name to compiler source code. Discovery SHALL include
+declarations supplied by active includes and supported inline/header function
+definitions, while leaving those definitions owned by their C dependency.
+Conditional preprocessing SHALL respect the selected target, ABI, compiler,
+profile, and configured search order; inactive branches SHALL NOT be combined.
+An absent symbol, unavailable preprocessing capability, or referenced
+unsupported declaration SHALL produce a specific diagnostic; the compiler
+SHALL NOT invent a foreign signature or silently use a different target.
+
+An object or binary library by itself does not supply a trustworthy callable
+signature. Importable library symbols require associated headers, C+ source,
+or validated typed metadata. Discovering a declaration does not prove that a
+linked implementation exists; unresolved external definitions remain link
+diagnostics. Existing library-link options retain their separate purpose.
 
 ## 22.2 Foreign symbols
 
@@ -1824,6 +1900,25 @@ It SHALL be capable of representing:
 - CPX expansion origins.
 
 Go-to-definition on a generated entity SHOULD lead to the most appropriate originating declaration, with expansion details available where useful.
+
+## 41.1 Import assistance
+
+The language server SHALL offer module/provider and selective-name completion
+from public C+ exports and representable C declarations in the selected SDK
+and configured project/include roots. Import completion SHALL remain usable
+while the import being edited is syntactically incomplete. Ordinary identifier
+completion MAY offer unimported symbols with an explicit accompanying import
+edit. Unresolved type, value, or callable diagnostics SHALL offer import quick
+fixes when a compatible provider is known.
+
+Suggestions SHALL identify their provider and available signature, exclude
+private declarations and incompatible symbol kinds, respect existing imports
+and aliases, and present competing providers as separate choices. Import edits
+SHALL preserve comments, line endings, package declarations, and unrelated
+bindings; they SHALL NOT silently create name collisions or duplicate imports.
+The compiler and editor SHALL use the same import resolution and visibility
+rules. Changes to project sources, unsaved C+ buffers, headers, SDK selection,
+or include configuration SHALL invalidate affected suggestions and diagnostics.
 
 ---
 
