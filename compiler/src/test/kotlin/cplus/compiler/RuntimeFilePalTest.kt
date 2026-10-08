@@ -5,8 +5,64 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeFilePalTest {
+    @Test
+    fun linuxMetadataFollowsSymlinksAndFileRemovalUnlinksOnlyTheSymlink() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-file-pal-symlink")
+        val targetPath = directory.resolve("target.txt").toAbsolutePath().normalize()
+        val linkPath = directory.resolve("alias.txt").toAbsolutePath().normalize()
+        val source = directory.resolve("symlink-pal.c")
+        val executable = directory.resolve("symlink-pal")
+        Files.writeString(targetPath, "data")
+        Files.createSymbolicLink(linkPath, targetPath)
+        val targetName = cString(targetPath.toString())
+        val linkName = cString(linkPath.toString())
+        Files.writeString(source, """
+            #include "cplus_platform.h"
+            #include <stdint.h>
+
+            int main(void) {
+                cplus_file_metadata_t metadata;
+                const char* target = "$targetName";
+                const char* alias = "$linkName";
+                if (platform_file_metadata(alias, &metadata) != 0) return 1;
+                if (metadata.kind != CPLUS_FILE_KIND_REGULAR || metadata.size_bytes != 4) return 2;
+                if (platform_file_remove(alias) != 0) return 3;
+                if (platform_file_metadata(alias, &metadata) != CPLUS_PAL_NOT_FOUND) return 4;
+                if (platform_file_metadata(target, &metadata) != 0) return 5;
+                if (metadata.kind != CPLUS_FILE_KIND_REGULAR || metadata.size_bytes != 4) return 6;
+                return 0;
+            }
+        """.trimIndent())
+
+        try {
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            assertTrue(Files.exists(targetPath))
+            assertTrue(!Files.exists(linkPath))
+        } finally {
+            Files.deleteIfExists(linkPath)
+            Files.deleteIfExists(targetPath)
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(source)
+            Files.deleteIfExists(directory)
+        }
+    }
+
     @Test
     fun selfHostedPalOpensReadsWritesAndRenamesCanonicalSlashPaths() {
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
