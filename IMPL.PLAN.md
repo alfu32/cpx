@@ -5157,9 +5157,9 @@ runtime execution passes; Linux AArch64 adapter syntax compilation passes. The
 native Windows VM also passes
 `RuntimeProcessPalTest.windowsProcessPalSpawnsWaitsAndNormalizesLaunchFailures`:
 it checks process identity, invalid wait/executable inputs, missing-program
-normalization, self-spawned argv delivery, and child exit-status propagation;
-the linked product passes the dependency audit. Full inherited-environment and
-standard-stream behavior remains Linux-verified only. The full
+normalization, self-spawned argv delivery, inherited environment lookup in the
+child, inherited child stdout, and child exit-status propagation; the linked
+product passes the dependency audit. The full
 `./gradlew build --no-daemon` passes on Linux and Windows.
 
 R5.3.3 acceptance evidence: `RuntimeEnvironmentAndStreamsTest` builds a static

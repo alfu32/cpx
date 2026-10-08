@@ -20,13 +20,27 @@ class RuntimeProcessPalTest {
             Files.writeString(it, """
                 #include "cplus_platform.h"
 
+                static int equals_text(const char* left, const char* right) {
+                    unsigned long long index = 0;
+                    while (left[index] && right[index] && left[index] == right[index]) index++;
+                    return left[index] == right[index];
+                }
+
                 int main(int argc, char** argv) {
                     const char* arguments[] = {"process-test", "--child", (const char*)0};
+                    const char* const* environment;
                     int status = -1;
                     long long child;
                     if (argc == 2 && argv[1][0] == '-' && argv[1][1] == '-' &&
                         argv[1][2] == 'c' && argv[1][3] == 'h' && argv[1][4] == 'i' &&
-                        argv[1][5] == 'l' && argv[1][6] == 'd' && argv[1][7] == '\0') return 37;
+                        argv[1][5] == 'l' && argv[1][6] == 'd' && argv[1][7] == '\0') {
+                        environment = platform_process_environment();
+                        if (!environment) return 38;
+                        while (*environment && !equals_text(*environment, "CPX_PROCESS_INHERIT=inherited")) environment++;
+                        if (!*environment) return 39;
+                        if (platform_write_stdout("process-child-output\n", 21) != 21) return 40;
+                        return 37;
+                    }
                     if (platform_process_id() <= 0) return 1;
                     if (platform_process_spawn((const char*)0, (const char* const*)0) != CPLUS_PAL_INVALID_ARGUMENT ||
                         platform_process_wait(-1, &status) != CPLUS_PAL_INVALID_ARGUMENT ||
@@ -46,7 +60,9 @@ class RuntimeProcessPalTest {
                 ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
             val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
             assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
-            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).apply {
+                environment()["CPX_PROCESS_INHERIT"] = "inherited"
+            }.start()
             if (!process.waitFor(30, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 process.waitFor(2, TimeUnit.SECONDS)
@@ -54,6 +70,7 @@ class RuntimeProcessPalTest {
             }
             val output = process.inputStream.bufferedReader().readText()
             assertEquals(0, process.exitValue(), "Windows process fixture failed: $output")
+            assertTrue(output.contains("process-child-output"), "Child stdout was not inherited: '$output'")
         } finally {
             Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
         }
