@@ -3,7 +3,7 @@
 ## Start here
 
 This is the active implementation runbook. The current leaf is tracked in
-`IMPL.PLAN.md` (currently `R10.3.1.2`); consult that file for status and evidence.
+`IMPL.PLAN.md` (currently `R10.3.2.1`); consult that file for status and evidence.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
@@ -15,7 +15,7 @@ The requested outcomes are:
   `comptime trait type_identifier { ... }`.
 
 Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1–
-R10.1.2.3, R10.2 and R10.3.1.1 are accepted; resume at **R10.3.1.2**, not by restarting
+R10.1.2.3, R10.2 and R10.3.1 are accepted; resume at **R10.3.2.1**, not by restarting
 the parser foundation or jumping ahead to the VS Code UI. Do not restart R0–R9
 or rewrite the compiler.
 
@@ -258,7 +258,7 @@ Windows test. Their task dependencies permit this order.
 13. `R10.2.2.1` — Implement one import-edit builder. (Accepted.)
 14. `R10.2.2.2` — Offer unimported symbols with additional import edits. (Accepted.)
 15. `R10.3.1.1` — Map unresolved-symbol diagnostics to compatible providers. (Accepted.)
-16. `R10.3.1.2` — Expose import quick fixes through the LSP server. (Active.)
+16. `R10.3.1.2` — Expose import quick fixes through the LSP server. (Accepted.)
 17. `R10.3.2.1` — Verify installed CLI and LSP import parity.
 18. `R10.3.2.2` — Exercise suggestions and fixes in the packaged VS Code extension.
 19. `R11.1.1.1` — Parse the exact singular trait syntax.
@@ -389,7 +389,7 @@ Counting rules:
 Implement the next dependency-ready terminal task in IMPL.PLAN.md R10/R11.
 Read AGENTS.md and IMPL.PLAN.RULES.md, then
 IMPL.HANDOFF.IMPORTS-TRAITS.md and that task's referenced spec sections.
-Resume the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
+Resume at R10.3.2.1, the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
 especially sdk/libc/include/stdio.h. Use comptime trait type_identifier { ... }.
 Implement one leaf, add/run its acceptance tests, record evidence, update all
 counts honestly, and make a Conventional Commit before proceeding.

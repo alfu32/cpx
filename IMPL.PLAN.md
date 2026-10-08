@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    113/129 accepted with recorded evidence; 16 TODO
+Roadmap leaf tasks:    114/129 accepted with recorded evidence; 15 TODO
 Phase gates:           11/13 complete; 1 active; 1 queued
-Current task:          R10.3.1.2 — expose import quick fixes through the LSP server
+Current task:          R10.3.2.1 — verify installed CLI and LSP import parity
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -36,11 +36,11 @@ R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
 R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
-R10 [DOING] 15/19 import discovery, completion and quick fixes
+R10 [DOING] 16/19 import discovery, completion and quick fixes
 R11 [TODO]  0/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 
-TOTAL       113/129 implementation tasks accepted; 11/13 phase gates complete,
+TOTAL       114/129 implementation tasks accepted; 11/13 phase gates complete,
             1 active, 1 queued
 ```
 
@@ -51,7 +51,7 @@ denominator to 128. R12 adds one independently accepted generated-version
 task, bringing the current denominator to 129. Their broader existing task IDs
 are retained as composites, not double-counted as leaves.
 The recorded Linux/Windows results above apply to the prior R0–R9 baseline, not
-these features. Fifteen R10 leaves now have recorded Linux evidence; R10 remains
+these features. Sixteen R10 leaves now have recorded Linux evidence; R10 remains
 active and R11 remains queued.
 
 R9 adds four independently accepted distribution leaves to the prior 93-task
@@ -3785,8 +3785,8 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [11/13 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 113/129 accepted; R10.1 (10/10) and R10.2 (4/4) accepted;
-                     R10 active,
+Roadmap leaf tasks: 114/129 accepted; R10.1 (10/10), R10.2 (4/4), and
+                     R10.3.1 (2/2) accepted; R10 active,
                      R11 queued, R12 accepted
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -3799,7 +3799,7 @@ Roadmap leaf tasks: 113/129 accepted; R10.1 (10/10) and R10.2 (4/4) accepted;
 [DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
-[DOING] R10 — import discovery, completion and quick fixes (15/19 leaves)
+[DOING] R10 — import discovery, completion and quick fixes (16/19 leaves)
 [TODO]  R11 — compile-time extension methods (0/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 ```
@@ -5898,7 +5898,7 @@ The installable distribution runs from an unrelated project directory without
 manual SDK configuration; an explicit JVM property selects a development SDK;
 the CLI help identifies the JVM option.
 
-## R10 [DOING] [14/19] Discoverable imports and editor fixes
+## R10 [DOING] [16/19] Discoverable imports and editor fixes
 
 **Language:** LS §21 Imports; §22 Importing C; §41.1 Import assistance.
 **Technical:** TS §28 C import architecture; §54.1 Discoverable imports.
@@ -6271,7 +6271,7 @@ access; export metadata marks aggregate members as non-top-level bindings.
 **Language:** LS §41.1 Import assistance; §43 C interoperability.
 **Technical:** TS §50 LSP architecture; §54.1 Discoverable imports; §63 Testing architecture.
 
-#### R10.3.1 [DOING] [1/2] Import code actions
+#### R10.3.1 [DONE] [2/2] Import code actions
 
 **Language:** LS §41.1 Import assistance.
 **Technical:** TS §50 LSP architecture; §54.1 Discoverable imports.
@@ -6296,7 +6296,7 @@ providers as choices, exclude private exports and SEM303/SEM306 known-call
 errors, suppress fixes on malformed source, and apply a callable import edit
 that subsequently passes `cplus check`.
 
-##### R10.3.1.2 [DOING] Expose import quick fixes through the LSP server
+##### R10.3.1.2 [DONE] Expose import quick fixes through the LSP server
 
 **Language:** LS §41.1 Import assistance.
 **Technical:** TS §50 LSP architecture; §51 Workspace model.
@@ -6310,12 +6310,14 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle :cli:test` (end-to-end protocol fixture).
 
+**Evidence:** `./gradlew :cli:test --tests cplus.cli.CliIntegrationTest.lspExposesVersionedImportQuickFixesAndClearsDiagnosticAfterApply --no-daemon` passes. Framed JSON-RPC confirms initialization advertises `quickfix`, a non-overlapping requested range yields no action, and an overlapping unresolved call yields a provider-specific action with a versioned `documentChanges` edit and matching diagnostic. Opening the edited source in a fresh protocol session yields no duplicate fix; the import edit is separately applied and checked by the R10.3.1.1 compiler fixture. Request scheduling rejects stale versions.
+
 #### R10.3.2 [TODO] [0/3] Import discovery release gate
 
 **Language:** LS §22.1 C header import; §41.1 Import assistance.
 **Technical:** TS §54.1 Discoverable imports; §63 Testing architecture; §78 SDK, ABI, runtime and platform architecture.
 
-##### R10.3.2.1 [TODO] Verify installed CLI and LSP import parity
+##### R10.3.2.1 [DOING] Verify installed CLI and LSP import parity
 
 **Language:** LS §21 Imports; §22.1 C header import; §41.1 Import assistance.
 **Technical:** TS §54.1 Discoverable imports; §57 CLI architecture.

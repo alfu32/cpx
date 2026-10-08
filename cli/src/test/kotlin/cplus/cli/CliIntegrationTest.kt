@@ -725,6 +725,50 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun lspExposesVersionedImportQuickFixesAndClearsDiagnosticAfterApply() {
+        val root = Files.createTempDirectory("cplus-cli-lsp-import-actions")
+        root.resolve("helper.cp").writeText("pub int missing_fn() { return 42; }\n")
+        val main = root.resolve("main.cp")
+        val uri = main.toUri().toString()
+        val broken = "int main() { return missing_fn(); }\n"
+        val fixed = "import { missing_fn } from helper;\n$broken"
+        fun action(id: Int, start: Int, end: Int) =
+            """{"jsonrpc":"2.0","id":$id,"method":"textDocument/codeAction","params":{"textDocument":{"uri":"$uri"},"range":{"start":{"line":0,"character":$start},"end":{"line":0,"character":$end}},"context":{"diagnostics":[],"only":["quickfix"]}}}"""
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"${root.toUri()}"}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$broken"}}}""",
+            action(2, 0, 3),
+            action(3, 0, broken.length),
+            """{"jsonrpc":"2.0","id":5,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString("") { frame(it) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("codeActionProvider"), responses)
+        assertTrue(responseFor(responses, 2).contains("\"result\":[]"), responses)
+        val actionResponse = responseFor(responses, 3)
+        assertTrue(actionResponse.contains("Import 'missing_fn' from helper"), actionResponse)
+        assertTrue(actionResponse.contains("\"documentChanges\""), actionResponse)
+        assertTrue(actionResponse.contains("\"version\":1"), actionResponse)
+        assertTrue(actionResponse.contains("import { missing_fn } from helper;"), actionResponse)
+
+        val fixedInput = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"${root.toUri()}"}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":2,"text":"$fixed"}}}""",
+            action(4, 0, fixed.length),
+            """{"jsonrpc":"2.0","id":5,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString("") { frame(it) }
+        val fixedOutput = ByteArrayOutputStream()
+        assertEquals(0, LspServer().run(ByteArrayInputStream(fixedInput.toByteArray()), fixedOutput))
+        val afterApply = responseFor(fixedOutput.toString(Charsets.UTF_8), 4)
+        assertTrue(afterApply.contains("\"result\":[]"), afterApply)
+    }
+
+    @Test
     fun lspNavigationUsesCompilerReferenceIndex() {
         val directory = Files.createTempDirectory("cplus-cli-navigation")
         val source = directory.resolve("main.cp")

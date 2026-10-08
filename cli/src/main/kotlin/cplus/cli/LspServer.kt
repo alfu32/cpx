@@ -85,6 +85,9 @@ internal class LspServer(
                 "textDocument/completion" -> {
                     if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
+                "textDocument/codeAction" -> {
+                    if (id != null) scheduleRequest(id, method, params, outputStream)
+                }
                 "textDocument/hover" -> {
                     if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
@@ -148,6 +151,7 @@ internal class LspServer(
     private fun requestResult(method: String, params: Map<*, *>): Any? = when (method) {
         "textDocument/semanticTokens/full" -> semanticTokens(params)
         "textDocument/completion" -> completion(params)
+        "textDocument/codeAction" -> codeActions(params)
         "textDocument/hover" -> hover(params)
         "textDocument/definition" -> definition(params)
         "textDocument/references" -> references(params)
@@ -267,6 +271,10 @@ internal class LspServer(
             "referencesProvider" to true,
             "documentSymbolProvider" to true,
             "renameProvider" to true,
+            "codeActionProvider" to linkedMapOf(
+                "codeActionKinds" to listOf("quickfix"),
+                "resolveProvider" to false
+            ),
             "completionProvider" to linkedMapOf(
                 "triggerCharacters" to listOf(".", "/", "{", ",", "\"")
             ),
@@ -366,6 +374,61 @@ internal class LspServer(
                     "newText" to edit.newText
                 )
             }
+        }
+    }
+
+    private fun codeActions(params: Map<*, *>): List<Map<String, Any?>> {
+        val document = requestedDocument(params) ?: return emptyList()
+        val only = ((params["context"] as? Map<*, *>)?.get("only") as? List<*>)
+            ?.mapNotNull { it as? String }
+        if (only != null && only.none { "quickfix".startsWith(it) || it.startsWith("quickfix.") }) {
+            return emptyList()
+        }
+        val rangeValue = params["range"] as? Map<*, *> ?: return emptyList()
+        val range = parseRange(rangeValue) ?: return emptyList()
+        val lineIndex = LineIndex.from(document.text)
+        val requestedRange = ImportTextRange(
+            lineIndex.offsetAt(cplus.core.SourcePosition(range.start.line + 1, range.start.character + 1)),
+            lineIndex.offsetAt(cplus.core.SourcePosition(range.end.line + 1, range.end.character + 1))
+        )
+        if (requestedRange.startOffset !in 0..document.text.length ||
+            requestedRange.endOffset !in requestedRange.startOffset..document.text.length
+        ) return emptyList()
+        val result = compileWorkspace(document)
+        val actions = LspLanguageService.importQuickFixes(
+            result,
+            document.text,
+            document.path,
+            discoverImports(document),
+            requestedRange
+        )
+        return actions.map { action ->
+            val edits = action.edits.map { edit ->
+                linkedMapOf("range" to lspRange(
+                    SourceRange(cplus.core.SourceFileId(0), edit.range.startOffset, edit.range.endOffset),
+                    document.text
+                ), "newText" to edit.newText)
+            }
+            linkedMapOf(
+                "title" to action.title,
+                "kind" to "quickfix",
+                "diagnostics" to listOf(linkedMapOf(
+                    "range" to lspRange(
+                        SourceRange(cplus.core.SourceFileId(0), action.diagnosticRange.startOffset, action.diagnosticRange.endOffset),
+                        document.text
+                    ),
+                    "severity" to 1,
+                    "source" to "cplus",
+                    "code" to action.diagnosticCode,
+                    "message" to action.diagnosticMessage
+                )),
+                "edit" to linkedMapOf(
+                    "documentChanges" to listOf(linkedMapOf(
+                        "textDocument" to linkedMapOf("uri" to document.uri, "version" to document.version),
+                        "edits" to edits
+                    ))
+                )
+            )
         }
     }
 

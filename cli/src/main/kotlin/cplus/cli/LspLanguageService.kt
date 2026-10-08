@@ -50,7 +50,10 @@ internal data class NavigationInfo(
 internal data class ImportQuickFix(
     val title: String,
     val provider: String,
-    val edits: List<ImportTextEdit>
+    val edits: List<ImportTextEdit>,
+    val diagnosticCode: String,
+    val diagnosticMessage: String,
+    val diagnosticRange: ImportTextRange
 )
 
 internal data class SignatureParameterInfo(
@@ -69,11 +72,16 @@ internal object LspLanguageService {
         result: CompileResult,
         text: String,
         sourcePath: Path,
-        importIndex: ImportIndexResult
+        importIndex: ImportIndexResult,
+        requestedRange: ImportTextRange? = null
     ): List<ImportQuickFix> {
         val model = result.semanticModel ?: return emptyList()
         val artifact = artifactFor(result, sourcePath) ?: return emptyList()
-        val sourceDiagnostics = result.diagnostics.filter { it.range?.file == artifact.source.id }
+        val sourceDiagnostics = result.diagnostics.filter { diagnostic ->
+            val range = diagnostic.range
+            range?.file == artifact.source.id && (requestedRange == null ||
+                range.startOffset <= requestedRange.endOffset && requestedRange.startOffset <= range.endOffset)
+        }
         if (sourceDiagnostics.any { it.code?.startsWith("PARSE") == true || it.code?.startsWith("LEX") == true }) {
             return emptyList()
         }
@@ -108,7 +116,10 @@ internal object LspLanguageService {
                         actions += ImportQuickFix(
                             "Import '$unresolved' from ${export.provider}",
                             export.provider,
-                            edits
+                            edits,
+                            diagnostic.code.orEmpty(),
+                            diagnostic.message,
+                            ImportTextRange(range.startOffset, range.endOffset)
                         )
                     }
                 }
