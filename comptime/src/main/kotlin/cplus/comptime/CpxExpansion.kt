@@ -930,7 +930,9 @@ private fun structuralField(field: SyntaxField): String =
 
 private fun structuralFunction(function: SyntaxFunction): String =
     "${function.ownerName}:${function.name}:${structuralType(function.returnType)}:" +
-        function.parameters.joinToString(",") { "${it.name}:${structuralType(it.type)}:${it.isReceiver}" }
+        function.parameters.joinToString(",") {
+            "${it.name}:${structuralType(it.type)}:${it.isReceiver}:${it.isPointerReceiver}"
+        }
 
 private fun structuralType(type: TypeSyntax): String =
     "${type.declarationKind}:${type.name}:${type.isStruct}:${type.pointerDepth}"
@@ -1345,7 +1347,10 @@ class CpxExpander(
         is SyntaxAlias,
         is SyntaxEnum,
         is SyntaxUnion,
-        is SyntaxStruct -> true
+        is SyntaxStruct,
+        // Traits do not create layout types, but registering their methods
+        // changes the callable universe and must happen before reflection.
+        is SyntaxTrait -> true
         else -> false
     }
 
@@ -1354,6 +1359,7 @@ class CpxExpander(
         is SyntaxEnum -> "enum ${declaration.name}"
         is SyntaxUnion -> "union ${declaration.name}"
         is SyntaxStruct -> "struct ${declaration.name}"
+        is SyntaxTrait -> "trait for ${declaration.targetName}"
         else -> declaration::class.simpleName ?: "declaration"
     }
 

@@ -423,6 +423,89 @@ class CpxExpansionTest {
     }
 
     @Test
+    fun generatedTraitRetainsOriginsHygieneAndStableExpansionIdentity() {
+        fun expand(sourceId: Int, path: String, whitespace: String = ""): CpxExpansionResult {
+            val sourceText = """
+                comptime cpx<decl> make(type T) {
+                    return {
+                        struct box_{T}_t { T value; };
+                        comptime trait box_{T}_t {
+                            int read(self*) { int local = 1; return local; }
+                        }
+                    };
+                }
+                make(int);
+            """.trimIndent().replace("struct box_", "struct$whitespace box_")
+            val source = SourceFile(SourceFileId(sourceId), Path.of(path), sourceText, 1)
+            val parsed = Parser(Lexer().lex(source)).parse()
+            assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+            return CpxExpander().expand(source, parsed.syntax)
+        }
+
+        val first = expand(81, "generated-trait.cp")
+        val replay = expand(82, "generated-trait-replay.cp", " ")
+
+        assertTrue(first.diagnostics.isEmpty(), first.diagnostics.joinToString())
+        assertTrue(replay.diagnostics.isEmpty(), replay.diagnostics.joinToString())
+        assertEquals(first.expandedKeys, replay.expandedKeys)
+        assertEquals(
+            first.expansionIds.map { it.key to it.parent?.key },
+            replay.expansionIds.map { it.key to it.parent?.key }
+        )
+        assertEquals(first.structuralFingerprint, replay.structuralFingerprint)
+        assertEquals(listOf("box_int_t"), first.program.declarations.filterIsInstance<SyntaxStruct>().map { it.name })
+        val trait = first.program.declarations.filterIsInstance<SyntaxTrait>().single()
+        assertEquals("box_int_t", trait.targetName)
+        assertTrue(trait.origin is Origin.Expansion)
+        assertTrue(trait.targetOrigin is Origin.Expansion)
+        val method = trait.methods.single()
+        assertTrue(method.origin is Origin.Expansion)
+        assertTrue(method.parameters.first().origin is Origin.Expansion)
+        assertTrue(method.parameters.first().isPointerReceiver)
+        val body = method.body as SyntaxBlock
+        val local = body.statements.filterIsInstance<SyntaxVariableDeclaration>().single()
+        val returned = (body.statements.filterIsInstance<SyntaxReturn>().single().expression as SyntaxIdentifier).name
+        assertTrue(local.name.startsWith("local__cpx_"), local.name)
+        assertEquals(local.name, returned)
+    }
+
+    @Test
+    fun reflectiveExpansionCannotIntroduceTraitRegistrationAfterTheTypeBarrier() {
+        val sourceText = """
+            comptime cpx<stmt> lateTrait() {
+                return { comptime trait int { int doubled(self) { return self * 2; } } };
+            }
+            lateTrait();
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(83), Path.of("late-trait.cp"), sourceText, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertEquals(listOf("CPX008"), result.diagnostics.map { it.code })
+        assertTrue(result.diagnostics.single().message.contains("trait for int"))
+        assertTrue(result.program.declarations.none { it is SyntaxTrait })
+    }
+
+    @Test
+    fun structuralFingerprintDistinguishesTraitReceiverStorageForms() {
+        fun fingerprint(parameter: String, sourceId: Int): String {
+            val source = SourceFile(
+                SourceFileId(sourceId),
+                Path.of("trait-receiver-$sourceId.cp"),
+                "comptime trait int { int read($parameter) { return 0; } }",
+                1
+            )
+            val parsed = Parser(Lexer().lex(source)).parse()
+            assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+            return structuralFingerprint(parsed.syntax)
+        }
+
+        assertTrue(fingerprint("self", 84) != fingerprint("self*", 85))
+    }
+
+    @Test
     fun detectsNestedExpansionCycleByExpansionKey() {
         val sourceText = """
             comptime cpx<decl> a(type T) { return { b(T); }; }
