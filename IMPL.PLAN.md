@@ -19,12 +19,14 @@ Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
 Windows full-runtime link: native Windows and local MinGW PE products pass
+Windows runtime evidence: allocator, process, stdio channels, clocks, threads/TLS,
+                          synchronization, TCP/UDP/IPv6, resolver, and C17 subset
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DONE]  6/6  Linux and native Windows primitive source-to-ABI evidence
-R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
+R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows family matrix pending
 R5 [DOING] 40/41 native std and platform-service leaf tasks evidenced
 R6 [DOING] 4/4  CLI transcoder/build-product leaves accepted; Windows gate pending
 R7 [DOING] 3/3  Linux extension product accepted; Windows gate pending
@@ -4689,7 +4691,8 @@ dependencies.
     invalid seek origins and negative begin offsets on a valid file handle;
     these extend Linux evidence only and do not change R5.2.5 completion status.
 - R5.3 [DONE] 12/12 — implement and Linux-execute the remaining PAL services;
-  Windows adapter execution remains reserved for final validation;
+  named Windows x86_64 execution evidence is recorded below, while the complete
+  Windows target/family gate remains part of R4/R5 final acceptance;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
     alignment, preserving the already-tested allocation/libc behavior;
@@ -4746,8 +4749,9 @@ dependencies.
         pass; a freestanding PE fixture links the production socket adapter and
         imports its kernel loader/initialization APIs without statically
         importing `ws2_32`; `RuntimeLinker` selects the adapter only on Windows.
-        Windows execution remains deferred. Whole-runtime Windows PE linking is
-        tracked separately by R8.3.
+        Windows execution is now evidenced for IPv4 TCP/UDP and IPv6 TCP/UDP
+        loopback through the production runtime, with dependency audit.
+        Whole-runtime Windows PE linking is tracked separately by R8.3.
       - **Depends:** R5.3.7.1.
   - R5.3.8 [DONE] [3/3] — implement portable address text conversion and DNS
     resolution with UTF-8 inputs and target-independent result ownership;
@@ -5135,9 +5139,12 @@ zeroed allocation, data-preserving resize and release. `RuntimeLibcCoreTest`
 executes `calloc`, `realloc`, `aligned_alloc`, `free`, zeroing, alignment and
 overflow-to-`ENOMEM` behavior through the libc façade. `AbiLayoutTest`
 confirms the fixed-width page-count type and declarations on Linux/Windows
-x86_64/AArch64 descriptors. The Windows adapter now rejects zero-page release
-requests, but no Windows execution is claimed. Focused tests and
-`./gradlew build --no-daemon` pass on Linux.
+x86_64/AArch64 descriptors. The Windows adapter rejects zero-page release
+requests. Native Windows `RuntimeAllocatorTest.windowsPageAllocatorRejectsInvalidReleaseAndSupportsAllocationLifecycle`
+executes zero/overflow allocation failures, invalid release arguments, a valid
+page release, allocator alignment/overflow, zeroing, resizing, and freeing
+through the production runtime; the PE product passes its dependency audit.
+Linux and Windows focused tests pass.
 
 R5.3.2 acceptance evidence: `RuntimeProcessPalTest` builds a freestanding,
 static Linux executable with `-nostdlib` and the production startup/PAL
@@ -5264,10 +5271,10 @@ native Windows VM now also passes
 `RuntimeNetworkPalTest.windowsExecutesTcpLoopbackThroughTheFreestandingPal`:
 the complete production runtime binds an ephemeral IPv4 loopback port,
 connects, transfers and verifies bytes, and closes all sockets; the executable
-passes `RuntimeDependencyAuditor`. The focused test passes on native Windows
-and Linux. This adds Windows runtime evidence for TCP only; UDP, IPv6, and the
-successful resolver path remain unvalidated on Windows. Linux AArch64 runtime
-execution remains deferred.
+passes `RuntimeDependencyAuditor`. The native Windows socket fixture also
+executes IPv4 TCP/UDP and IPv6 TCP/UDP loopback through the complete production
+runtime and passes dependency audit. Linux AArch64 runtime execution remains
+deferred.
 
 R5.3.8.3 acceptance evidence: Windows x86_64 MinGW and Windows AArch64 Clang
 compile the production resolver adapter with warnings as errors. The focused
