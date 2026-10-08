@@ -64,6 +64,11 @@ object LinkDriver {
             listOf("-ffunction-sections", "-fdata-sections")
         }
         val sectionLinkerFlags = sectionGarbageCollectionFlags(request, plan, compiler)
+        val linkerFlags = if (CCompilerToolchains.classify(compiler).kind == CCompilerKind.CLANG) {
+            plan.linkerFlags.map { flag -> if (flag == "-no-pie") "-Wl,-no-pie" else flag }
+        } else {
+            plan.linkerFlags
+        }
         return listOf(compiler, "-std=${request.target.cDialect}") +
             CCompilerToolchains.targetFlags(request.target, compiler) +
             CCompilerToolchains.targetLinkerFlags(request.target, compiler) + targetAbiFlags(request, compiler) +
@@ -72,7 +77,7 @@ object LinkDriver {
             plan.runtimeSources.map(Path::toString) +
             plan.startupSources.map(Path::toString) +
             request.sourceDependencies.map(Path::toString) +
-            libraries + plan.linkerFlags + sectionLinkerFlags + listOf("-o", request.output.toString())
+            libraries + linkerFlags + sectionLinkerFlags + listOf("-o", request.output.toString())
     }
 
     private fun msvcCommand(request: LinkRequest, plan: RuntimeLinkPlan, compiler: String): List<String> {

@@ -59,6 +59,27 @@ class LinkDriverTest {
     }
 
     @Test
+    fun clangReceivesNoPieAsALinkerOption() {
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val command = LinkDriver.command(
+            LinkRequest(
+                generatedSource = java.nio.file.Path.of("main.c"),
+                output = java.nio.file.Path.of("main"),
+                target = target,
+                sdk = resolution,
+                cCompiler = "clang"
+            ),
+            plan
+        )
+
+        assertTrue(command.contains("-Wl,-no-pie"))
+        assertFalse(command.contains("-no-pie"))
+    }
+
+    @Test
     fun compilerSelectionDoesNotSelectAHostLibcProfile() {
         val capabilities = CCompilerToolchains.classify("x86_64-w64-mingw32-gcc")
         assertTrue(capabilities.supportsNoDefaultLibraries)

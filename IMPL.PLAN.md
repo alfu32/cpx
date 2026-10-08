@@ -5408,7 +5408,10 @@ hard-coded CLI path.
   no `PT_INTERP` program header. The latter check caught that `-nostdlib` alone
   still let Clang emit a dynamic-loader interpreter path; Linux self-hosted
   products now pass `-static`, and the redundant x86-specific `-no-pie` driver
-  flag is omitted for AArch64. A regression test checks both target link plans.
+  flag is omitted for AArch64. On x86_64, LinkDriver forwards `-no-pie` via
+  Clang's linker-option form; the Clang-built Linux product links without the
+  previous unused-option warning and executes successfully. Regression tests
+  check both target link plans and the Clang command construction.
   Its `PT_TLS` segment has a one-byte initialized image, eight-byte memory image,
   and four-byte alignment, matching the emitted TLS metadata symbols. This
   exposed that `--gc-sections` could remove an empty `.tdata` section required
