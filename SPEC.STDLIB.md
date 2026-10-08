@@ -1091,10 +1091,12 @@ values select receive, send, or both. Successful lifecycle/control operations
 return zero; open/accept return a non-negative opaque handle, and transfer
 operations return the byte count.
 
-Invalid arguments SHALL return `CPLUS_PAL_INVALID_ARGUMENT`. Unsupported
-families/kinds SHALL return `CPLUS_PAL_UNSUPPORTED`. Native network failures
-SHALL return `CPLUS_PAL_NETWORK_ERROR`; raw errno, WSA errors, and native
-socket values SHALL NOT cross the PAL boundary. Linux adapters SHALL use
+Invalid arguments, invalid handles, and malformed binary addresses SHALL
+return `CPLUS_PAL_INVALID_ARGUMENT`; permission failures SHALL return
+`CPLUS_PAL_ACCESS_DENIED`. Unsupported families/kinds SHALL return
+`CPLUS_PAL_UNSUPPORTED`. Other native network failures SHALL return
+`CPLUS_PAL_NETWORK_ERROR`; raw errno, WSA errors, and native socket values
+SHALL NOT cross the PAL boundary. Linux adapters SHALL use
 target-catalogued syscalls and close-on-exec sockets. Windows adapters SHALL
 use documented Winsock APIs without requiring a host C runtime or an
 unconditional `ws2_32` link dependency; Winsock MAY be loaded and initialized

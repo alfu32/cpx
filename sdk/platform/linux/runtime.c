@@ -955,3 +955,336 @@ long long platform_clock_process_cpu_nanoseconds(void) {
 long long platform_clock_ticks(void) {
     return platform_clock_monotonic_nanoseconds();
 }
+
+typedef struct cplus_linux_sockaddr_ipv4 {
+    unsigned short family;
+    unsigned short port;
+    unsigned char address[4];
+    unsigned char zero[8];
+} cplus_linux_sockaddr_ipv4;
+
+typedef struct cplus_linux_sockaddr_ipv6 {
+    unsigned short family;
+    unsigned short port;
+    unsigned int flowinfo;
+    unsigned char address[16];
+    unsigned int scope_id;
+} cplus_linux_sockaddr_ipv6;
+
+typedef union cplus_linux_sockaddr_storage {
+    unsigned long long alignment;
+    unsigned char bytes[128];
+    cplus_linux_sockaddr_ipv4 ipv4;
+    cplus_linux_sockaddr_ipv6 ipv6;
+} cplus_linux_sockaddr_storage;
+
+_Static_assert(sizeof(cplus_linux_sockaddr_ipv4) == 16, "Linux IPv4 socket address ABI");
+_Static_assert(sizeof(cplus_linux_sockaddr_ipv6) == 28, "Linux IPv6 socket address ABI");
+
+static long cplus_linux_normalize_socket_result(long result) {
+    long error;
+    if (result >= 0) return result;
+    error = -result;
+    if (error == 1 || error == 13) return CPLUS_PAL_ACCESS_DENIED;
+    if (error == 9 || error == 14 || error == 22 || error == 88) {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
+    if (error == 38 || error == 91 || error == 92 || error == 93 ||
+        error == 94 || error == 95 || error == 96 || error == 97) return CPLUS_PAL_UNSUPPORTED;
+    return CPLUS_PAL_NETWORK_ERROR;
+}
+
+static int cplus_linux_socket_handle_is_valid(cplus_socket_handle_t socket) {
+    return socket >= 0 && socket <= 0x7fffffffLL;
+}
+
+static unsigned short cplus_linux_network_port(unsigned short host_port) {
+    return (unsigned short)((host_port << 8) | (host_port >> 8));
+}
+
+static int cplus_linux_encode_socket_address(
+    const cplus_socket_address_t* source,
+    cplus_linux_sockaddr_storage* destination,
+    unsigned int* length) {
+    unsigned int index;
+    if (!source || !destination || !length || source->reserved != 0) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (source->family == CPLUS_SOCKET_IPV4) {
+        if (source->scope_id != 0) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+        for (index = 4; index < 16; index++) {
+            if (source->address[index] != 0) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+        }
+        destination->ipv4.family = 2;
+        destination->ipv4.port = cplus_linux_network_port(source->port);
+        for (index = 0; index < 4; index++) destination->ipv4.address[index] = source->address[index];
+        for (index = 0; index < 8; index++) destination->ipv4.zero[index] = 0;
+        *length = 16;
+        return 0;
+    }
+    if (source->family == CPLUS_SOCKET_IPV6) {
+        destination->ipv6.family = 10;
+        destination->ipv6.port = cplus_linux_network_port(source->port);
+        destination->ipv6.flowinfo = 0;
+        for (index = 0; index < 16; index++) destination->ipv6.address[index] = source->address[index];
+        destination->ipv6.scope_id = source->scope_id;
+        *length = 28;
+        return 0;
+    }
+    return (int)CPLUS_PAL_UNSUPPORTED;
+}
+
+static int cplus_linux_decode_socket_address(
+    const cplus_linux_sockaddr_storage* source,
+    unsigned int length,
+    cplus_socket_address_t* destination) {
+    unsigned int index;
+    if (!source || !destination) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    destination->reserved = 0;
+    for (index = 0; index < 16; index++) destination->address[index] = 0;
+    destination->scope_id = 0;
+    if (source->ipv4.family == 2 && length >= 16) {
+        destination->family = CPLUS_SOCKET_IPV4;
+        destination->port = cplus_linux_network_port(source->ipv4.port);
+        for (index = 0; index < 4; index++) destination->address[index] = source->ipv4.address[index];
+        return 0;
+    }
+    if (source->ipv6.family == 10 && length >= 28) {
+        destination->family = CPLUS_SOCKET_IPV6;
+        destination->port = cplus_linux_network_port(source->ipv6.port);
+        for (index = 0; index < 16; index++) destination->address[index] = source->ipv6.address[index];
+        destination->scope_id = source->ipv6.scope_id;
+        return 0;
+    }
+    return (int)CPLUS_PAL_UNSUPPORTED;
+}
+
+static long long cplus_linux_socket_result(long result) {
+    return result < 0 ? cplus_linux_normalize_socket_result(result) : (long long)result;
+}
+
+long long platform_socket_open(unsigned int family, unsigned int kind) {
+    long domain;
+    long type;
+    long result;
+    if (family == CPLUS_SOCKET_IPV4) domain = 2;
+    else if (family == CPLUS_SOCKET_IPV6) domain = 10;
+    else return CPLUS_PAL_UNSUPPORTED;
+    if (kind == CPLUS_SOCKET_STREAM) type = 1;
+    else if (kind == CPLUS_SOCKET_DATAGRAM) type = 2;
+    else return CPLUS_PAL_UNSUPPORTED;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall3(41, domain, type | 0x80000, 0);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall3(198, domain, type | 0x80000, 0);
+#else
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+    return cplus_linux_socket_result(result);
+}
+
+int platform_socket_bind(cplus_socket_handle_t socket, const cplus_socket_address_t* address) {
+    cplus_linux_sockaddr_storage native_address;
+    unsigned int length;
+    int encode_result;
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket) || !address) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    encode_result = cplus_linux_encode_socket_address(address, &native_address, &length);
+    if (encode_result < 0) return encode_result;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall3(49, (long)socket, (long)&native_address, (long)length);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall3(200, (long)socket, (long)&native_address, (long)length);
+#else
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    return (int)cplus_linux_normalize_socket_result(result);
+}
+
+int platform_socket_listen(cplus_socket_handle_t socket, int backlog) {
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket) || backlog < 0) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall2(50, (long)socket, backlog);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall2(201, (long)socket, backlog);
+#else
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    return (int)cplus_linux_normalize_socket_result(result);
+}
+
+long long platform_socket_accept(cplus_socket_handle_t socket, cplus_socket_address_t* peer) {
+    cplus_linux_sockaddr_storage native_address;
+    unsigned int length = sizeof(native_address);
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket)) return CPLUS_PAL_INVALID_ARGUMENT;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall4(288, (long)socket, peer ? (long)&native_address : 0,
+        peer ? (long)&length : 0, 0x80000);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall4(242, (long)socket, peer ? (long)&native_address : 0,
+        peer ? (long)&length : 0, 0x80000);
+#else
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+    if (result < 0) return cplus_linux_socket_result(result);
+    if (peer) {
+        int decode_result = cplus_linux_decode_socket_address(&native_address, length, peer);
+        if (decode_result < 0) {
+#if defined(__x86_64__)
+            cplus_linux_syscall1(3, result);
+#elif defined(__aarch64__)
+            cplus_linux_syscall1(57, result);
+#endif
+            return decode_result;
+        }
+    }
+    return (long long)result;
+}
+
+int platform_socket_connect(cplus_socket_handle_t socket, const cplus_socket_address_t* address) {
+    cplus_linux_sockaddr_storage native_address;
+    unsigned int length;
+    int encode_result;
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket) || !address) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    encode_result = cplus_linux_encode_socket_address(address, &native_address, &length);
+    if (encode_result < 0) return encode_result;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall3(42, (long)socket, (long)&native_address, (long)length);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall3(203, (long)socket, (long)&native_address, (long)length);
+#else
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    return (int)cplus_linux_normalize_socket_result(result);
+}
+
+int platform_socket_get_address(cplus_socket_handle_t socket, int peer, cplus_socket_address_t* address) {
+    cplus_linux_sockaddr_storage native_address;
+    unsigned int length = sizeof(native_address);
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket) || !address || (peer != 0 && peer != 1)) {
+        return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    }
+#if defined(__x86_64__)
+    result = cplus_linux_syscall3(peer ? 52 : 51, (long)socket, (long)&native_address, (long)&length);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall3(peer ? 205 : 204, (long)socket, (long)&native_address, (long)&length);
+#else
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    if (result < 0) return (int)cplus_linux_normalize_socket_result(result);
+    return cplus_linux_decode_socket_address(&native_address, length, address);
+}
+
+long long platform_socket_send(cplus_socket_handle_t socket, const void* buffer, unsigned long long length) {
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket) || (!buffer && length != 0) || length > 0x7fffffffULL) {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
+#if defined(__x86_64__)
+    result = cplus_linux_syscall6(44, (long)socket, (long)buffer, (long)length, 0x4000, 0, 0);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall6(206, (long)socket, (long)buffer, (long)length, 0x4000, 0, 0);
+#else
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+    return cplus_linux_socket_result(result);
+}
+
+long long platform_socket_receive(cplus_socket_handle_t socket, void* buffer, unsigned long long capacity) {
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket) || (!buffer && capacity != 0) || capacity > 0x7fffffffULL) {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
+    if (capacity == 0) return 0;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall6(45, (long)socket, (long)buffer, (long)capacity, 0, 0, 0);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall6(207, (long)socket, (long)buffer, (long)capacity, 0, 0, 0);
+#else
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+    return cplus_linux_socket_result(result);
+}
+
+long long platform_socket_send_to(
+    cplus_socket_handle_t socket,
+    const void* buffer,
+    unsigned long long length,
+    const cplus_socket_address_t* destination) {
+    cplus_linux_sockaddr_storage native_address;
+    unsigned int address_length;
+    int encode_result;
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket) || (!buffer && length != 0) ||
+        length > 0x7fffffffULL || !destination) return CPLUS_PAL_INVALID_ARGUMENT;
+    encode_result = cplus_linux_encode_socket_address(destination, &native_address, &address_length);
+    if (encode_result < 0) return encode_result;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall6(44, (long)socket, (long)buffer, (long)length, 0x4000,
+        (long)&native_address, (long)address_length);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall6(206, (long)socket, (long)buffer, (long)length, 0x4000,
+        (long)&native_address, (long)address_length);
+#else
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+    return cplus_linux_socket_result(result);
+}
+
+long long platform_socket_receive_from(
+    cplus_socket_handle_t socket,
+    void* buffer,
+    unsigned long long capacity,
+    cplus_socket_address_t* source) {
+    cplus_linux_sockaddr_storage native_address;
+    unsigned int address_length = sizeof(native_address);
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket) || (!buffer && capacity != 0) || capacity > 0x7fffffffULL) {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
+#if defined(__x86_64__)
+    result = cplus_linux_syscall6(45, (long)socket, (long)buffer, (long)capacity, 0,
+        source ? (long)&native_address : 0, source ? (long)&address_length : 0);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall6(207, (long)socket, (long)buffer, (long)capacity, 0,
+        source ? (long)&native_address : 0, source ? (long)&address_length : 0);
+#else
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+    if (result < 0) return cplus_linux_socket_result(result);
+    if (source) {
+        int decode_result = cplus_linux_decode_socket_address(&native_address, address_length, source);
+        if (decode_result < 0) return decode_result;
+    }
+    return (long long)result;
+}
+
+int platform_socket_shutdown(cplus_socket_handle_t socket, unsigned int direction) {
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket) || direction > CPLUS_SOCKET_SHUTDOWN_BOTH) {
+        return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    }
+#if defined(__x86_64__)
+    result = cplus_linux_syscall2(48, (long)socket, (long)direction);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall2(210, (long)socket, (long)direction);
+#else
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    return (int)cplus_linux_normalize_socket_result(result);
+}
+
+int platform_socket_close(cplus_socket_handle_t socket) {
+    long result;
+    if (!cplus_linux_socket_handle_is_valid(socket)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+#if defined(__x86_64__)
+    result = cplus_linux_syscall1(3, (long)socket);
+#elif defined(__aarch64__)
+    result = cplus_linux_syscall1(57, (long)socket);
+#else
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    return (int)cplus_linux_normalize_socket_result(result);
+}
