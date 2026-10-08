@@ -34,12 +34,12 @@ class MethodRegistryTest {
         assertTrue(registry.add(native))
         assertFalse(registry.add(native.copy(symbol = native.symbol.copy(id = SymbolId(92)))))
         assertTrue(registry.add(native.copy(
-            symbol = native.symbol.copy(id = SymbolId(93)),
+            symbol = native.symbol.copy(id = SymbolId(93), visibility = Visibility.PUBLIC),
             definingModule = "geometry_ext",
             isExtension = true
         )))
         assertTrue(registry.add(native.copy(
-            symbol = native.symbol.copy(id = SymbolId(94)),
+            symbol = native.symbol.copy(id = SymbolId(94), visibility = Visibility.PUBLIC),
             definingModule = "drawing_ext",
             isExtension = true
         )))
@@ -69,7 +69,7 @@ class MethodRegistryTest {
         assertEquals("geometry", (nativeMethod.owner as StructType).moduleName)
         assertEquals("geometry", nativeMethod.definingModule)
         assertEquals(ReceiverIdentity.of(nativeMethod.owner), nativeMethod.receiverIdentity)
-        assertEquals(listOf(nativeMethod), model.lookupMethods(nativeMethod.owner, "length"))
+        assertEquals(listOf(nativeMethod), model.lookupMethods(nativeMethod.owner, "length", "geometry"))
 
         val duplicate = SourceFile(
             SourceFileId(96),

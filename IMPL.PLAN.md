@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    121/129 accepted with recorded evidence; 8 TODO
+Roadmap leaf tasks:    122/129 accepted with recorded evidence; 7 TODO
 Phase gates:           11/13 complete; 2 active; 0 queued
-Current task:          R11.1.2.3 — enforce extension import activation and collisions
+Current task:          R11.2.1.1 — emit one typed C function per extension definition
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -37,10 +37,10 @@ R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
 R10 [DOING] 18/19 import discovery, completion and quick fixes
-R11 [DOING] 5/12 compile-time extension methods
+R11 [DOING] 6/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 
-TOTAL       121/129 implementation tasks accepted; 11/13 phase gates complete,
+TOTAL       122/129 implementation tasks accepted; 11/13 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3785,9 +3785,9 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [11/13 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 121/129 accepted; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 122/129 accepted; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (2/3) accepted/in progress;
-                     R11.1.1 (3/3), R11.1.2 (2/3); R10 and R11 active, R12 accepted
+                     R11.1.1 (3/3), R11.1.2 (3/3); R10 and R11 active, R12 accepted
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3800,7 +3800,7 @@ Roadmap leaf tasks: 121/129 accepted; R10.1 (10/10), R10.2 (4/4),
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
 [DOING] R10 — import discovery, completion and quick fixes (18/19 leaves)
-[DOING] R11 — compile-time extension methods (5/12 leaves)
+[DOING] R11 — compile-time extension methods (6/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 ```
 
@@ -6363,12 +6363,12 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle test :cli:fatJar :cli:installDist`; extension checks/host tests; native Windows equivalents at the final platform pass.
 
-## R11 [DOING] [5/12] Compile-time extension methods
+## R11 [DOING] [6/12] Compile-time extension methods
 
 **Language:** LS §6.3.1 Compile-time extension methods; §21 Imports.
 **Technical:** TS §13.1 Compile-time traits; §33 Method lowering; §54 Completion.
 
-### R11.1 [DOING] [5/6] Trait declarations and semantic ownership
+### R11.1 [DONE] [6/6] Trait declarations and semantic ownership
 
 **Language:** LS §6.3.1 Compile-time extension methods; §18 Type-universe barrier.
 **Technical:** TS §13.1 Compile-time traits; §24 Type-universe stabilization; §29 Semantic model.
@@ -6426,7 +6426,7 @@ that subsequently passes `cplus check`.
 
 **Evidence:** `./gradlew :comptime:test --tests cplus.comptime.CpxExpansionTest.generatedTraitRetainsOriginsHygieneAndStableExpansionIdentity --tests cplus.comptime.CpxExpansionTest.reflectiveExpansionCannotIntroduceTraitRegistrationAfterTheTypeBarrier --tests cplus.comptime.CpxExpansionTest.structuralFingerprintDistinguishesTraitReceiverStorageForms --tests cplus.comptime.CpxExpansionTest.reflectiveCpxRejectsStructuralDeclarationsButKeepsExecutableDeclarations --no-daemon` and the full `./gradlew :comptime:test :compiler:test --no-daemon` pass. CPX-generated traits retain target/method/receiver expansion origins; method locals and references are hygienically renamed while the target and receiver remain bound; equivalent replays retain expansion keys and structural fingerprint; receiver storage form affects fingerprints. Reflective CPX now classifies trait registration as phase-sensitive, reports `CPX008`, and excludes the trait, while `structuralTypeDescriptor` remains null for traits so no layout type is fabricated.
 
-#### R11.1.2 [DOING] [2/3] Canonical receiver and visibility resolution
+#### R11.1.2 [DONE] [3/3] Canonical receiver and visibility resolution
 
 **Language:** LS §6.3.1 Compile-time extension methods; §6.5 Member conflict; §21.2 Import semantics.
 **Technical:** TS §13.1 Compile-time traits; §14 Member-call resolution; §29 Semantic model.
@@ -6461,9 +6461,9 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle :semantic:test :compiler:test` (trait semantic/reference fixtures).
 
-**Evidence:** `./gradlew :semantic:test :compiler:test --no-daemon` passes, as does `./gradlew :semantic:test --tests cplus.semantic.TraitResolutionTest --no-daemon`. Semantic fixtures resolve local struct/pointer-receiver methods, primitive/value receivers, imported nominal struct targets, multiword typedef aliases, union and enum targets; method bodies bind typed `self` and normal parameters; calls retain selected `MethodSymbol`, receiver expression, and VALUE/ADDRESS/POINTER adaptation. Negative fixtures diagnose void, unknown, pointer, array, function-pointer, private imported, and incomplete foreign targets, incompatible results, argument-count errors, and non-addressable `self*` receivers. Trait symbols retain their defining module and owner type; call validation consults the shared `MethodRegistry`. Visibility is temporarily collected across modules here and is restricted to local/directly imported public extension sets in R11.1.2.3; C emission remains R11.2.
+**Evidence:** `./gradlew :semantic:test :compiler:test --no-daemon` passes, as does `./gradlew :semantic:test --tests cplus.semantic.TraitResolutionTest --no-daemon`. Semantic fixtures resolve local struct/pointer-receiver methods, primitive/value receivers, imported nominal struct targets, multiword typedef aliases, union and enum targets; method bodies bind typed `self` and normal parameters; calls retain selected `MethodSymbol`, receiver expression, and VALUE/ADDRESS/POINTER adaptation. Negative fixtures diagnose void, unknown, pointer, array, function-pointer, private imported, and incomplete foreign targets, incompatible results, argument-count errors, and non-addressable `self*` receivers. Trait symbols retain their defining module and owner type; calls consult the shared `MethodRegistry` with local/direct-import visibility enforced by R11.1.2.3; C emission remains R11.2.
 
-##### R11.1.2.3 [TODO] Enforce extension import activation and collisions
+##### R11.1.2.3 [DONE] Enforce extension import activation and collisions
 
 **Language:** LS §6.3.1 Compile-time extension methods; §6.5 Member conflict; §21.2 Import semantics; §21.5 Cyclic imports.
 **Technical:** TS §13.1 Compile-time traits; §27 Import resolver; §30 Reference index.
@@ -6476,6 +6476,8 @@ that subsequently passes `cplus check`.
 **Acceptance:** Multi-module tests cover private leakage, selective/module/aliased imports, two providers, typedef-equivalent receivers, same-name distinct nominal types, cycles and reversed import order. A local duplicate fails at declaration; an ambiguous imported name fails when called, naming both providers. Unrelated extension names remain usable.
 
 **Verify:** `gradle :semantic:test :compiler:test :cli:test` (multi-module visibility fixtures).
+
+**Evidence:** `./gradlew :semantic:test :compiler:test :cli:test --no-daemon` passes after updating the AST-inspection assertion to expect successful semantic acceptance of the now-supported trait declaration. `TraitImportVisibilityTest` verifies direct selective/module/aliased activation without free-function bindings, hidden private/unimported/transitive extensions (including cycles), deterministic imported-provider ambiguity for canonical-identical receivers through typedef aliases, local native/field/duplicate conflicts, and rejection of public extension targets/signatures that expose private types. The model exposes only directly imported modules, and calls resolve only a single visible candidate; ambiguity records no winner. CLI AST inspection continues to keep trait methods grouped with their bodies. R11.2 owns C emission and editor navigation.
 
 ### R11.2 [TODO] [0/6] C lowering and editor/product acceptance
 

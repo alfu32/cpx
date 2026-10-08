@@ -32,9 +32,9 @@ class TraitResolutionTest {
         val calls = model.resolvedMethodCalls.values.associateBy { it.method.symbol.name }
         assertEquals(ReceiverAdaptation.ADDRESS, calls.getValue("read").adaptation)
         assertEquals(ReceiverAdaptation.VALUE, calls.getValue("twice").adaptation)
-        assertEquals(listOf("read"), model.lookupMethods(model.structs.getValue("point_t"), "read", model.methodRegistry.extensionModules).map { it.symbol.name })
+        assertEquals(listOf("read"), model.lookupMethods(model.structs.getValue("point_t"), "read", "<main>").map { it.symbol.name })
         val intType = model.types.filterIsInstance<PrimitiveType>().single { it.name == "int" }
-        assertEquals(listOf("twice"), model.lookupMethods(intType, "twice", model.methodRegistry.extensionModules).map { it.symbol.name })
+        assertEquals(listOf("twice"), model.lookupMethods(intType, "twice", "<main>").map { it.symbol.name })
     }
 
     @Test
@@ -75,7 +75,8 @@ class TraitResolutionTest {
         val importedPointMethod = model.methodRegistry.lookup(
             ReceiverIdentity.of(model.structs.getValue("point_t")),
             "read",
-            model.methodRegistry.extensionModules
+            model.extensionModuleImports["client"].orEmpty(),
+            "client"
         ).single()
         assertEquals("client", importedPointMethod.definingModule)
         assertEquals("geometry", (importedPointMethod.owner as StructType).moduleName)

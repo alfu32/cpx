@@ -248,18 +248,24 @@ class MethodRegistry private constructor(
     fun lookup(
         receiver: ReceiverIdentity,
         name: String,
-        visibleExtensionModules: Set<String> = emptySet()
+        visibleExtensionModules: Set<String> = emptySet(),
+        requestingModule: String? = null
     ): List<MethodSymbol> = methodsByKey[MethodLookupKey(receiver, name)].orEmpty().filter { method ->
-        !method.isExtension || method.definingModule in visibleExtensionModules
+        !method.isExtension || method.definingModule == requestingModule ||
+            (method.symbol.visibility == Visibility.PUBLIC && method.definingModule in visibleExtensionModules)
     }
 
     fun forReceiver(
         receiver: ReceiverIdentity,
-        visibleExtensionModules: Set<String> = emptySet()
+        visibleExtensionModules: Set<String> = emptySet(),
+        requestingModule: String? = null
     ): List<MethodSymbol> = methodsByKey.asSequence()
         .filter { (key, _) -> key.receiver == receiver }
         .flatMap { (_, methods) -> methods.asSequence() }
-        .filter { method -> !method.isExtension || method.definingModule in visibleExtensionModules }
+        .filter { method ->
+            !method.isExtension || method.definingModule == requestingModule ||
+                (method.symbol.visibility == Visibility.PUBLIC && method.definingModule in visibleExtensionModules)
+        }
         .toList()
 
     class Builder {
@@ -359,7 +365,8 @@ data class SemanticModel(
     val moduleTypeBindings: Map<String, Map<String, SourceTypeBinding>> = emptyMap(),
     val moduleTypeAliases: Map<String, Map<String, String>> = emptyMap(),
     val methodRegistry: MethodRegistry = MethodRegistry.from(methods.values.flatMap { it.values }),
-    val resolvedMethodCalls: Map<AstCall, ResolvedMethodCall> = emptyMap()
+    val resolvedMethodCalls: Map<AstCall, ResolvedMethodCall> = emptyMap(),
+    val extensionModuleImports: Map<String, Set<String>> = emptyMap()
 ) {
     val sourceTypeCatalogue: SourceTypeCatalogue
         get() = SourceTypeCatalogue.from(symbols)
@@ -388,11 +395,13 @@ data class SemanticModel(
 
     fun canonicalTypeId(type: CType): TypeId = canonicalTypeIds[canonicalTypeKey(type)] ?: type.id
 
-    fun lookupMethods(
-        receiver: CType,
-        name: String,
-        visibleExtensionModules: Set<String> = emptySet()
-    ): List<MethodSymbol> = methodRegistry.lookup(ReceiverIdentity.of(receiver), name, visibleExtensionModules)
+    fun lookupMethods(receiver: CType, name: String, requestingModule: String = "<main>"): List<MethodSymbol> =
+        methodRegistry.lookup(
+            ReceiverIdentity.of(receiver),
+            name,
+            extensionModuleImports[requestingModule].orEmpty(),
+            requestingModule
+        )
 
     fun resolveComptimeReferences(
         node: AstNode,
@@ -641,6 +650,8 @@ class SemanticAnalyzer(
     private var nextTypeId = generateSequence(1) { it + 1 }.iterator()
     private var activeTypeEnvironment: Map<String, CType> = emptyMap()
     private var activeMethodRegistry: MethodRegistry = MethodRegistry.from(emptyList())
+    private var activeModuleName: String = "<main>"
+    private var activeVisibleExtensionModules: Set<String> = emptySet()
     private var resolvedMethodCalls: MutableMap<AstCall, ResolvedMethodCall> = IdentityHashMap()
     private val incompleteForeignTypes = mutableSetOf<String>()
 
@@ -655,6 +666,8 @@ class SemanticAnalyzer(
         nextTypeId = generateSequence(1) { it + 1 }.iterator()
         activeTypeEnvironment = emptyMap()
         activeMethodRegistry = MethodRegistry.from(emptyList())
+        activeModuleName = "<main>"
+        activeVisibleExtensionModules = emptySet()
         resolvedMethodCalls = IdentityHashMap()
         incompleteForeignTypes.clear()
         val diagnostics = DiagnosticBag()
@@ -722,6 +735,19 @@ class SemanticAnalyzer(
             mapOf(defaultModule to program.declarations)
         } else {
             program.modules.associate { it.name to it.declarations }
+        }
+        val sourceExtensionNamesByModule = moduleDeclarationLists.mapValues { (_, declarations) ->
+            declarations.filterIsInstance<AstTrait>()
+                .filter(AstTrait::isPublic)
+                .flatMap { trait -> trait.methods.map(AstFunction::name) }
+                .toSet()
+        }
+        val moduleExtensionImports = moduleDeclarationLists.mapValues { (_, declarations) ->
+            declarations.filterIsInstance<AstImport>()
+                .asSequence()
+                .filterNot { it.module.startsWith("c.") }
+                .mapNotNull { import -> moduleTargetNames(import.module).firstOrNull { it in moduleDeclarationLists } }
+                .toSet()
         }
         val fixedWidthAliasNames = setOf("i128", "u128")
         val fixedWidthBaseAliasNames = setOf(
@@ -1570,6 +1596,7 @@ class SemanticAnalyzer(
             program,
             moduleFunctions,
             sourceTypeDeclarationsByModule,
+            sourceExtensionNamesByModule,
             foreignTypes,
             foreignGlobals,
             foreignSourceFunctions,
@@ -1654,9 +1681,42 @@ class SemanticAnalyzer(
         methods.values.flatMap { it.values }.forEach(methodRegistryBuilder::add)
         val extensionMethods = mutableListOf<Pair<AstFunction, MethodSymbol>>()
         val extensionMethodLocals = IdentityHashMap<AstFunction, Map<String, Symbol>>()
+
+        fun checkExportedTypeReference(moduleName: String, reference: AstTypeRef, visited: MutableSet<String> = mutableSetOf()) {
+            val parts = reference.name.split('.', limit = 2)
+            val binding = if (parts.size == 2) {
+                moduleTypeAliases[moduleName]?.get(parts[0])?.let { SourceTypeBindingRef(parts[1], it) }
+            } else {
+                moduleTypeBindingRefs[moduleName]?.get(reference.name)
+            }
+            val typeModule = binding?.ownerModule ?: moduleName
+            val typeName = binding?.declarationName ?: if (parts.size == 2) parts[1] else reference.name
+            val declaration = sourceTypeDeclarationsByModule[typeModule]?.get(typeName) ?: return
+            val identity = "$typeModule::$typeName"
+            if (!visited.add(identity)) return
+            if (!declaration.isPublic) {
+                diagnostics.error(
+                    "public extension method exposes non-public type '$typeName' from module '$typeModule'",
+                    rangeOf(reference.origin),
+                    "SEM421"
+                )
+                return
+            }
+            if (declaration is AstAlias) checkExportedTypeReference(typeModule, declaration.target, visited)
+        }
+
         program.declarations.filterIsInstance<AstTrait>().forEach { trait ->
             val moduleName = declarationModules[trait] ?: defaultModule
             activeTypeEnvironment = moduleTypeEnvironments[moduleName]?.knownTypes.orEmpty()
+            if (trait.isPublic) {
+                checkExportedTypeReference(moduleName, AstTypeRef(trait.targetName, false, 0, trait.targetOrigin))
+                trait.methods.forEach { method ->
+                    checkExportedTypeReference(moduleName, method.returnType)
+                    method.parameters.filterNot { it.isReceiver }.forEach { parameter ->
+                        checkExportedTypeReference(moduleName, parameter.type)
+                    }
+                }
+            }
             val declaredTarget = resolve(
                 AstTypeRef(trait.targetName, false, 0, trait.targetOrigin),
                 moduleName
@@ -1675,6 +1735,32 @@ class SemanticAnalyzer(
             trait.methods.forEach methodLoop@{ method ->
                 val receiver = method.parameters.firstOrNull { it.isReceiver }
                 if (receiver == null) return@methodLoop
+                val receiverIdentity = ReceiverIdentity.of(target)
+                val nativeCollision = methodRegistryBuilder
+                    .build()
+                    .lookup(receiverIdentity, method.name, requestingModule = moduleName)
+                    .firstOrNull { !it.isExtension }
+                if (nativeCollision != null) {
+                    diagnostics.error(
+                        "extension method '${method.name}' conflicts with a native method for '${target.name}'",
+                        rangeOf(method.origin),
+                        "SEM416"
+                    )
+                    return@methodLoop
+                }
+                val collidingFields = when (target) {
+                    is StructType -> target.fields.map { it.symbol.name }
+                    is UnionType -> target.fields.map { it.symbol.name }
+                    else -> emptyList()
+                }
+                if (method.name in collidingFields) {
+                    diagnostics.error(
+                        "extension method '${method.name}' conflicts with a field of '${target.name}'",
+                        rangeOf(method.origin),
+                        "SEM420"
+                    )
+                    return@methodLoop
+                }
                 val returnType = resolve(method.returnType, moduleName)
                 val parameters = method.parameters.filterNot { it.isReceiver }.map { parameter ->
                     val parameterType = resolve(parameter.type, moduleName, parameter.arrayDimensions)
@@ -1703,7 +1789,7 @@ class SemanticAnalyzer(
                 val symbol = MethodSymbol(
                     methodSymbol,
                     target,
-                    ReceiverIdentity.of(target),
+                    receiverIdentity,
                     moduleName,
                     ReceiverKind.INSTANCE,
                     returnType,
@@ -1744,6 +1830,8 @@ class SemanticAnalyzer(
         program.declarations.filterIsInstance<AstGlobalVariable>().forEach { declaration ->
             val initializer = declaration.initializer ?: return@forEach
             val moduleName = declarationModules[declaration] ?: defaultModule
+            activeModuleName = moduleName
+            activeVisibleExtensionModules = moduleExtensionImports[moduleName].orEmpty()
             activeTypeEnvironment = moduleTypeEnvironments[moduleName]?.knownTypes.orEmpty()
             val availableFunctions = visibleFunctions[moduleName] ?: functions
             val actual = validateExpression(
@@ -1770,6 +1858,8 @@ class SemanticAnalyzer(
         program.declarations.filterIsInstance<AstFunction>().forEach { declaration ->
             val function = functions[declaration.name] ?: return@forEach
             val moduleName = declarationModules[declaration] ?: defaultModule
+            activeModuleName = moduleName
+            activeVisibleExtensionModules = moduleExtensionImports[moduleName].orEmpty()
             val availableFunctions = visibleFunctions[moduleName] ?: functions
             val typeEnvironment = moduleTypeEnvironments[moduleName]
                 ?: ModuleTypeEnvironment(structs, unions, enums, aliases)
@@ -1801,6 +1891,8 @@ class SemanticAnalyzer(
         program.declarations.filterIsInstance<AstStruct>().forEach { declaration ->
             val owner = structs[declaration.name] ?: return@forEach
             val moduleName = declarationModules[declaration] ?: defaultModule
+            activeModuleName = moduleName
+            activeVisibleExtensionModules = moduleExtensionImports[moduleName].orEmpty()
             val availableFunctions = visibleFunctions[moduleName] ?: functions
             val typeEnvironment = moduleTypeEnvironments[moduleName]
                 ?: ModuleTypeEnvironment(structs, unions, enums, aliases)
@@ -1844,6 +1936,8 @@ class SemanticAnalyzer(
 
         extensionMethods.forEach { (method, methodSymbol) ->
             val moduleName = methodSymbol.definingModule
+            activeModuleName = moduleName
+            activeVisibleExtensionModules = moduleExtensionImports[moduleName].orEmpty()
             val availableFunctions = visibleFunctions[moduleName] ?: functions
             val typeEnvironment = moduleTypeEnvironments[moduleName]
                 ?: ModuleTypeEnvironment(structs, unions, enums, aliases)
@@ -1951,7 +2045,8 @@ class SemanticAnalyzer(
             moduleTypeBindings = resolvedModuleTypeBindings,
             moduleTypeAliases = moduleTypeAliases.mapValues { (_, aliases) -> aliases.toMap() },
             methodRegistry = activeMethodRegistry,
-            resolvedMethodCalls = resolvedMethodCalls
+            resolvedMethodCalls = resolvedMethodCalls,
+            extensionModuleImports = moduleExtensionImports
         )
         val cataloguedModel = initialModel.copy(
             declarationCatalogue = buildDeclarationCatalogue(
@@ -1973,6 +2068,7 @@ class SemanticAnalyzer(
         program: AstProgram,
         moduleFunctions: Map<String, Map<String, FunctionSymbol>>,
         sourceTypeDeclarationsByModule: Map<String, Map<String, AstDeclaration>>,
+        sourceExtensionNamesByModule: Map<String, Set<String>>,
         foreignTypes: Map<String, ForeignType>,
         foreignGlobals: Map<String, Symbol>,
         foreignSourceFunctions: Map<String, FunctionSymbol>,
@@ -1992,6 +2088,10 @@ class SemanticAnalyzer(
                 val targetNames = moduleTargetNames(import.module)
                 val targetSourceTypes = targetNames.asSequence()
                     .mapNotNull(sourceTypeDeclarationsByModule::get)
+                    .firstOrNull()
+                    .orEmpty()
+                val targetExtensionNames = targetNames.asSequence()
+                    .mapNotNull(sourceExtensionNamesByModule::get)
                     .firstOrNull()
                     .orEmpty()
                 val targetEnumValues = targetNames.asSequence()
@@ -2016,7 +2116,7 @@ class SemanticAnalyzer(
                     } else if (import.names.isNotEmpty()) {
                         import.names.forEach { name ->
                             if (name !in foreignTypes && name !in foreignGlobals &&
-                                name !in targetSourceTypes && name !in targetEnumValues
+                                name !in targetSourceTypes && name !in targetEnumValues && name !in targetExtensionNames
                             ) {
                                 diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
                             }
@@ -2031,7 +2131,9 @@ class SemanticAnalyzer(
                     return@forEach
                 }
                 import.names.forEach { name ->
-                    if (name in targetSourceTypes || name in targetEnumValues) return@forEach
+                    if (name in targetSourceTypes || name in targetEnumValues ||
+                        name in targetExtensionNames && name !in targetFunctions.orEmpty()
+                    ) return@forEach
                     if (name in foreignTypes || name in foreignGlobals) return@forEach
                     val function = targetFunctions[name]
                     if (function == null) {
@@ -2435,6 +2537,7 @@ class SemanticAnalyzer(
                 val qualifiedFunction = methodCall?.let { member ->
                     (member.receiver as? AstIdentifier)?.let { receiver -> functions["${receiver.name}.${member.member}"] }
                 }
+                var ambiguousMethodCall = false
                 val resolvedMethod = if (methodCall != null && qualifiedFunction == null) {
                     val receiverType = validateExpression(
                         methodCall.receiver,
@@ -2450,16 +2553,19 @@ class SemanticAnalyzer(
                     val candidates = activeMethodRegistry.lookup(
                         ReceiverIdentity.of(receiverType),
                         methodCall.member,
-                        activeMethodRegistry.extensionModules
+                        activeVisibleExtensionModules,
+                        activeModuleName
                     )
                     if (candidates.size > 1) {
+                        ambiguousMethodCall = true
+                        val providers = candidates.map { it.definingModule }.distinct().sorted()
                         diagnostics.error(
-                            "ambiguous method '${methodCall.member}' for receiver '${receiverType.name}'",
+                            "ambiguous extension method '${methodCall.member}' for receiver '${receiverType.name}' from providers ${providers.joinToString()}",
                             rangeOf(methodCall.origin),
                             "SEM418"
                         )
                     }
-                    candidates.firstOrNull()?.also { method ->
+                    candidates.singleOrNull()?.also { method ->
                         resolvedMethodCalls[expression] = ResolvedMethodCall(
                             method,
                             methodCall.receiver,
@@ -2467,7 +2573,7 @@ class SemanticAnalyzer(
                         )
                     }
                 } else null
-                val indirectSignature = if (function == null && qualifiedFunction == null && resolvedMethod == null) {
+                val indirectSignature = if (function == null && qualifiedFunction == null && resolvedMethod == null && !ambiguousMethodCall) {
                     callableSignature(
                         validateExpression(
                             expression.callee,
@@ -2494,6 +2600,10 @@ class SemanticAnalyzer(
                     resolvedMethod != null -> {
                         validateCallArguments(resolvedMethod.symbol.name, resolvedMethod.parameters, false, expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                         resolvedMethod.returnType
+                    }
+                    ambiguousMethodCall -> {
+                        expression.arguments.forEach { validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive) }
+                        UnknownType(TypeId(-1))
                     }
                     indirectSignature != null -> {
                         validateCallableArguments(

@@ -356,7 +356,7 @@ class CliIntegrationTest {
             it.writeText("comptime trait int { int doubled(self) { return self * 2; } }")
         }
 
-        val output = captureStdout { assertEquals(1, Cli().run(listOf("ast", source.toString()))) }
+        val output = captureStdout { assertEquals(0, Cli().run(listOf("ast", source.toString()))) }
 
         assertTrue(output.contains("Public Trait int").not())
         assertTrue(output.contains("Trait int"))

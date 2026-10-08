@@ -34,7 +34,7 @@ class CompilerIntegrationTest {
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         val model = assertNotNull(result.semanticModel)
         val owner = model.structs.getValue("counter_t")
-        val method = model.lookupMethods(owner, "read", setOf("<main>")).single()
+        val method = model.lookupMethods(owner, "read", "<main>").single()
         assertTrue(method.isExtension)
         assertEquals("<main>", method.definingModule)
         assertEquals("counter_t", method.owner.name)
