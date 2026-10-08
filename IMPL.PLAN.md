@@ -4228,7 +4228,7 @@ declaration.
   - R3.1.3 [DONE] — verify Linux primitive declarations through semantic
     identity, emitted C, target layout, compiler probe, and independent C17
     caller, including `long double`.
-  - R3.1.4 [TODO] — verify Windows LLP64 primitive declarations and
+  - R3.1.4 [DOING] — verify Windows LLP64 primitive declarations and
     independent caller ABI; resolve the supported Windows x86_64 compiler
     profile for GNU x87 versus MSVC binary64 `long double` before claiming
     interchangeability. Windows execution is deferred to final validation.
@@ -4278,7 +4278,7 @@ This completes the Linux-only acceptance scope of R3.1.3. Windows LLP64
 execution and compiler-profile selection are isolated in R3.1.4 and remain
 unverified; descriptor-only Windows assertions are not Windows test evidence.
 
-### R3.1.4 Windows ABI acceptance (TODO)
+### R3.1.4 Windows ABI acceptance (DOING)
 
 R3.1.4 remains open until final Windows validation compiles generated
 multiword-integer and floating declarations, executes independent Windows C17
@@ -4287,7 +4287,17 @@ compiler against the target descriptor. The Windows x86_64 descriptor
 currently describes MinGW/GNU x87 `long double`; an MSVC compiler's binary64
 `long double` is rejected by the probe. The implementation must either add a
 separate MSVC ABI profile or explicitly constrain the supported compiler for
-that target. No Windows execution or compatibility is claimed here.
+that target.
+
+**Progress evidence, not completion:** `WindowsAbiIntegrationTest` compiles
+generated C+ declarations and an independent C17 caller with
+`x86_64-w64-mingw32-gcc`, statically checks LLP64 `long`, 64-bit `long long`,
+and the descriptor's 16-byte/64-bit-mantissa GNU x87 `long double`, then
+executes scalar and integer/floating aggregate argument/return round trips
+under Wine. The fixture passes locally. This exercises the selected MinGW
+profile in Wine; it does not establish native Windows behavior or validate the
+separate MSVC profile. Native Windows execution remains required before R3.1.4
+can be marked done.
 
 ### R3.2/R3.3 completion record
 
@@ -5556,7 +5566,11 @@ hard-coded CLI path.
   The MinGW integration fixture also declares initialized C+ `thread_local`
   storage and executes the resulting PE under Wine 11.0 when Wine is present.
   The fixture passes, exercising process startup, emulated TLS initialization,
-  TLS reads, and TLS writes. The first Wine prefix attempt stalled while
+  TLS reads, and TLS writes. `WindowsAbiIntegrationTest` additionally checks
+  LLP64 integer widths, the selected GNU x87 `long double` profile, and
+  independent scalar/aggregate caller round trips under Wine. These are
+  Windows GNU-ABI compatibility executions, not native Windows validation.
+  The first Wine prefix attempt stalled while
   installing optional components; initializing an isolated prefix with
   `WINEDLLOVERRIDES=mscoree,mshtml=` succeeded. This is Wine compatibility
   execution evidence, not native Windows OS evidence. SSH to the requested
