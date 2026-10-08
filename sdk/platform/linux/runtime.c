@@ -6,11 +6,16 @@ static long cplus_normalize_linux_result(long result) {
     long error;
     if (result >= 0) return result;
     error = -result;
-    if (error == 2) return CPLUS_PAL_NOT_FOUND;
-    if (error == 13) return CPLUS_PAL_ACCESS_DENIED;
-    if (error == 22) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (error == 2 || error == 20) return CPLUS_PAL_NOT_FOUND;
+    if (error == 1 || error == 13) return CPLUS_PAL_ACCESS_DENIED;
+    if (error == 22 || error == 36) return CPLUS_PAL_INVALID_ARGUMENT;
     if (error == 38) return CPLUS_PAL_UNSUPPORTED;
     return CPLUS_PAL_IO_ERROR;
+}
+
+static long cplus_normalize_linux_file_result(long result) {
+    if (result == -9) return CPLUS_PAL_INVALID_ARGUMENT;
+    return cplus_normalize_linux_result(result);
 }
 
 #if defined(__x86_64__)
@@ -173,6 +178,16 @@ static int cplus_linux_utf8_is_valid(const unsigned char* text, unsigned long lo
             (code_point >= 0xd800 && code_point <= 0xdfff)) return 0;
     }
     return 1;
+}
+
+static int cplus_linux_path_is_valid(const char* path) {
+    unsigned long long length = 0;
+    if (!path || path[0] == '\0') return 0;
+    while (path[length] != '\0') {
+        if (length == 0x7fffffffffffffffULL) return 0;
+        length++;
+    }
+    return cplus_linux_utf8_is_valid((const unsigned char*)path, length);
 }
 
 void* platform_page_allocate(unsigned long long page_count) {
@@ -657,16 +672,20 @@ long long platform_write_stderr(const char* buffer, unsigned long long length) {
 long long platform_file_open(const char* path, unsigned long long mode) {
     long access;
     long flags = 0;
-    if (!path || (mode & (CPLUS_FILE_READ | CPLUS_FILE_WRITE)) == 0) return CPLUS_PAL_INVALID_ARGUMENT;
+    const unsigned long long valid_mode = CPLUS_FILE_READ | CPLUS_FILE_WRITE | CPLUS_FILE_CREATE | CPLUS_FILE_TRUNCATE;
+    if (!cplus_linux_path_is_valid(path) || (mode & (CPLUS_FILE_READ | CPLUS_FILE_WRITE)) == 0 ||
+        (mode & ~valid_mode) != 0 || ((mode & CPLUS_FILE_TRUNCATE) && !(mode & CPLUS_FILE_WRITE))) {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
     access = (mode & CPLUS_FILE_WRITE) ? ((mode & CPLUS_FILE_READ) ? 2 : 1) : 0;
     if (access == 2) flags |= 2;
     else if (access == 1) flags |= 1;
     if (mode & CPLUS_FILE_CREATE) flags |= 64;
     if (mode & CPLUS_FILE_TRUNCATE) flags |= 512;
 #if defined(__x86_64__)
-    return cplus_normalize_linux_result(cplus_linux_syscall4(257, -100, (long)path, flags, 0666));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall4(257, -100, (long)path, flags, 0666));
 #elif defined(__aarch64__)
-    return cplus_normalize_linux_result(cplus_linux_syscall4(56, -100, (long)path, flags, 0666));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall4(56, -100, (long)path, flags, 0666));
 #else
     (void)flags;
     return CPLUS_PAL_UNSUPPORTED;
@@ -674,12 +693,12 @@ long long platform_file_open(const char* path, unsigned long long mode) {
 }
 
 long long platform_file_read(long long handle, void* buffer, unsigned long long length) {
-    if (!buffer && length != 0) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (handle < 0 || (!buffer && length != 0) || length > 0x7fffffffffffffffULL) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (length == 0) return 0;
 #if defined(__x86_64__)
-    if (length > 0x7fffffffffffffffULL) return CPLUS_PAL_INVALID_ARGUMENT;
-    return cplus_normalize_linux_result(cplus_linux_syscall3(0, (long)handle, (long)buffer, (long)length));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall3(0, (long)handle, (long)buffer, (long)length));
 #elif defined(__aarch64__)
-    return cplus_normalize_linux_result(cplus_linux_syscall3(63, handle, (long)buffer, (long)length));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall3(63, handle, (long)buffer, (long)length));
 #else
     (void)handle; (void)buffer; (void)length;
     return CPLUS_PAL_UNSUPPORTED;
@@ -687,12 +706,12 @@ long long platform_file_read(long long handle, void* buffer, unsigned long long 
 }
 
 long long platform_file_write(long long handle, const void* buffer, unsigned long long length) {
-    if (!buffer && length != 0) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (handle < 0 || (!buffer && length != 0) || length > 0x7fffffffffffffffULL) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (length == 0) return 0;
 #if defined(__x86_64__)
-    if (length > 0x7fffffffffffffffULL) return CPLUS_PAL_INVALID_ARGUMENT;
-    return cplus_normalize_linux_result(cplus_linux_syscall3(1, (long)handle, (long)buffer, (long)length));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall3(1, (long)handle, (long)buffer, (long)length));
 #elif defined(__aarch64__)
-    return cplus_normalize_linux_result(cplus_linux_syscall3(64, handle, (long)buffer, (long)length));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall3(64, handle, (long)buffer, (long)length));
 #else
     (void)handle; (void)buffer; (void)length;
     return CPLUS_PAL_UNSUPPORTED;
@@ -700,10 +719,11 @@ long long platform_file_write(long long handle, const void* buffer, unsigned lon
 }
 
 int platform_file_close(long long handle) {
+    if (handle < 0) return (int)CPLUS_PAL_INVALID_ARGUMENT;
 #if defined(__x86_64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall1(3, (long)handle));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall1(3, (long)handle));
 #elif defined(__aarch64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall1(57, (long)handle));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall1(57, (long)handle));
 #else
     (void)handle;
     return (int)CPLUS_PAL_UNSUPPORTED;
@@ -713,9 +733,9 @@ int platform_file_close(long long handle) {
 long long platform_file_seek(long long handle, long long offset, unsigned int origin) {
     if (handle < 0 || origin > CPLUS_SEEK_END) return CPLUS_PAL_INVALID_ARGUMENT;
 #if defined(__x86_64__)
-    return cplus_normalize_linux_result(cplus_linux_syscall3(8, (long)handle, (long)offset, (long)origin));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall3(8, (long)handle, (long)offset, (long)origin));
 #elif defined(__aarch64__)
-    return cplus_normalize_linux_result(cplus_linux_syscall3(62, (long)handle, (long)offset, (long)origin));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall3(62, (long)handle, (long)offset, (long)origin));
 #else
     (void)offset;
     (void)origin;
@@ -726,7 +746,7 @@ long long platform_file_seek(long long handle, long long offset, unsigned int or
 int platform_file_metadata(const char* path, cplus_file_metadata_t* metadata) {
     struct cplus_linux_statx status;
     long result;
-    if (!path || !metadata) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (!cplus_linux_path_is_valid(path) || !metadata) return (int)CPLUS_PAL_INVALID_ARGUMENT;
 #if defined(__x86_64__)
     result = cplus_linux_syscall6(332, -100, (long)path, 0, 0x7ff, (long)&status, 0);
 #elif defined(__aarch64__)
@@ -735,7 +755,7 @@ int platform_file_metadata(const char* path, cplus_file_metadata_t* metadata) {
     (void)status;
     return (int)CPLUS_PAL_UNSUPPORTED;
 #endif
-    result = cplus_normalize_linux_result(result);
+    result = cplus_normalize_linux_file_result(result);
     if (result < 0) return (int)result;
 
     metadata->size_bytes = status.size;
@@ -750,44 +770,44 @@ int platform_file_metadata(const char* path, cplus_file_metadata_t* metadata) {
 }
 
 int platform_directory_create(const char* path) {
-    if (!path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (!cplus_linux_path_is_valid(path)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
 #if defined(__x86_64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall3(258, -100, (long)path, 0777));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall3(258, -100, (long)path, 0777));
 #elif defined(__aarch64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall3(34, -100, (long)path, 0777));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall3(34, -100, (long)path, 0777));
 #else
     return (int)CPLUS_PAL_UNSUPPORTED;
 #endif
 }
 
 int platform_file_remove(const char* path) {
-    if (!path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (!cplus_linux_path_is_valid(path)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
 #if defined(__x86_64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall3(263, -100, (long)path, 0));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall3(263, -100, (long)path, 0));
 #elif defined(__aarch64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall3(35, -100, (long)path, 0));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall3(35, -100, (long)path, 0));
 #else
     return (int)CPLUS_PAL_UNSUPPORTED;
 #endif
 }
 
 int platform_directory_remove(const char* path) {
-    if (!path) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (!cplus_linux_path_is_valid(path)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
 #if defined(__x86_64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall3(263, -100, (long)path, 0x200));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall3(263, -100, (long)path, 0x200));
 #elif defined(__aarch64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall3(35, -100, (long)path, 0x200));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall3(35, -100, (long)path, 0x200));
 #else
     return (int)CPLUS_PAL_UNSUPPORTED;
 #endif
 }
 
 long long platform_directory_open(const char* path) {
-    if (!path) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (!cplus_linux_path_is_valid(path)) return CPLUS_PAL_INVALID_ARGUMENT;
 #if defined(__x86_64__)
-    return cplus_normalize_linux_result(cplus_linux_syscall4(257, -100, (long)path, 0x90000, 0));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall4(257, -100, (long)path, 0x90000, 0));
 #elif defined(__aarch64__)
-    return cplus_normalize_linux_result(cplus_linux_syscall4(56, -100, (long)path, 0x90000, 0));
+    return cplus_normalize_linux_file_result(cplus_linux_syscall4(56, -100, (long)path, 0x90000, 0));
 #else
     return CPLUS_PAL_UNSUPPORTED;
 #endif
@@ -814,14 +834,14 @@ long long platform_directory_read(long long handle, char* utf8_name, unsigned lo
 #else
         current_offset = cplus_linux_syscall3(62, (long)handle, 0, 1);
 #endif
-        if (current_offset < 0) return cplus_normalize_linux_result(current_offset);
+        if (current_offset < 0) return cplus_normalize_linux_file_result(current_offset);
 
 #if defined(__x86_64__)
         byte_count = cplus_linux_syscall3(217, (long)handle, (long)buffer.bytes, sizeof(buffer.bytes));
 #else
         byte_count = cplus_linux_syscall3(61, (long)handle, (long)buffer.bytes, sizeof(buffer.bytes));
 #endif
-        if (byte_count < 0) return cplus_normalize_linux_result(byte_count);
+        if (byte_count < 0) return cplus_normalize_linux_file_result(byte_count);
         if (byte_count == 0) return 0;
         if ((unsigned long long)byte_count < 19ULL) return (long long)CPLUS_PAL_IO_ERROR;
 
@@ -842,7 +862,7 @@ long long platform_directory_read(long long handle, char* utf8_name, unsigned lo
 #else
             result = cplus_linux_syscall3(62, (long)handle, next_offset, 0);
 #endif
-            if (result < 0) return cplus_normalize_linux_result(result);
+            if (result < 0) return cplus_normalize_linux_file_result(result);
             continue;
         }
 
@@ -852,7 +872,7 @@ long long platform_directory_read(long long handle, char* utf8_name, unsigned lo
 #else
             result = cplus_linux_syscall3(62, (long)handle, next_offset, 0);
 #endif
-            if (result < 0) return cplus_normalize_linux_result(result);
+            if (result < 0) return cplus_normalize_linux_file_result(result);
             return (long long)CPLUS_PAL_UNSUPPORTED;
         }
 
@@ -862,7 +882,7 @@ long long platform_directory_read(long long handle, char* utf8_name, unsigned lo
 #else
             result = cplus_linux_syscall3(62, (long)handle, current_offset, 0);
 #endif
-            if (result < 0) return cplus_normalize_linux_result(result);
+            if (result < 0) return cplus_normalize_linux_file_result(result);
             return (long long)CPLUS_PAL_BUFFER_TOO_SMALL;
         }
 
@@ -871,7 +891,7 @@ long long platform_directory_read(long long handle, char* utf8_name, unsigned lo
 #else
         result = cplus_linux_syscall3(62, (long)handle, next_offset, 0);
 #endif
-        if (result < 0) return cplus_normalize_linux_result(result);
+        if (result < 0) return cplus_normalize_linux_file_result(result);
         {
             unsigned long long index;
             for (index = 0; index < name_length; index++) utf8_name[index] = entry->name[index];
@@ -891,11 +911,11 @@ int platform_directory_close(long long handle) {
 }
 
 int platform_file_rename(const char* source, const char* target) {
-    if (!source || !target) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (!cplus_linux_path_is_valid(source) || !cplus_linux_path_is_valid(target)) return (int)CPLUS_PAL_INVALID_ARGUMENT;
 #if defined(__x86_64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall4(264, -100, (long)source, -100, (long)target));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall4(264, -100, (long)source, -100, (long)target));
 #elif defined(__aarch64__)
-    return (int)cplus_normalize_linux_result(cplus_linux_syscall4(276, -100, (long)source, -100, (long)target));
+    return (int)cplus_normalize_linux_file_result(cplus_linux_syscall4(276, -100, (long)source, -100, (long)target));
 #else
     return (int)CPLUS_PAL_UNSUPPORTED;
 #endif

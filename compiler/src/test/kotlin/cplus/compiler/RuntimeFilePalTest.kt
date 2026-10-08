@@ -17,11 +17,13 @@ class RuntimeFilePalTest {
         val nestedPath = directory.resolve("nested").toAbsolutePath().normalize()
         val sourcePath = nestedPath.resolve("source.txt").toAbsolutePath().normalize()
         val renamedPath = nestedPath.resolve("renamed.txt").toAbsolutePath().normalize()
+        val missingPath = nestedPath.resolve("missing.txt").toAbsolutePath().normalize()
         val source = directory.resolve("file-pal.c")
         val executable = directory.resolve(if (target.targetTriple.startsWith("windows-")) "file-pal.exe" else "file-pal")
         val nestedName = cString(nestedPath.toString().replace('\\', '/'))
         val sourceName = cString(sourcePath.toString().replace('\\', '/'))
         val renamedName = cString(renamedPath.toString().replace('\\', '/'))
+        val missingName = cString(missingPath.toString().replace('\\', '/'))
         Files.writeString(source, """
             #include "cplus_platform.h"
             #include <stddef.h>
@@ -37,10 +39,12 @@ class RuntimeFilePalTest {
                 const char* source = "$sourceName";
                 const char* renamed = "$renamedName";
                 const char* nested = "$nestedName";
+                const char* missing = "$missingName";
                 const char* text = "portable";
                 char buffer[8];
                 char entry[32];
                 char tiny[2];
+                char invalid_utf8_path[3] = { (char)0xc0, (char)0xaf, '\0' };
                 long long handle;
                 long long result;
                 long long position;
@@ -49,9 +53,30 @@ class RuntimeFilePalTest {
                 (void)argc;
                 (void)argv;
                 if (CPLUS_PAL_API_VERSION != 4) return 10;
+                if (platform_file_open("", CPLUS_FILE_READ) != CPLUS_PAL_INVALID_ARGUMENT) return 38;
+                if (platform_file_open(source, 0) != CPLUS_PAL_INVALID_ARGUMENT) return 39;
+                if (platform_file_open(source, CPLUS_FILE_READ | CPLUS_FILE_TRUNCATE) != CPLUS_PAL_INVALID_ARGUMENT) return 40;
+                if (platform_file_open(source, CPLUS_FILE_READ | 0x10ULL) != CPLUS_PAL_INVALID_ARGUMENT) return 41;
+                if (platform_file_open(invalid_utf8_path, CPLUS_FILE_READ) != CPLUS_PAL_INVALID_ARGUMENT) return 42;
+                if (platform_file_open(missing, CPLUS_FILE_READ) != CPLUS_PAL_NOT_FOUND) return 43;
+                if (platform_file_metadata(missing, &metadata) != CPLUS_PAL_NOT_FOUND) return 44;
+                if (platform_file_remove(missing) != CPLUS_PAL_NOT_FOUND) return 45;
+                if (platform_directory_open(missing) != CPLUS_PAL_NOT_FOUND) return 46;
+                if (platform_file_rename(missing, renamed) != CPLUS_PAL_NOT_FOUND) return 47;
+                if (platform_file_read(-1, buffer, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 48;
+                if (platform_file_write(-1, text, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 49;
+                if (platform_file_close(-1) != CPLUS_PAL_INVALID_ARGUMENT) return 50;
+                if (platform_file_seek(-1, 0, CPLUS_SEEK_BEGIN) != CPLUS_PAL_INVALID_ARGUMENT) return 51;
+                if (platform_file_read(0x7fffffffffffffffLL, buffer, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 55;
+                if (platform_file_write(0x7fffffffffffffffLL, text, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 56;
+                if (platform_file_close(0x7fffffffffffffffLL) != CPLUS_PAL_INVALID_ARGUMENT) return 57;
+                if (platform_file_seek(0x7fffffffffffffffLL, 0, CPLUS_SEEK_BEGIN) != CPLUS_PAL_INVALID_ARGUMENT) return 58;
                 if (platform_directory_create(nested) != 0) return 28;
                 handle = std_fs_open(source, CPLUS_FILE_WRITE | CPLUS_FILE_CREATE | CPLUS_FILE_TRUNCATE);
                 if (handle < 0) return 11;
+                if (platform_file_read(handle, (void*)0, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 52;
+                if (platform_file_write(handle, (const void*)0, 1) != CPLUS_PAL_INVALID_ARGUMENT) return 53;
+                if (platform_file_read(handle, (void*)0, 0) != 0 || platform_file_write(handle, (const void*)0, 0) != 0) return 54;
                 result = std_fs_write(handle, text, 8);
                 if (result != 8) return 12;
                 if (std_fs_close(handle) != 0) return 13;
@@ -105,6 +130,10 @@ class RuntimeFilePalTest {
             val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
             val output = process.inputStream.bufferedReader().readText()
             assertEquals(0, process.waitFor(), output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
             assertTrue(!Files.exists(renamedPath))
             assertTrue(!Files.exists(nestedPath))
         } finally {

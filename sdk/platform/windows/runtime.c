@@ -225,9 +225,9 @@ __declspec(dllimport) __declspec(noreturn) void __stdcall ExitProcess(__cplus_dw
 
 static long cplus_normalize_windows_error(void) {
     __cplus_dword error = GetLastError();
-    if (error == 2 || error == 3) return CPLUS_PAL_NOT_FOUND;
+    if (error == 2 || error == 3 || error == 267) return CPLUS_PAL_NOT_FOUND;
     if (error == 5) return CPLUS_PAL_ACCESS_DENIED;
-    if (error == 6 || error == 87) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (error == 6 || error == 87 || error == 123 || error == 206) return CPLUS_PAL_INVALID_ARGUMENT;
     if (error == 1 || error == 50) return CPLUS_PAL_UNSUPPORTED;
     if (error == 1113) return CPLUS_PAL_UNSUPPORTED;
     return CPLUS_PAL_IO_ERROR;
@@ -239,7 +239,7 @@ static unsigned short* cplus_windows_path(const char* path) {
     int index;
     __cplus_handle heap;
     unsigned short* result;
-    if (!path) return (unsigned short*)0;
+    if (!path || path[0] == '\0') return (unsigned short*)0;
     length = MultiByteToWideChar(__CPLUS_CP_UTF8, __CPLUS_MB_ERR_INVALID_CHARS, path, -1, (unsigned short*)0, 0);
     if (length <= 0 || length > __CPLUS_MAX_COMMAND_LINE) return (unsigned short*)0;
     heap = GetProcessHeap();
@@ -581,7 +581,11 @@ long long platform_file_open(const char* path, unsigned long long mode) {
     unsigned long creation;
     unsigned short* wide_path;
     __cplus_handle handle;
-    if (!path || (mode & (CPLUS_FILE_READ | CPLUS_FILE_WRITE)) == 0) return CPLUS_PAL_INVALID_ARGUMENT;
+    const unsigned long long valid_mode = CPLUS_FILE_READ | CPLUS_FILE_WRITE | CPLUS_FILE_CREATE | CPLUS_FILE_TRUNCATE;
+    if (!path || (mode & (CPLUS_FILE_READ | CPLUS_FILE_WRITE)) == 0 ||
+        (mode & ~valid_mode) != 0 || ((mode & CPLUS_FILE_TRUNCATE) && !(mode & CPLUS_FILE_WRITE))) {
+        return CPLUS_PAL_INVALID_ARGUMENT;
+    }
     if (mode & CPLUS_FILE_READ) access |= __CPLUS_GENERIC_READ;
     if (mode & CPLUS_FILE_WRITE) access |= __CPLUS_GENERIC_WRITE;
     if ((mode & CPLUS_FILE_CREATE) && (mode & CPLUS_FILE_TRUNCATE)) creation = __CPLUS_CREATE_ALWAYS;
@@ -605,26 +609,28 @@ long long platform_file_open(const char* path, unsigned long long mode) {
 
 long long platform_file_read(long long handle, void* buffer, unsigned long long length) {
     __cplus_dword count = 0;
-    if ((void*)handle == __CPLUS_INVALID_HANDLE || (!buffer && length != 0) || length > 0xffffffffULL) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (handle < 0 || (!buffer && length != 0) || length > 0xffffffffULL) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (length == 0) return 0;
     return ReadFile((__cplus_handle)handle, buffer, (__cplus_dword)length, &count, (void*)0)
         ? (long)count : cplus_normalize_windows_error();
 }
 
 long long platform_file_write(long long handle, const void* buffer, unsigned long long length) {
     __cplus_dword count = 0;
-    if ((void*)handle == __CPLUS_INVALID_HANDLE || (!buffer && length != 0) || length > 0xffffffffULL) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (handle < 0 || (!buffer && length != 0) || length > 0xffffffffULL) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (length == 0) return 0;
     return WriteFile((__cplus_handle)handle, buffer, (__cplus_dword)length, &count, (void*)0)
         ? (long)count : cplus_normalize_windows_error();
 }
 
 int platform_file_close(long long handle) {
-    if ((void*)handle == __CPLUS_INVALID_HANDLE) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (handle < 0) return (int)CPLUS_PAL_INVALID_ARGUMENT;
     return CloseHandle((__cplus_handle)handle) ? 0 : (int)cplus_normalize_windows_error();
 }
 
 long long platform_file_seek(long long handle, long long offset, unsigned int origin) {
     long long position = 0;
-    if ((void*)handle == __CPLUS_INVALID_HANDLE || origin > CPLUS_SEEK_END) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (handle < 0 || origin > CPLUS_SEEK_END) return CPLUS_PAL_INVALID_ARGUMENT;
     if (!SetFilePointerEx((__cplus_handle)handle, offset, &position, origin)) {
         return cplus_normalize_windows_error();
     }
@@ -751,7 +757,7 @@ long long platform_directory_open(const char* path) {
 
 long long platform_directory_read(long long handle, char* utf8_name, unsigned long long capacity) {
     __cplus_directory_iterator* iterator = (__cplus_directory_iterator*)handle;
-    if (!iterator || (void*)handle == __CPLUS_INVALID_HANDLE || !utf8_name) {
+    if (handle < 0 || !iterator || !utf8_name) {
         return (long long)CPLUS_PAL_INVALID_ARGUMENT;
     }
     for (;;) {
@@ -819,7 +825,7 @@ long long platform_directory_read(long long handle, char* utf8_name, unsigned lo
 int platform_directory_close(long long handle) {
     __cplus_directory_iterator* iterator = (__cplus_directory_iterator*)handle;
     int result;
-    if (!iterator || (void*)handle == __CPLUS_INVALID_HANDLE) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    if (handle < 0 || !iterator) return (int)CPLUS_PAL_INVALID_ARGUMENT;
     result = FindClose(iterator->search_handle) ? 0 : (int)cplus_normalize_windows_error();
     HeapFree(GetProcessHeap(), 0, iterator);
     return result;
