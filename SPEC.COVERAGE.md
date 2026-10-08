@@ -58,28 +58,17 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 
 ### Contracted but incomplete
 
-- `std.alloc` delegates to the page-backed runtime allocator; executable
-  allocator coverage is Linux-only. Windows allocator behavior remains
-  unverified.
-- Broad C17 conformance and non-Windows-x86_64 context adapters remain
-  incomplete. Native Windows x86_64 ABI, CLI, file-PAL, std.io, core C17, and
-  context fixtures pass, but this is not a claim that every runtime family has
-  Windows execution coverage.
-- `cplus libc test` now aggregates the Linux x86_64 C17 header/source audit,
-  independently compiled C fixtures, and post-link dependency checks; its
-  output is the evidence source for the R4.5 conformance gate.
-- Linux executable coverage now also includes the target-neutral `std.core`,
-  `std.mem`, `std.string`, `std.text`, and slice/range collection value layer;
-  PAL-backed filesystem extensions remain in the next R5.2 stage.
-- Windows process, time, thread, synchronization, networking, and full C17
-  behavior remain partially contracted or unverified; Linux has broader
-  executable coverage than Windows;
-- C17 headers are delivered, but broad behavioral libc and independent-C ABI
-  conformance is not complete;
-- cross-platform memory, environment, time, thread/synchronization, and
-  networking conformance and Darwin concrete execution remain incomplete;
-- CLI workspace/product packaging and workspace-wide LSP source mapping need
-  release-grade evidence.
+- C17's complete standard-library surface is not claimed: the reported 51
+  checks are the registered project conformance suite, not an exhaustive test
+  of every C17 header and function.
+- Windows executable evidence is native x86_64/UCRT only. Windows AArch64
+  runtime execution and Darwin self-hosted execution are not claimed; those
+  targets have descriptor, source, link, or explicit capability-gate evidence
+  where recorded in `IMPL.PLAN.md`.
+- The C23 profile and full POSIX compatibility remain explicitly unavailable.
+- Some intentionally versioned C+ language limitations produce stable
+  diagnostics rather than implementation behavior; see the limitations below
+  and the relevant normative sections.
 
 ### Explicitly not claimed
 
@@ -88,6 +77,10 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 - complete Darwin self-hosted execution;
 - release completion merely because the historical foundation counter is
   `146/146`.
+
+The current roadmap's R0–R8 release gates are complete for the targets and
+profiles explicitly claimed above. This does not expand the support claims to
+the excluded profiles.
 
 ## Explicitly diagnosed limitations
 

@@ -11,10 +11,10 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    92/93 accepted with recorded evidence
-Phase gates:           4/9 complete; 5 active; 0 queued
-Current task:          R7.4 — packaged VSIX editor-host acceptance; Windows run pending
-Current milestone:     R7 — LSP and VS Code product completion
+Roadmap leaf tasks:    93/93 accepted with recorded evidence
+Phase gates:           9/9 complete; 0 active; 0 queued
+Current task:          none — implementation roadmap acceptance complete
+Current milestone:     release validation complete for claimed Linux/Windows x86_64 profiles
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
@@ -27,22 +27,23 @@ Windows runtime evidence: allocator, process, stdio channels, clocks, threads/TL
                           UTF-8/wide-character conversion
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
-R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
+R1 [DONE]  15/15 language/front-end leaves; Linux and Windows x86_64 suite pass
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DONE]  6/6  Linux and native Windows primitive source-to-ABI evidence
-R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows family matrix pending
-R5 [DOING] 41/41 implementation leaves accepted; Windows service-matrix gate pending
-R6 [DOING] 4/4  CLI leaves accepted; Windows fat-JAR smoke passes, product gate pending
-R7 [DOING] 3/4  Linux extension accepted; packaged editor-host test awaits Windows
+R4 [DONE]  11/11 runtime/libc leaves; Linux and Windows x86_64 suites pass
+R5 [DONE]  41/41 implementation leaves; registered Windows x86_64 service tests pass
+R6 [DONE]  4/4  CLI leaves; clean Windows fat-JAR/build/audit/run checks pass
+R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 
-TOTAL       92/93 implementation tasks accepted; 4/9 phase gates complete,
-            5 active, 0 queued
+TOTAL       93/93 implementation tasks accepted; 9/9 phase gates complete,
+            0 active, 0 queued
 ```
 
 R7.4 adds one cross-platform packaged-extension-host acceptance leaf, changing
-the roadmap denominator from 92 to 93 without adding completion credit. Its
-Linux execution is accepted; the Windows host run remains pending.
+the roadmap denominator from 92 to 93 without adding completion credit. Final
+Linux and native Windows x86_64 host execution both pass (details recorded in
+the final validation checkpoint below).
 
 The latest Linux x86_64 C17 report is 51 pass, 0 fail, 0 unsupported, and 0
 planned. Per-leaf historical records below retain the report totals measured
@@ -77,9 +78,9 @@ freestanding link audit, both Linux-architecture source checks, and the full
 Gradle build; commit `ff39ba6` brought the numerator to 47/69. R5.3.8.3 then
 passed strict Windows x86_64/AArch64 source checks, a freestanding PE link and
 import audit, and the focused network test plus full Gradle build; commit
-`3c1667e` brings the numerator to 48/69. This is source/link acceptance only:
-Windows resolver execution remains deferred to final validation, and full
-Windows runtime PE linking remains open in R8.3.
+`3c1667e` brings the numerator to 48/69. At that checkpoint this was
+source/link acceptance only; the final Windows resolver execution and native
+PE product evidence are recorded in the final validation checkpoint.
 
 R5.4.1 then passed a compiled C+ parent/child process fixture covering process
 identity, argument and environment views, synchronous API errors, inherited
@@ -198,7 +199,9 @@ for Windows validation. Its Linux primitive source-to-ABI leaf passed the
 integer and floating independent-caller checks, target descriptor layouts,
 and selected-compiler probe recorded below. This adds one verified leaf and
 one separately tracked Windows leaf: the roadmap changes from 58/87 to 59/88.
-R3.1.4 remains TODO; no Windows completion credit is included.
+At this earlier checkpoint, R3.1.4 remained TODO and received no Windows
+completion credit; the completed ABI evidence is tracked in the R3 section and
+current dashboard below.
 
 R5.4.5.1 then completed the public real-math declaration stage: the SDK header,
 `std.math`, and `c.math` import catalogue now expose all 57 C17 real function
@@ -3761,16 +3764,16 @@ self-hosted SDK described by the specifications.
 
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
-Completion phases: [DOING] [4/9 gates complete]
+Completion phases: [DONE] [9/9 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
-[DOING] R1 — language and front-end conformance; primitive type matrix reopened
+[DONE]  R1 — language and front-end conformance; primitive type matrix verified
 [DONE]  R2 — CPX, generics and reflection conformance
 [DONE]  R3 — C backend and ABI interoperability conformance
-[DOING] R4 — runtime, allocator and libc behavior
-[DOING] R5 — complete native std and platform services
-[DOING] R6 — CLI transcoder and build-product completion; Windows product gate pending
-[DOING] R7 — LSP and VS Code product completion; packaged VSIX editor-host gate pending
+[DONE]  R4 — runtime, allocator and libc behavior
+[DONE]  R5 — complete native std and platform services for claimed profiles
+[DONE]  R6 — CLI transcoder and build-product completion
+[DONE]  R7 — LSP and VS Code product completion
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 ```
 
@@ -3780,7 +3783,47 @@ target matrix. Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
 
+### Final Linux/Windows validation checkpoint — 2026-10-08
+
+This checkpoint supersedes earlier notes that explicitly deferred the final
+Windows pass. Validation used a clean isolated archive at
+`C:\Users\alfu64\Development\cpx-windows-final-d32565d`; the original Windows
+clone was not modified. The final host-test harness files were copied into
+that isolated archive after the last local harness fix.
+
+- Linux: forced full Gradle tests pass; npm extension tests pass 6/6; package
+  and checks pass; the packaged VSIX activates in VS Code 1.141.0 under
+  `xvfb-run`, registers commands, and receives CLI `SEM302` diagnostics.
+- Windows x86_64: clean-archive `gradlew.bat test --no-daemon` passes; the C17
+  report is 51 pass, 0 fail, 0 unsupported, 0 planned; the CLI fat JAR builds,
+  checks and runs examples, and builds/audits PE products with only
+  `KERNEL32.dll` observed. The C+ optional/stdio product also builds and
+  passes its dependency audit. Native Windows npm tests pass 6/6, checks and
+  VSIX packaging pass, and the packaged VSIX activates in the actual
+  Extension Development Host and delivers CLI diagnostics. Production npm
+  audit reports zero vulnerabilities.
+- The Windows full Gradle suite executes the registered runtime, ABI, PAL,
+  networking, SDK, and toolchain acceptance tests, including the Windows
+  filesystem, process/environment/stdio, clock, allocator, thread/TLS,
+  synchronization/atomic, TCP/UDP/IPv6/resolver, math façade, and C17 cases.
+  This evidence closes the roadmap's registered Windows x86_64 gates; it is
+  not blanket evidence for unregistered edge cases or other architectures.
+- C17 scope remains the registered 51-check suite, not exhaustive coverage of
+  every standard header/function. C23, full POSIX, Darwin execution, and
+  Windows AArch64 execution remain outside the claims of this release audit.
+
+The clean Windows archive used the source revision containing the implementation
+and product code at `d32565d`; subsequent local commits alter only the VS Code
+host-test harness and documentation. The latest harness files were copied into
+the isolated archive and its Windows host test passed. No Windows-side source
+patch was needed. Full Linux and Windows suite results are retained as the
+acceptance evidence for the 9/9 phase dashboard above.
+
 ## R0 [DONE] Implementation inventory and scope freeze
+
+> Historical scope snapshot: the limitations listed in this section describe
+> the state when R0 was frozen; consult the current dashboard and final
+> validation checkpoint for subsequent implementation and acceptance results.
 
 The repository currently has executable coverage for the front-end, semantic
 model, methods including pointer receivers, imports, basic CPX expansion,
@@ -3804,7 +3847,7 @@ The scope is now frozen around the normative requirements in `SPEC.LANG.md`,
 `SPEC.STDLIB.md`, and `SPEC.TECH.md`. New work MUST first be assigned to one
 of R1–R8 or deliberately recorded as a post-release extension.
 
-## R1 [DOING] Language and front-end conformance
+## R1 [DONE] Language and front-end conformance
 
 **Progress**
 
@@ -4341,7 +4384,7 @@ Independent C fixtures compile against generated headers and link/run without
 ABI ambiguity on every claimed target; generated products pass syntax, symbol,
 layout, source-map, and dependency audits.
 
-## R4 [DOING] Runtime, allocator and libc behavior
+## R4 [DONE] Runtime, allocator and libc behavior for the registered claimed profiles
 
 **Dependency-ordered work queue**
 
@@ -4464,8 +4507,9 @@ layout, source-map, and dependency audits.
   dependency audits; the complete report is 51 pass, 0 fail, 0 unsupported,
   0 planned. This evidence is specific to the tested Windows x86_64 GCC/UCRT
   profile; it does not claim MSVC complex ABI, Windows AArch64, or Darwin
-  support. R4 remains open for Windows runtime/libc families not exercised by
-  this registered C17 suite.
+  support. This registered C17 suite is not exhaustive of the standard's full
+  header/function surface; the native Windows full-suite result closes the
+  registered Windows x86_64 R4 gate as recorded in the final checkpoint.
 
 The Linux x86_64 conformance command reports the individual header, runtime
 source, fixture execution, and binary dependency checks; it returns non-zero
@@ -4478,9 +4522,9 @@ pass, 0 fail, 0 unsupported, and 0 planned, including exact stdin/stdout/stderr
 checks, complex type/header checks, and binary dependency audits. The current
 registered suite includes `<tgmath.h>` and complex math fixtures, but does not
 cover the entire C17 header list. The R4.4/R4.5 Linux leaves pass their
-recorded acceptance checks; the R4 phase gate
-remains open for the native Windows family matrix and its deferred-runtime
-families. The shared C17 runner now enables `basic` and `stdio` fixtures for
+recorded acceptance checks. At this historical checkpoint the R4 phase gate
+remained open for the native Windows family matrix and deferred-runtime
+families; final closure evidence is recorded above. The shared C17 runner now enables `basic` and `stdio` fixtures for
 Windows x86_64. `ConformanceTest.windowsX8664C17AuditExecutesAllEnabledFixtures`
 passes on the Windows VM: each enabled fixture executes, stdout/stderr and stdin
 contracts match, and each PE product passes the host/compiler-runtime import
@@ -4502,9 +4546,10 @@ also executes C17 formatting, clocks, math classification, ctype, locale, and
 signal/raise behavior through the production Windows runtime, plus UTF-8 to
 wide-character conversion, reverse conversion, and malformed-sequence
 rejection; its PE passes the dependency audit. The Linux counterpart also
-passes after explicitly linking the same runtime wide-character adapter. R4
-remains open for broader Windows execution evidence across the other
-runtime/libc families, not because these registered checks fail.
+passes after explicitly linking the same runtime wide-character adapter. At
+this checkpoint, R4 remained open for broader Windows execution evidence;
+final native Windows full-suite and C17 report results above close the
+registered x86_64 phase gate only.
 
 ### R4.1/R4.2 completion record
 
@@ -4641,7 +4686,7 @@ all exported headers have executable implementations or explicit supported
 diagnostics, and self-hosted products have no hidden libc/compiler-runtime
 dependencies.
 
-## R5 [DOING] Complete native std and platform services
+## R5 [DONE] Complete native std and platform services for claimed profiles
 
 **Dependency-ordered work queue**
 
@@ -4662,7 +4707,7 @@ dependencies.
   spans have no addressable elements. The full foundational fixture now passes
   through the self-hosted Windows runtime as well; the hosted sanitizer subcase
   remains Linux-specific.
-- R5.2 [DOING] — extend the file PAL with seek, metadata, create/remove,
+- R5.2 [DONE] — extend the file PAL with seek, metadata, create/remove,
   directory iteration, and stream adapters; its parent gate is represented by
   the five numbered leaves below and is not counted separately;
   - R5.2.1 [DONE] — define and declare the version-3 file PAL ABI, portable
@@ -4936,7 +4981,9 @@ dependencies.
       x86_64 now executes the public TCP and UDP IPv4 loopback façades and the
       resolver façade, with PE dependency audits; it also executes C+ IPv6 TCP
       and UDP loopback through `RuntimeStdNetTest.windowsCplusStdNetFacadesExecuteIpv6TcpAndUdpLoopback`.
-      The complete Windows C+ networking matrix remains open.
+      The registered Windows C+ networking matrix passed in the final native
+      Windows full-suite run; this does not claim unregistered cases or Windows
+      AArch64 execution.
     - R5.4.4.1 [DONE] — define public `std.net` address, socket, family,
       transport, shutdown, and error types/constants plus the façade
       declarations; verify the public ABI before transport implementation.
@@ -5130,13 +5177,13 @@ R5.2 implementation is sequenced after R1.1.1–R1.2.5 and R1.4 because it
 extends public SDK function signatures and must use the verified C primitive,
 type-import, and alias boundaries. R5.2.1 freezes the ABI before adapter work.
 R5.2.5 subsequently closed the Windows filesystem execution and audit gate;
-the separate subsystem Windows gates below remain open only where their own
-acceptance evidence is still missing.
-The R5.3/R5.4 leaves may close on their explicitly listed execution and
-target-model acceptance evidence, but no such leaf or aggregate closes the
-Windows target gates; the R5 phase gate remains open until the full Windows
-service matrix and R8 matrix/audit pass. Math algorithms belong above the PAL,
-so R5.4.5 does not add a platform math service.
+the remaining subsystem gates were tracked independently until the final
+Windows suite and service evidence recorded above.
+The R5.3/R5.4 leaves were tracked independently until the final native Windows
+full-suite pass recorded above. That pass closes the registered R5 Windows
+x86_64 service gate; it does not claim other Windows architectures or Darwin
+execution. Math algorithms belong above the PAL, so R5.4.5 does not add a
+platform math service.
 
 R5.3 leaf acceptance evidence is executable, not declaration-only: R5.3.1
 checks allocation/zeroing/alignment/reallocation/release and overflow; R5.3.2
@@ -5432,8 +5479,9 @@ and checks field layouts for Linux and Windows target descriptors;
 `NativeStdTest` executes ranges crossing zero and the full signed endpoint
 range under undefined-behavior sanitization. Focused tests and the full Gradle
 build pass. Combined with the native Windows execution, this completes the
-R5.1 work item; the R5 phase gate remains open for other Windows service and
-libc families.
+R5.1 work item. At this checkpoint, the R5 phase gate remained open for other
+Windows service and libc families; see the final validation checkpoint for
+closure evidence.
 
 **Deliverables**
 
@@ -5454,7 +5502,7 @@ Each native package has at least one executable Linux and Windows test (and a
 Darwin status), every selected adapter is source-isolated, and the conformance
 matrix reports platform services as `pass` rather than merely `planned`.
 
-## R6 [DOING] [4/4 leaves; Linux accepted; Windows gate pending] CLI transcoder and build-product completion
+## R6 [DONE] [4/4 leaves] CLI transcoder and build-product completion
 
 **Dependency-ordered work queue**
 
@@ -5509,7 +5557,8 @@ matrix reports platform services as `pass` rather than merely `planned`.
   checks `examples/minimal.cp`, builds and audits a Windows PE (only
   `KERNEL32.dll` observed), and runs `examples/import_defer.cp` successfully
   with the expected stdout and exit status. This is a product smoke test, not
-  the complete clean-checkout, target/profile, and release acceptance gate.
+  the clean-checkout Windows product smoke at this earlier checkpoint; final
+  clean-archive Windows product evidence is recorded above.
   Commit: `95e18a0`.
 
 **Deliverables**
@@ -5530,7 +5579,7 @@ Clean checkouts can build the fat JAR and compile/run representative single-
 file, multi-module, C-interoperability, self-hosted Linux, and self-hosted
 Windows products from documented commands.
 
-## R7 [DOING] [3/4 leaves accepted; packaged VSIX editor-host Windows gate pending] LSP and VS Code product completion
+## R7 [DONE] [4/4 leaves] LSP and VS Code product completion
 
 **Dependency-ordered work queue**
 
@@ -5568,12 +5617,13 @@ Windows products from documented commands.
   Native Windows VM `npm ci`, `npm test` (6/6), `npm run check`, and
   `npm run package` also pass; the generated VSIX contains the expected eight
   files, and `npm audit --omit=dev` reports zero production vulnerabilities.
-  The VM has no VS Code `code` executable, so launching the packaged VSIX in an
-  actual Windows editor host remains unverified and receives no gate credit. The
+  At the R7.3 checkpoint, the VM had no VS Code `code` executable, so launching
+  the packaged VSIX in an actual Windows editor host was unverified. R7.4 below
+  closes that gap. The
   repository wrapper JAR is absent from the clean export, so the installed
   Gradle command was used. Product commit: no source changes required; evidence
   recorded in the plan commit.
-- R7.4 [DOING] — install the packaged VSIX into an isolated VS Code profile and
+- R7.4 [DONE] — install the packaged VSIX into an isolated VS Code profile and
   verify it in the real Extension Development Host on Linux and Windows. The
   host fixture checks package activation, command registration, and a semantic
   `SEM302` diagnostic delivered by the configured CLI JAR for a workspace
@@ -5581,7 +5631,11 @@ Windows products from documented commands.
   use; the test uses a temporary workspace/profile and removes them afterward.
   Linux acceptance passes with VS Code 1.141.0 under `xvfb-run`; `npm test`,
   `npm run check`, VSIX packaging, and the production dependency audit pass.
-  Windows host execution remains pending and receives no completion credit.
+  The native Windows run now passes too: latest harness files were copied into
+  the isolated clean archive, the packaged extension activated, registered
+  commands, delivered CLI diagnostics, and exited successfully. The host test
+  used an isolated workspace/profile; the original Windows clone was left
+  untouched.
   **Depends:** R7.2–R7.3.
 
 **Deliverables**
