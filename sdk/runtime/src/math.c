@@ -1626,6 +1626,181 @@ CPLUS_MATH_DEFINE_HYPERBOLIC(
 
 #undef CPLUS_MATH_DEFINE_HYPERBOLIC
 
+#define CPLUS_MATH_DEFINE_ERROR_GAMMA( \
+    suffix, type, classifier, sign_value, absolute_value, truncate_value, is_odd, \
+    exp_value, log_value, sin_value, copy_sign) \
+    static type cplus_math_erf_positive_##suffix(type value) { \
+        int iteration; \
+        type square = value * value; \
+        type term = value; \
+        type sum = value; \
+        const type two_over_sqrt_pi = (type)1.128379167095512573896158903121545172L; \
+        for (iteration = 1; iteration <= 128; iteration++) { \
+            type previous = sum; \
+            term *= -square / (type)iteration; \
+            sum += term / (type)(2 * iteration + 1); \
+            if (sum == previous) break; \
+        } \
+        return two_over_sqrt_pi * sum; \
+    } \
+    static type cplus_math_erfc_positive_##suffix(type value) { \
+        int iteration; \
+        type square = value * value; \
+        type b; \
+        type c = (type)HUGE_VALL; \
+        type d; \
+        type fraction; \
+        type log_factor; \
+        if (square == (type)0) return (type)1; \
+        if (classifier(square) == FP_INFINITE) { \
+            errno = ERANGE; \
+            return (type)0; \
+        } \
+        b = square + (type)0.5; \
+        d = (type)1 / b; \
+        fraction = d; \
+        for (iteration = 1; iteration <= 256; iteration++) { \
+            type a = -(type)iteration * ((type)iteration - (type)0.5); \
+            type delta; \
+            b += (type)2; \
+            d = a * d + b; \
+            if (absolute_value(d) < (type)1e-30L) d = copy_sign((type)1e-30L, d); \
+            c = b + a / c; \
+            if (absolute_value(c) < (type)1e-30L) c = copy_sign((type)1e-30L, c); \
+            d = (type)1 / d; \
+            delta = d * c; \
+            { \
+                type next_fraction = fraction * delta; \
+                if (next_fraction == fraction) break; \
+                fraction = next_fraction; \
+            } \
+        } \
+        log_factor = -square + log_value(value) - (type)0.572364942924700087071713675676529356L; \
+        return exp_value(log_factor) * fraction; \
+    } \
+    type erf##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) return copy_sign((type)1, value); \
+        if (kind == FP_ZERO) return value; \
+        magnitude = absolute_value(value); \
+        if (magnitude >= (type)10) return copy_sign((type)1, value); \
+        if (magnitude < (type)1.5) \
+            return copy_sign(cplus_math_erf_positive_##suffix(magnitude), value); \
+        return copy_sign((type)1 - cplus_math_erfc_positive_##suffix(magnitude), value); \
+    } \
+    type erfc##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        type result; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) return sign_value(value) ? (type)2 : (type)0; \
+        magnitude = absolute_value(value); \
+        if (sign_value(value) && magnitude >= (type)10) return (type)2; \
+        if (magnitude < (type)1.5) result = (type)1 - cplus_math_erf_positive_##suffix(magnitude); \
+        else result = cplus_math_erfc_positive_##suffix(magnitude); \
+        return sign_value(value) ? (type)2 - result : result; \
+    } \
+    static type cplus_math_lgamma_positive_##suffix(type value) { \
+        static const type coefficients[9] = { \
+            (type)0.99999999999980993227684700473478L, \
+            (type)676.520368121885098567009190444019L, \
+            (type)-1259.13921672240287047156078755283L, \
+            (type)771.3234287776530788486528258894L, \
+            (type)-176.61502916214059906584551354L, \
+            (type)12.507343278686904814458936853L, \
+            (type)-0.13857109526572011689554707L, \
+            (type)0.000009984369578019570859563L, \
+            (type)0.000000150563273514931155834L \
+        }; \
+        type z; \
+        type sum = coefficients[0]; \
+        type t; \
+        type result; \
+        int index; \
+        if (value < (type)0.5) \
+            return cplus_math_lgamma_positive_##suffix(value + (type)1) - log_value(value); \
+        z = value - (type)1; \
+        t = z + (type)7.5; \
+        for (index = 1; index < 9; index++) sum += coefficients[index] / (z + (type)index); \
+        result = (type)0.91893853320467274178032973640561764L + \
+            (z + (type)0.5) * log_value(t) - t + log_value(sum); \
+        if (classifier(result) == FP_INFINITE) errno = ERANGE; \
+        return result; \
+    } \
+    static type cplus_math_sin_pi_##suffix(type value) { \
+        type magnitude = absolute_value(value); \
+        type integer = truncate_value(magnitude); \
+        type fraction = magnitude - integer; \
+        type result; \
+        if (fraction > (type)0.5) fraction = (type)1 - fraction; \
+        result = sin_value((type)0x1.921fb54442d18469898cc51701b8p+1L * fraction); \
+        if (is_odd(integer)) result = -result; \
+        return sign_value(value) ? -result : result; \
+    } \
+    type lgamma##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) { \
+            if (!sign_value(value)) return value; \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (kind == FP_ZERO) { errno = ERANGE; return (type)HUGE_VALL; } \
+        if (value == (type)1 || value == (type)2) return (type)0; \
+        if (value > (type)0) return cplus_math_lgamma_positive_##suffix(value); \
+        magnitude = absolute_value(value); \
+        if (truncate_value(magnitude) == magnitude) { errno = ERANGE; return (type)HUGE_VALL; } \
+        return (type)1.14472988584940017414342735135305871L - \
+            log_value(absolute_value(cplus_math_sin_pi_##suffix(value))) - \
+            cplus_math_lgamma_positive_##suffix((type)1 - value); \
+    } \
+    type tgamma##suffix(type value) { \
+        int kind = classifier(value); \
+        type magnitude; \
+        type log_magnitude; \
+        type result; \
+        if (kind == FP_NAN) return value; \
+        if (kind == FP_INFINITE) { \
+            if (!sign_value(value)) return value; \
+            errno = EDOM; \
+            return (type)NAN; \
+        } \
+        if (kind == FP_ZERO) { \
+            errno = ERANGE; \
+            return copy_sign((type)HUGE_VALL, value); \
+        } \
+        if (value == (type)1 || value == (type)2) return (type)1; \
+        if (value > (type)0) log_magnitude = cplus_math_lgamma_positive_##suffix(value); \
+        else { \
+            magnitude = absolute_value(value); \
+            if (truncate_value(magnitude) == magnitude) { errno = EDOM; return (type)NAN; } \
+            log_magnitude = (type)1.14472988584940017414342735135305871L - \
+                log_value(absolute_value(cplus_math_sin_pi_##suffix(value))) - \
+                cplus_math_lgamma_positive_##suffix((type)1 - value); \
+        } \
+        result = exp_value(log_magnitude); \
+        if (value < (type)0) result = copy_sign(result, cplus_math_sin_pi_##suffix(value)); \
+        return result; \
+    }
+
+CPLUS_MATH_DEFINE_ERROR_GAMMA(
+    f, float, cplus_math_classify_float, cplus_math_sign_float, fabsf,
+    cplus_math_truncate_float, cplus_math_is_odd_float, expf, logf, sinf,
+    cplus_math_copysign_float)
+CPLUS_MATH_DEFINE_ERROR_GAMMA(
+    , double, cplus_math_classify_double, cplus_math_sign_double, fabs,
+    cplus_math_truncate_double, cplus_math_is_odd_double, exp, log, sin,
+    cplus_math_copysign_double)
+CPLUS_MATH_DEFINE_ERROR_GAMMA(
+    l, long double, cplus_math_classify_long_double, cplus_math_sign_long_double, fabsl,
+    cplus_math_truncate_long_double, cplus_math_is_odd_long_double, expl, logl, sinl,
+    cplus_math_copysign_long_double)
+
+#undef CPLUS_MATH_DEFINE_ERROR_GAMMA
+
 static void cplus_math_increment_magnitude(unsigned char* bytes, unsigned int sign_byte) {
     unsigned int index;
     for (index = 0; index < sign_byte; index++) {
