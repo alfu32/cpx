@@ -670,6 +670,7 @@ usage: cplus <command> <source.cp> [other.cp ...] [--sdk <manifest>] [--c-source
 Commands:
 
 ```text
+new         scaffold a project in a directory
 transcode   translate one C+ source file to C
 emit-c      alias for transcode
 check       parse and semantically validate one source file
@@ -678,6 +679,24 @@ expand      print the post-CPX normalized AST
 build       transcode and compile one source file with cc
 run         build and execute one source file
 lsp         serve compiler diagnostics over stdio JSON-RPC
+```
+
+## Create a project
+
+Scaffold a project at the requested path (creating missing parent folders):
+
+```bash
+cplus new path/to/my-project
+```
+
+The scaffold contains `cplus.toml`, `src/main.cp`, and a short `README.md`.
+If the destination already exists and is not empty, the command warns and
+leaves it unchanged. Then validate and run the project with:
+
+```bash
+cd path/to/my-project
+cplus check --project cplus.toml
+cplus run --project cplus.toml
 ```
 
 ---

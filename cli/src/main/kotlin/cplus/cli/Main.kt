@@ -43,6 +43,7 @@ internal class Cli {
         val command = args.first()
         return when (command) {
             "transcode", "emit-c" -> transcode(args.drop(1))
+            "new" -> newProject(args.drop(1))
             "check" -> check(args.drop(1))
             "ast" -> ast(args.drop(1))
             "expand" -> expand(args.drop(1))
@@ -97,6 +98,63 @@ internal class Cli {
             mapPath.writeText(serializeSourceMap(generatedUnit, result.artifacts, parsed.sourceBase, compiler::sourcePathFor))
         }
         return 0
+    }
+
+    private fun newProject(arguments: List<String>): Int {
+        if (arguments.size != 1 || arguments.single().startsWith("-")) {
+            System.err.println("usage: cplus new <directory>")
+            return 2
+        }
+
+        val projectDirectory = Path.of(arguments.single()).toAbsolutePath().normalize()
+        val generatedFiles = linkedMapOf(
+            Path.of("cplus.toml") to """
+                [project]
+                entry = "src/main.cp"
+                source_roots = ["src"]
+            """.trimIndent() + "\n",
+            Path.of("src/main.cp") to """
+                int main() {
+                    return 0;
+                }
+            """.trimIndent() + "\n",
+            Path.of("README.md") to """
+                # C+ project
+
+                Build and run this project with:
+
+                ```sh
+                cplus check --project cplus.toml
+                cplus run --project cplus.toml
+                ```
+            """.trimIndent() + "\n"
+        )
+
+        if (Files.exists(projectDirectory) && !Files.isDirectory(projectDirectory)) {
+            System.err.println("project path exists and is not a directory: $projectDirectory")
+            return 1
+        }
+        val isNonEmpty = Files.isDirectory(projectDirectory) && Files.list(projectDirectory).use { entries ->
+            entries.findAny().isPresent
+        }
+        if (isNonEmpty) {
+            System.err.println("warning: project directory is not empty; leaving it unchanged: $projectDirectory")
+            return 1
+        }
+
+        return try {
+            Files.createDirectories(projectDirectory.resolve("src"))
+            generatedFiles.forEach { (relativePath, contents) ->
+                val output = projectDirectory.resolve(relativePath)
+                Files.createDirectories(output.parent)
+                Files.writeString(output, contents)
+            }
+            println("created C+ project at $projectDirectory")
+            0
+        } catch (error: Exception) {
+            System.err.println("unable to create C+ project at '$projectDirectory': ${error.message}")
+            1
+        }
     }
 
     private fun check(arguments: List<String>): Int {
@@ -953,6 +1011,7 @@ internal class Cli {
         stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--project <cplus.toml> | --workspace <cplus.workspace.toml>] [--target <triple>] [--runtime <profile>] [--libc <profile>] [--c-compiler <path>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>] [--map <file>]")
         stream.println()
         stream.println("commands:")
+        stream.println("  new         scaffold a project in a new directory")
         stream.println("  transcode   translate one C+ source file to C")
         stream.println("  emit-c      alias for transcode")
         stream.println("  check       parse and semantically validate one source or project")

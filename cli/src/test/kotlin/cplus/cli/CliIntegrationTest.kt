@@ -818,6 +818,31 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun newScaffoldsProjectAndLeavesNonEmptyDirectoryUntouched() {
+        val parent = Files.createTempDirectory("cplus-cli-new")
+        val project = parent.resolve("nested/app")
+
+        val created = captureStdout {
+            assertEquals(0, Cli().run(listOf("new", project.toString())))
+        }
+        assertTrue(created.contains("created C+ project"))
+        assertTrue(Files.isDirectory(project))
+        assertTrue(Files.exists(project.resolve("cplus.toml")))
+        assertTrue(Files.exists(project.resolve("src/main.cp")))
+        assertTrue(Files.exists(project.resolve("README.md")))
+        assertEquals(0, Cli().run(listOf("check", "--project", project.resolve("cplus.toml").toString())))
+
+        val existing = Files.createDirectories(parent.resolve("existing"))
+        val sentinel = existing.resolve("keep.txt").also { it.writeText("do not change") }
+        val warning = captureStderr {
+            assertEquals(1, Cli().run(listOf("new", existing.toString())))
+        }
+        assertTrue(warning.contains("warning: project directory is not empty"))
+        assertEquals("do not change", sentinel.readText())
+        assertTrue(Files.list(existing).use { paths -> paths.count() == 1L })
+    }
+
+    @Test
     fun checkAcceptsNormalizedSdkTargetRuntimeSysrootAndNativeInputs() {
         val directory = Files.createTempDirectory("cplus-cli-normalized-options")
         val source = directory.resolve("main.cp").also { it.writeText("int main() { return 0; }") }
