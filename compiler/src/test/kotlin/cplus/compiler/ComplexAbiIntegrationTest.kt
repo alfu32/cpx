@@ -19,6 +19,10 @@ class ComplexAbiIntegrationTest {
         val source = """
             import {
                 cexpf, cexp, cexpl, clogf, clog, clogl, cpowf, cpow, cpowl, csqrtf, csqrt, csqrtl,
+                csinf, csin, csinl, ccosf, ccos, ccosl, ctanf, ctan, ctanl,
+                casinf, casin, casinl, cacosf, cacos, cacosl, catanf, catan, catanl,
+                csinhf, csinh, csinhl, ccoshf, ccosh, ccoshl, ctanhf, ctanh, ctanhl,
+                casinhf, casinh, casinhl, cacoshf, cacosh, cacoshl, catanhf, catanh, catanhl,
                 cabsf, cabs, cabsl, cargf, carg, cargl,
                 crealf, creal, creall, cimagf, cimag, cimagl,
                 conjf, conj, conjl, cprojf, cproj, cprojl
@@ -75,6 +79,18 @@ class ComplexAbiIntegrationTest {
             pub float _Complex logarithm_float(float _Complex value) { return clogf(value); }
             pub double _Complex power_double(double _Complex base, double _Complex exponent) { return cpow(base, exponent); }
             pub long double _Complex square_root_extended(long double _Complex value) { return csqrtl(value); }
+            pub float _Complex trig_hyper_float(float _Complex value) {
+                return csinf(value) + ccosf(value) + ctanf(value) + casinf(value) + cacosf(value) + catanf(value) +
+                    csinhf(value) + ccoshf(value) + ctanhf(value) + casinhf(value) + cacoshf(value) + catanhf(value);
+            }
+            pub double _Complex trig_hyper_double(double _Complex value) {
+                return csin(value) + ccos(value) + ctan(value) + casin(value) + cacos(value) + catan(value) +
+                    csinh(value) + ccosh(value) + ctanh(value) + casinh(value) + cacosh(value) + catanh(value);
+            }
+            pub long double _Complex trig_hyper_extended(long double _Complex value) {
+                return csinl(value) + ccosl(value) + ctanl(value) + casinl(value) + cacosl(value) + catanl(value) +
+                    csinhl(value) + ccoshl(value) + ctanhl(value) + casinhl(value) + cacoshl(value) + catanhl(value);
+            }
         """.trimIndent()
         val result = CPlusCompiler().compileText(Files.createTempFile("complex-abi", ".cp"), source)
 
@@ -186,6 +202,12 @@ class ComplexAbiIntegrationTest {
                         if (square_root_float(CMPLXF(3.0F, 4.0F)) != CMPLXF(2.0F, 1.0F)) return 45;
                         if (square_root_double(CMPLX(3.0, 4.0)) != CMPLX(2.0, 1.0)) return 46;
                         if (square_root_extended(CMPLXL(3.0L, 4.0L)) != CMPLXL(2.0L, 1.0L)) return 47;
+                        float complex trig_float = trig_hyper_float(CMPLXF(0.25F, 0.375F));
+                        double complex trig_double = trig_hyper_double(CMPLX(0.25, 0.375));
+                        long double complex trig_extended = trig_hyper_extended(CMPLXL(0.25L, 0.375L));
+                        if (!isfinite(crealf(trig_float)) || !isfinite(cimagf(trig_float))) return 48;
+                        if (!isfinite(creal(trig_double)) || !isfinite(cimag(trig_double))) return 49;
+                        if (!isfinite(creall(trig_extended)) || !isfinite(cimagl(trig_extended))) return 50;
                         return 0;
                     }
                 """.trimIndent()

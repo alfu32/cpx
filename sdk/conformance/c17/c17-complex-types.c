@@ -61,6 +61,58 @@ CPLUS_CHECK_COMPLEX_EXP_ROOTS(long_double, long double, long double complex, cex
 
 #undef CPLUS_CHECK_COMPLEX_EXP_ROOTS
 
+#define CPLUS_CHECK_COMPLEX_TRIG_HYPER(tag, real_type, complex_type, sine, cosine, tangent, \
+    hyperbolic_sine, hyperbolic_cosine, hyperbolic_tangent, inverse_sine, inverse_cosine, inverse_tangent, \
+    inverse_hyperbolic_sine, inverse_hyperbolic_cosine, inverse_hyperbolic_tangent, absolute, tolerance) \
+    static int cplus_check_complex_trig_hyper_##tag(void) { \
+        real_type pi = acos((real_type)-1); \
+        complex_type value = __builtin_complex((real_type)0.25, (real_type)0.375); \
+        complex_type result = sine(value); \
+        if (absolute(__real__ result - sin((real_type)0.25) * cosh((real_type)0.375)) > (tolerance) || \
+            absolute(__imag__ result - cos((real_type)0.25) * sinh((real_type)0.375)) > (tolerance)) return 1; \
+        result = cosine(value); \
+        if (absolute(__real__ result - cos((real_type)0.25) * cosh((real_type)0.375)) > (tolerance) || \
+            absolute(__imag__ result + sin((real_type)0.25) * sinh((real_type)0.375)) > (tolerance)) return 2; \
+        result = tangent(value); \
+        if (absolute(__real__ result - sin((real_type)0.5) / (cos((real_type)0.5) + cosh((real_type)0.75))) > (tolerance) || \
+            absolute(__imag__ result - sinh((real_type)0.75) / (cos((real_type)0.5) + cosh((real_type)0.75))) > (tolerance)) return 3; \
+        result = hyperbolic_sine(value); \
+        if (absolute(__real__ result - sinh((real_type)0.25) * cos((real_type)0.375)) > (tolerance) || \
+            absolute(__imag__ result - cosh((real_type)0.25) * sin((real_type)0.375)) > (tolerance)) return 4; \
+        result = hyperbolic_cosine(value); \
+        if (absolute(__real__ result - cosh((real_type)0.25) * cos((real_type)0.375)) > (tolerance) || \
+            absolute(__imag__ result - sinh((real_type)0.25) * sin((real_type)0.375)) > (tolerance)) return 5; \
+        result = hyperbolic_tangent(value); \
+        if (absolute(__real__ result - sinh((real_type)0.5) / (cosh((real_type)0.5) + cos((real_type)0.75))) > (tolerance) || \
+            absolute(__imag__ result - sin((real_type)0.75) / (cosh((real_type)0.5) + cos((real_type)0.75))) > (tolerance)) return 6; \
+        result = inverse_sine(sine(value)); \
+        if (absolute(__real__ result - __real__ value) > (tolerance) || absolute(__imag__ result - __imag__ value) > (tolerance)) return 7; \
+        result = inverse_cosine(__builtin_complex((real_type)0.25, (real_type)0)); \
+        if (absolute(__real__ result - acos((real_type)0.25)) > (tolerance) || __imag__ result != (real_type)0) return 8; \
+        result = inverse_tangent(tangent(value)); \
+        if (absolute(__real__ result - __real__ value) > (tolerance) || absolute(__imag__ result - __imag__ value) > (tolerance)) return 9; \
+        result = inverse_hyperbolic_sine(hyperbolic_sine(value)); \
+        if (absolute(__real__ result - __real__ value) > (tolerance) || absolute(__imag__ result - __imag__ value) > (tolerance)) return 10; \
+        result = inverse_hyperbolic_cosine(hyperbolic_cosine(value)); \
+        if (absolute(__real__ result - __real__ value) > (tolerance) || absolute(__imag__ result - __imag__ value) > (tolerance)) return 11; \
+        result = inverse_hyperbolic_tangent(hyperbolic_tangent(value)); \
+        if (absolute(__real__ result - __real__ value) > (tolerance) || absolute(__imag__ result - __imag__ value) > (tolerance)) return 12; \
+        result = inverse_cosine(__builtin_complex((real_type)-1, (real_type)-0.0)); \
+        if (absolute(__real__ result - pi) > (tolerance) || __imag__ result != (real_type)0 || !__builtin_signbit(__imag__ result)) return 13; \
+        result = inverse_tangent(__builtin_complex((real_type)0, (real_type)-0.0)); \
+        if (__real__ result != (real_type)0 || __imag__ result != (real_type)0) return 14; \
+        return 0; \
+    }
+
+CPLUS_CHECK_COMPLEX_TRIG_HYPER(float, float, float complex, csinf, ccosf, ctanf, csinhf, ccoshf, ctanhf,
+    casinf, cacosf, catanf, casinhf, cacoshf, catanhf, fabsf, 5.0e-4F)
+CPLUS_CHECK_COMPLEX_TRIG_HYPER(double, double, double complex, csin, ccos, ctan, csinh, ccosh, ctanh,
+    casin, cacos, catan, casinh, cacosh, catanh, fabs, 1.0e-11)
+CPLUS_CHECK_COMPLEX_TRIG_HYPER(long_double, long double, long double complex, csinl, ccosl, ctanl, csinhl, ccoshl, ctanhl,
+    casinl, cacosl, catanl, casinhl, cacoshl, catanhl, fabsl, 1.0e-14L)
+
+#undef CPLUS_CHECK_COMPLEX_TRIG_HYPER
+
 int main(void) {
     float complex single = CMPLXF(1.25F, -2.5F);
     double complex double_value = CMPLX(3.125, -4.5);
@@ -108,5 +160,8 @@ int main(void) {
     if (cplus_check_complex_roots_float() != 0) return 30 + cplus_check_complex_roots_float();
     if (cplus_check_complex_roots_double() != 0) return 50 + cplus_check_complex_roots_double();
     if (cplus_check_complex_roots_long_double() != 0) return 70 + cplus_check_complex_roots_long_double();
+    if (cplus_check_complex_trig_hyper_float() != 0) return 90 + cplus_check_complex_trig_hyper_float();
+    if (cplus_check_complex_trig_hyper_double() != 0) return 110 + cplus_check_complex_trig_hyper_double();
+    if (cplus_check_complex_trig_hyper_long_double() != 0) return 130 + cplus_check_complex_trig_hyper_long_double();
     return 0;
 }
