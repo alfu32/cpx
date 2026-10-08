@@ -11,16 +11,16 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    92/92 accepted with recorded evidence
+Roadmap leaf tasks:    92/93 accepted with recorded evidence
 Phase gates:           4/9 complete; 5 active; 0 queued
-Current task:          R4 — native Windows runtime/libc conformance gate
-Current milestone:     R4 — native runtime and C17 compatibility
+Current task:          R7.4 — packaged VSIX editor-host acceptance; Windows run pending
+Current milestone:     R7 — LSP and VS Code product completion
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
 Windows full-runtime link: native Windows and local MinGW PE products pass
 Latest full test suites: Linux `gradle test --rerun-tasks` passes (4m10s);
-                         native Windows VM `gradle test` passes (3m40s)
+                         clean native Windows VM `gradle test` passes (11m23s)
 Windows runtime evidence: allocator, process, stdio channels, clocks, threads/TLS,
                           atomics/synchronization, TCP/UDP/IPv6, resolver,
                           std.math façade, C17 subset, locale/signal/ctype,
@@ -33,12 +33,16 @@ R3 [DONE]  6/6  Linux and native Windows primitive source-to-ABI evidence
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows family matrix pending
 R5 [DOING] 41/41 implementation leaves accepted; Windows service-matrix gate pending
 R6 [DOING] 4/4  CLI leaves accepted; Windows fat-JAR smoke passes, product gate pending
-R7 [DOING] 3/3  Linux extension accepted; Windows tests/package pass, editor-host gate pending
+R7 [DOING] 3/4  Linux extension accepted; packaged editor-host test awaits Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 
-TOTAL       92/92 implementation tasks accepted; 4/9 phase gates complete,
+TOTAL       92/93 implementation tasks accepted; 4/9 phase gates complete,
             5 active, 0 queued
 ```
+
+R7.4 adds one cross-platform packaged-extension-host acceptance leaf, changing
+the roadmap denominator from 92 to 93 without adding completion credit. Its
+Linux execution is accepted; the Windows host run remains pending.
 
 The latest Linux x86_64 C17 report is 51 pass, 0 fail, 0 unsupported, and 0
 planned. Per-leaf historical records below retain the report totals measured
@@ -3766,7 +3770,7 @@ Completion phases: [DOING] [4/9 gates complete]
 [DOING] R4 — runtime, allocator and libc behavior
 [DOING] R5 — complete native std and platform services
 [DOING] R6 — CLI transcoder and build-product completion; Windows product gate pending
-[DOING] R7 — LSP and VS Code product completion; Windows editor-host gate pending
+[DOING] R7 — LSP and VS Code product completion; packaged VSIX editor-host gate pending
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 ```
 
@@ -5526,7 +5530,7 @@ Clean checkouts can build the fat JAR and compile/run representative single-
 file, multi-module, C-interoperability, self-hosted Linux, and self-hosted
 Windows products from documented commands.
 
-## R7 [DOING] [3/3 Linux leaves accepted; Windows gate pending] LSP and VS Code product completion
+## R7 [DOING] [3/4 leaves accepted; packaged VSIX editor-host Windows gate pending] LSP and VS Code product completion
 
 **Dependency-ordered work queue**
 
@@ -5569,6 +5573,16 @@ Windows products from documented commands.
   repository wrapper JAR is absent from the clean export, so the installed
   Gradle command was used. Product commit: no source changes required; evidence
   recorded in the plan commit.
+- R7.4 [DOING] — install the packaged VSIX into an isolated VS Code profile and
+  verify it in the real Extension Development Host on Linux and Windows. The
+  host fixture checks package activation, command registration, and a semantic
+  `SEM302` diagnostic delivered by the configured CLI JAR for a workspace
+  source file. `@vscode/test-electron` downloads a stable editor build on first
+  use; the test uses a temporary workspace/profile and removes them afterward.
+  Linux acceptance passes with VS Code 1.141.0 under `xvfb-run`; `npm test`,
+  `npm run check`, VSIX packaging, and the production dependency audit pass.
+  Windows host execution remains pending and receives no completion credit.
+  **Depends:** R7.2–R7.3.
 
 **Deliverables**
 
@@ -5583,7 +5597,8 @@ Windows products from documented commands.
 
 The LSP and Run Main flows work for a multi-module workspace on Linux and
 Windows, with external-source locations preserved and no competing parser or
-hard-coded CLI path.
+hard-coded CLI path; the packaged VSIX is installed and exercised in the editor
+host on both operating systems.
 
 ## R8 [DONE] [4/4] SDK packaging, target matrix and release conformance
 

@@ -56,5 +56,13 @@ npm run check
 npm run package
 ```
 
+To exercise the packaged extension inside the actual VS Code Extension
+Development Host, first build the CLI JAR and then run `npm run test:host`. The
+script packages and installs the VSIX into an isolated profile, downloads a
+stable VS Code build on first use, opens a temporary workspace, starts the
+configured CLI language server, and verifies a semantic diagnostic arrives in
+the editor. It removes its temporary profile and workspace after the host exits.
+On headless Linux, run it under `xvfb-run -a npm run test:host`.
+
 Install the generated `.vsix` through VS Code's **Extensions: Install from
 VSIX...** command.
