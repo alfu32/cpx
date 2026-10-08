@@ -65,7 +65,8 @@ internal class Cli {
 
     private fun transcode(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
-        val result = CPlusCompiler().compile(
+        val compiler = CPlusCompiler()
+        val result = compiler.compile(
             CompileRequest(
                 parsed.sources,
                 cSources = parsed.cSources,
@@ -82,12 +83,18 @@ internal class Cli {
         if (parsed.output == null) {
             print(generated)
         } else {
+            parsed.output.parent?.let(Files::createDirectories)
             parsed.output.writeText(generated)
         }
         parsed.headerOutput?.let { headerPath ->
             val header = result.generatedHeaders.singleOrNull()?.text ?: return 2
             headerPath.parent?.let { Files.createDirectories(it) }
             headerPath.writeText(header)
+        }
+        parsed.mapOutput?.let { mapPath ->
+            val generatedUnit = result.generatedUnits.singleOrNull() ?: return 2
+            mapPath.parent?.let(Files::createDirectories)
+            mapPath.writeText(serializeSourceMap(generatedUnit, result.artifacts, parsed.sourceBase, compiler::sourcePathFor))
         }
         return 0
     }
@@ -162,14 +169,16 @@ internal class Cli {
             parsed.sdkManifest,
             parsed.externalSysroot,
             parsed.target,
-            parsed.cCompiler
+            parsed.cCompiler,
+            parsed.mapOutput,
+            parsed.sourceBase
         )
     }
 
     private fun runProgram(arguments: List<String>): Int {
         val parsed = parseFileArguments(arguments) ?: return 2
         val temporaryDirectory = Files.createTempDirectory("cplus-run")
-        val executable = temporaryDirectory.resolve(parsed.sources.first().nameWithoutExtension)
+        val executable = parsed.output ?: temporaryDirectory.resolve(parsed.sources.first().nameWithoutExtension)
         val buildExitCode = buildExecutable(
             parsed.sources,
             parsed.cSources,
@@ -180,7 +189,9 @@ internal class Cli {
             parsed.sdkManifest,
             parsed.externalSysroot,
             parsed.target,
-            parsed.cCompiler
+            parsed.cCompiler,
+            parsed.mapOutput,
+            parsed.sourceBase
         )
         if (buildExitCode != 0) return buildExitCode
         val process = ProcessBuilder(executable.toString()).inheritIO().start()
@@ -313,7 +324,9 @@ internal class Cli {
         sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
         externalSysroot: Path? = null,
         target: TargetInfo = TargetInfo(),
-        cCompiler: String? = null
+        cCompiler: String? = null,
+        mapOutput: Path? = null,
+        sourceBase: Path = Path.of("").toAbsolutePath().normalize()
     ): Int {
         val compiler = CPlusCompiler()
         val result = compiler.compile(
@@ -343,6 +356,11 @@ internal class Cli {
         cFile.parent?.let { Files.createDirectories(it) }
         executable.parent?.let { Files.createDirectories(it) }
         cFile.writeText(generated)
+        mapOutput?.let { mapPath ->
+            val generatedUnit = result.generatedUnits.singleOrNull() ?: return 2
+            mapPath.parent?.let(Files::createDirectories)
+            mapPath.writeText(serializeSourceMap(generatedUnit, result.artifacts, sourceBase, compiler::sourcePathFor))
+        }
         headerOutput?.let { headerPath ->
             val header = result.generatedHeaders.singleOrNull()?.text ?: return 2
             headerPath.parent?.let { Files.createDirectories(it) }
@@ -398,6 +416,26 @@ internal class Cli {
         }
     }
 
+    private fun serializeSourceMap(
+        unit: cplus.backend.GeneratedCUnit,
+        artifacts: List<cplus.compiler.CompilationArtifacts>,
+        baseDirectory: Path,
+        resolveSourcePath: (SourceFileId) -> Path?
+    ): String = buildString {
+        val sourcePaths = artifacts.associate { it.source.id to it.source.path.toAbsolutePath().normalize() }
+        unit.sourceMap.forEach { mapping ->
+            val range = mapping.origin.primaryRange ?: return@forEach
+            val sourcePath = (resolveSourcePath(range.file)?.toAbsolutePath()?.normalize() ?: sourcePaths[range.file])?.let { path ->
+                runCatching { baseDirectory.relativize(path).toString() }.getOrDefault(path.toString())
+                    .replace('\\', '/')
+            } ?: "source-${range.file.value}"
+            appendLine(
+                "${mapping.generatedLine}:${mapping.generatedStartOffset}-${mapping.generatedEndOffset}" +
+                    " -> $sourcePath:${range.startOffset}-${range.endOffset}"
+            )
+        }
+    }
+
     private fun parseFileArguments(arguments: List<String>): FileArguments? {
         var source: Path? = null
         val sources = mutableListOf<Path>()
@@ -414,6 +452,7 @@ internal class Cli {
         var cCompiler: String? = null
         var output: Path? = null
         var headerOutput: Path? = null
+        var mapOutput: Path? = null
         var index = 0
         while (index < arguments.size) {
             when (val argument = arguments[index]) {
@@ -433,6 +472,15 @@ internal class Cli {
                         return null
                     }
                     headerOutput = Path.of(value)
+                    index += 2
+                }
+                "--map" -> {
+                    val value = arguments.getOrNull(index + 1)
+                    if (value == null) {
+                        System.err.println("missing source-map path after $argument")
+                        return null
+                    }
+                    mapOutput = Path.of(value)
                     index += 2
                 }
                 "--c-source", "--c-file" -> {
@@ -505,7 +553,7 @@ internal class Cli {
                         System.err.println("missing target triple after $argument")
                         return null
                     }
-                    targetTriple = value
+                    targetTriple = value.trim().lowercase()
                     index += 2
                 }
                 "--c-compiler" -> {
@@ -546,25 +594,46 @@ internal class Cli {
         } else {
             LibcProfile.C17
         }
-        val sdkManifestPath = sdkManifest ?: SdkManifestLocator.defaultManifestPath()
+        val workingDirectory = Path.of("").toAbsolutePath().normalize()
+        val sdkManifestPath = normalizePath(sdkManifest ?: SdkManifestLocator.defaultManifestPath(), workingDirectory)
         val sdkRoot = sdkManifestPath.toAbsolutePath().normalize().parent?.parent
+        val sourceBase = manifest?.baseDirectory ?: workingDirectory
         val discoveredSources = discoverModuleSources(
             listOf(source) + sources,
             manifest?.sourceRoots.orEmpty(),
             sdkRoot
         )
         return FileArguments(
-            discoveredSources,
-            cSources,
-            output,
-            headerOutput,
-            libraries,
-            includeDirectories,
+            discoveredSources.map { normalizePath(it, workingDirectory) }.distinct(),
+            cSources.map { normalizePath(it, workingDirectory) }.distinct(),
+            output?.let { normalizePath(it, workingDirectory) },
+            headerOutput?.let { normalizePath(it, workingDirectory) },
+            mapOutput?.let { normalizePath(it, workingDirectory) },
+            libraries.map { normalizeLibrary(it, workingDirectory) },
+            includeDirectories.map { normalizePath(it, workingDirectory) }.distinct(),
             sdkManifestPath,
-            externalSysroot,
+            externalSysroot?.let { normalizePath(it, workingDirectory) },
             TargetInfo(buildProfile = BuildProfile(selectedRuntime, selectedLibc), targetTriple = targetTriple),
-            cCompiler
+            cCompiler?.let { normalizeCompiler(it, workingDirectory) },
+            sourceBase
         )
+    }
+
+    private fun normalizePath(path: Path, base: Path): Path =
+        (if (path.isAbsolute) path else base.resolve(path)).toAbsolutePath().normalize()
+
+    private fun normalizeLibrary(value: String, base: Path): String {
+        val pathLike = value.contains('/') || value.contains('\\') || value.startsWith(".") ||
+            value.endsWith(".a", true) || value.endsWith(".so", true) ||
+            Regex(".*\\.so(?:\\..*)?$", RegexOption.IGNORE_CASE).matches(value) ||
+            value.endsWith(".dylib", true) || value.endsWith(".lib", true) || value.endsWith(".dll", true)
+        return if (pathLike) normalizePath(Path.of(value), base).toString() else value
+    }
+
+    private fun normalizeCompiler(value: String, base: Path): String {
+        val path = Path.of(value)
+        val pathLike = path.isAbsolute || value.contains('/') || value.contains('\\')
+        return if (pathLike) normalizePath(path, base).toString() else value
     }
 
     private fun parseRuntime(value: String?, option: String): RuntimeProfile? = when (value?.lowercase()) {
@@ -744,7 +813,7 @@ internal class Cli {
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
         stream.println("C+ CLI transcoder")
-        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--project <cplus.toml> | --workspace <cplus.workspace.toml>] [--target <triple>] [--runtime <profile>] [--libc <profile>] [--c-compiler <path>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]")
+        stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--project <cplus.toml> | --workspace <cplus.workspace.toml>] [--target <triple>] [--runtime <profile>] [--libc <profile>] [--c-compiler <path>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>] [--map <file>]")
         stream.println()
         stream.println("commands:")
         stream.println("  transcode   translate one C+ source file to C")
@@ -768,12 +837,14 @@ internal class Cli {
         val cSources: List<Path>,
         val output: Path?,
         val headerOutput: Path?,
+        val mapOutput: Path?,
         val libraries: List<String>,
         val includeDirectories: List<Path>,
         val sdkManifest: Path,
         val externalSysroot: Path?,
         val target: TargetInfo,
-        val cCompiler: String?
+        val cCompiler: String?,
+        val sourceBase: Path
     )
 
     private data class WorkspaceManifest(

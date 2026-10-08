@@ -2066,6 +2066,16 @@ project modules resolve within declared roots, and explicit `std.*` imports
 resolve from the selected SDK's source tree. `check`, `transcode`, `build`,
 and `run` SHALL consume the same discovered source set.
 
+CLI filesystem arguments (`--output`, `--header`, `--map`, `--sdk`, `--sysroot`,
+`--c-source`, and `--include-dir`) SHALL be normalized against the invocation
+working directory; manifest-owned paths use the manifest directory. Target
+triples SHALL be canonicalized before SDK selection. Compiler values SHALL
+remain executable names unless they are paths, and library values SHALL remain
+link names unless path-shaped. `--map` SHALL emit deterministic generated-C
+and source byte ranges with source paths relative to the project root (or the
+invocation directory for standalone sources). `run --output` SHALL retain the
+native executable at that path; without it, the executable is temporary.
+
 ---
 
 # 58. Compiler pipeline API

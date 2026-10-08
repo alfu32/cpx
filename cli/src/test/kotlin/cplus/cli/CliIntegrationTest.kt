@@ -393,15 +393,63 @@ class CliIntegrationTest {
         }
         val projectOption = listOf("--project", project.toString())
 
-        assertEquals(0, Cli().run(listOf("check") + projectOption))
-        val generatedC = directory.resolve("main.c")
-        assertEquals(0, Cli().run(listOf("transcode") + projectOption + listOf("--output", generatedC.toString())))
+        assertEquals(0, Cli().run(listOf("check") + projectOption + listOf("--target", "LINUX-X86_64")))
+        val generatedC = directory.resolve("generated/main.c")
+        val generatedHeader = directory.resolve("generated/include/main.h")
+        val sourceMap = directory.resolve("generated/maps/main.map")
+        assertEquals(
+            0,
+            Cli().run(
+                listOf("transcode") + projectOption + listOf(
+                    "--output", generatedC.toString(),
+                    "--header", generatedHeader.toString(),
+                    "--map", sourceMap.toString()
+                )
+            )
+        )
         assertTrue(generatedC.exists())
+        assertTrue(generatedHeader.exists())
+        assertTrue(sourceMap.readText().contains("app/main.cp"))
+        assertTrue(sourceMap.readText().contains("modules/math.cp"))
         val executable = directory.resolve("project-program")
-        assertEquals(0, Cli().run(listOf("build") + projectOption + listOf("--output", executable.toString())))
+        val buildMap = directory.resolve("build/project.map")
+        assertEquals(
+            0,
+            Cli().run(listOf("build") + projectOption + listOf("--output", executable.toString(), "--map", buildMap.toString()))
+        )
         assertEquals(12, ProcessBuilder(executable.toString()).start().waitFor())
-        assertEquals(12, Cli().run(listOf("run") + projectOption))
+        assertTrue(buildMap.exists())
+        val runOutput = directory.resolve("run/project-program")
+        assertEquals(12, Cli().run(listOf("run") + projectOption + listOf("--output", runOutput.toString())))
+        assertTrue(runOutput.exists())
         assertEquals(0, Cli().run(listOf("check", "--workspace", workspace.toString())))
+    }
+
+    @Test
+    fun checkAcceptsNormalizedSdkTargetRuntimeSysrootAndNativeInputs() {
+        val directory = Files.createTempDirectory("cplus-cli-normalized-options")
+        val source = directory.resolve("main.cp").also { it.writeText("int main() { return 0; }") }
+        val cSource = directory.resolve("native.c").also { it.writeText("int native_helper(void) { return 0; }") }
+        val includeDirectory = Files.createDirectories(directory.resolve("include"))
+        val sdkManifest = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
+
+        assertEquals(
+            0,
+            Cli().run(
+                listOf(
+                    "check", source.toString(),
+                    "--target", "LINUX-X86_64",
+                    "--runtime", "CPLUS",
+                    "--libc", "C17",
+                    "--sdk", sdkManifest.toString(),
+                    "--sysroot", directory.toString(),
+                    "--c-source", cSource.toString(),
+                    "--include-dir", includeDirectory.toString(),
+                    "--library", "m",
+                    "--c-compiler", "cc"
+                )
+            )
+        )
     }
 
     @Test

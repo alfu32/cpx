@@ -98,7 +98,7 @@ You should see:
 
 ```text
 C+ CLI transcoder
-usage: cplus <command> <source.cp> [other.cp ...] [--project <cplus.toml> | --workspace <cplus.workspace.toml>] [--sdk <manifest>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]
+usage: cplus <command> <source.cp> [other.cp ...] [--project <cplus.toml> | --workspace <cplus.workspace.toml>] [--target <triple>] [--runtime <profile>] [--libc <profile>] [--c-compiler <path>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>] [--map <file>]
 
 commands:
   transcode   translate one C+ source file to C
@@ -1172,7 +1172,7 @@ The `cplus` command provides the compiler/transcoder interface.
 
 ```text
 C+ CLI transcoder
-usage: cplus <command> <source.cp> [other.cp ...] [--sdk <manifest>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>]
+usage: cplus <command> <source.cp> [other.cp ...] [--project <cplus.toml> | --workspace <cplus.workspace.toml>] [--target <triple>] [--runtime <profile>] [--libc <profile>] [--c-compiler <path>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>] [--map <file>]
 ```
 
 Commands:
@@ -1209,8 +1209,13 @@ Generate a header where applicable:
 ```bash
 cplus transcode library.cp \
     --output library.c \
-    --header library.h
+    --header library.h \
+    --map library.map
 ```
+
+`--map` writes generated-C byte ranges and source-file byte ranges using paths
+relative to the project manifest (or the current directory for a standalone
+source).
 
 `emit-c` is an alias:
 
@@ -1315,6 +1320,9 @@ Build and immediately execute:
 cplus run hello.cp
 ```
 
+Pass `--output` to retain the executable at a chosen path; otherwise `run`
+builds into a temporary directory.
+
 ---
 
 # Project and workspace manifests
@@ -1354,6 +1362,12 @@ roots, and members are resolved from the manifest's directory. Explicit
 `std.*` imports are resolved from the selected SDK's `std/src` tree; local
 path imports remain relative to their importing source file. The same source
 discovery is used by all four commands.
+
+CLI filesystem arguments such as `--output`, `--header`, `--map`, `--sdk`,
+`--sysroot`, `--c-source`, and `--include-dir` are resolved from the current
+working directory. Target triples are normalized to lowercase before SDK
+selection. A library value that looks like a path is normalized as a path;
+plain names such as `m` remain linker library names.
 
 ---
 
