@@ -225,6 +225,27 @@ class AbiLayoutTest {
     }
 
     @Test
+    fun stdTimeDurationKeepsItsNanosecondLayoutAcrossDeclaredTargets() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val module = root.resolve("std/src/time.cp")
+        listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { targetName ->
+            val result = CPlusCompiler().compile(
+                CompileRequest(listOf(module), target = TargetInfo(targetTriple = targetName))
+            )
+            assertTrue(result.isSuccessful, "$targetName: ${result.diagnostics.joinToString()}")
+            val model = requireNotNull(result.semanticModel)
+            val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor)
+            val layout = AbiLayoutEngine(descriptor).layout(model.structs.getValue("std_duration_t"))
+            assertEquals(8, layout.size, "$targetName duration size")
+            assertEquals(8, layout.alignment, "$targetName duration alignment")
+            assertEquals(listOf(0), layout.fields.map { it.offset }, "$targetName duration offsets")
+            assertEquals("long long", model.functions.getValue("std_time_wall_nanoseconds").returnType.name)
+            assertEquals("long long", model.functions.getValue("std_time_monotonic_nanoseconds").returnType.name)
+            assertEquals("long long", model.functions.getValue("std_time_process_cpu_nanoseconds").returnType.name)
+        }
+    }
+
+    @Test
     fun auditsPrimitiveAndAggregateLayoutAcrossDeclaredTargetMatrix() {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { name ->

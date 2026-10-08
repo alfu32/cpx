@@ -940,6 +940,39 @@ saturate. The C `time()` façade SHALL return whole wall-clock seconds, while
 `clock()` SHALL return process CPU nanoseconds with `CLOCKS_PER_SEC` equal to
 1,000,000,000. Both SHALL return `(time_t)-1` or `(clock_t)-1` on PAL failure.
 
+The native façade SHALL expose the three PAL clocks without changing their
+nanosecond units or stable negative errors:
+
+```c
+typedef struct std_duration_t {
+    long long nanoseconds;
+} std_duration_t;
+
+long long std_time_wall_nanoseconds(void);
+long long std_time_monotonic_nanoseconds(void);
+long long std_time_process_cpu_nanoseconds(void);
+int std_time_duration_from_nanoseconds(long long value, std_duration_t* result);
+int std_time_duration_from_milliseconds(long long value, std_duration_t* result);
+int std_time_duration_from_seconds(long long value, std_duration_t* result);
+int std_time_duration_add(
+    const std_duration_t* left, const std_duration_t* right, std_duration_t* result);
+int std_time_duration_subtract(
+    const std_duration_t* left, const std_duration_t* right, std_duration_t* result);
+int std_time_duration_compare(
+    const std_duration_t* left, const std_duration_t* right, int* ordering);
+int std_time_duration_get_nanoseconds(const std_duration_t* duration, long long* nanoseconds);
+```
+
+`std_duration_t` SHALL be an eight-byte signed nanosecond quantity. Duration
+values MAY be negative. Conversion, addition, and subtraction SHALL check
+signed 64-bit overflow and SHALL leave the output unchanged on failure. These
+operations SHALL return zero on success, one for a null required pointer, and
+two for arithmetic overflow. The status accessors
+`std_time_status_invalid_argument()` and `std_time_status_overflow()` SHALL
+return one and two respectively. Comparison SHALL set `ordering` to -1, 0, or 1
+and return the same pointer-validation status. Nanosecond construction cannot
+overflow its representation but SHALL still validate the output pointer.
+
 ---
 
 # 15. `std.thread` and `std.sync`
