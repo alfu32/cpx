@@ -529,6 +529,9 @@ object (or one past it). The value carriers contain status and value data
 only; PAL handles, raw syscall numbers, and host `errno` values are not part of
 their representation. The unused `std_byte_t`, `std_size_t`, and
 `std_index_t` aliases are not part of the API.
+The error, result, and option carrier structures SHALL be public declarations
+so callers can explicitly import and instantiate the value types returned by
+their public operations.
 
 `std.core` SHALL NOT add custom `i8`/`i16`/`i32`/`i64`, `u8`/`u16`/`u32`/`u64`,
 or 128-bit aliases to compiler built-ins or native SDK API signatures. Programs
@@ -579,6 +582,7 @@ an unsigned-byte span view, and a raw untyped-memory view. Alignment-up SHALL
 require a nonzero power-of-two alignment and SHALL return `std_usize_max()` on
 invalid alignment or arithmetic overflow. An empty span/view has zero length;
 an out-of-range span lookup returns null and does not dereference memory.
+The span and raw-memory view types SHALL be public declarations.
 
 The native implementation also provides zeroing and unsigned-byte equality and
 comparison. It SHALL preserve byte values independently of the signedness of
@@ -649,9 +653,10 @@ aligned_alloc
 `std.text` provides higher-level text and Unicode facilities.
 
 The target-neutral baseline provides byte length, empty-text, ASCII, and
-prefix operations. UTF-8 byte storage remains distinct from the C17 wide
-character compatibility layer; target-specific encoding conversion belongs at
-the documented PAL/libc boundary.
+prefix operations; the ASCII query SHALL be publicly importable. UTF-8 byte
+storage remains distinct from the C17 wide-character compatibility layer;
+target-specific encoding conversion belongs at the documented PAL/libc
+boundary.
 
 String/text byte lengths and traversal indexes SHALL use `usize`. Collection
 slice lengths SHALL use `usize`, range endpoints and tested indexes SHALL use
@@ -660,7 +665,10 @@ slice lengths SHALL use `usize`, range endpoints and tested indexes SHALL use
 The initial `std.collections` value layer provides explicit non-owning slices
 and half-open ranges. These values do not imply ownership or hidden allocation;
 allocation policy remains the responsibility of the caller or selected
-allocator.
+allocator. Slice and range structure types SHALL be public declarations. A
+range has signed `isize` endpoints; its length is zero when the end is not
+greater than the start, otherwise it is the mathematical difference returned
+as `usize`, including ranges whose length exceeds `isize_max`.
 
 This distinction prevents libc's historical null-terminated byte-string semantics from constraining native C+ text APIs.
 

@@ -5047,11 +5047,11 @@ to final validation and full-runtime linking is tracked by R8.3.
 ### R5.1 status audit
 
 The memory, string, text, collection, and value/error carrier work below has
-Linux execution evidence. R5.1 remains `DOING` because its target-aware
-size/index and pointer/numeric-limit contracts were incomplete. This pass adds
-`usize`/`isize` over target-modeled `size_t`/`ptrdiff_t`, updates dependent
-collection and byte APIs, and adds core pointer/limit operations. The task is
-not counted complete until the full acceptance suite and final target gate pass.
+Linux execution evidence. Target-aware `usize`/`isize` aliases, dependent
+collection/byte APIs, and core pointer/limit operations are implemented over
+descriptor-modeled `size_t`/`ptrdiff_t`; ABI checks cover the declared Linux
+and Windows target models. R5.1 remains `DOING` until the full acceptance suite
+and final target gate pass, including the deferred Windows runtime validation.
 
 Verified completed portions:
 
@@ -5074,6 +5074,17 @@ Windows target descriptors and verify descriptor-sized layouts. The full
 `./gradlew build` passes on Linux, including the parser regression check for
 `sizeof(variable)` alongside imported typedef handling. These checks do not
 claim Windows execution and do not change the R5 completion count.
+
+Follow-up audit found that the value-carrier and collection structures were
+not exported for named imports and `std_text_is_ascii` was not public; range
+length also used a potentially overflowing signed subtraction. Commit
+`dbfb1ae` exports those types/operation and computes positive range lengths
+without signed overflow. `NativeStdPublicSurfaceTest` compiles explicit imports
+and checks field layouts for Linux and Windows target descriptors;
+`NativeStdTest` executes ranges crossing zero and the full signed endpoint
+range under signed-overflow sanitization. Focused tests and the full Gradle
+build pass. This is subtask progress only; R5.1 remains open and its dashboard
+count is unchanged.
 
 **Deliverables**
 
