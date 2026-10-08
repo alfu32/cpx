@@ -350,6 +350,22 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun astInspectionKeepsTraitMethodsGroupedAndPrintsTheirBodies() {
+        val directory = Files.createTempDirectory("cplus-cli-trait-ast")
+        val source = directory.resolve("main.cp").also {
+            it.writeText("comptime trait int { int doubled(self) { return self * 2; } }")
+        }
+
+        val output = captureStdout { assertEquals(1, Cli().run(listOf("ast", source.toString()))) }
+
+        assertTrue(output.contains("Public Trait int").not())
+        assertTrue(output.contains("Trait int"))
+        assertTrue(output.contains("Method int doubled(int self)"))
+        assertTrue(output.contains("Return (self * 2)"))
+        assertTrue(!output.contains("Function int doubled"))
+    }
+
+    @Test
     fun lspServesInitializationAndCompilerDiagnosticsOverStdio() {
         val directory = Files.createTempDirectory("cplus-cli-lsp")
         val source = directory.resolve("main.cp")

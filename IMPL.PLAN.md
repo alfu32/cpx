@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    117/129 accepted with recorded evidence; 12 TODO
+Roadmap leaf tasks:    118/129 accepted with recorded evidence; 11 TODO
 Phase gates:           11/13 complete; 2 active; 0 queued
-Current task:          R11.1.1.2 — traverse trait bodies in ordinary compiler passes
+Current task:          R11.1.1.3 — preserve traits through CPX and stabilization
 Current milestone:     discoverable imports, import fixes, and compile-time extension methods
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -37,10 +37,10 @@ R7 [DONE]  4/4  packaged VSIX host acceptance passes on Linux and Windows
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM option docs
 R10 [DOING] 18/19 import discovery, completion and quick fixes
-R11 [DOING] 1/12 compile-time extension methods
+R11 [DOING] 2/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 
-TOTAL       117/129 implementation tasks accepted; 11/13 phase gates complete,
+TOTAL       118/129 implementation tasks accepted; 11/13 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3785,9 +3785,9 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [11/13 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 117/129 accepted; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 118/129 accepted; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (2/3) accepted/in progress;
-                     R10 and R11 active, R12 accepted
+                     R11.1.1 (2/3); R10 and R11 active, R12 accepted
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3800,7 +3800,7 @@ Roadmap leaf tasks: 117/129 accepted; R10.1 (10/10), R10.2 (4/4),
 [DONE]  R8 — SDK packaging, target matrix and release conformance
 [DONE]  R9 — CLI distribution includes source SDK with explicit JVM override
 [DOING] R10 — import discovery, completion and quick fixes (18/19 leaves)
-[DOING] R11 — compile-time extension methods (1/12 leaves)
+[DOING] R11 — compile-time extension methods (2/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 ```
 
@@ -6363,17 +6363,17 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle test :cli:fatJar :cli:installDist`; extension checks/host tests; native Windows equivalents at the final platform pass.
 
-## R11 [DOING] [1/12] Compile-time extension methods
+## R11 [DOING] [2/12] Compile-time extension methods
 
 **Language:** LS §6.3.1 Compile-time extension methods; §21 Imports.
 **Technical:** TS §13.1 Compile-time traits; §33 Method lowering; §54 Completion.
 
-### R11.1 [DOING] [0/6] Trait declarations and semantic ownership
+### R11.1 [DOING] [2/6] Trait declarations and semantic ownership
 
 **Language:** LS §6.3.1 Compile-time extension methods; §18 Type-universe barrier.
 **Technical:** TS §13.1 Compile-time traits; §24 Type-universe stabilization; §29 Semantic model.
 
-#### R11.1.1 [DOING] [0/3] Explicit trait syntax and pass traversal
+#### R11.1.1 [DOING] [2/3] Explicit trait syntax and pass traversal
 
 **Language:** LS §6.3.1 Compile-time extension methods; §28 Source provenance.
 **Technical:** TS §6 Parser; §8 AST architecture; §13.1 Compile-time traits.
@@ -6394,7 +6394,7 @@ that subsequently passes `cplus check`.
 
 **Evidence:** `./gradlew :language-core:test :comptime:test --no-daemon` passes, as do `./gradlew :compiler:compileKotlin :cli:compileKotlin --no-daemon` and the focused compiler test `./gradlew :compiler:test --tests cplus.compiler.CompilerIntegrationTest.parsedTraitDeclarationIsRejectedExplicitlyUntilSemanticRegistrationIsImplemented --no-daemon`. Parser tests cover private/public blocks, primitive and nominal target spelling, `self`/`self*`, source ranges, plural and angle-bracket rejection, missing/repeated receiver, fields, static methods, nested blocks, missing bodies, and recovery to the following declaration. The semantic analyzer reports `SEM415` and emits no C until trait registration is implemented; declaration visitors use explicit branches rather than dropping the node.
 
-##### R11.1.1.2 [DOING] Traverse trait bodies in ordinary compiler passes
+##### R11.1.1.2 [DONE] Traverse trait bodies in ordinary compiler passes
 
 **Language:** LS §6.3.1 Compile-time extension methods; §14 Inner functions and lexical capture; §15 Deferred execution; §16 String templates; §28 Source provenance.
 **Technical:** TS §13.1 Compile-time traits; §32 AST rewrite framework; §34 Inner-function lowering.
@@ -6407,6 +6407,8 @@ that subsequently passes `cplus check`.
 **Acceptance:** Visitor unit tests reach nested method bodies and retain target/origins. Trait blocks round-trip in inspection output; methods are not mistaken for free exported functions or new types. No `else -> ignore` hole hides the new declaration; existing ordinary method regressions remain green.
 
 **Verify:** `gradle :compiler:test :cli:test` (visitor/rewrite/metadata tests).
+
+**Evidence:** `./gradlew :compiler:test --tests cplus.compiler.ClosureLoweringTest --tests cplus.compiler.SdkMetadataTraitTest :cli:test --tests cplus.cli.CliIntegrationTest.astInspectionKeepsTraitMethodsGroupedAndPrintsTheirBodies :semantic:test --tests cplus.semantic.ModuleTypeReferenceTraitTest :c-backend:test --no-daemon` passes. Closure lowering retains the trait/target/origins and hoists a nested closure from a trait method; module type collection visits target, signature, and body types while excluding the pseudo-`self` type; backend runtime/dependency scans descend into trait methods; CLI AST inspection retains grouping and prints method bodies; SDK metadata emits `trait:<target>` and `extension-method:<target>.<method>` declarations and extension-only exports. `AstArena` rewrite operations remain node-kind agnostic (they store/rewrite IDs, not recursively visit declarations); reference indexing awaits canonical trait symbol registration at R11.1.2 rather than treating methods as free functions.
 
 ##### R11.1.1.3 [TODO] Preserve traits through CPX and stabilization
 

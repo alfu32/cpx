@@ -84,7 +84,7 @@ object SdkMetadataCache {
                 error("SDK source '${relative.toUnixString()}' is invalid: ${it.message}", "SDK010")
             }
             val declarations = parsed.syntax.declarations.flatMap(::declarationMetadata)
-            val exports = parsed.syntax.declarations.filter { it.isPublic }.map(::declarationName)
+            val exports = parsed.syntax.declarations.filter { it.isPublic }.flatMap(::declarationExports)
             val documentation = source.text.lineSequence()
                 .map(String::trim)
                 .filter { it.startsWith("///") }
@@ -112,7 +112,7 @@ object SdkMetadataCache {
         )
     }
 
-    private fun declarationMetadata(declaration: SyntaxDeclaration): List<String> = when (declaration) {
+    internal fun declarationMetadata(declaration: SyntaxDeclaration): List<String> = when (declaration) {
         is SyntaxStruct -> listOf("struct:${declaration.name}") +
             declaration.fields.map { "field:${declaration.name}.${it.name}:${typeText(it.type)}" } +
             declaration.methods.map { method ->
@@ -123,8 +123,19 @@ object SdkMetadataCache {
         is SyntaxFunction -> listOf("function:${declaration.name}:${typeText(declaration.returnType)}")
         is SyntaxGlobalVariable -> listOf("global:${declaration.name}:${typeText(declaration.type)}")
         is SyntaxAlias -> listOf("alias:${declaration.name}:${typeText(declaration.target)}")
+        is SyntaxTrait -> listOf("trait:${declaration.targetName}") + declaration.methods.map { method ->
+            "extension-method:${declaration.targetName}.${method.name}(${method.parameters.joinToString(",") { parameter ->
+                if (parameter.isReceiver) declaration.targetName + if (parameter.isPointerReceiver) "*" else ""
+                else typeText(parameter.type)
+            }}):${typeText(method.returnType)}"
+        }
         is SyntaxComptimeFunction -> listOf("comptime:${declaration.name}:${declaration.category}")
         else -> emptyList()
+    }
+
+    internal fun declarationExports(declaration: SyntaxDeclaration): List<String> = when (declaration) {
+        is SyntaxTrait -> declaration.methods.map { "extension:${declaration.targetName}.${it.name}" }
+        else -> listOf(declarationName(declaration))
     }
 
     private fun declarationName(declaration: SyntaxDeclaration): String = when (declaration) {

@@ -60,6 +60,7 @@ class CDependencyCollector {
             is AstGlobalVariable -> declaration.initializer?.let(::expression) == true
             is AstFunction -> declaration.body?.let(::statement) == true
             is AstStruct -> declaration.methods.any { it.body?.let(::statement) == true }
+            is AstTrait -> declaration.methods.any { it.body?.let(::statement) == true }
             else -> false
         }
     }

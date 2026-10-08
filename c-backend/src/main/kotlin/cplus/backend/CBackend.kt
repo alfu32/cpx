@@ -296,6 +296,7 @@ class CLowerer(
         is AstGlobalVariable -> declaration.initializer?.let(::containsStringTemplate) == true
         is AstFunction -> declaration.body?.let(::containsStringTemplate) == true
         is AstStruct -> declaration.methods.any { it.body?.let(::containsStringTemplate) == true }
+        is AstTrait -> declaration.methods.any { it.body?.let(::containsStringTemplate) == true }
         else -> false
     }
 

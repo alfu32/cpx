@@ -224,6 +224,9 @@ class AstClosureLowerer {
                 is AstStruct -> declaration.copy(
                     methods = declaration.methods.map { lowerFunction(it, declaration.name) }
                 )
+                is AstTrait -> declaration.copy(
+                    methods = declaration.methods.map { lowerFunction(it, declaration.targetName) }
+                )
                 else -> declaration
             }
         }

@@ -1055,10 +1055,16 @@ internal class AstPrinter {
                 }
             }
             is AstTrait -> {
-                appendLine("Trait ${declaration.targetName}")
+                appendLine("${if (declaration.isPublic) "Public " else ""}Trait ${declaration.targetName}")
                 declaration.methods.forEach { method ->
                     indent(depth + 1)
-                    appendLine("Method ${method.returnType.name} ${method.name}(${method.parameters.joinToString(", ") { parameter -> parameter.name }})")
+                    append("Method ${method.returnType.name} ${method.name}(")
+                    appendLine(method.parameters.joinToString(", ") { parameter ->
+                        val parameterType = if (parameter.isReceiver) declaration.targetName else parameter.type.name
+                        val pointerDepth = if (parameter.isReceiver && parameter.isPointerReceiver) 1 else parameter.type.pointerDepth
+                        "${parameterType}${"*".repeat(pointerDepth)} ${parameter.name}"
+                    } + ")")
+                    method.body?.let { appendStatement(it, depth + 2) }
                 }
             }
             is AstGlobalVariable -> {

@@ -13,6 +13,32 @@ import kotlin.test.assertTrue
 
 class ClosureLoweringTest {
     @Test
+    fun lowersClosuresInsideTraitMethodsWithoutUnwrappingTheTrait() {
+        val origin = Origin.Direct(SourceRange(SourceFileId(34), 0, 1))
+        val nested = function("nested", AstBlock(listOf(AstReturn(AstIdentifier("value", origin), origin)), origin), origin)
+        val method = AstFunction(
+            AstTypeRef("int", false, 0, origin),
+            "read",
+            listOf(AstParameter(AstTypeRef("int", false, 0, origin), "value", origin = origin)),
+            AstBlock(listOf(AstInnerFunction(nested, origin), AstReturn(AstIntegerLiteral("0", origin), origin)), origin),
+            origin = origin
+        )
+        val trait = AstTrait("Counter", origin, listOf(method), origin)
+
+        val result = AstClosureLowerer().lower(AstProgram(listOf(trait), origin))
+
+        assertTrue(result.isSuccessful, result.diagnostics.toString())
+        val loweredTrait = result.program.declarations.filterIsInstance<AstTrait>().single()
+        assertEquals("Counter", loweredTrait.targetName)
+        assertEquals(origin, loweredTrait.targetOrigin)
+        assertEquals(origin, loweredTrait.origin)
+        assertEquals("read", loweredTrait.methods.single().name)
+        assertEquals(origin, loweredTrait.methods.single().origin)
+        assertTrue(loweredTrait.methods.single().body.toString().contains("AstInnerFunction").not())
+        assertTrue(result.program.declarations.filterIsInstance<AstFunction>().any { it.name.contains("nested") })
+    }
+
+    @Test
     fun plannerCreatesEnvironmentAndHoistedFunctionForCapturedState() {
         val origin = Origin.Direct(SourceRange(SourceFileId(35), 0, 1))
         val inner = function(
