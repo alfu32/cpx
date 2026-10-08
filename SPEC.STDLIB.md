@@ -2507,6 +2507,19 @@ respectively, and SHALL preserve signed zero. `logb` SHALL return the binary
 exponent for finite nonzero inputs, positive infinity for either infinity,
 and negative infinity with `ERANGE` for zero.
 
+The `sin`, `cos`, and `tan` families SHALL produce a NaN result for NaN inputs
+and report infinite arguments as domain errors (`EDOM`) with a quiet NaN result.
+The `asin` and `acos` families SHALL report finite or infinite arguments
+outside `[-1, 1]` as domain errors (`EDOM`) with a quiet NaN result; `atan`
+SHALL map signed infinities to signed π/2. `atan2` SHALL preserve the
+ordinate's signed zero when the abscissa is positive and return signed π when
+the ordinate is a signed zero and the abscissa is negative. The hyperbolic
+families SHALL preserve signed zero and their C17 infinity limits;
+`acosh(x)` for `x < 1` and `atanh(x)` for `|x| > 1` SHALL report `EDOM` and
+return a quiet NaN, while `atanh(±1)` SHALL report a pole (`ERANGE`) and
+return signed infinity. These requirements do not claim IEC 60559 / Annex F
+accuracy or floating-point exception behavior.
+
 The SDK SHALL expose the supported real operations through `std.math` with
 explicit C+ declarations and types. It SHALL preserve the selected target's
 floating formats and ABI, including `long double`, and SHALL NOT silently
