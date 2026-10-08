@@ -4908,8 +4908,9 @@ dependencies.
       checks pass for shared forwarding code on all four targets; production
       Linux executables have no undefined host-runtime symbols. Native Windows
       x86_64 now executes the public TCP and UDP IPv4 loopback façades and the
-      resolver façade, with PE dependency audits; the complete Windows C+
-      networking matrix remains open.
+      resolver façade, with PE dependency audits; it also executes C+ IPv6 TCP
+      and UDP loopback through `RuntimeStdNetTest.windowsCplusStdNetFacadesExecuteIpv6TcpAndUdpLoopback`.
+      The complete Windows C+ networking matrix remains open.
     - R5.4.4.1 [DONE] — define public `std.net` address, socket, family,
       transport, shutdown, and error types/constants plus the façade
       declarations; verify the public ABI before transport implementation.

@@ -8,6 +8,112 @@ import java.util.concurrent.TimeUnit
 
 class RuntimeStdNetTest {
     @Test
+    fun windowsCplusStdNetFacadesExecuteIpv6TcpAndUdpLoopback() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            System.getProperty("os.name").contains("windows", ignoreCase = true)
+        )
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "windows-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val directory = Files.createTempDirectory("cplus-windows-std-net-ipv6")
+        val source = directory.resolve("main.cp").also {
+            Files.writeString(it, """
+                import {
+                    std_net_accept, std_net_address_t, std_net_bind, std_net_close,
+                    std_net_connect, std_net_get_address, std_net_listen, std_net_open,
+                    std_net_receive, std_net_receive_from, std_net_send, std_net_send_to,
+                    std_net_socket_t, STD_NET_FAMILY_IPV6, STD_NET_SOCKET_DATAGRAM,
+                    STD_NET_SOCKET_STREAM
+                } from std.net;
+
+                static std_net_address_t ipv6_loopback() {
+                    std_net_address_t address;
+                    unsigned int index;
+                    address.family = STD_NET_FAMILY_IPV6;
+                    address.port = 0;
+                    address.reserved = 0;
+                    address.scope_id = 0;
+                    for (index = 0; index < 16; index++) address.address[index] = 0;
+                    address.address[15] = 1;
+                    return address;
+                }
+
+                int main() {
+                    std_net_address_t address = ipv6_loopback();
+                    std_net_address_t bound;
+                    std_net_address_t peer;
+                    std_net_socket_t listener;
+                    std_net_socket_t client;
+                    std_net_socket_t accepted;
+                    std_net_socket_t receiver;
+                    std_net_socket_t sender;
+                    char stream_buffer[8];
+                    char datagram_buffer[8];
+                    const char stream_message[] = "v6-tcp";
+                    const char datagram_message[] = "v6-udp";
+                    int index;
+                    listener = std_net_open(STD_NET_FAMILY_IPV6, STD_NET_SOCKET_STREAM);
+                    if (listener < 0 || std_net_bind(listener, &address) != 0 ||
+                        std_net_get_address(listener, 0, &bound) != 0 ||
+                        bound.family != STD_NET_FAMILY_IPV6 || bound.port == 0 ||
+                        std_net_listen(listener, 4) != 0) return 1;
+                    client = std_net_open(STD_NET_FAMILY_IPV6, STD_NET_SOCKET_STREAM);
+                    if (client < 0 || std_net_connect(client, &bound) != 0) return 2;
+                    accepted = std_net_accept(listener, &peer);
+                    if (accepted < 0 || peer.family != STD_NET_FAMILY_IPV6 ||
+                        std_net_send(client, stream_message, sizeof(stream_message) - 1) !=
+                            sizeof(stream_message) - 1 ||
+                        std_net_receive(accepted, stream_buffer, sizeof(stream_buffer)) !=
+                            sizeof(stream_message) - 1) return 3;
+                    for (index = 0; index < sizeof(stream_message) - 1; index++)
+                        if (stream_buffer[index] != stream_message[index]) return 4;
+                    if (std_net_close(client) != 0 || std_net_close(accepted) != 0 ||
+                        std_net_close(listener) != 0) return 5;
+
+                    address = ipv6_loopback();
+                    receiver = std_net_open(STD_NET_FAMILY_IPV6, STD_NET_SOCKET_DATAGRAM);
+                    sender = std_net_open(STD_NET_FAMILY_IPV6, STD_NET_SOCKET_DATAGRAM);
+                    if (receiver < 0 || sender < 0 || std_net_bind(receiver, &address) != 0 ||
+                        std_net_get_address(receiver, 0, &bound) != 0 || bound.port == 0 ||
+                        std_net_send_to(sender, datagram_message, sizeof(datagram_message) - 1, &bound) !=
+                            sizeof(datagram_message) - 1 ||
+                        std_net_receive_from(receiver, datagram_buffer, sizeof(datagram_buffer), &peer) !=
+                            sizeof(datagram_message) - 1 || peer.family != STD_NET_FAMILY_IPV6) return 6;
+                    for (index = 0; index < sizeof(datagram_message) - 1; index++)
+                        if (datagram_buffer[index] != datagram_message[index]) return 7;
+                    if (std_net_close(sender) != 0 || std_net_close(receiver) != 0) return 8;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val generatedC = directory.resolve("main.c")
+        val executable = directory.resolve("ipv6-net.exe")
+        try {
+            val compilation = CPlusCompiler().compile(CompileRequest(listOf(root.resolve("std/src/net.cp"), source), target))
+            assertTrue(compilation.isSuccessful, compilation.diagnostics.joinToString())
+            Files.writeString(generatedC, compilation.generatedUnits.single().text)
+            val link = LinkDriver.link(LinkRequest(generatedC, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                process.waitFor(2, TimeUnit.SECONDS)
+                throw AssertionError("Windows C+ IPv6 socket fixture timed out; artifacts at $directory")
+            }
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.exitValue(), "Windows C+ IPv6 socket fixture failed: $output")
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
+
+    @Test
     fun windowsStdNetResolverExecutesThroughProductionPal() {
         org.junit.jupiter.api.Assumptions.assumeTrue(
             System.getProperty("os.name").contains("windows", ignoreCase = true)
