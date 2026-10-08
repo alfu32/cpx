@@ -44,8 +44,11 @@ internal data class HoverInfo(
 
 internal data class NavigationInfo(
     val definition: SourceRange?,
-    val references: List<SourceRange>
+    val references: List<SourceRange>,
+    val externalDefinition: ExternalDefinition? = null
 )
+
+internal data class ExternalDefinition(val path: Path, val line: Int, val name: String)
 
 internal data class ImportQuickFix(
     val title: String,
@@ -277,14 +280,21 @@ internal object LspLanguageService {
         } ?: return null
         val symbol = symbolAt(model, token) ?: return null
         val declaration = model.symbols.firstOrNull { it.id == symbol.id }
-        val definition = declaration?.let { symbolDeclarationRange(result, it, sourcePathFor, sourceTextFor) }
+        val externalDefinition = declaration?.let { resolved ->
+            val path = resolved.externalSource
+            val line = resolved.externalLine
+            if (path != null && line != null) ExternalDefinition(path, line, resolved.name) else null
+        }
+        val definition = if (externalDefinition == null) {
+            declaration?.let { symbolDeclarationRange(result, it, sourcePathFor, sourceTextFor) }
+        } else null
         val indexedReferences = model.referenceIndex.referencesTo(symbol.id)
             .mapNotNull { it.origin.primaryRange }
         val references = (if (includeDeclaration) listOfNotNull(definition) else emptyList())
             .plus(indexedReferences)
             .distinct()
             .sortedWith(compareBy<SourceRange>({ it.file.value }, { it.startOffset }, { it.endOffset }))
-        return NavigationInfo(definition, references)
+        return NavigationInfo(definition, references, externalDefinition)
     }
 
     private fun symbolDeclarationRange(

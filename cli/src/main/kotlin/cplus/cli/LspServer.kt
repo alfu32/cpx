@@ -35,6 +35,7 @@ internal class LspServer(
 ) {
     private val workspace = LspWorkspace()
     private val workspaceRoots = linkedSetOf<Path>()
+    private val configuredIncludeDirectories = linkedSetOf<Path>()
     private val importIndex = ImportIndex()
     private var sdkManifest: Path = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
     private var shutdownRequested = false
@@ -251,11 +252,21 @@ internal class LspServer(
             .mapNotNull(::pathForUri)
         val rootUri = (params["rootUri"] as? String)?.let(::pathForUri)
         val rootPath = (params["rootPath"] as? String)?.let { runCatching { Path.of(it) }.getOrNull() }
-        val requestedSdk = ((params["initializationOptions"] as? Map<*, *>)?.get("sdkManifest") as? String)
+        val initializationOptions = params["initializationOptions"] as? Map<*, *>
+        val requestedSdk = (initializationOptions?.get("sdkManifest") as? String)
             ?.let { runCatching { Path.of(it) }.getOrNull() }
         if (requestedSdk != null) sdkManifest = requestedSdk.toAbsolutePath().normalize()
         workspaceRoots.clear()
         workspaceRoots += roots.ifEmpty { listOfNotNull(rootUri, rootPath) }.map { it.toAbsolutePath().normalize() }
+        configuredIncludeDirectories.clear()
+        (initializationOptions?.get("includeDirectories") as? List<*>)
+            .orEmpty().mapNotNull { it as? String }.mapNotNull { raw ->
+                runCatching {
+                    val path = Path.of(raw)
+                    (if (path.isAbsolute) path else workspaceRoots.firstOrNull()?.resolve(path) ?: path)
+                        .toAbsolutePath().normalize()
+                }.getOrNull()
+            }.forEach(configuredIncludeDirectories::add)
         return linkedMapOf(
         "capabilities" to linkedMapOf(
                 "textDocumentSync" to 1,
@@ -433,7 +444,8 @@ internal class LspServer(
     }
 
     private fun discoverImports(document: WorkspaceDocument): cplus.compiler.ImportIndexResult {
-        val roots = (workspaceRoots + listOfNotNull(document.path.toAbsolutePath().normalize().parent)).toList()
+        val roots = (workspaceRoots + configuredIncludeDirectories +
+            listOfNotNull(document.path.toAbsolutePath().normalize().parent)).toList()
         val sdkRoot = sdkManifest.parent?.parent
         val overlays = workspace.snapshot().associate { it.path.toAbsolutePath().normalize() to it.text }
         val headerEnvironment = runCatching {
@@ -488,6 +500,17 @@ internal class LspServer(
             sourcePathFor = compiler::sourcePathFor,
             sourceTextFor = ::sourceTextFor
         ) ?: return null
+        navigation.externalDefinition?.let { external ->
+            val path = external.path.toAbsolutePath().normalize()
+            val text = runCatching { Files.readString(path) }.getOrNull() ?: return null
+            val lines = text.lineSequence().toList()
+            val lineIndex = external.line - 1
+            val lineText = lines.getOrNull(lineIndex) ?: return null
+            val column = lineText.indexOf(external.name).takeIf { it >= 0 } ?: return null
+            val startOffset = LineIndex.from(text).offsetAt(cplus.core.SourcePosition(external.line, column + 1))
+            val range = SourceRange(cplus.core.SourceFileId(0), startOffset, startOffset + external.name.length)
+            return linkedMapOf("uri" to path.toUri().toString(), "range" to lspRange(range, text))
+        }
         val definition = navigation.definition ?: return null
         return location(definition, request.document)
     }
@@ -633,7 +656,9 @@ internal class LspServer(
         val resolution = moduleSourceResolver(document.path).resolveClosure(listOf(document.path), overlays)
         return compiler.compileTextWorkspace(
             resolution.modules.map { TextSource(it.path, it.text) },
-            sdkManifest = sdkManifest
+            sdkManifest = sdkManifest,
+            cIncludeDirectories = (workspaceRoots + configuredIncludeDirectories +
+                listOfNotNull(document.path.toAbsolutePath().normalize().parent)).toList()
         )
     }
 
@@ -645,7 +670,8 @@ internal class LspServer(
 
     private fun moduleSourceResolver(documentPath: Path): ModuleSourceResolver {
         val sdkRoot = sdkManifest.parent?.parent
-        val roots = workspaceRoots + listOfNotNull(documentPath.toAbsolutePath().normalize().parent)
+        val roots = workspaceRoots + configuredIncludeDirectories +
+            listOfNotNull(documentPath.toAbsolutePath().normalize().parent)
         return ModuleSourceResolver(roots.toList(), sdkRoot)
     }
 

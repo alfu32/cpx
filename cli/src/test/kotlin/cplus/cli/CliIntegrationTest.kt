@@ -769,6 +769,48 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun lspAndCliResolveCustomHeadersAndAliasedSourceTypesFromInstalledStyleInputs() {
+        val root = Files.createTempDirectory("cplus-cli-lsp-import-parity")
+        val include = Files.createDirectories(root.resolve("custom headers"))
+        include.resolve("custom_probe.h").writeText("int custom_add(int left, int right);\n")
+        root.resolve("types.cp").writeText("pub struct CustomPoint { int x; };\n")
+        val main = root.resolve("main.cp")
+        val uri = main.toUri().toString()
+        val source = """
+            import { custom_add } from c.custom_probe;
+            import { CustomPoint as Point } from ./types.cp;
+            int main() { Point point; point.x = custom_add(19, 23); return point.x; }
+        """.trimIndent() + "\n"
+        main.writeText(source)
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"${root.toUri()}","initializationOptions":{"includeDirectories":["custom headers"]}}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$source"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"textDocument/definition","params":{"textDocument":{"uri":"$uri"},"position":{"line":2,"character":${source.lines()[2].indexOf("custom_add") + 2}}}}""",
+            """{"jsonrpc":"2.0","id":3,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString("") { frame(it) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val responses = output.toString(Charsets.UTF_8)
+        assertTrue(responses.contains("\"diagnostics\":[]"), responses)
+        assertTrue(responseFor(responses, 2).contains(include.resolve("custom_probe.h").toUri().toString()), responses)
+        val cliDiagnostics = captureStderr {
+            assertEquals(0, Cli().run(listOf("check", main.toString(), "--include-dir", include.toString())))
+        }
+        assertTrue(cliDiagnostics.isBlank(), cliDiagnostics)
+        var runExit = -1
+        val runDiagnostics = captureStderr {
+            val runnable = root.resolve("runnable.cp").also {
+                it.writeText("import { CustomPoint as Point } from ./types.cp; int main() { Point point; point.x = 42; return point.x; }\n")
+            }
+            runExit = Cli().run(listOf("run", runnable.toString()))
+        }
+        assertEquals(42, runExit, runDiagnostics)
+    }
+
+    @Test
     fun lspNavigationUsesCompilerReferenceIndex() {
         val directory = Files.createTempDirectory("cplus-cli-navigation")
         val source = directory.resolve("main.cp")
