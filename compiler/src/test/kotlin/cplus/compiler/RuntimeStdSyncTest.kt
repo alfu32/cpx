@@ -10,10 +10,11 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 class RuntimeStdSyncTest {
     @Test
     fun cplusSyncFacadeExercisesMutexConditionSemaphoreAndOnce() {
-        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val isWindows = System.getProperty("os.name").contains("windows", ignoreCase = true)
+        assumeTrue(isWindows || System.getProperty("os.name").contains("linux", ignoreCase = true))
         val manifestPath = SdkManifestLocator.defaultManifestPath()
         val manifest = requireNotNull(SdkManifestLoader.load(manifestPath).manifest)
-        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val target = TargetInfo(targetTriple = if (isWindows) "windows-x86_64" else "linux-x86_64")
         val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
         val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
         val root = manifestPath.toAbsolutePath().normalize().parent!!.parent!!
@@ -184,7 +185,7 @@ class RuntimeStdSyncTest {
                 }
             """.trimIndent())
         }
-        val executable = directory.resolve("std-sync")
+        val executable = directory.resolve(if (isWindows) "std-sync.exe" else "std-sync")
         val generatedC = directory.resolve("std-sync.c")
         try {
             val compilation = CPlusCompiler().compile(
@@ -199,10 +200,17 @@ class RuntimeStdSyncTest {
             val link = LinkDriver.link(LinkRequest(generatedC, executable, target, resolution), plan)
             assertTrue(link.isSuccessful, link.output)
 
-            val undefinedSymbols = ProcessBuilder("nm", "-u", executable.toString()).start()
-            val undefinedOutput = undefinedSymbols.inputStream.bufferedReader().readText()
-            assertEquals(0, undefinedSymbols.waitFor(), undefinedOutput)
-            assertTrue(undefinedOutput.isBlank(), undefinedOutput)
+            if (isWindows) {
+                val descriptor = resolution.targetDescriptor
+                    ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+                val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+                assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            } else {
+                val undefinedSymbols = ProcessBuilder("nm", "-u", executable.toString()).start()
+                val undefinedOutput = undefinedSymbols.inputStream.bufferedReader().readText()
+                assertEquals(0, undefinedSymbols.waitFor(), undefinedOutput)
+                assertTrue(undefinedOutput.isBlank(), undefinedOutput)
+            }
 
             val process = ProcessBuilder(executable.toString()).start()
             if (!process.waitFor(20, TimeUnit.SECONDS)) {

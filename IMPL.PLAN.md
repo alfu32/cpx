@@ -4868,7 +4868,11 @@ dependencies.
         x86_64/AArch64 descriptors. The linked Linux executable has no
         unresolved host-runtime symbols; strict warning-as-error C17 checks pass
         for the forwarding source on all four targets; the full Gradle build
-        passes. Windows runtime execution remains deferred.
+        passes. The same C+ caller now executes on native Windows x86_64,
+        covering contended mutex updates, condition signaling and mutex
+        reacquisition, semaphore wait/post, once initialization, and invalid
+        states. Its PE product passes `RuntimeDependencyAuditor`; focused tests
+        pass on both Linux and Windows.
     - R5.4.3.3 [DONE] — expose native atomic load/store/exchange/compare-exchange,
       arithmetic/fence operations, and supported wait/wake services;
       - **Acceptance evidence:** `RuntimeStdAtomicTest` compiles and executes a
