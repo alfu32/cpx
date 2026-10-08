@@ -280,7 +280,7 @@ class RuntimeNetworkPalTest {
     }
 
     @Test
-    fun windowsExecutesTcpLoopbackThroughTheFreestandingPal() {
+    fun windowsExecutesTcpUdpAndIpv6LoopbackThroughTheFreestandingPal() {
         org.junit.jupiter.api.Assumptions.assumeTrue(
             System.getProperty("os.name").contains("windows", ignoreCase = true)
         )
@@ -297,11 +297,20 @@ class RuntimeNetworkPalTest {
                     cplus_socket_address_t address = {0};
                     cplus_socket_address_t bound = {0};
                     cplus_socket_address_t peer = {0};
+                    cplus_socket_address_t udp_source = {0};
+                    cplus_socket_address_t ipv6_address = {0};
+                    cplus_socket_address_t ipv6_bound = {0};
+                    cplus_socket_address_t ipv6_peer = {0};
                     const char payload[] = "windows-loopback";
                     char received[sizeof(payload)] = {0};
                     long long listener;
                     long long client;
                     long long accepted;
+                    long long udp_server;
+                    long long udp_client;
+                    long long ipv6_listener;
+                    long long ipv6_client;
+                    long long ipv6_accepted;
                     address.family = CPLUS_SOCKET_IPV4;
                     address.address[0] = 127;
                     address.address[3] = 1;
@@ -319,6 +328,36 @@ class RuntimeNetworkPalTest {
                         if (received[index] != payload[index]) return 4;
                     if (platform_socket_close(client) != 0 || platform_socket_close(accepted) != 0 ||
                         platform_socket_close(listener) != 0) return 5;
+
+                    udp_server = platform_socket_open(CPLUS_SOCKET_IPV4, CPLUS_SOCKET_DATAGRAM);
+                    if (udp_server < 0 || platform_socket_bind(udp_server, &address) != 0 ||
+                        platform_socket_get_address(udp_server, 0, &bound) != 0 || bound.port == 0) return 6;
+                    udp_client = platform_socket_open(CPLUS_SOCKET_IPV4, CPLUS_SOCKET_DATAGRAM);
+                    if (udp_client < 0 ||
+                        platform_socket_send_to(udp_client, payload, sizeof(payload) - 1, &bound) != sizeof(payload) - 1 ||
+                        platform_socket_receive_from(udp_server, received, sizeof(received) - 1, &udp_source) != sizeof(payload) - 1 ||
+                        udp_source.family != CPLUS_SOCKET_IPV4) return 7;
+                    for (unsigned int index = 0; index < sizeof(payload) - 1; index++)
+                        if (received[index] != payload[index]) return 8;
+                    if (platform_socket_close(udp_client) != 0 || platform_socket_close(udp_server) != 0) return 9;
+
+                    ipv6_address.family = CPLUS_SOCKET_IPV6;
+                    ipv6_address.address[15] = 1;
+                    ipv6_listener = platform_socket_open(CPLUS_SOCKET_IPV6, CPLUS_SOCKET_STREAM);
+                    if (ipv6_listener < 0 || platform_socket_bind(ipv6_listener, &ipv6_address) != 0 ||
+                        platform_socket_get_address(ipv6_listener, 0, &ipv6_bound) != 0 ||
+                        ipv6_bound.family != CPLUS_SOCKET_IPV6 || ipv6_bound.port == 0 ||
+                        platform_socket_listen(ipv6_listener, 2) != 0) return 10;
+                    ipv6_client = platform_socket_open(CPLUS_SOCKET_IPV6, CPLUS_SOCKET_STREAM);
+                    if (ipv6_client < 0 || platform_socket_connect(ipv6_client, &ipv6_bound) != 0) return 11;
+                    ipv6_accepted = platform_socket_accept(ipv6_listener, &ipv6_peer);
+                    if (ipv6_accepted < 0 || ipv6_peer.family != CPLUS_SOCKET_IPV6 ||
+                        platform_socket_send(ipv6_client, payload, sizeof(payload) - 1) != sizeof(payload) - 1 ||
+                        platform_socket_receive(ipv6_accepted, received, sizeof(received) - 1) != sizeof(payload) - 1) return 12;
+                    for (unsigned int index = 0; index < sizeof(payload) - 1; index++)
+                        if (received[index] != payload[index]) return 13;
+                    if (platform_socket_close(ipv6_client) != 0 || platform_socket_close(ipv6_accepted) != 0 ||
+                        platform_socket_close(ipv6_listener) != 0) return 14;
                     return 0;
                 }
             """.trimIndent())
@@ -335,7 +374,7 @@ class RuntimeNetworkPalTest {
             if (!process.waitFor(30, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 process.waitFor(2, TimeUnit.SECONDS)
-                throw AssertionError("Windows socket fixture timed out; artifacts at $directory")
+                throw AssertionError("Windows TCP/UDP/IPv6 socket fixture timed out; artifacts at $directory")
             }
             val output = process.inputStream.bufferedReader().readText()
             assertEquals(0, process.exitValue(), "Windows socket fixture failed with output '$output'")

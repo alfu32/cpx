@@ -5053,8 +5053,9 @@ R5.3.4 distinguishes wall, monotonic and
 CPU clocks; R5.3.5 exercises create/join/TLS; R5.3.6 exercises contended
 mutex/condition/semaphore/once and supported atomic wait/wake; R5.3.7 executes
 IPv4 TCP and UDP loopback transfers through the binary-address PAL, checks
-socket/error behavior, verifies no hidden host-runtime dependency, and
-cross-compiles/audits Windows imports. R5.3.8.1 executes shared address and
+socket/error behavior, verifies no hidden host-runtime dependency, and executes
+Windows x86_64 IPv4 TCP/UDP plus IPv6 TCP loopback with dependency audits.
+R5.3.8.1 executes shared address and
 hostname codec vectors; R5.3.8.2 executes Linux DNS behavior and validates
 resolver ownership; R5.3.8.3 has strict Windows source and PE-import evidence,
 but no successful Windows resolver execution. Each service also needs stable error mapping and
@@ -5241,8 +5242,9 @@ returned address family, port, and reserved field, and checks that invalid
 arguments preserve caller-owned output state. The linked executable passes the
 runtime dependency audit. Together with the existing PE import inspection,
 this verifies the successful Windows Unicode system-resolver path without a
-static Winsock import. The complete Windows runtime PE link and other Windows
-network behaviors remain separately tracked; UDP/IPv6 execution is not claimed.
+static Winsock import. The native Windows socket fixture also executes IPv4
+TCP and UDP plus IPv6 TCP through the complete production runtime and passes
+dependency audit. Windows IPv6 UDP remains unvalidated.
 
 ### R5.1 status audit
 
