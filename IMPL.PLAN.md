@@ -11,7 +11,7 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    91/92 accepted with recorded evidence
+Roadmap leaf tasks:    92/92 accepted with recorded evidence
 Phase gates:           4/9 complete; 5 active; 0 queued
 Current task:          R4 — native Windows runtime/libc conformance gate
 Current milestone:     R4 — native runtime and C17 compatibility
@@ -29,12 +29,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DONE]  6/6  Linux and native Windows primitive source-to-ABI evidence
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows family matrix pending
-R5 [DOING] 40/41 native std and platform-service leaf tasks evidenced
+R5 [DOING] 41/41 implementation leaves accepted; Windows service-matrix gate pending
 R6 [DOING] 4/4  CLI leaves accepted; Windows fat-JAR smoke passes, product gate pending
 R7 [DOING] 3/3  Linux extension accepted; Windows tests/package pass, editor-host gate pending
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 
-TOTAL       91/92 implementation tasks complete; 4/9 phase gates complete,
+TOTAL       92/92 implementation tasks accepted; 4/9 phase gates complete,
             5 active, 0 queued
 ```
 
@@ -4624,18 +4624,23 @@ dependencies.
 
 **Dependency-ordered work queue**
 
-- R5.1 [DOING] — complete `std.core`, `std.mem`, `std.string`, `std.text`,
+- R5.1 [DONE] — complete `std.core`, `std.mem`, `std.string`, `std.text`,
   and collection value/error types, including target-aware byte/size/index
-  types;
-  **Progress evidence, not completion:** `NativeStdTest` now checks overlap in
+  types. Acceptance covers Linux x86_64 self-hosted execution and hosted UBSan
+  runs, previously recorded Linux AArch64 QEMU execution, and new native Windows
+  x86_64 self-hosted execution; `NativeStdPublicSurfaceTest` verifies explicit
+  imports/layouts across all four target descriptors, and the Windows PE passes
+  `RuntimeDependencyAuditor`.
+  **Acceptance evidence:** `NativeStdTest` checks overlap in
   both directions and same-address `std_mem_move`, null-backed span lookup,
   target-sized values, and the byte/text/value operations under each available
   GCC and Clang compiler with undefined-behavior sanitization. `std_mem_move`
   compares integerized addresses instead of applying undefined relational
   pointer comparison to unrelated objects; read-only memory/string/text
   inputs now use `const`. The span contract now explicitly makes null-backed
-  spans have no addressable elements. These changes do not close R5.1 or change
-  roadmap counts.
+  spans have no addressable elements. The full foundational fixture now passes
+  through the self-hosted Windows runtime as well; the hosted sanitizer subcase
+  remains Linux-specific.
 - R5.2 [DOING] — extend the file PAL with seek, metadata, create/remove,
   directory iteration, and stream adapters; its parent gate is represented by
   the five numbered leaves below and is not counted separately;
@@ -5341,11 +5346,12 @@ passes dependency audit.
 ### R5.1 status audit
 
 The memory, string, text, collection, and value/error carrier work below has
-Linux execution evidence. Target-aware `usize`/`isize` aliases, dependent
+Linux x86_64, Linux AArch64 QEMU, and native Windows x86_64 execution evidence.
+Target-aware `usize`/`isize` aliases, dependent
 collection/byte APIs, and core pointer/limit operations are implemented over
 descriptor-modeled `size_t`/`ptrdiff_t`; ABI checks cover the declared Linux
-and Windows target models. R5.1 remains `DOING` until the full acceptance suite
-and final target gate pass, including the deferred Windows runtime validation.
+and Windows target models. R5.1 acceptance is complete; R5 remains `DOING` for
+the broader Windows native-service matrix.
 
 Verified completed portions:
 
@@ -5361,20 +5367,20 @@ Verified completed portions:
 - an executable C harness generated from the C+ sources validates the values
   and operations without a hosted C library dependency.
 
-Current-pass evidence: the focused `NativeStdTest` executes the new size/index,
-pointer, comparison, numeric-limit, alignment, unsigned-byte, span, and raw-view
-operations on Linux. ABI tests compile the source aliases against Linux and
-Windows target descriptors and verify descriptor-sized layouts. The full
-`./gradlew build` passes on Linux, including the parser regression check for
-`sizeof(variable)` alongside imported typedef handling. These checks do not
-claim Windows execution and do not change the R5 completion count.
+Current-pass evidence: `NativeStdTest` executes the size/index, pointer,
+comparison, numeric-limit, alignment, unsigned-byte, span, and raw-view
+operations through the self-hosted runtime on Linux and native Windows.
+`NativeStdPublicSurfaceTest` verifies explicit imports and layouts across Linux
+and Windows x86_64/AArch64 descriptors. The Windows PE passes the dependency
+audit; Linux additionally runs the available GCC/Clang UBSan variants. Existing
+Linux AArch64 QEMU execution evidence is retained below.
 
 The pointer-utility contract now explicitly limits offsets to the originating
 object or one-past position, and requires same-array pointer differences to fit
 `isize`; the shared host/AArch64 fixture exercises zero, positive, and negative
 distances plus the one-past offset. Focused `NativeStdTest` passes with the host
-UBSan runs and Linux AArch64 QEMU execution. This is contract/test evidence
-only; no R5.1 completion credit is added.
+UBSan runs, Linux AArch64 QEMU execution, and native Windows self-hosted
+execution; these checks contribute to the accepted R5.1 suite.
 
 Additional target-matrix evidence: a QEMU-conditional `NativeStdTest` compiles
 the same C+ core/memory/string/text/collection modules for Linux AArch64, links
@@ -5383,8 +5389,8 @@ dependencies, and executes the full shared conformance fixture. It covers the
 error/result/option carriers; normal, empty, reversed, crossing-zero, and
 full-endpoint ranges; slices; pointer and width operations; memory alignment,
 spans, raw views, and overlapping moves; string copy/append/equality; text
-queries; and unsigned-byte operations. This remains R5.1 subtask evidence and
-does not change completion status or dashboard counts.
+queries; and unsigned-byte operations. This fixture is part of R5.1's accepted
+target coverage.
 
 The complete host-side generated-C fixture now also links and runs through
 `LinkDriver` and the self-hosted runtime with each available GCC/Clang driver;
@@ -5393,8 +5399,8 @@ compiler runs use the undefined-behavior sanitizer, not evidence for
 host-independent linking. The fixture exercises both error/result paths,
 present/absent options, empty and reversed ranges/slices/spans, string
 equality/copy/append, text empty/prefix queries, and unsigned-byte memory
-comparison as well as the previously listed operations. It remains subtask
-evidence only; no R5.1 completion credit is added.
+comparison as well as the previously listed operations. These hosted runs
+remain Linux-only; self-hosted runtime execution covers Linux and Windows.
 
 Follow-up audit found that the value-carrier and collection structures were
 not exported for named imports and `std_text_is_ascii` was not public; range
@@ -5404,8 +5410,9 @@ without signed overflow. `NativeStdPublicSurfaceTest` compiles explicit imports
 and checks field layouts for Linux and Windows target descriptors;
 `NativeStdTest` executes ranges crossing zero and the full signed endpoint
 range under undefined-behavior sanitization. Focused tests and the full Gradle
-build pass. This is subtask progress only; R5.1 remains open and its dashboard
-count is unchanged.
+build pass. Combined with the native Windows execution, this completes the
+R5.1 work item; the R5 phase gate remains open for other Windows service and
+libc families.
 
 **Deliverables**
 

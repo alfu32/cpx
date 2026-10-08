@@ -51,12 +51,13 @@ class NativeStdTest {
 
     @Test
     fun targetNeutralCoreMemoryStringTextAndCollectionValuesExecute() {
-        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val isWindows = System.getProperty("os.name").contains("windows", ignoreCase = true)
+        assumeTrue(isWindows || System.getProperty("os.name").contains("linux", ignoreCase = true))
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val sources = listOf("core.cp", "mem.cp", "string.cp", "text.cp", "collections.cp").map {
             root.resolve("std/src").resolve(it)
         }
-        val target = TargetInfo(targetTriple = defaultHostTargetTriple())
+        val target = TargetInfo(targetTriple = if (isWindows) "windows-x86_64" else "linux-x86_64")
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
         val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
         val runtimePlan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
@@ -76,27 +77,31 @@ class NativeStdTest {
         val combined = directory.resolve("native_std.c").also {
             Files.writeString(it, generated + fullConformanceMain())
         }
-        val compilers = listOf("cc", "clang").filter(::runCCompiler)
+        val compilers = (if (isWindows) listOf("gcc") else listOf("cc", "clang")).filter(::runCCompiler)
         assertTrue(compilers.isNotEmpty(), "neither cc nor clang is available")
         try {
             compilers.forEach { compiler ->
-                val executable = directory.resolve("native_std_${compiler.replace('/', '_')}")
-                val compile = ProcessBuilder(
-                    compiler, "-std=c17", "-fsanitize=undefined",
-                    "-fno-sanitize-recover=all",
-                    "-I", root.resolve("libc/include").toString(),
-                    combined.toString(), "-o", executable.toString()
-                )
-                    .redirectErrorStream(true)
-                    .start()
-                val output = compile.inputStream.bufferedReader().readText()
-                assertEquals(0, compile.waitFor(), "$compiler: $output")
-                val run = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
-                val runOutput = run.inputStream.bufferedReader().readText()
-                assertEquals(0, run.waitFor(), "$compiler: $runOutput")
-                Files.deleteIfExists(executable)
+                if (!isWindows) {
+                    val executable = directory.resolve("native_std_${compiler.replace('/', '_')}")
+                    val compile = ProcessBuilder(
+                        compiler, "-std=c17", "-fsanitize=undefined",
+                        "-fno-sanitize-recover=all",
+                        "-I", root.resolve("libc/include").toString(),
+                        combined.toString(), "-o", executable.toString()
+                    )
+                        .redirectErrorStream(true)
+                        .start()
+                    val output = compile.inputStream.bufferedReader().readText()
+                    assertEquals(0, compile.waitFor(), "$compiler: $output")
+                    val run = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+                    val runOutput = run.inputStream.bufferedReader().readText()
+                    assertEquals(0, run.waitFor(), "$compiler: $runOutput")
+                    Files.deleteIfExists(executable)
+                }
 
-                val selfHostedExecutable = directory.resolve("self_hosted_${compiler.replace('/', '_')}")
+                val selfHostedExecutable = directory.resolve(
+                    "self_hosted_${compiler.replace('/', '_')}" + if (isWindows) ".exe" else ""
+                )
                 val link = LinkDriver.link(
                     LinkRequest(combined, selfHostedExecutable, target, resolution, cCompiler = compiler),
                     runtimePlan
