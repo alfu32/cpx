@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    78/92 accepted with recorded evidence
+Roadmap leaf tasks:    79/92 accepted with recorded evidence
 Phase gates:           2/9 complete; 5 active; 2 queued
-Current task:          R6.1 — project/workspace manifests and shared source model
+Current task:          R6.2 — deterministic output and toolchain option normalization
 Current milestone:     R6 — CLI transcoder and build-product completion
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
@@ -26,11 +26,11 @@ R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pending
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
-R6 [DOING] 0/4  CLI transcoder and build-product completion
+R6 [DOING] 1/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       78/92 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       79/92 implementation tasks complete; 2/9 phase gates complete,
             5 active, 2 queued
 ```
 
@@ -353,7 +353,8 @@ below. Its current execution sequence is:
    R4.6.2.2 component/projection functions are accepted; R4.6.2.3 complex
    exponential/root, trigonometric/hyperbolic, and type-generic dispatch leaves
    are accepted for Linux x86_64. R4 remains open for Windows libc validation;
-   R6.1 is now active while the R5 Windows-dependent leaves remain deferred.
+   R6.1 is accepted and R6.2 is active while the R5 Windows-dependent leaves
+   remain deferred.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -418,6 +419,7 @@ Latest completed implementation commits:
 - `0571de7` — implement C17 complex exponential, logarithm, power, and square-root functions for all three precisions (R4.6.2.3 Linux x86_64).
 - `6c89226` — implement C17 complex circular, inverse, hyperbolic, and inverse-hyperbolic functions for all three precisions (R4.6.2.4 Linux x86_64).
 - `37014e0` — implement C17 real/complex type-generic math dispatch and its audited fixture (R4.6.2.5 Linux x86_64).
+- `0ca174d` — add project/workspace manifests and SDK-rooted source imports across CLI source commands (R6.1).
 `completed/total` counts only terminal numbered tasks in each phase subtree;
 parent work items are completion gates and are not counted again when they
 contain subtasks.
@@ -3309,8 +3311,9 @@ they are explicitly reopened as R1.4 below.
   entire acceptance gate passes. This remains separate from the opt-in
   `std.fixed_width` aliases tracked by R1.2.4–R1.2.5.
 - SDK libc/std source modules import their dependencies explicitly. Source
-  modules with imports are compiled with their workspace dependencies; SDK-rooted
-  automatic `std.*` discovery for standalone CLI entry points remains in R6.1.
+  modules with imports are compiled with their workspace dependencies; the
+  R6.1 acceptance added SDK-rooted `std.*` discovery for standalone CLI
+  entry points and project/workspace commands.
 
 **Depends**
 - 6.2.1.4
@@ -3848,9 +3851,10 @@ of R1–R8 or deliberately recorded as a post-release extension.
       compilation/execution using the SDK `stdint.h`. Unsupported target triples
       fail SDK descriptor resolution (`SDK008`) rather than falling back to a
       different width.
-    - The CLI test compiles and runs with the SDK source module passed as an
-      explicit source dependency. Automatic SDK-rooted `std.*` import discovery
-      remains in R6.1; this task does not claim that CLI integration is complete.
+    - The CLI integration now compiles and runs this explicit SDK import without
+      a separately supplied source path. R6.1 provides the shared SDK-rooted
+      discovery behavior; this historical task's ABI evidence remains scoped to
+      the listed targets and does not claim Windows runtime execution.
     - `:language-core:test`, `:semantic:test`, `:c-backend:test`,
       `:compiler:test`, `:cli:test`, and `./gradlew build` pass on Linux.
   - R1.2.5 [DONE] — establish target/compiler capability and exact ABI support
@@ -5230,14 +5234,24 @@ Each native package has at least one executable Linux and Windows test (and a
 Darwin status), every selected adapter is source-isolated, and the conformance
 matrix reports platform services as `pass` rather than merely `planned`.
 
-## R6 [DOING] CLI transcoder and build-product completion
+## R6 [DOING] [1/4] CLI transcoder and build-product completion
 
 **Dependency-ordered work queue**
 
-- R6.1 [DOING] — define project/workspace manifests and one source/import model
+- R6.1 [DONE] — define project/workspace manifests and one source/import model
   shared by `check`, `transcode`, `build`, and `run`, including SDK-rooted
-  resolution of explicitly imported `std.*` source modules;
-- R6.2 [TODO] — normalize output, header, map, target, runtime, libc, SDK,
+  resolution of explicitly imported `std.*` source modules. `cplus.toml`
+  `[project]` and `cplus.workspace.toml` `[workspace]` manifests provide an
+  entry source and optional relative source roots/member directories. The
+  shared discovery path handles manifest roots, path-relative imports, and
+  explicit standard imports from the selected SDK, recursively collecting
+  imported source units. CLI tests execute one project via `check`,
+  `transcode`, `build`, and `run`, check a workspace manifest, and run an
+  explicitly imported `std.fixed_width` module without manually passing its
+  source path. `./gradlew :cli:test --tests cplus.cli.CliIntegrationTest
+  --no-daemon` and `./gradlew build --no-daemon` pass. Implementation commit:
+  `0ca174d`.
+- R6.2 [DOING] — normalize output, header, map, target, runtime, libc, SDK,
   compiler, sysroot, C-source, and library options with deterministic paths;
 - R6.3 [TODO] — make fat-JAR assembly reproducible, clean temporary products,
   preserve process failures, and emit stable diagnostics;
