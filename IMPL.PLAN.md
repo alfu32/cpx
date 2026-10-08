@@ -5257,6 +5257,12 @@ dependencies, and executes checks for pointer-sized aliases, signed-range
 length, null-backed spans, and overlapping moves in both directions. This
 does not change R5.1 completion status or dashboard counts.
 
+The complete host-side generated-C fixture now also links and runs through
+`LinkDriver` and the self-hosted runtime with each available GCC/Clang driver;
+each product passes `RuntimeDependencyAuditor`. The sanitizer-backed hosted
+compiler runs remain additional signed-overflow checks, not evidence for
+host-independent linking.
+
 Follow-up audit found that the value-carrier and collection structures were
 not exported for named imports and `std_text_is_ascii` was not public; range
 length also used a potentially overflowing signed subtraction. Commit

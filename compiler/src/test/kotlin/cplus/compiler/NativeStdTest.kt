@@ -71,7 +71,11 @@ class NativeStdTest {
         val sources = listOf("core.cp", "mem.cp", "string.cp", "text.cp", "collections.cp").map {
             root.resolve("std/src").resolve(it)
         }
-        val result = CPlusCompiler().compile(CompileRequest(sources))
+        val target = TargetInfo(targetTriple = defaultHostTargetTriple())
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val runtimePlan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val result = CPlusCompiler().compile(CompileRequest(sources, target = target))
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         val generated = result.generatedUnits.single().text
         assertTrue("#include <stddef.h>" in generated, generated)
@@ -161,6 +165,21 @@ class NativeStdTest {
                 val runOutput = run.inputStream.bufferedReader().readText()
                 assertEquals(0, run.waitFor(), "$compiler: $runOutput")
                 Files.deleteIfExists(executable)
+
+                val selfHostedExecutable = directory.resolve("self_hosted_${compiler.replace('/', '_')}")
+                val link = LinkDriver.link(
+                    LinkRequest(combined, selfHostedExecutable, target, resolution, cCompiler = compiler),
+                    runtimePlan
+                )
+                assertTrue(link.isSuccessful, "$compiler self-hosted link: ${link.output}")
+                val descriptor = resolution.targetDescriptor
+                    ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+                val audit = RuntimeDependencyAuditor.inspect(selfHostedExecutable, descriptor, target.buildProfile)
+                assertTrue(audit.isSuccessful, "$compiler: ${audit.diagnostics.joinToString()}")
+                val selfHostedRun = ProcessBuilder(selfHostedExecutable.toString()).redirectErrorStream(true).start()
+                val selfHostedOutput = selfHostedRun.inputStream.bufferedReader().readText()
+                assertEquals(0, selfHostedRun.waitFor(), "$compiler self-hosted run: $selfHostedOutput")
+                Files.deleteIfExists(selfHostedExecutable)
             }
         } finally {
             Files.list(directory).use { paths -> paths.forEach { Files.deleteIfExists(it) } }
