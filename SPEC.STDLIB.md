@@ -1381,6 +1381,77 @@ SHALL return `CPLUS_PAL_UNSUPPORTED`; other resolver or transport failures SHALL
 `CPLUS_PAL_NETWORK_ERROR`. DNSSEC validation and search-list expansion are
 outside this API contract.
 
+### 16.2 Public C+ façade
+
+The SDK SHALL expose the network services through `std.net`, without requiring
+applications to import platform APIs. Its public declarations SHALL include
+the following fixed-width types and stable values:
+
+```c
+pub enum std_net_family_t {
+    STD_NET_FAMILY_ANY = 0,
+    STD_NET_FAMILY_IPV4 = 4,
+    STD_NET_FAMILY_IPV6 = 6
+};
+
+pub enum std_net_socket_kind_t {
+    STD_NET_SOCKET_STREAM = 1,
+    STD_NET_SOCKET_DATAGRAM = 2
+};
+
+pub enum std_net_shutdown_t {
+    STD_NET_SHUTDOWN_RECEIVE = 0,
+    STD_NET_SHUTDOWN_SEND = 1,
+    STD_NET_SHUTDOWN_BOTH = 2
+};
+
+pub enum std_net_status_t {
+    STD_NET_OK = 0,
+    STD_NET_INVALID_ARGUMENT = -2,
+    STD_NET_NOT_FOUND = -3,
+    STD_NET_ACCESS_DENIED = -4,
+    STD_NET_IO_ERROR = -5,
+    STD_NET_UNSUPPORTED = -6,
+    STD_NET_BUFFER_TOO_SMALL = -7,
+    STD_NET_NETWORK_ERROR = -8
+};
+
+pub struct std_net_address_t {
+    uint32_t family;
+    uint16_t port;
+    uint16_t reserved;
+    uint8_t address[16];
+    uint32_t scope_id;
+};
+
+pub typedef int64_t std_net_socket_t;
+```
+
+`std_net_address_t` SHALL match the PAL address record: 28 bytes, four-byte
+alignment, and member offsets 0, 4, 6, 8, and 24 on every supported target.
+`std_net_socket_t` SHALL be a 64-bit opaque handle. `STD_NET_FAMILY_ANY` is
+valid only for resolution; socket creation SHALL require IPv4 or IPv6.
+
+The public blocking operations SHALL be `std_net_open`, `std_net_bind`,
+`std_net_listen`, `std_net_accept`, `std_net_connect`,
+`std_net_get_address`, `std_net_send`, `std_net_receive`, `std_net_send_to`,
+`std_net_receive_from`, `std_net_shutdown`, and `std_net_close`, with arguments
+and results matching their corresponding `platform_socket_*` operations and
+using `std_net_address_t` and `std_net_socket_t` in place of PAL types. The
+address/name operations SHALL be `std_net_parse_address`,
+`std_net_format_address`, and `std_net_resolve`, matching the
+`platform_network_*` contracts in §16.1 and copying all results into
+caller-owned storage.
+
+Operations returning status SHALL use the stable `std_net_status_t` values,
+never native OS error numbers. `std_net_open` and `std_net_accept` SHALL return
+a non-negative socket handle on success and a stable negative status on
+failure; transfer and formatting operations SHALL return their documented
+non-negative byte count on success or a stable negative status. The façade
+SHALL preserve the PAL's argument validation, buffer-preservation, blocking,
+partial-transfer, and optional-pointer rules. It SHALL not introduce socket
+dependencies into programs that do not reference `std.net`.
+
 ---
 
 # 17. libc conformance profiles
