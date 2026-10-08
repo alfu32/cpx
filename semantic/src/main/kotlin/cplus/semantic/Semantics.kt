@@ -600,6 +600,7 @@ class SemanticAnalyzer(
                     .containsAll(fixedWidthBaseAliasNames)
         }.keys
         val supportsInt128 = "int128" in targetFeatures
+        val supportsC17Complex = "c17_complex" in targetFeatures
 
         fun isUnavailableFixedWidthAlias(moduleName: String, aliasName: String): Boolean =
             !supportsInt128 && moduleName in fixedWidthModules && aliasName in fixedWidthAliasNames
@@ -759,6 +760,8 @@ class SemanticAnalyzer(
             val canonicalPrimitive = CPrimitiveTypes.canonicalName(reference.name)
             val unavailablePrimitiveInt128 = !supportsInt128 &&
                 CPrimitiveTypes.typeInfo(canonicalPrimitive ?: "")?.rank == CIntegerRank.INT128
+            val unavailablePrimitiveComplex = !supportsC17Complex &&
+                CPrimitiveTypes.typeInfo(canonicalPrimitive ?: "")?.kind == CPrimitiveKind.COMPLEX
             val unavailableImportedAlias = importedType?.let {
                 isUnavailableFixedWidthAlias(it.ownerModule, it.declarationName)
             } == true
@@ -775,6 +778,14 @@ class SemanticAnalyzer(
                         "128-bit integer type '${reference.name}' is unavailable for target '$targetName'",
                         rangeOf(reference.origin),
                         "SEM411"
+                    )
+                    UnknownType(TypeId(-1))
+                }
+                unavailablePrimitiveComplex -> {
+                    diagnostics.error(
+                        "C17 complex type '${reference.name}' is unavailable for target '$targetName'",
+                        rangeOf(reference.origin),
+                        "SEM412"
                     )
                     UnknownType(TypeId(-1))
                 }
@@ -896,6 +907,13 @@ class SemanticAnalyzer(
                             "128-bit integer type '$baseName' is unavailable for target '$targetName'",
                             rangeOf(origin),
                             "SEM411"
+                        )
+                        UnknownType(TypeId(-1))
+                    } else if (!supportsC17Complex && CPrimitiveTypes.isComplex(baseName)) {
+                        diagnostics.error(
+                            "C17 complex type '$baseName' is unavailable for target '$targetName'",
+                            rangeOf(origin),
+                            "SEM412"
                         )
                         UnknownType(TypeId(-1))
                     } else {

@@ -73,6 +73,9 @@ class AbiLayoutEngine(private val target: TargetAbiDescriptor) {
             CPrimitiveKind.VOID -> 0
             CPrimitiveKind.BOOLEAN -> 1
             CPrimitiveKind.FLOATING -> target.floatingTypes[type.name]?.sizeBytes ?: 0
+            CPrimitiveKind.COMPLEX -> if ("c17_complex" in target.features) {
+                (type.componentTypeName?.let(target.floatingTypes::get)?.sizeBytes ?: 0) * 2
+            } else 0
             CPrimitiveKind.INTEGER -> when (type.rank) {
                 CIntegerRank.CHAR -> 1
                 CIntegerRank.SHORT -> 2
@@ -85,6 +88,8 @@ class AbiLayoutEngine(private val target: TargetAbiDescriptor) {
         }
         val alignment = when {
             type.kind == CPrimitiveKind.FLOATING -> target.floatingTypes[type.name]?.alignmentBytes ?: 1
+            type.kind == CPrimitiveKind.COMPLEX -> type.componentTypeName
+                ?.let(target.floatingTypes::get)?.alignmentBytes ?: 1
             type.rank == CIntegerRank.INT128 && size > 0 -> 16
             else -> size
         }

@@ -34,4 +34,20 @@ class CPrimitiveTypesTest {
         assertTrue(CPrimitiveTypes.isInteger("ptrdiff_t"))
         assertFalse(CPrimitiveTypes.isInteger("max_align_t"))
     }
+
+    @Test
+    fun canonicalizesComplexTypesWithoutTreatingThemAsRealScalars() {
+        assertEquals("float _Complex", CPrimitiveTypes.canonicalName("_Complex float"))
+        assertEquals("double _Complex", CPrimitiveTypes.canonicalName("double _Complex"))
+        assertEquals("long double _Complex", CPrimitiveTypes.canonicalName("_Complex long double"))
+        assertEquals("long double _Complex", CPrimitiveTypes.canonicalName("long _Complex double"))
+        assertEquals(CPrimitiveKind.COMPLEX, CPrimitiveTypes.typeInfo("double _Complex")?.kind)
+        assertEquals("long double", CPrimitiveTypes.typeInfo("long double _Complex")?.componentTypeName)
+        assertTrue(CPrimitiveTypes.isKnownTypeName("float _Complex"))
+        assertTrue(CPrimitiveTypes.isComplex("double _Complex"))
+        assertFalse(CPrimitiveTypes.isNumeric("double _Complex"))
+        assertNull(CPrimitiveTypes.canonicalName("int _Complex"))
+        assertNull(CPrimitiveTypes.canonicalName("_Complex"))
+        assertNull(CPrimitiveTypes.canonicalName("float _Complex _Complex"))
+    }
 }

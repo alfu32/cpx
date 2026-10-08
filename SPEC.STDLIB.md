@@ -2609,6 +2609,16 @@ and complex arithmetic/transcendental operations. The complex representation
 and calling convention SHALL match the selected target ABI; complex values
 SHALL NOT be modeled as ordinary C+ records.
 
+The standard `complex` spelling SHALL map to the C `_Complex` type specifier.
+C+ SHALL preserve the three complex scalar identities (`float _Complex`,
+`double _Complex`, and `long double _Complex`) through declarations, fields,
+function parameters/returns, and ABI layout. The target descriptor SHALL
+advertise complex support only after the selected C compiler passes size,
+alignment, and declaration probes; independent C callers SHALL verify the
+parameter/return ABI. The built-in C header adapter `c.complex` SHALL expose
+the declarations from the SDK `<complex.h>` and emit that header in generated
+C. Header declaration availability alone SHALL NOT claim runtime definitions.
+
 The C17 `<tgmath.h>` header SHALL provide the standard type-generic math
 macros for the corresponding `<math.h>` and `<complex.h>` operations. Dispatch
 SHALL follow C17 argument-type selection, including integer promotion and

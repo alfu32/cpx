@@ -158,6 +158,11 @@ object C17ConformanceFixtures {
             byteArrayOf('A'.code.toByte(), 0xff.toByte()),
             "P:ok\nV:8\nline\n>",
             "F:9\nW:ok\n!"
+        ),
+        C17Fixture(
+            "complex-types",
+            "c17-complex-types.c",
+            { descriptor -> descriptor.targetTriple == "linux-x86_64" && "c17_complex" in descriptor.features }
         )
     )
 }

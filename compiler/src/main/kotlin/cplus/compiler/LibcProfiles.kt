@@ -7,7 +7,7 @@ data class LibcHeaderStatus(val header: String, val profile: LibcProfile, val st
 
 object LibcProfileCatalogue {
     private val c17Headers = listOf(
-        "assert.h", "ctype.h", "errno.h", "float.h", "limits.h", "locale.h", "math.h",
+        "assert.h", "complex.h", "ctype.h", "errno.h", "float.h", "limits.h", "locale.h", "math.h",
         "setjmp.h", "signal.h", "stdarg.h", "stdbool.h", "stddef.h", "stdint.h", "stdio.h",
         "stdlib.h", "string.h", "time.h", "wchar.h", "wctype.h"
     )

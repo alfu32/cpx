@@ -131,6 +131,7 @@ class CDependencyCollector {
         "c.stddef" -> "stddef.h"
         "c.stdlib" -> "stdlib.h"
         "c.math" -> "math.h"
+        "c.complex" -> "complex.h"
         "c.string" -> "string.h"
         "c.ctype" -> "ctype.h"
         "c.time" -> "time.h"

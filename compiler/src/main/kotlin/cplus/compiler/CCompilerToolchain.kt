@@ -14,6 +14,7 @@ data class CCompilerCapabilities(
 
 object CCompilerToolchains {
     private val floatingAbiProbeCache = ConcurrentHashMap<String, Boolean>()
+    private val complexAbiProbeCache = ConcurrentHashMap<String, Boolean>()
 
     private val INT128_PROBE_SOURCE = """
         #if !defined(__SIZEOF_INT128__)
@@ -127,6 +128,54 @@ object CCompilerToolchains {
         }
     }
 
+    /**
+     * The initial complex ABI profile is deliberately limited to Linux
+     * x86_64 and GCC/Clang-compatible drivers. Check the compiler's C17
+     * complex type size, alignment, and callable declarations before using
+     * the descriptor's `c17_complex` capability.
+     */
+    fun supportsC17Complex(target: TargetAbiDescriptor, compiler: String): Boolean {
+        if ("c17_complex" !in target.features || target.targetTriple != "linux-x86_64") return false
+        if (classify(compiler).kind !in setOf(CCompilerKind.GCC, CCompilerKind.CLANG)) return false
+        val executableName = compiler.substringAfterLast('/').substringAfterLast('\\').lowercase()
+        if (executableName.contains("mingw") || executableName.contains("w64")) return false
+        val key = "$compiler|${target.targetTriple}|${target.floatingTypes}"
+        return complexAbiProbeCache.computeIfAbsent(key) {
+            val source = complexAbiProbeSource(target)
+            val process = try {
+                ProcessBuilder(compiler, "-std=c17", "-Werror", "-x", "c", "-fsyntax-only", "-")
+                    .redirectErrorStream(true)
+                    .start()
+            } catch (_: Exception) {
+                return@computeIfAbsent false
+            }
+            try {
+                process.outputStream.bufferedWriter().use { it.write(source) }
+                if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                    process.destroyForcibly()
+                    false
+                } else {
+                    process.inputStream.bufferedReader().use { it.readText() }
+                    process.exitValue() == 0
+                }
+            } catch (_: Exception) {
+                process.destroyForcibly()
+                false
+            }
+        }
+    }
+
+    private fun complexAbiProbeSource(target: TargetAbiDescriptor): String = buildString {
+        listOf("float", "double", "long double").forEach { realType ->
+            val abi = target.floatingTypes.getValue(realType)
+            val complexType = "$realType _Complex"
+            val tag = realType.replace(' ', '_')
+            appendLine("_Static_assert(sizeof($complexType) == ${abi.sizeBytes * 2}, \"$tag complex size\");")
+            appendLine("_Static_assert(_Alignof($complexType) == ${abi.alignmentBytes}, \"$tag complex alignment\");")
+            appendLine("$complexType cplus_complex_${tag}_abi($complexType value) { return value; }")
+        }
+    }
+
     /** Verifies the selected compiler's real floating formats and object ABI against the target. */
     fun supportsFloatingAbi(target: TargetAbiDescriptor, compiler: String): Boolean {
         val compilerKind = classify(compiler).kind
@@ -207,6 +256,12 @@ object CCompilerToolchains {
             add(
                 "target '${target.targetTriple}' advertises int128, but C compiler '$compiler' " +
                     "does not satisfy the verified 128-bit width/alignment ABI contract"
+            )
+        }
+        if ("c17_complex" in target.features && !supportsC17Complex(target, compiler)) {
+            add(
+                "target '${target.targetTriple}' advertises c17_complex, but C compiler '$compiler' " +
+                    "does not satisfy the verified C17 complex size/alignment ABI contract"
             )
         }
     }

@@ -1203,11 +1203,11 @@ A C import SHALL have two effects:
 2. ensure required C dependencies are represented in generated output.
 
 The implementation SHALL provide built-in adapters for the standard C header
-modules `c.stdio`, `c.stddef`, `c.stdlib`, `c.math`, `c.string`, `c.ctype`,
-`c.time`, `c.stdint`, and `c.stdarg`. Their imported declarations SHALL retain
+modules `c.stdio`, `c.stddef`, `c.stdlib`, `c.math`, `c.complex`, `c.string`,
+`c.ctype`, `c.time`, `c.stdint`, and `c.stdarg`. Their imported declarations SHALL retain
 their C spelling and SHALL cause the corresponding system header to be emitted
 (`stdio.h`, `stddef.h`, `stdlib.h`, `math.h`, `string.h`, `ctype.h`, `time.h`,
-`stdint.h`, or `stdarg.h`). Implementations MAY add configured header adapters.
+`complex.h`, `stdint.h`, or `stdarg.h`). Implementations MAY add configured header adapters.
 An imported symbol that is not declared by the selected adapter SHALL produce a
 diagnostic; the compiler SHALL NOT guess a foreign signature.
 
@@ -1665,6 +1665,18 @@ Complex support SHALL be capability-gated by the selected target/toolchain
 profile. A target SHALL NOT advertise C17 complex compatibility until its
 complex representation and calling convention pass the target ABI probe and
 independent C-caller checks.
+
+Complex types SHALL participate in C17 usual arithmetic conversions. The
+validity and result type of an expression with a complex operand SHALL follow
+the corresponding C17 operator constraints; complex operands SHALL NOT be
+treated as integer or ordered real scalars.
+
+The C17 `<complex.h>` adapter SHALL expose `complex`, `_Complex_I`, and `I`,
+the C11 `CMPLXF`, `CMPLX`, and `CMPLXL` construction macros, and the standard
+float, double, and long-double complex function declarations. C+ imports from
+`c.complex` SHALL resolve only declarations present in that adapter and SHALL
+cause `<complex.h>` to be emitted; an import SHALL NOT imply that a declared
+function has a linked runtime implementation.
 
 ---
 

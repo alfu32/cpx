@@ -134,6 +134,28 @@ class CHeaderImportService(
         .trim()
 
     companion object {
+        private fun complexHeaderDeclarations(): String = buildList {
+            val complexResultFunctions = listOf(
+                "cacos", "casin", "catan", "ccos", "csin", "ctan", "cacosh", "casinh", "catanh",
+                "ccosh", "csinh", "ctanh", "cexp", "clog", "csqrt", "conj", "cproj"
+            )
+            val realResultFunctions = listOf("cabs", "carg", "cimag", "creal")
+            val types = listOf(
+                Triple("float", "f", "float _Complex"),
+                Triple("double", "", "double _Complex"),
+                Triple("long double", "l", "long double _Complex")
+            )
+            types.forEach { (realType, suffix, complexType) ->
+                complexResultFunctions.forEach { name ->
+                    add("extern $complexType $name$suffix($complexType value);")
+                }
+                add("extern $complexType cpow$suffix($complexType left, $complexType right);")
+                realResultFunctions.forEach { name ->
+                    add("extern $realType $name$suffix($complexType value);")
+                }
+            }
+        }.joinToString("\n")
+
         private fun mathHeaderDeclarations(): String = buildList {
             add("typedef float float_t;")
             add("typedef double double_t;")
@@ -203,6 +225,7 @@ class CHeaderImportService(
                 typedef long max_align_t;
             """.trimIndent(),
             "c.math" to mathHeaderDeclarations(),
+            "c.complex" to complexHeaderDeclarations(),
             "c.stdlib" to """
                 extern int abs(int value);
                 extern long labs(long value);

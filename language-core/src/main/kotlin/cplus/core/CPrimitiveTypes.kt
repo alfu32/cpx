@@ -4,7 +4,8 @@ enum class CPrimitiveKind {
     VOID,
     BOOLEAN,
     INTEGER,
-    FLOATING
+    FLOATING,
+    COMPLEX
 }
 
 enum class CIntegerRank {
@@ -33,13 +34,14 @@ data class CPrimitiveTypeInfo(
     val kind: CPrimitiveKind,
     val rank: CIntegerRank? = null,
     val signedness: CIntegerSignedness? = null,
-    val floatingRank: CFloatingRank? = null
+    val floatingRank: CFloatingRank? = null,
+    val componentTypeName: String? = null
 )
 
 /** Canonical C primitive spellings shared by parsing, semantic analysis, and backends. */
 object CPrimitiveTypes {
     val specifierKeywords: Set<String> = setOf(
-        "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "__int128"
+        "void", "bool", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "__int128", "_Complex"
     )
 
     val standardTypedefNames: Set<String> = setOf("size_t", "ptrdiff_t", "max_align_t")
@@ -63,7 +65,10 @@ object CPrimitiveTypes {
         CPrimitiveTypeInfo("unsigned __int128", CPrimitiveKind.INTEGER, CIntegerRank.INT128, CIntegerSignedness.UNSIGNED),
         CPrimitiveTypeInfo("float", CPrimitiveKind.FLOATING, floatingRank = CFloatingRank.FLOAT),
         CPrimitiveTypeInfo("double", CPrimitiveKind.FLOATING, floatingRank = CFloatingRank.DOUBLE),
-        CPrimitiveTypeInfo("long double", CPrimitiveKind.FLOATING, floatingRank = CFloatingRank.LONG_DOUBLE)
+        CPrimitiveTypeInfo("long double", CPrimitiveKind.FLOATING, floatingRank = CFloatingRank.LONG_DOUBLE),
+        CPrimitiveTypeInfo("float _Complex", CPrimitiveKind.COMPLEX, floatingRank = CFloatingRank.FLOAT, componentTypeName = "float"),
+        CPrimitiveTypeInfo("double _Complex", CPrimitiveKind.COMPLEX, floatingRank = CFloatingRank.DOUBLE, componentTypeName = "double"),
+        CPrimitiveTypeInfo("long double _Complex", CPrimitiveKind.COMPLEX, floatingRank = CFloatingRank.LONG_DOUBLE, componentTypeName = "long double")
     )
 
     private val typesByName = types.associateBy(CPrimitiveTypeInfo::name)
@@ -94,9 +99,18 @@ object CPrimitiveTypes {
     fun isNumeric(name: String): Boolean = canonicalName(name)?.let { it in numericNames } == true ||
         name in standardIntegerTypedefNames
 
+    fun isComplex(name: String): Boolean = typeInfo(name)?.kind == CPrimitiveKind.COMPLEX
+
     /** Canonicalizes the full sequence of C primitive type specifiers. */
     fun canonicalizeSpecifierSequence(specifiers: List<String>): String? {
         if (specifiers.isEmpty() || specifiers.any { it !in specifierKeywords }) return null
+        if ("_Complex" in specifiers) {
+            if (specifiers.count { it == "_Complex" } != 1) return null
+            val componentType = canonicalizeSpecifierSequence(specifiers.filterNot { it == "_Complex" })
+            return componentType
+                ?.takeIf { it in setOf("float", "double", "long double") }
+                ?.let { "$it _Complex" }
+        }
         val signCount = specifiers.count { it == "signed" || it == "unsigned" }
         if (signCount > 1) return null
         val unsigned = "unsigned" in specifiers

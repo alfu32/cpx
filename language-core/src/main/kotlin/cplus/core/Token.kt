@@ -30,7 +30,7 @@ class Lexer {
     private val keywords = setOf(
         "auto", "bool", "break", "case", "char", "const", "continue", "default",
         "do", "double", "else", "enum", "extern", "float", "for", "if", "inline",
-        "int", "long", "package", "return", "short", "signed", "sizeof", "static",
+        "int", "long", "package", "return", "short", "signed", "sizeof", "static", "_Complex",
         "struct", "switch", "typedef", "union", "enum", "unsigned", "void", "volatile", "restrict", "while",
         "comptime", "import", "pub", "defer", "as", "true", "false", "alignof", "offsetof", "layoutof", "thread_local", "noreturn"
     )

@@ -32,6 +32,6 @@ tls_model = "initial-exec"
 linker = "ld"
 startup_entry = "_start"
 system_libraries = []
-features = ["threads", "atomics", "syscalls", "int128"]
+features = ["threads", "atomics", "syscalls", "int128", "c17_complex"]
 intrinsics = ["syscall0", "syscall1", "syscall2", "syscall3", "syscall4", "syscall5", "syscall6"]
 supported_abis = ["c", "system", "cplus", "intrinsic", "runtime"]
