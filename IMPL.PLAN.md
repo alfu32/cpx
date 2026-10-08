@@ -5145,10 +5145,13 @@ closing each standard descriptor. `nm -u` confirms no unresolved host-runtime
 symbols. `RuntimeProcessPalTest` also passes with the new explicit `envp`
 startup ABI. Linux AArch64 runtime/startup source checks and startup assembly
 compilation pass; Windows x86_64 adapter/startup sources pass strict MinGW
-syntax compilation. `./gradlew build --no-daemon` passes on Linux. The
-independent C17 stdio fixture is registered in the libc report and audits the
-declared stdio channel surface; R4.4/R4.5 Linux leaves are complete, while
-their Windows execution gate remains open. No Windows execution is claimed.
+syntax compilation. The native Windows VM passes
+`RuntimeEnvironmentAndStreamsTest.windowsStartupExposesArgumentsEnvironmentAndStandardChannels`:
+the production runtime exposes argv and inherited environment, reads stdin,
+keeps stdout/stderr separate, and passes a dependency audit. `./gradlew build
+--no-daemon` passes on Linux. The independent C17 stdio fixture is registered
+in the libc report and audits the declared stdio channel surface; R4.4/R4.5
+Linux leaves are complete, while their C17 Windows family matrix remains open.
 
 R5.3.4 acceptance evidence: `RuntimeClockPalTest` builds and executes a
 freestanding static Linux x86_64 program against the production PAL and runtime
