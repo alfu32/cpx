@@ -5029,7 +5029,13 @@ dependencies.
       the bundled runtime, and verifies the executable has no undefined host
       symbols. All `RuntimeStdMath*` tests pass, including strict C17 checks
       for Linux/Windows x86_64 and AArch64; the full Gradle build passes.
-      Windows runtime execution remains deferred.
+      Native Windows x86_64 now also passes this integration test: all 172
+      public façade symbols are retained and found in the PE product, the C+
+      executable runs representative operations across real precisions and
+      math families, and the product passes `RuntimeDependencyAuditor`. The
+      exhaustive numerical edge-case vectors for R5.4.5.2–R5.4.5.10 remain
+      Linux-only; Windows execution does not receive blanket per-function
+      edge-case credit.
   - R5.4.6 [DONE] — propagate verified target platform-service capabilities,
     produce stable unavailable-service diagnostics, and ensure unused runtime
     services do not add platform dependencies. **Acceptance:** supported
@@ -5061,10 +5067,10 @@ type-import, and alias boundaries. R5.2.1 freezes the ABI before adapter work.
 R5.2.5 subsequently closed the Windows filesystem execution and audit gate;
 the separate subsystem Windows gates below remain open only where their own
 acceptance evidence is still missing.
-The R5.3/R5.4 leaves may close on their explicitly listed Linux execution and
+The R5.3/R5.4 leaves may close on their explicitly listed execution and
 target-model acceptance evidence, but no such leaf or aggregate closes the
-Windows target gates; the R5 phase gate remains open until final Windows
-execution and the R8 matrix/audit pass. Math algorithms belong above the PAL,
+Windows target gates; the R5 phase gate remains open until the full Windows
+service matrix and R8 matrix/audit pass. Math algorithms belong above the PAL,
 so R5.4.5 does not add a platform math service.
 
 R5.3 leaf acceptance evidence is executable, not declaration-only: R5.3.1

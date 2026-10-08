@@ -10,10 +10,11 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 class RuntimeStdMathFacadeTest {
     @Test
     fun stdMathFacadeLinksEveryDeclaredEntryPointAndExecutesAcrossRealPrecisions() {
-        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val isWindows = System.getProperty("os.name").contains("windows", ignoreCase = true)
+        assumeTrue(isWindows || System.getProperty("os.name").contains("linux", ignoreCase = true))
         val manifestPath = SdkManifestLocator.defaultManifestPath()
         val manifest = requireNotNull(SdkManifestLoader.load(manifestPath).manifest)
-        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val target = TargetInfo(targetTriple = if (isWindows) "windows-x86_64" else "linux-x86_64")
         val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
         val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
         val root = manifestPath.toAbsolutePath().normalize().parent!!.parent!!
@@ -68,7 +69,7 @@ class RuntimeStdMathFacadeTest {
             """.trimIndent())
         }
         val generatedC = directory.resolve("std_math_facade.c")
-        val executable = directory.resolve("std-math-facade")
+        val executable = directory.resolve(if (isWindows) "std-math-facade.exe" else "std-math-facade")
         val declaredNames = Regex("(?m)^pub\\s+.+\\s+(std_math_[A-Za-z0-9_]+)\\s*\\(")
             .findAll(Files.readString(mathModule))
             .map { it.groupValues[1] }
@@ -95,12 +96,19 @@ class RuntimeStdMathFacadeTest {
             assertEquals(0, nm.waitFor())
             assertTrue(declaredNames.all(symbols::contains), "Missing runtime exports: ${declaredNames - symbols}")
 
-            val undefined = ProcessBuilder("nm", "-u", executable.toString())
-                .redirectErrorStream(true)
-                .start()
-            val undefinedSymbols = undefined.inputStream.bufferedReader().readText()
-            assertEquals(0, undefined.waitFor(), undefinedSymbols)
-            assertTrue(undefinedSymbols.isBlank(), "std.math facade depends on host symbols: $undefinedSymbols")
+            if (isWindows) {
+                val descriptor = resolution.targetDescriptor
+                    ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+                val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+                assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            } else {
+                val undefined = ProcessBuilder("nm", "-u", executable.toString())
+                    .redirectErrorStream(true)
+                    .start()
+                val undefinedSymbols = undefined.inputStream.bufferedReader().readText()
+                assertEquals(0, undefined.waitFor(), undefinedSymbols)
+                assertTrue(undefinedSymbols.isBlank(), "std.math facade depends on host symbols: $undefinedSymbols")
+            }
 
             val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
             if (!process.waitFor(15, TimeUnit.SECONDS)) {
