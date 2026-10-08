@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('node:child_process');
 const { LanguageClient } = require('vscode-languageclient/node');
 
 let client;
@@ -66,7 +67,8 @@ function createClient(server) {
     {
       documentSelector: [{ scheme: 'file', language: 'cplus' }],
       synchronize: {
-        configurationSection: 'cplus'
+        configurationSection: 'cplus',
+        fileEvents: vscode.workspace.createFileSystemWatcher('**/*.{cp,h}')
       },
       outputChannelName: 'C+ Language Server',
       revealOutputChannelOn: 4
@@ -123,10 +125,29 @@ async function runMain() {
   terminal.show(true);
 }
 
+function showVersion() {
+  const server = cliConfiguration(['version']);
+  if (!server) return;
+  return new Promise((resolve) => {
+    execFile(server.command, server.args, { cwd: server.cwd, windowsHide: true }, (error, stdout, stderr) => {
+      if (error) {
+        vscode.window.showErrorMessage(`C+ CLI version could not be read: ${stderr || error.message}`);
+        resolve();
+        return;
+      }
+      const output = vscode.window.createOutputChannel('C+ Version');
+      output.appendLine(stdout.trim());
+      output.show();
+      resolve();
+    });
+  });
+}
+
 function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('cplus.restartServer', restartClient),
-    vscode.commands.registerCommand('cplus.runMain', runMain)
+    vscode.commands.registerCommand('cplus.runMain', runMain),
+    vscode.commands.registerCommand('cplus.showVersion', showVersion)
   );
   return startClient();
 }
@@ -140,5 +161,6 @@ module.exports = {
   deactivate,
   configuration,
   cliConfiguration,
-  runMain
+  runMain,
+  showVersion
 };

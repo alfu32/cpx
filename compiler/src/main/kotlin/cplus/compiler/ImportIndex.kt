@@ -32,7 +32,8 @@ data class ImportExport(
 data class ImportIndexResult(
     val exports: List<ImportExport>,
     val diagnostics: List<Diagnostic>,
-    val configurationFingerprint: String
+    val configurationFingerprint: String,
+    val cacheHit: Boolean = false
 )
 
 /** Expanded declarations supplied by an already validated compiler result, never produced by a scan. */
@@ -45,6 +46,16 @@ data class ValidatedImportExpansion(
 class ImportIndex(
     private val maximumCandidates: Int = ModuleSourceResolver.DEFAULT_MAXIMUM_CANDIDATES
 ) {
+    private data class CacheEntry(
+        val result: ImportIndexResult,
+        val dependencyFingerprints: Map<Path, String>
+    )
+
+    private val cache = object : LinkedHashMap<String, CacheEntry>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CacheEntry>?): Boolean = size > 8
+    }
+
+    @Synchronized
     fun build(
         sourceRoots: List<Path>,
         sdkRoot: Path? = null,
@@ -57,21 +68,53 @@ class ImportIndex(
         val resolver = ModuleSourceResolver(roots, sdkRoot, maximumCandidates)
         val candidates = resolver.candidatePaths(overlays.keys.toSet())
         val overlayByPath = overlays.mapKeys { it.key.toAbsolutePath().normalize() }
+        val normalizedExpansions = validatedExpansions.mapKeys { it.key.toAbsolutePath().normalize() }
+        val sourceTexts = candidates.associate { path ->
+            val normalized = path.toAbsolutePath().normalize()
+            normalized to (overlayByPath[normalized] ?: runCatching { Files.readString(normalized) }.getOrNull())
+        }
         val configFingerprint = fingerprint(buildString {
             roots.forEach { append(it).append('\n') }
             append("sdk=").append(sdkRoot?.toAbsolutePath()?.normalize()).append('\n')
+            sdkRoot?.resolve("manifest/sdk.toml")?.let { append("sdkManifest=").append(fileFingerprint(it)).append('\n') }
             append("target=").append(headerEnvironment?.target?.targetTriple).append('\n')
             append("driver=").append(headerEnvironment?.cCompiler).append('\n')
+            append("abi=").append(headerEnvironment?.abi).append('\n')
             headerEnvironment?.includeSearchRoots?.forEach { append("include=").append(it).append('\n') }
+            headerEnvironment?.let { append("profile=").append(it.target.buildProfile).append('\n') }
+            headerEnvironment?.cCompiler?.let(::compilerFingerprint)?.let { append("compilerIdentity=").append(it).append('\n') }
         })
+        val headerFiles = headerEnvironment?.let(::discoverHeaderFiles).orEmpty()
+        val inputFingerprint = fingerprint(buildString {
+            append(configFingerprint).append('\n')
+            candidates.sortedBy(Path::toString).forEach { path ->
+                val normalized = path.toAbsolutePath().normalize()
+                val text = sourceTexts[normalized]
+                append("source=").append(normalized).append(':').append(text?.let(::sourceFingerprint) ?: "missing").append('\n')
+            }
+            headerFiles.forEach { path ->
+                append("header=").append(path).append(':').append(fileFingerprint(path)).append('\n')
+            }
+            normalizedExpansions.toSortedMap(compareBy(Path::toString)).forEach { (path, expansion) ->
+                append("expansion=").append(path.toAbsolutePath().normalize()).append(':')
+                    .append(expansion.sourceFingerprint).append(':')
+                    .append(structuralFingerprint(expansion.expandedProgram)).append('\n')
+            }
+        })
+        cache[inputFingerprint]?.let { cached ->
+            if (cached.dependencyFingerprints.all { (path, expected) -> fileFingerprint(path) == expected }) {
+                return cached.result.copy(cacheHit = true)
+            }
+            cache.remove(inputFingerprint)
+        }
         val exports = mutableListOf<ImportExport>()
         val diagnostics = mutableListOf<Diagnostic>()
         val parsedModules = linkedMapOf<Path, Pair<String, SyntaxProgram>>()
         val requestedCModules = linkedSetOf<String>()
+        val dependencies = linkedSetOf<Path>()
         candidates.forEach { path ->
             val normalized = path.toAbsolutePath().normalize()
-            val text = overlayByPath[normalized] ?: runCatching { Files.readString(normalized) }.getOrNull()
-                ?: return@forEach
+            val text = sourceTexts[normalized] ?: return@forEach
             val source = SourceFile(SourceFileId(normalized.toString().hashCode()), normalized, text, 0)
             val parsed = Parser(Lexer().lex(source)).parse()
             if (parsed.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
@@ -80,13 +123,13 @@ class ImportIndex(
             }
             val provider = providerFor(normalized, roots, sdkRoot, parsed.syntax)
             val expectedSourceFingerprint = sourceFingerprint(text)
-            val expandedProgram = validatedExpansions[normalized]
+            val expandedProgram = normalizedExpansions[normalized]
                 ?.takeIf { it.sourceFingerprint == expectedSourceFingerprint }
                 ?.expandedProgram
             val exportProgram = expandedProgram ?: parsed.syntax
             parsedModules[normalized] = provider to exportProgram
             val contentFingerprint = fingerprint(configFingerprint + normalized + text + (expandedProgram?.let(::structuralFingerprint).orEmpty()))
-            syntaxExports(exportProgram, text, source.id, normalized, provider, contentFingerprint)
+            syntaxExports(exportProgram, text, normalized, provider, contentFingerprint)
                 .let(exports::addAll)
         }
 
@@ -105,6 +148,7 @@ class ImportIndex(
                     return@forEach
                 }
                 val prepared = result.preprocessed ?: return@forEach
+                dependencies += prepared.includedFiles.map { it.toAbsolutePath().normalize() }
                 val declarations = parser.sourceDeclarations(
                     prepared.text, prepared.semanticMacros(), prepared.semanticSourceLineOrigins()
                 )
@@ -145,17 +189,21 @@ class ImportIndex(
                 }
             }
         }
-        return ImportIndexResult(
+        val result = ImportIndexResult(
             exports.distinctBy(ImportExport::identity).sortedWith(compareBy(ImportExport::provider, ImportExport::name, ImportExport::kind)),
             diagnostics,
             configFingerprint
         )
+        cache[inputFingerprint] = CacheEntry(
+            result,
+            dependencies.associateWith(::fileFingerprint)
+        )
+        return result
     }
 
     private fun syntaxExports(
         program: SyntaxProgram,
         text: String,
-        fileId: SourceFileId,
         path: Path,
         provider: String,
         fingerprint: String
@@ -241,31 +289,57 @@ class ImportIndex(
 
     private fun discoverHeaderModules(environment: HeaderEnvironment): Set<String> {
         val modules = linkedSetOf<String>()
+        discoverHeaderFiles(environment).forEach { header ->
+            val root = environment.includeSearchRoots.firstOrNull(header::startsWith) ?: return@forEach
+            val modulePath = root.relativize(header).toString().replace('\\', '/').removeSuffix(".h")
+            if (modulePath.split('/').all(HEADER_SEGMENT::matches)) modules += "c." + modulePath.replace('/', '.')
+        }
+        return modules
+    }
+
+    private fun discoverHeaderFiles(environment: HeaderEnvironment): List<Path> {
+        val headers = linkedSetOf<Path>()
         for (root in environment.includeSearchRoots) {
-            if (!Files.isDirectory(root) || modules.size >= maximumCandidates) continue
+            val remaining = maximumCandidates - headers.size
+            if (!Files.isDirectory(root) || remaining <= 0) continue
             runCatching {
                 Files.walk(root).use { paths ->
                     paths.filter { path ->
                         val relative = root.relativize(path)
                         relative.none { it.toString() in EXCLUDED_DIRECTORIES } &&
                             Files.isRegularFile(path) && path.fileName.toString().endsWith(".h")
-                    }.map { root.relativize(it).toString().replace('\\', '/') }
+                    }.map { it.toAbsolutePath().normalize() }
                         .sorted()
-                        .limit(maximumCandidates.toLong())
-                        .forEach { relative ->
-                            val modulePath = relative.removeSuffix(".h")
-                            if (modulePath.split('/').all(HEADER_SEGMENT::matches)) {
-                                modules += "c." + modulePath.replace('/', '.')
-                            }
-                        }
+                        .limit(remaining.toLong())
+                        .forEach(headers::add)
                 }
             }
         }
-        return modules
+        return headers.toList()
     }
 
     private fun fingerprint(value: String): String = MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    private fun fileFingerprint(path: Path): String = runCatching {
+        MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path))
+            .joinToString("") { "%02x".format(it) }
+    }.getOrElse { "missing" }
+
+    private fun compilerFingerprint(compiler: String): String {
+        val executable = runCatching {
+            val direct = Path.of(compiler)
+            if (Files.isRegularFile(direct)) direct else {
+                System.getenv("PATH").orEmpty().split(java.io.File.pathSeparator)
+                    .map { Path.of(it).resolve(compiler) }.firstOrNull(Files::isRegularFile)
+            }
+        }.getOrNull() ?: return compiler
+        val normalized = executable.toAbsolutePath().normalize()
+        val identity = runCatching {
+            "${Files.size(normalized)}:${Files.getLastModifiedTime(normalized).toMillis()}"
+        }.getOrDefault("missing")
+        return fingerprint("$compiler:$normalized:$identity")
+    }
 
     companion object {
         private val HEADER_SEGMENT = Regex("[A-Za-z_][A-Za-z0-9_-]*")

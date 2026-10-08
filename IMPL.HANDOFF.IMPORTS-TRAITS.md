@@ -3,7 +3,7 @@
 ## Start here
 
 This is the active implementation runbook. The current leaf is tracked in
-`IMPL.PLAN.md` (currently `R10.1.2.3`); consult that file for status and evidence.
+`IMPL.PLAN.md` (currently `R10.2.1.1`); consult that file for status and evidence.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
@@ -15,9 +15,9 @@ The requested outcomes are:
   `comptime trait type_identifier { ... }`.
 
 Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1–
-R10.1.2.2 discovery tasks are accepted; resume at **R10.1.2.3**, not by restarting the
-parser foundation or jumping ahead to the VS Code UI. Do not restart R0–R9 or
-rewrite the compiler.
+R10.1.2.3 discovery tasks are accepted; resume at **R10.2.1.1**, not by restarting
+the parser foundation or jumping ahead to the VS Code UI. Do not restart R0–R9
+or rewrite the compiler.
 
 Before editing:
 

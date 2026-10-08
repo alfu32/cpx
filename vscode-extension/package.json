@@ -18,7 +18,8 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onLanguage:cplus",
-    "onCommand:cplus.restartServer"
+    "onCommand:cplus.restartServer",
+    "onCommand:cplus.showVersion"
   ],
   "contributes": {
     "languages": [
@@ -49,6 +50,10 @@
       {
         "command": "cplus.runMain",
         "title": "C+: Run Main"
+      },
+      {
+        "command": "cplus.showVersion",
+        "title": "C+: Show CLI Version"
       }
     ],
     "configuration": {

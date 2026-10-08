@@ -36,6 +36,10 @@ fun main(args: Array<String>) {
 
 internal class Cli {
     fun run(args: List<String>): Int {
+        if (args.firstOrNull() in setOf("--version", "-V")) {
+            printVersion()
+            return 0
+        }
         if (args.isEmpty() || args.first() in setOf("-h", "--help", "help")) {
             printUsage()
             return 0
@@ -43,6 +47,13 @@ internal class Cli {
 
         val command = args.first()
         return when (command) {
+            "version" -> if (args.size == 1) {
+                printVersion()
+                0
+            } else {
+                System.err.println("usage: cplus version")
+                2
+            }
             "transcode", "emit-c" -> transcode(args.drop(1))
             "new" -> newProject(args.drop(1))
             "check" -> check(args.drop(1))
@@ -943,10 +954,13 @@ internal class Cli {
     }
 
     private fun printUsage(stream: java.io.PrintStream = System.out) {
+        printVersion(stream)
+        stream.println()
         stream.println("C+ CLI transcoder")
         stream.println("usage: cplus <command> <source.cp> [other.cp ...] [--project <cplus.toml> | --workspace <cplus.workspace.toml>] [--target <triple>] [--runtime <profile>] [--libc <profile>] [--c-compiler <path>] [--sdk <manifest>] [--sysroot <dir>] [--c-source <file>] [--library <name-or-path>] [--include-dir <dir>] [--output <file>] [--header <file>] [--map <file>]")
         stream.println()
         stream.println("commands:")
+        stream.println("  version     print build and source-control version metadata")
         stream.println("  new         scaffold a project in a new directory")
         stream.println("  transcode   translate one C+ source file to C")
         stream.println("  emit-c      alias for transcode")
@@ -965,6 +979,16 @@ internal class Cli {
         stream.println()
         stream.println("JVM options (place before -jar):")
         stream.println("  -Dcplus.sdk.manifest=<path>  select or override the SDK manifest")
+    }
+
+    private fun printVersion(stream: java.io.PrintStream = System.out) {
+        val version = Version.current
+        stream.println("C+ CLI version")
+        stream.println("  git commit:       ${version.gitCommit}")
+        stream.println("  short commit:     ${version.gitShortCommit}")
+        stream.println("  commit date:      ${version.gitCommitDate}")
+        stream.println("  build date:       ${version.buildDate}")
+        stream.println("  codename:         ${version.codename}")
     }
 
     private data class FileArguments(

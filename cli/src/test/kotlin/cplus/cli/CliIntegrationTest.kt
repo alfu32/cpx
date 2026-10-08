@@ -456,6 +456,70 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun lspRechecksOpenDocumentsAfterWatchedSourceOrHeaderChanges() {
+        val root = Files.createTempDirectory("cplus-cli-lsp-watched-files")
+        val main = root.resolve("main.cp")
+        val uri = main.toUri().toString()
+        val source = "int main() { return missing_value(); }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"${root.toUri()}"}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$source"}}}""",
+            """{"jsonrpc":"2.0","method":"workspace/didChangeWatchedFiles","params":{"changes":[{"uri":"${root.resolve("dependency.h").toUri()}","type":2}]}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        val diagnosticPublications = Regex("\\\"code\\\":\\\"SEM302\\\"").findAll(output.toString(Charsets.UTF_8)).count()
+        assertTrue(diagnosticPublications >= 2, "expected diagnostics to be republished after a watched file event")
+    }
+
+    @Test
+    fun lspHonorsRequestCancellation() {
+        val root = Files.createTempDirectory("cplus-cli-lsp-cancel")
+        val main = root.resolve("main.cp")
+        val uri = main.toUri().toString()
+        val source = "int main() { return 1; }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"${root.toUri()}"}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$source"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":20}}}""",
+            """{"jsonrpc":"2.0","method":"$/cancelRequest","params":{"id":2}}""",
+            """{"jsonrpc":"2.0","id":3,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        assertTrue(output.toString(Charsets.UTF_8).contains("\"code\":-32800"))
+    }
+
+    @Test
+    fun lspDoesNotReturnAnalysisForAnOlderDocumentVersion() {
+        val root = Files.createTempDirectory("cplus-cli-lsp-stale-request")
+        val main = root.resolve("main.cp")
+        val uri = main.toUri().toString()
+        val original = "int main() { return 1; }"
+        val changed = "int main() { return 2; }"
+        val input = listOf(
+            """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"rootUri":"${root.toUri()}"}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"$uri","version":1,"text":"$original"}}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{"textDocument":{"uri":"$uri"},"position":{"line":0,"character":20}}}""",
+            """{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":"$uri","version":2},"contentChanges":[{"text":"$changed"}]}}""",
+            """{"jsonrpc":"2.0","id":3,"method":"shutdown","params":null}""",
+            """{"jsonrpc":"2.0","method":"exit"}"""
+        ).joinToString(separator = "") { message -> frame(message) }
+        val output = ByteArrayOutputStream()
+
+        assertEquals(0, LspServer().run(ByteArrayInputStream(input.toByteArray()), output))
+
+        assertTrue(output.toString(Charsets.UTF_8).contains("\"code\":-32801"))
+    }
+
+    @Test
     fun lspMapsNavigationSymbolsTokensAndRenameAcrossImportedSources() {
         val directory = Files.createTempDirectory("cplus-cli-lsp-cross-source")
         val helper = directory.resolve("module_helpers.cp").also {

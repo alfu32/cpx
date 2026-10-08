@@ -14,6 +14,7 @@ test('extension manifest declares C+ language and LSP client', () => {
   assert.equal(manifest.contributes.languages[0].id, 'cplus');
   assert.deepEqual(manifest.contributes.languages[0].extensions, ['.cp']);
   assert.ok(manifest.contributes.commands.some((command) => command.command === 'cplus.runMain'));
+  assert.ok(manifest.contributes.commands.some((command) => command.command === 'cplus.showVersion'));
   assert.equal(
     manifest.contributes.configuration.properties['cplus.server.jarPath'].default,
     '${workspaceFolder}/cli/build/libs/cplus-cli-0.1.0-SNAPSHOT-all.jar'
@@ -30,11 +31,12 @@ test('language configuration and TextMate grammar are valid JSON', () => {
   assert.ok(grammar.repository.cpx);
 });
 
-function loadExtension(vscode, LanguageClient = class {}) {
+function loadExtension(vscode, LanguageClient = class {}, childProcess) {
   const originalLoad = Module._load;
   Module._load = function (request, parent, isMain) {
     if (request === 'vscode') return vscode;
     if (request === 'vscode-languageclient/node') return { LanguageClient };
+    if (request === 'node:child_process' && childProcess) return childProcess;
     return originalLoad.call(this, request, parent, isMain);
   };
   try {
@@ -48,6 +50,7 @@ function loadExtension(vscode, LanguageClient = class {}) {
 function createVscode(workspace, settings, activeFile) {
   const terminals = [];
   const errors = [];
+  const outputs = [];
   const vscode = {
     workspace: {
       workspaceFolders: workspace ? [{ uri: { fsPath: workspace } }] : [],
@@ -57,6 +60,11 @@ function createVscode(workspace, settings, activeFile) {
     window: {
       activeTextEditor: activeFile ? { document: { fileName: activeFile } } : undefined,
       showErrorMessage: (message) => errors.push(message),
+      createOutputChannel: (name) => {
+        const output = { name, lines: [], shown: false, appendLine(line) { this.lines.push(line); }, show() { this.shown = true; } };
+        outputs.push(output);
+        return output;
+      },
       createTerminal: (options) => {
         const terminal = { options, shown: false, show() { this.shown = true; } };
         terminals.push(terminal);
@@ -65,8 +73,35 @@ function createVscode(workspace, settings, activeFile) {
     },
     commands: { registerCommand: () => ({ dispose() {} }) }
   };
-  return { vscode, terminals, errors };
+  return { vscode, terminals, errors, outputs };
 }
+
+test('Show CLI Version reads metadata from the configured fat JAR', async () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'cplus extension version '));
+  const jar = path.join(workspace, 'cplus.jar');
+  fs.writeFileSync(jar, 'test jar');
+  const java = path.join(workspace, 'java');
+  const { vscode, outputs, errors } = createVscode(workspace, {
+    'server.jarPath': jar,
+    'server.javaPath': java,
+    'server.cwd': '${workspaceFolder}'
+  });
+  let invocation;
+  const extension = loadExtension(vscode, class {}, {
+    execFile(command, args, options, callback) {
+      invocation = { command, args, options };
+      callback(null, 'C+ CLI version\n  git commit: abc123\n', '');
+    }
+  });
+
+  await extension.showVersion();
+
+  assert.deepEqual(invocation, { command: java, args: ['-jar', jar, 'version'], options: { cwd: workspace, windowsHide: true } });
+  assert.deepEqual(outputs[0].lines, ['C+ CLI version\n  git commit: abc123']);
+  assert.equal(outputs[0].name, 'C+ Version');
+  assert.equal(outputs[0].shown, true);
+  assert.deepEqual(errors, []);
+});
 
 test('LSP configuration invokes the configured Java executable and CLI JAR with normalized paths', () => {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'cplus extension workspace '));

@@ -14,6 +14,13 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 internal class LspServer(
     private val compiler: CPlusCompiler = CPlusCompiler()
@@ -22,11 +29,19 @@ internal class LspServer(
     private val workspaceRoots = linkedSetOf<Path>()
     private var sdkManifest: Path = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize()
     private var shutdownRequested = false
+    private data class PendingRequest(
+        val responded: AtomicBoolean = AtomicBoolean(false),
+        val future: AtomicReference<Future<*>?> = AtomicReference(null)
+    )
+    private val pendingRequests = ConcurrentHashMap<Any, PendingRequest>()
+    private var requestExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     fun run(input: InputStream, output: OutputStream): Int {
+        requestExecutor = Executors.newSingleThreadExecutor()
+        pendingRequests.clear()
         val inputStream = input.buffered()
         val outputStream = output.buffered()
-        while (true) {
+        loop@ while (true) {
             val body = readMessage(inputStream) ?: break
             val message = runCatching { Json.parse(body) as? Map<*, *> }.getOrNull() ?: continue
             val method = message["method"] as? String ?: continue
@@ -36,12 +51,13 @@ internal class LspServer(
                 "initialize" -> {
                     writeMessage(outputStream, response(id, initializeResult(params)))
                 }
-                "initialized", "$/cancelRequest" -> Unit
+                "initialized" -> Unit
+                "$/cancelRequest" -> cancelRequest(params, outputStream)
                 "shutdown" -> {
                     shutdownRequested = true
                     writeMessage(outputStream, response(id, null))
                 }
-                "exit" -> return 0
+                "exit" -> break@loop
                 "textDocument/didOpen" -> {
                     didOpen(params)
                 }
@@ -51,29 +67,32 @@ internal class LspServer(
                 "textDocument/didClose" -> {
                     didClose(params, outputStream)
                 }
+                "workspace/didChangeWatchedFiles" -> {
+                    didChangeWatchedFiles(outputStream)
+                }
                 "textDocument/semanticTokens/full" -> {
-                    if (id != null) writeMessage(outputStream, response(id, semanticTokens(params)))
+                    if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
                 "textDocument/completion" -> {
-                    if (id != null) writeMessage(outputStream, response(id, completion(params)))
+                    if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
                 "textDocument/hover" -> {
-                    if (id != null) writeMessage(outputStream, response(id, hover(params)))
+                    if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
                 "textDocument/definition" -> {
-                    if (id != null) writeMessage(outputStream, response(id, definition(params)))
+                    if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
                 "textDocument/references" -> {
-                    if (id != null) writeMessage(outputStream, response(id, references(params)))
+                    if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
                 "textDocument/documentSymbol" -> {
-                    if (id != null) writeMessage(outputStream, response(id, documentSymbols(params)))
+                    if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
                 "textDocument/rename" -> {
-                    if (id != null) writeMessage(outputStream, response(id, rename(params)))
+                    if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
                 "textDocument/signatureHelp" -> {
-                    if (id != null) writeMessage(outputStream, response(id, signatureHelp(params)))
+                    if (id != null) scheduleRequest(id, method, params, outputStream)
                 }
                 else -> {
                     if (id != null) {
@@ -83,13 +102,74 @@ internal class LspServer(
             }
             if (method == "textDocument/didOpen" || method == "textDocument/didChange") {
                 val uri = (params["textDocument"] as? Map<*, *>)?.get("uri") as? String
-                if (uri != null) publishDiagnostics(uri, outputStream)
+                if (uri != null) scheduleDiagnostics(uri, outputStream)
             }
             outputStream.flush()
-            if (shutdownRequested && method != "exit" && method != "shutdown") break
+            if (method == "exit" || (shutdownRequested && method != "shutdown")) break@loop
         }
+        requestExecutor.shutdown()
+        if (!requestExecutor.awaitTermination(2, TimeUnit.MINUTES)) requestExecutor.shutdownNow()
         outputStream.flush()
         return 0
+    }
+
+    private fun scheduleRequest(id: Any, method: String, params: Map<*, *>, output: OutputStream) {
+        val token = PendingRequest()
+        pendingRequests.put(id, token)?.let { previous ->
+            previous.responded.set(true)
+            previous.future.get()?.cancel(true)
+        }
+        val uri = (params["textDocument"] as? Map<*, *>)?.get("uri") as? String
+        val requestedVersion = uri?.let { workspace.get(it)?.version }
+        val future = requestExecutor.submit {
+            val result = runCatching { requestResult(method, params) }
+            if (token.responded.get()) return@submit
+            val currentVersion = uri?.let { workspace.get(it)?.version }
+            val message = when {
+                result.isFailure -> errorResponse(id, -32603, result.exceptionOrNull()?.message ?: "request failed")
+                uri != null && requestedVersion != currentVersion -> errorResponse(id, -32801, "document changed while request was running")
+                else -> response(id, result.getOrNull())
+            }
+            if (token.responded.compareAndSet(false, true)) writeMessage(output, message)
+            pendingRequests.remove(id, token)
+        }
+        token.future.set(future)
+    }
+
+    private fun requestResult(method: String, params: Map<*, *>): Any? = when (method) {
+        "textDocument/semanticTokens/full" -> semanticTokens(params)
+        "textDocument/completion" -> completion(params)
+        "textDocument/hover" -> hover(params)
+        "textDocument/definition" -> definition(params)
+        "textDocument/references" -> references(params)
+        "textDocument/documentSymbol" -> documentSymbols(params)
+        "textDocument/rename" -> rename(params)
+        "textDocument/signatureHelp" -> signatureHelp(params)
+        else -> null
+    }
+
+    private fun cancelRequest(params: Map<*, *>, output: OutputStream) {
+        val id = params["id"] ?: return
+        val pending = pendingRequests[id] ?: return
+        pending.future.get()?.cancel(true)
+        if (pending.responded.compareAndSet(false, true)) {
+            writeMessage(output, errorResponse(id, -32800, "request cancelled"))
+        }
+        pendingRequests.remove(id, pending)
+    }
+
+    private fun scheduleDiagnostics(uri: String, output: OutputStream) {
+        val requested = workspace.get(uri) ?: return
+        requestExecutor.submit {
+            val result = compileWorkspace(requested)
+            val current = workspace.get(uri)
+            if (current?.version != requested.version) return@submit
+            connectedOpenDocuments(current).forEach { document ->
+                if (workspace.get(document.uri)?.version == document.version) {
+                    publishDiagnostics(result, document, output)
+                }
+            }
+        }
     }
 
     private fun didOpen(params: Map<*, *>) {
@@ -111,6 +191,11 @@ internal class LspServer(
         workspace.change(uri, version, parsedChanges)
     }
 
+    private fun didChangeWatchedFiles(output: OutputStream) {
+        // Imports and transitive C headers affect every open document's semantic view.
+        workspace.snapshot().forEach { document -> scheduleDiagnostics(document.uri, output) }
+    }
+
     private fun didClose(params: Map<*, *>, output: OutputStream) {
         val document = params["textDocument"] as? Map<*, *> ?: return
         val uri = document["uri"] as? String ?: return
@@ -119,15 +204,7 @@ internal class LspServer(
         workspace.close(uri)
         writeMessage(output, publish(uri, emptyList()))
         affected.filterNot { it.uri == uri }.forEach { remaining ->
-            publishDiagnostics(remaining.uri, output)
-        }
-    }
-
-    private fun publishDiagnostics(uri: String, output: OutputStream) {
-        val document = workspace.get(uri) ?: return
-        val result = compileWorkspace(document)
-        connectedOpenDocuments(document).forEach { target ->
-            publishDiagnostics(result, target, output)
+            scheduleDiagnostics(remaining.uri, output)
         }
     }
 
@@ -188,10 +265,17 @@ internal class LspServer(
                 "triggerCharacters" to listOf("(", ",")
             )
         ),
-        "serverInfo" to linkedMapOf(
-            "name" to "cplus",
-            "version" to "0.1.0"
-        )
+            "serverInfo" to linkedMapOf(
+                "name" to "cplus",
+                "version" to Version.current.gitShortCommit,
+                "cplusBuild" to linkedMapOf(
+                    "gitCommit" to Version.current.gitCommit,
+                    "gitShortCommit" to Version.current.gitShortCommit,
+                    "gitCommitDate" to Version.current.gitCommitDate,
+                    "buildDate" to Version.current.buildDate,
+                    "codename" to Version.current.codename
+                )
+            )
         )
     }
 
@@ -509,8 +593,11 @@ internal class LspServer(
 
         private fun writeMessage(output: OutputStream, message: Map<String, Any?>) {
             val payload = Json.stringify(message).toByteArray(StandardCharsets.UTF_8)
-            output.write("Content-Length: ${payload.size}\r\n\r\n".toByteArray(StandardCharsets.US_ASCII))
-            output.write(payload)
+            synchronized(output) {
+                output.write("Content-Length: ${payload.size}\r\n\r\n".toByteArray(StandardCharsets.US_ASCII))
+                output.write(payload)
+                output.flush()
+            }
         }
     }
 }

@@ -74,7 +74,28 @@ class ImportIndexTest {
     }
 
     @Test
-    fun discoversCHeaderExportsOnlyFromImportedRealHeader() {
+    fun reusesIdenticalIndexAndInvalidatesWorkspaceOverlays() {
+        val root = Files.createTempDirectory("cplus-import-index-cache")
+        val module = root.resolve("api.cp")
+        Files.writeString(module, "pub int original() { return 1; }")
+        val index = ImportIndex()
+
+        val first = index.build(listOf(root))
+        val repeated = index.build(listOf(root))
+        val overlay = index.build(listOf(root), overlays = mapOf(module to "pub int edited() { return 2; }"))
+        Files.writeString(module, "pub int disk_edit() { return 3; }")
+        val diskEdit = index.build(listOf(root))
+
+        assertFalse(first.cacheHit)
+        assertTrue(repeated.cacheHit)
+        assertTrue(overlay.exports.any { it.name == "edited" })
+        assertFalse(overlay.cacheHit)
+        assertTrue(diskEdit.exports.any { it.name == "disk_edit" })
+        assertFalse(diskEdit.cacheHit)
+    }
+
+    @Test
+    fun discoversCHeaderExportsFromConfiguredHeaderRoots() {
         val root = Files.createTempDirectory("cplus-import-index-c")
         Files.writeString(root.resolve("main.cp"), "int main() { return 0; }")
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
@@ -84,12 +105,25 @@ class ImportIndexTest {
         val driver = listOf("cc", "gcc", "clang", "tcc").firstOrNull(::available) ?: return
         val environment = HeaderEnvironment.create(CompileRequest(emptyList(), target = target, cCompiler = driver), sdk, abi)
 
-        val result = ImportIndex().build(listOf(root), headerEnvironment = environment)
+        val include = Files.createTempDirectory("cplus-import-index-header-deps")
+        Files.writeString(include.resolve("api.h"), "#include \"nested.h\"\nint api(void);\n")
+        val nested = include.resolve("nested.h")
+        Files.writeString(nested, "int nested_before(void);\n")
+        val environmentWithFixture = environment.copy(includeDirectories = listOf(include))
+        val index = ImportIndex()
+        val result = index.build(listOf(root), headerEnvironment = environmentWithFixture)
+        val cached = index.build(listOf(root), headerEnvironment = environmentWithFixture)
+        Files.writeString(nested, "int nested_after(void);\n")
+        val refreshed = index.build(listOf(root), headerEnvironment = environmentWithFixture)
 
         assertTrue(result.diagnostics.isEmpty(), result.diagnostics.joinToString())
         val printf = result.exports.single { it.provider == "c.stdio" && it.name == "printf" && it.kind == ImportExportKind.C_FUNCTION }
         assertTrue(printf.sourceUri.endsWith("/stdio.h"))
         assertTrue(printf.sourceRange != null)
+        assertTrue(cached.cacheHit)
+        assertFalse(refreshed.cacheHit)
+        assertTrue(refreshed.exports.any { it.provider == "c.api" && it.name == "nested_after" })
+        assertFalse(refreshed.exports.any { it.name == "nested_before" })
     }
 
     @Test

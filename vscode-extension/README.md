@@ -39,6 +39,11 @@ The server provides diagnostics, semantic tokens, completion, hover,
 definition, references, and signature help. Use **C+: Restart Language Server**
 after changing server settings.
 
+Run **C+: Show CLI Version** to display the configured JAR's generated Git
+revision, commit/build timestamps, and current implementation codename in the
+`C+ Version` output channel. The LSP `serverInfo` also carries the CLI revision
+and complete build metadata for clients that inspect server initialization.
+
 Use **C+: Run Main** to execute the configured main source through the same
 CLI JAR. The command launches `java -jar <jar> run <main.cp> ...` in an
 integrated terminal, passing the selected entry source as one argument; the

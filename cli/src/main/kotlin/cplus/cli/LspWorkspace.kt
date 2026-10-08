@@ -39,6 +39,7 @@ internal data class LspTextChange(
 internal class LspWorkspace {
     private val documents = linkedMapOf<String, WorkspaceDocument>()
 
+    @Synchronized
     fun open(uri: String, path: Path, version: Int, text: String): WorkspaceDocument {
         val document = WorkspaceDocument(uri, path, version, normalizeSourceText(text))
         documents[uri] = document
@@ -50,6 +51,7 @@ internal class LspWorkspace {
      * is applied to the result of the preceding change in the same
      * notification, as required by the LSP text document protocol.
      */
+    @Synchronized
     fun change(uri: String, version: Int, changes: List<LspTextChange>): WorkspaceDocument? {
         val current = documents[uri] ?: return null
         var text = current.text
@@ -63,10 +65,13 @@ internal class LspWorkspace {
         return open(uri, current.path, version, text)
     }
 
+    @Synchronized
     fun close(uri: String): WorkspaceDocument? = documents.remove(uri)
 
+    @Synchronized
     fun get(uri: String): WorkspaceDocument? = documents[uri]
 
+    @Synchronized
     fun snapshot(): List<WorkspaceDocument> = documents.values.toList()
 
     private fun apply(text: String, range: LspTextRange, replacement: String): String? {
