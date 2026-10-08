@@ -31,7 +31,7 @@ R3 [DONE]  6/6  Linux and native Windows primitive source-to-ABI evidence
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows family matrix pending
 R5 [DOING] 40/41 native std and platform-service leaf tasks evidenced
 R6 [DOING] 4/4  CLI leaves accepted; Windows fat-JAR smoke passes, product gate pending
-R7 [DOING] 3/3  Linux extension product accepted; Windows gate pending
+R7 [DOING] 3/3  Linux extension accepted; Windows tests/package pass, editor-host gate pending
 R8 [DONE]  4/4  SDK packaging, target matrix and release conformance
 
 TOTAL       91/92 implementation tasks complete; 4/9 phase gates complete,
@@ -5537,7 +5537,11 @@ Windows products from documented commands.
   manifest entrypoint `./dist/extension.js` were verified, with exactly eight
   expected extension files. `npm audit --omit=dev` reports zero production
   vulnerabilities; npm reports six high advisories in development-only tools.
-  Windows extension execution remains deferred and is not credited. The
+  Native Windows VM `npm ci`, `npm test` (6/6), `npm run check`, and
+  `npm run package` also pass; the generated VSIX contains the expected eight
+  files, and `npm audit --omit=dev` reports zero production vulnerabilities.
+  The VM has no VS Code `code` executable, so launching the packaged VSIX in an
+  actual Windows editor host remains unverified and receives no gate credit. The
   repository wrapper JAR is absent from the clean export, so the installed
   Gradle command was used. Product commit: no source changes required; evidence
   recorded in the plan commit.
