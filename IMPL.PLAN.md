@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    55/75 accepted with recorded evidence
+Roadmap leaf tasks:    56/75 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.4.2 — implement the std.net TCP façade
+Current task:          R5.4.4.3 — implement the std.net UDP façade
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 23/31 native std and platform-service work remains open
+R5 [DOING] 24/31 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       55/75 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       56/75 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -122,6 +122,15 @@ and the forced focused Gradle test run. Commit `9d14930` brings the numerator
 to 55/75 and R5 to 23/31. This closes declaration/ABI evidence only; the
 public functions have no implementations yet. R5.4.4.2 is active, while UDP
 and address/resolver façade behavior remain queued.
+R5.4.4.2 then passed a compiled C+ IPv4 loopback caller for TCP socket
+creation, bind/listen/connect/accept, local and peer addresses, bidirectional
+stream transfer, shutdown EOF, invalid arguments, unchanged output on failed
+address queries, and close. The production-linked executable has no undefined
+host-runtime symbols; strict warning-as-error C17 checks pass for Linux and
+Windows x86_64/AArch64; the full Gradle build passes. Commit `89eea32` brings
+the numerator to 56/75 and R5 to 24/31. Windows runtime execution remains
+deferred. R5.4.4.3 is now active; UDP and address/resolver behavior remain
+unimplemented.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -4423,9 +4432,9 @@ dependencies.
         generated assembly contains no `__atomic_*`, `__sync_*`, or AArch64
         atomic-helper calls. The full Gradle build passes. Windows runtime
         execution remains deferred.
-  - R5.4.4 [DOING] [1/4] — implement portable `std.net` address, DNS, socket,
+  - R5.4.4 [DOING] [2/4] — implement portable `std.net` address, DNS, socket,
     TCP and UDP APIs with explicit partial/unavailable capability behavior;
-    - **Language:** SPEC.STDLIB §16–§16.1 public networking behavior and PAL
+    - **Language:** SPEC.STDLIB §16–§16.2 public networking behavior and PAL
       mapping.
     - **Technical:** SPEC.TECH §78 public SDK/runtime boundary, stable ABI and
       target-specific runtime source selection.
@@ -4446,15 +4455,20 @@ dependencies.
         target. The forced focused Gradle test run passes. This is
         declaration/ABI acceptance only and does not claim executable socket
         behavior.
-    - R5.4.4.2 [DOING] — implement and execute the public TCP stream façade for
+    - R5.4.4.2 [DONE] — implement and execute the public TCP stream façade for
       open, bind, listen, accept, connect, local/peer address, send, receive,
       shutdown, and close.
-      - **Acceptance:** a C+ caller uses only the public `std.net` API for IPv4
-        loopback transfer and lifecycle/error cases; the linked Linux product
-        has no undefined host-runtime symbols; strict C17 checks pass for all
-        four supported target triples.
+      - **Acceptance evidence:** `RuntimeStdNetTest` compiles and runs a public
+        C+ IPv4 loopback caller covering open/bind/listen/connect/accept,
+        local/peer addresses, bidirectional stream transfer, shutdown EOF,
+        invalid arguments, output preservation on failure, and close. The
+        production-linked Linux executable has no undefined host-runtime
+        symbols. Strict warning-as-error C17 checks pass for the OS-neutral
+        façade on Linux/Windows x86_64 and AArch64; `RuntimeLinkerTest` confirms
+        selection on both operating systems. The full Gradle build passes.
+        Windows runtime execution remains deferred.
       - **Depends:** R5.4.4.1.
-    - R5.4.4.3 [TODO] — implement and execute the public UDP datagram façade
+    - R5.4.4.3 [DOING] — implement and execute the public UDP datagram façade
       for open, bind, send-to, receive-from, and close.
       - **Acceptance:** a C+ caller uses only the public API for IPv4 loopback
         datagrams, including an empty datagram, returned source address,
