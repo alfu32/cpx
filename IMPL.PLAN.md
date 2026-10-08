@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    83/92 accepted with recorded evidence
+Roadmap leaf tasks:    84/92 accepted with recorded evidence
 Phase gates:           2/9 complete; 5 active; 2 queued
-Current task:          R7.2 — configured CLI invocation from the VS Code extension
+Current task:          R7.3 — clean-checkout VS Code extension packaging
 Current milestone:     R7 — LSP and VS Code product completion
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     deferred until the final validation pass by request
@@ -27,10 +27,10 @@ R3 [DOING] 5/6  Linux primitive source-to-ABI leaf evidenced; Windows gate pendi
 R4 [DOING] 11/11 Linux runtime/libc leaf tasks evidenced; Windows gate pending
 R5 [DOING] 39/41 native std and platform-service leaf tasks evidenced
 R6 [DOING] 4/4  CLI transcoder/build-product leaves accepted; Windows gate pending
-R7 [DOING] 1/3  LSP and VS Code product completion
+R7 [DOING] 2/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       83/92 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       84/92 implementation tasks complete; 2/9 phase gates complete,
             5 active, 2 queued
 ```
 
@@ -355,7 +355,7 @@ below. Its current execution sequence is:
    are accepted for Linux x86_64. R4 remains open for Windows libc validation;
    R6.1–R6.4 implementation leaves are accepted on Linux; the R6 product gate
    remains open for Windows execution/packaging validation. The active work
-   queue has advanced to R7.2 while that final platform gate remains deferred.
+   queue has advanced to R7.3 while that final platform gate remains deferred.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -382,6 +382,7 @@ Latest completed implementation commits:
 - `0548b95` — make fat-JAR output reproducible and clean temporary run products (R6.3).
 - `95e18a0` — validate selected SDK artifacts and target-specific CLI inspection plans (R6.4).
 - `90740c3` — map cross-file LSP features through connected workspace documents (R7.1).
+- `7233e6b` — launch the configured CLI JAR for extension LSP and Run Main flows (R7.2).
 - `4efd2f7` — define the version-three filesystem PAL contract (R5.2.1 verified; adapters remain open).
 - `da60b85` — add seek and file-metadata adapters (R5.2.2 Linux-verified; Windows execution deferred).
 - `b6bc355` — add portable directory PAL services (R5.2.3 Linux-verified; Windows execution deferred).
@@ -5311,7 +5312,7 @@ Clean checkouts can build the fat JAR and compile/run representative single-
 file, multi-module, C-interoperability, self-hosted Linux, and self-hosted
 Windows products from documented commands.
 
-## R7 [DOING] [1/3] LSP and VS Code product completion
+## R7 [DOING] [2/3] LSP and VS Code product completion
 
 **Dependency-ordered work queue**
 
@@ -5328,8 +5329,15 @@ Windows products from documented commands.
   hover, completion, semantic tokens, rename, and import-like comments; the
   existing unrelated-workspace isolation test passes. `./gradlew :cli:test
   --no-daemon` and `./gradlew build --no-daemon` pass. Commit: `90740c3`.
-- R7.2 [TODO] — run configured `java -jar <cli>` for LSP and Run Main with
-  portable settings, working directories, and path normalization;
+- R7.2 [DONE] — run configured `java -jar <cli>` for LSP and Run Main with
+  portable settings, working directories, and path normalization. The
+  extension passes Java, JAR, entry-source, and cwd values as separate process
+  arguments, and optional `cplus.server.sdkManifest` selects the SDK through a
+  JVM property so the project cwd need not be inside the CLI repository. Run
+  Main delegates source discovery to the CLI and no longer duplicates import
+  scanning. `npm test` passes all six tests, including actual fat-JAR LSP
+  initialization and multi-module Run Main execution from temporary workspaces
+  with spaces in their paths; `npm run check` passes. Commit: `7233e6b`.
 - R7.3 [TODO] — package and test the extension from a clean checkout against
   the assembled CLI product.
 
