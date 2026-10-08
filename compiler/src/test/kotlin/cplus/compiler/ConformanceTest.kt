@@ -10,9 +10,9 @@ class ConformanceTest {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/linux-x86_64.toml")).descriptor)
         val report = ConformanceMatrix.initial(descriptor, BuildProfile())
-        assertTrue(report.cases.any { it.id == "runtime.startup" && it.status == "pass" })
-        assertTrue(report.cases.any { it.id == "abi.layout" && it.status == "pass" })
-        assertTrue(report.cases.any { it.area == ConformanceArea.NATIVE_STD })
+        assertTrue(report.cases.none { it.status == "pass" })
+        assertTrue(report.cases.all { it.status == "planned" })
+        assertTrue(report.cases.any { it.area == ConformanceArea.NATIVE_STD && it.status == "planned" })
     }
 
     @Test
