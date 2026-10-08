@@ -10,10 +10,10 @@ runtime, SDK, LSP, and release products.
 ### Release roadmap dashboard
 
 ```text
-Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    36/53 evidenced on Linux
+Historical foundation: 144/146 evidenced; std.core and native services reopened
+Roadmap leaf tasks:    36/65 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.2.5 — run final Linux/Windows PAL conformance and audit
+Current task:          R5.3.1 — verify page-memory adapters and allocator behavior on Linux
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,12 +22,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
-R5 [DOING] 4/9  native std and platform-service work remains open
+R5 [DOING] 4/21 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       36/53 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       36/65 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,10 +35,10 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R5.1 — finish Linux-side native std conformance using the verified primitive
-   and type-import contracts; retain its open status until the final target gate.
-2. R5.2.5 and R5.3–R5.5, then R6–R7 — continue Linux implementation
-   and target capability modeling without running Windows tests early.
+1. Continue Linux implementation from R5.3.1 through R5.5, then R6–R7; the
+   service and façade subtasks below define the complete remaining R5 work.
+2. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
+   execution remains deferred and receives no completion credit meanwhile.
 3. Final validation — run the deferred Windows ABI/caller and PAL checks (including the
    open R3.1.3 LLP64 execution gate), patch platform issues, then close R8.
 
@@ -2920,7 +2920,7 @@ they are explicitly reopened as R1.4 below.
 
 ---
 
-## 6.3 [DOING] [7/8] Native `std` and C libc compatibility implementation
+## 6.3 [DOING] [6/8] Native `std` and C libc compatibility implementation
 
 **SDK**
 - SDK §6–19
@@ -2928,7 +2928,7 @@ they are explicitly reopened as R1.4 below.
 - SDK §75–76
 - SDK §90–92
 
-### 6.3.1 [DOING] [3/4] Native C+ standard-library core
+### 6.3.1 [DOING] [2/4] Native C+ standard-library core
 
 #### 6.3.1.1 [DOING] Implement `std.core`, `std.mem` and portable memory primitives
 
@@ -2998,7 +2998,7 @@ they are explicitly reopened as R1.4 below.
 - 6.3.1.1
 - 6.3.1.2
 
-#### 6.3.1.4 [DONE] Implement hosted native services: I/O, filesystem, process, time, threads, sync, networking and math
+#### 6.3.1.4 [DOING] Implement hosted native services: I/O, filesystem, process, time, threads, sync, networking and math
 
 **SDK**
 - SDK §11–16 Native Standard-library Packages
@@ -3013,8 +3013,11 @@ they are explicitly reopened as R1.4 below.
 - representative cross-platform API tests run against each implemented PAL.
 
 **Implementation**
-- Added narrow `std.io`, `std.fs`, `std.process`, `std.time`, `std.thread`, `std.sync`, `std.net`, and `std.math` source contracts.
-- Added Linux, Windows, and Darwin PAL declarations with explicit capability sets and no host-type leakage.
+- Added initial source contracts for `std.io`, `std.fs`, `std.process`, `std.time`, `std.thread`, `std.sync`, `std.net`, and `std.math`; R5.2 records the implemented filesystem and stream portions.
+- The remaining process, time, thread/sync, networking, math, and capability behavior is not complete. Linux/Windows/Darwin declarations alone do not satisfy this task's executable cross-platform acceptance.
+
+**Reopened status**
+- Reopened after auditing the acceptance criteria: the historical implementation supplied mostly declarations/contracts, while representative service execution and structured capability behavior remain outstanding. R5.3–R5.5 now contain the measurable implementation and validation work that closes this item.
 
 **Depends**
 - 6.3.1.2
@@ -3369,7 +3372,7 @@ authoritative work queue for completing the working CLI transcoder and
 self-hosted SDK described by the specifications.
 
 ```text
-Foundation tasks: 145/146 (6.3.1.1 reopened: target-aware size/index implementation and validation active)
+Foundation tasks: 144/146 (6.3.1.1 and 6.3.1.4 reopened: target-aware core and executable native-service implementation remain active)
 Completion phases: [DOING] [2/9 gates complete]
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -4086,12 +4089,40 @@ dependencies.
     iteration in Linux and Windows adapters, with executable Linux checks;
   - R5.2.4 [DONE] — add target-independent `std.fs` wrappers and unbuffered
     file-stream read/write/seek/close adapters without exposing OS handles;
-  - R5.2.5 [TODO] — run the complete Linux/Windows PAL conformance matrix,
-    error-normalization and dependency audit, and close remaining platform gaps;
-- R5.3 [TODO] — implement memory/page, process/environment, time, thread,
-  synchronization, atomics, networking, and math PAL adapters;
-- R5.4 [TODO] — connect native std façades to PAL services and add capability
-  propagation, unavailable-service diagnostics, and dependency audits;
+  - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
+    matrix, error-normalization and dependency audit, and close platform gaps;
+- R5.3 [TODO] — implement and Linux-execute the remaining PAL services;
+  Windows adapter execution remains reserved for final validation;
+  - R5.3.1 [TODO] — verify page allocation/release, allocator behavior,
+    overflow handling, alignment, zeroing and libc allocation delegation;
+  - R5.3.2 [TODO] — implement process identity, spawn, wait and exit using
+    opaque handles and normalized status/error results;
+  - R5.3.3 [TODO] — implement environment and argument access plus portable
+    standard-input/output/error service contracts;
+  - R5.3.4 [TODO] — provide distinct wall, monotonic and process-CPU clocks
+    with documented nanosecond units and overflow behavior;
+  - R5.3.5 [TODO] — implement thread create/join/current/yield and runtime TLS
+    setup without requiring pthreads on Windows;
+  - R5.3.6 [TODO] — implement mutex, condition, semaphore, once and supported
+    atomic wait/wake services; ordinary atomic operations remain compiler/runtime
+    intrinsics, not OS calls;
+  - R5.3.7 [TODO] — implement portable socket lifecycle and TCP/UDP transport
+    operations with stable PAL errors;
+  - R5.3.8 [TODO] — implement portable network address conversion and DNS
+    resolution with UTF-8 inputs and target-independent result ownership;
+- R5.4 [TODO] — connect native std façades to the verified PAL services;
+  - R5.4.1 [TODO] — implement `std.process` identity, spawn/wait, exit,
+    arguments, environment and standard-stream APIs;
+  - R5.4.2 [TODO] — implement `std.time` wall/monotonic/duration APIs and
+    correct the C time façade to use its specified clock semantics;
+  - R5.4.3 [TODO] — implement `std.thread`/`std.sync` and map atomic APIs to
+    compiler/runtime intrinsics and supported wait/wake services;
+  - R5.4.4 [TODO] — implement portable `std.net` address, DNS, socket, TCP and
+    UDP APIs with explicit partial/unavailable capability behavior;
+  - R5.4.5 [TODO] — implement the specified portable `std.math` and C math
+    surface without requiring a host `libm` dependency;
+  - R5.4.6 [TODO] — propagate target capabilities and stable unavailable-service
+    diagnostics, and audit that unused modules add no platform dependencies;
 - R5.5 [TODO] — record Darwin as either executablely supported or explicitly
   capability-gated, without claiming a partial adapter as complete.
 
@@ -4101,6 +4132,29 @@ type-import, and alias boundaries. R5.2.1 freezes the ABI before adapter work;
 R5.2.2–R5.2.4 may be implemented and Linux-tested while Windows execution,
 including the R3.1.3 LLP64 caller check, remains deferred to final validation.
 R5.2.5 is not complete until that deferred Windows execution and audit pass.
+The R5.3/R5.4 leaves may close on their explicitly listed Linux execution and
+target-model acceptance evidence, but no such leaf or aggregate closes the
+Windows target gates; the R5 phase gate remains open until final Windows
+execution and the R8 matrix/audit pass. Math algorithms belong above the PAL,
+so R5.4.5 does not add a platform math service.
+
+R5.3 leaf acceptance evidence is executable, not declaration-only: R5.3.1
+checks allocation/zeroing/alignment/reallocation/release and overflow; R5.3.2
+spawns a child and verifies wait/exit status; R5.3.3 checks arguments,
+environment and standard streams; R5.3.4 distinguishes wall, monotonic and
+CPU clocks; R5.3.5 exercises create/join/TLS; R5.3.6 exercises contended
+mutex/condition/semaphore/once and supported atomic wait/wake; R5.3.7 executes
+TCP and UDP loopback transfers; and R5.3.8 resolves and converts valid and
+invalid addresses/names. Each service also needs stable error mapping and
+source/dependency isolation evidence. The Linux tests run on this machine;
+Windows runtime execution remains deferred.
+
+R5.4 leaf acceptance requires C+ caller execution over the corresponding PAL
+surface, not just successful parsing or generated declarations. The process,
+time, thread/sync and network façades each receive focused behavior tests;
+math receives known-value, boundary and exceptional-value tests without a
+host `libm`; the capability task checks unavailable-target diagnostics and
+proves unused services do not introduce link dependencies.
 
 R5.2.1 acceptance evidence: the normative PAL contract, C header, and C+
 declarations agree on version 3, stable error codes, operations, and the
