@@ -13,7 +13,7 @@ runtime, SDK, LSP, and release products.
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
 Roadmap leaf tasks:    72/88 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.1 — complete the remaining target-aware standard type and collection conformance
+Current task:          R5.2.5 — Linux filesystem-PAL conformance; Windows runtime/import gate remains deferred
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -331,9 +331,11 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R5.4.6 and R5.5 are accepted; continue with R5.1 and R5.2.5. Linux C17
-   stdio and report tasks R4.4/R4.5 pass their recorded checks; R4.6 complex
-   and type-generic math remain unimplemented.
+1. R5.4.6 and R5.5 are accepted. R5.1 has public-surface/range fixes but
+   remains open for final target validation; R5.2.5 is DOING for Linux PAL
+   conformance and remains open for final Windows runtime/import validation.
+   Linux C17 stdio and report tasks R4.4/R4.5 pass their recorded checks;
+   R4.6 complex and type-generic math remain unimplemented.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
 3. Keep R5.1 and R5.2.5 open until their acceptance checks pass; Windows
@@ -4475,8 +4477,24 @@ dependencies.
     iteration in Linux and Windows adapters, with executable Linux checks;
   - R5.2.4 [DONE] — add target-independent `std.fs` wrappers and unbuffered
     file-stream read/write/seek/close adapters without exposing OS handles;
-  - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
-    matrix, error-normalization and dependency audit, and close platform gaps;
+  - R5.2.5 [DOING] — run the complete Linux/Windows filesystem-PAL conformance
+    matrix, error-normalization and dependency audit, and close platform gaps.
+    **Acceptance:** Linux and Windows runtime fixtures cover path/mode/handle
+    validation, open/read/write/seek/close/rename, metadata, directory
+    iteration and stable error mapping; linked products pass host/runtime
+    dependency audits; strict source checks pass for supported target ABIs.
+    **Progress evidence, not completion:** commit `c067dd9` extends
+    `RuntimeFilePalTest` with invalid/empty/malformed-UTF-8 paths, unknown
+    modes, truncation without write access, missing paths, negative and invalid
+    nonnegative handles, zero-length I/O, and dependency inspection. The
+    Linux x86_64 production fixture and `RuntimeStdIoTest` pass; the production
+    Linux adapter passes warning-as-error syntax checks for x86_64 and
+    AArch64; `RuntimeEnvironmentAndStreamsTest` and the full
+    `./gradlew build --no-daemon` pass. A suite-discovered regression from
+    broadening shared EBADF normalization was fixed by isolating filesystem
+    handle mapping from standard-channel errors. Windows adapter changes have
+    not been executed or PE-audited. R5.2.5 remains DOING and receives no
+    completion count until final Windows runtime/error/import validation.
 - R5.3 [DONE] 12/12 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for

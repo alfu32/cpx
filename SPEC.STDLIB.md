@@ -192,6 +192,19 @@ its native failure space to the shared negative values
 `CPLUS_PAL_ACCESS_DENIED`, `CPLUS_PAL_IO_ERROR`, or
 `CPLUS_PAL_UNSUPPORTED`. Native `errno`, `GetLastError`, and raw syscall
 numbers SHALL NOT cross this boundary.
+File reads and writes with zero length on a valid handle SHALL return zero
+without dereferencing the buffer or invoking a target OS API.
+
+Filesystem adapters SHALL normalize equivalent failures consistently:
+malformed/empty UTF-8 paths, unknown mode bits, truncation without write
+access, negative handles, invalid seek origins, and null buffers with nonzero
+length SHALL return `CPLUS_PAL_INVALID_ARGUMENT`; missing paths and path
+components that are not directories SHALL return `CPLUS_PAL_NOT_FOUND`;
+permission failures SHALL return `CPLUS_PAL_ACCESS_DENIED`; directory-entry
+names that are not valid UTF-8 SHALL return `CPLUS_PAL_UNSUPPORTED`; other
+native I/O failures SHALL return `CPLUS_PAL_IO_ERROR`. File open SHALL reject
+mode bits outside `CPLUS_FILE_READ`, `CPLUS_FILE_WRITE`, `CPLUS_FILE_CREATE`,
+and `CPLUS_FILE_TRUNCATE`, and truncation SHALL require write access.
 
 PAL version 3 SHALL preserve every version-2 operation and add the following
 filesystem services. The metadata record uses fixed-width fields and has a
