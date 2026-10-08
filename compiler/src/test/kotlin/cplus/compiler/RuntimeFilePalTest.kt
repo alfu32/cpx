@@ -2,12 +2,64 @@ package cplus.compiler
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class RuntimeFilePalTest {
+    @Test
+    fun linuxFilesystemPermissionFailuresUseAccessDeniedPalCode() {
+        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        assumeTrue(!System.getProperty("user.name").equals("root", ignoreCase = true), "root bypasses POSIX permission checks")
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+        val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val directory = Files.createTempDirectory("cplus-file-pal-access")
+        val deniedDirectory = Files.createDirectory(directory.resolve("denied"))
+        val deniedFile = deniedDirectory.resolve("secret.txt").toAbsolutePath().normalize()
+        val source = directory.resolve("access-pal.c")
+        val executable = directory.resolve("access-pal")
+        val directoryName = cString(deniedDirectory.toAbsolutePath().normalize().toString())
+        val fileName = cString(deniedFile.toString())
+        Files.setPosixFilePermissions(deniedDirectory, PosixFilePermissions.fromString("---------"))
+        Files.writeString(source, """
+            #include "cplus_platform.h"
+
+            int main(void) {
+                const char* directory = "$directoryName";
+                const char* file = "$fileName";
+                cplus_file_metadata_t metadata;
+                if (platform_file_open(file, CPLUS_FILE_READ) != CPLUS_PAL_ACCESS_DENIED) return 1;
+                if (platform_file_metadata(file, &metadata) != CPLUS_PAL_ACCESS_DENIED) return 2;
+                if (platform_directory_open(directory) != CPLUS_PAL_ACCESS_DENIED) return 3;
+                if (platform_directory_create(file) != CPLUS_PAL_ACCESS_DENIED) return 4;
+                return 0;
+            }
+        """.trimIndent())
+
+        try {
+            val link = LinkDriver.link(LinkRequest(source, executable, target, resolution), plan)
+            assertTrue(link.isSuccessful, link.output)
+            val process = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            val output = process.inputStream.bufferedReader().readText()
+            assertEquals(0, process.waitFor(), output)
+            val descriptor = resolution.targetDescriptor
+                ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+            val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+            assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+        } finally {
+            Files.setPosixFilePermissions(deniedDirectory, PosixFilePermissions.fromString("rwx------"))
+            Files.deleteIfExists(deniedFile)
+            Files.deleteIfExists(executable)
+            Files.deleteIfExists(source)
+            Files.deleteIfExists(deniedDirectory)
+            Files.deleteIfExists(directory)
+        }
+    }
+
     @Test
     fun linuxMetadataFollowsSymlinksAndFileRemovalUnlinksOnlyTheSymlink() {
         assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))

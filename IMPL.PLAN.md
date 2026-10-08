@@ -4618,8 +4618,10 @@ dependencies.
     completion count until final Windows runtime/error/import validation. A
     Linux production-linked fixture now verifies that metadata follows a
     symlink and file removal unlinks the symlink without deleting its target;
-    it also passes the runtime dependency audit. This extends Linux evidence
-    only and does not close the cross-platform leaf.
+    it also passes the runtime dependency audit. A separate Linux fixture
+    exercises permission-denied normalization for open, metadata, directory
+    open, and directory creation as an unprivileged user. These checks extend
+    Linux evidence only and do not close the cross-platform leaf.
 - R5.3 [DONE] 12/12 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
