@@ -9,7 +9,7 @@ object LibcProfileCatalogue {
     private val c17Headers = listOf(
         "assert.h", "complex.h", "ctype.h", "errno.h", "float.h", "limits.h", "locale.h", "math.h",
         "setjmp.h", "signal.h", "stdarg.h", "stdbool.h", "stddef.h", "stdint.h", "stdio.h",
-        "stdlib.h", "string.h", "time.h", "wchar.h", "wctype.h"
+        "stdlib.h", "string.h", "tgmath.h", "time.h", "wchar.h", "wctype.h"
     )
 
     fun statuses(includeRoot: Path): List<LibcHeaderStatus> = c17Headers.map { header ->
