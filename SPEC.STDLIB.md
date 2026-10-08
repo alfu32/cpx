@@ -185,6 +185,59 @@ its native failure space to the shared negative values
 `CPLUS_PAL_UNSUPPORTED`. Native `errno`, `GetLastError`, and raw syscall
 numbers SHALL NOT cross this boundary.
 
+PAL version 3 SHALL preserve every version-2 operation and add the following
+filesystem services. `CPLUS_PAL_API_VERSION` SHALL be 3. The metadata record
+uses fixed-width fields and has a stable 32-byte layout on supported targets:
+
+```c
+typedef struct cplus_file_metadata_t {
+    unsigned long long size_bytes;
+    long long modified_seconds_utc;
+    unsigned int modified_nanoseconds;
+    unsigned int kind;
+    unsigned int reserved0;
+    unsigned int reserved1;
+} cplus_file_metadata_t;
+
+#define CPLUS_FILE_KIND_REGULAR   1U
+#define CPLUS_FILE_KIND_DIRECTORY 2U
+#define CPLUS_FILE_KIND_OTHER     3U
+#define CPLUS_PAL_BUFFER_TOO_SMALL (-7L)
+
+#define CPLUS_SEEK_BEGIN   0U
+#define CPLUS_SEEK_CURRENT 1U
+#define CPLUS_SEEK_END     2U
+
+long long platform_file_seek(
+    cplus_file_handle_t handle, long long offset, unsigned int origin);
+int platform_file_metadata(
+    const char* path, cplus_file_metadata_t* metadata);
+int platform_directory_create(const char* path);
+int platform_file_remove(const char* path);
+int platform_directory_remove(const char* path);
+cplus_file_result_t platform_directory_open(const char* path);
+long long platform_directory_read(
+    cplus_file_handle_t handle, char* utf8_name, cplus_file_size_t capacity);
+int platform_directory_close(cplus_file_handle_t handle);
+```
+
+`platform_file_seek` SHALL return the resulting non-negative absolute byte
+offset or a stable negative PAL error. Metadata lookup SHALL follow symbolic
+links and report size, UTC modification seconds since 1970-01-01, nanoseconds
+in `[0, 999999999]`, and one of the declared kinds; reserved fields SHALL be
+zero. Directory creation SHALL create one directory level and SHALL NOT create
+missing parents. File removal SHALL remove a file or symbolic link but SHALL
+NOT remove a directory; directory removal SHALL succeed only for an empty
+directory.
+
+Directory iteration SHALL omit `.` and `..`. A successful read returns the
+UTF-8 name length excluding its terminating NUL; zero means end-of-directory,
+and a negative result means failure. Capacity includes space for the NUL. If
+the next name does not fit, the adapter SHALL return
+`CPLUS_PAL_BUFFER_TOO_SMALL` without consuming that entry. Names that cannot
+be represented as valid UTF-8 SHALL return `CPLUS_PAL_UNSUPPORTED`. Directory
+handles are opaque and SHALL be closed with `platform_directory_close`.
+
 Portable runtime and standard-library code SHALL call these PAL operations and
 SHALL NOT contain Linux syscall instructions, Windows DLL declarations, host
 libc includes, or host libc symbol references. Those details belong only to
@@ -654,7 +707,8 @@ long platform_write_stdout(const char* buffer, unsigned long length);
 int platform_process_exit(int status);
 ```
 
-File streams use the version-2 PAL file operations. `std.io` may layer
+File streams use the PAL file operations (version-2 operations are preserved
+by version 3). `std.io` may layer
 buffering and formatting over `platform_file_read`, `platform_file_write`, and
 `platform_file_close`; it SHALL not expose target-specific descriptor or
 HANDLE types.
@@ -701,6 +755,12 @@ These functions are target-independent forwarding entry points. Their current
 implementation intentionally covers only open, read, write, close, and rename;
 seek, metadata, directory iteration, remove, and stream buffering remain
 separate standard-library stages.
+
+The version-3 `std.fs` façade SHALL expose the PAL seek, metadata, create,
+remove, and directory-iteration semantics without exposing native handles or
+error values. File stream adapters in `std.io` SHALL initially be unbuffered
+forwarders over `std.fs`; buffering and formatted conversion remain separate
+layers and MAY be added without changing the PAL ABI.
 
 Native C+ path semantics SHALL be independent from libc `char*` filename semantics.
 

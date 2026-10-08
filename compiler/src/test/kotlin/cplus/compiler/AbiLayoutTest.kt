@@ -129,6 +129,32 @@ class AbiLayoutTest {
     }
 
     @Test
+    fun versionThreeFileMetadataHasStableTargetIndependentLayout() {
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val api = root.resolve("platform/api/fs.cp")
+        val header = root.resolve("runtime/include/cplus_platform.h")
+        val headerText = java.nio.file.Files.readString(header)
+
+        assertTrue("#define CPLUS_PAL_API_VERSION 3" in headerText)
+        assertTrue("#define CPLUS_PAL_BUFFER_TOO_SMALL (-7L)" in headerText)
+        listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { targetName ->
+            val result = CPlusCompiler().compile(
+                CompileRequest(listOf(api), target = TargetInfo(targetTriple = targetName))
+            )
+            assertTrue(result.isSuccessful, "$targetName: ${result.diagnostics.joinToString()}")
+            val model = requireNotNull(result.semanticModel)
+            val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$targetName.toml")).descriptor)
+            val layout = AbiLayoutEngine(descriptor).layout(model.structs.getValue("cplus_file_metadata_t"))
+            assertEquals(32, layout.size, "$targetName metadata size")
+            assertEquals(8, layout.alignment, "$targetName metadata alignment")
+            assertEquals(listOf(0, 8, 16, 20, 24, 28), layout.fields.map { it.offset }, "$targetName offsets")
+            val generated = result.generatedUnits.joinToString("\n") { it.text }
+            assertTrue("platform_file_seek" in generated, "$targetName seek declaration")
+            assertTrue("platform_directory_read" in generated, "$targetName directory declaration")
+        }
+    }
+
+    @Test
     fun auditsPrimitiveAndAggregateLayoutAcrossDeclaredTargetMatrix() {
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         listOf("linux-x86_64", "linux-aarch64", "windows-x86_64", "windows-aarch64").forEach { name ->

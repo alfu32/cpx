@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 145/146 evidenced; one std.core task reopened
-Roadmap leaf tasks:    32/49 evidenced on Linux
+Roadmap leaf tasks:    33/53 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.1 — implement target-aware std.core byte/size/index types
+Current task:          R5.2.2 — implement file seek and path metadata adapters
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,12 +22,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc evidence; Windows cross-platform gate pending
-R5 [DOING] 0/5  std.core target-size types remain; file PAL extensions later
+R5 [DOING] 1/9  native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       32/49 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       33/53 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -35,11 +35,11 @@ The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. R5.1 — implement target-aware std.core byte/size/index types using the
-   Linux-verified primitive and type-import contracts.
-2. R5.2–R5.5 and R6–R7 — continue Linux implementation and explicit target
-   capability gating without running Windows tests early.
-3. Final validation — run the deferred Windows ABI/caller checks (including the
+1. R5.1 — finish Linux-side native std conformance using the verified primitive
+   and type-import contracts; retain its open status until the final target gate.
+2. R5.2.2–R5.2.4 and R5.3–R5.5, then R6–R7 — continue Linux implementation
+   and target capability modeling without running Windows tests early.
+3. Final validation — run the deferred Windows ABI/caller and PAL checks (including the
    open R3.1.3 LLP64 execution gate), patch platform issues, then close R8.
 
 Latest completed implementation commits:
@@ -4071,8 +4071,19 @@ dependencies.
 - R5.1 [DOING] — complete `std.core`, `std.mem`, `std.string`, `std.text`,
   and collection value/error types, including target-aware byte/size/index
   types;
-- R5.2 [TODO] — extend the file PAL with seek, metadata, create/remove,
-  directory iteration, and stream adapters;
+- R5.2 [DOING] — extend the file PAL with seek, metadata, create/remove,
+  directory iteration, and stream adapters; its parent gate is represented by
+  the five numbered leaves below and is not counted separately;
+  - R5.2.1 [DONE] — define and declare the version-3 file PAL ABI, portable
+    metadata and directory-entry contracts, and stable buffer-too-small error;
+  - R5.2.2 [TODO] — implement file seek and path metadata in Linux and Windows
+    adapters, with executable Linux checks and target-layout validation;
+  - R5.2.3 [TODO] — implement directory create/remove and UTF-8 directory
+    iteration in Linux and Windows adapters, with executable Linux checks;
+  - R5.2.4 [TODO] — add target-independent `std.fs` wrappers and unbuffered
+    file-stream read/write/seek/close adapters without exposing OS handles;
+  - R5.2.5 [TODO] — run the complete Linux/Windows PAL conformance matrix,
+    error-normalization and dependency audit, and close remaining platform gaps;
 - R5.3 [TODO] — implement memory/page, process/environment, time, thread,
   synchronization, atomics, networking, and math PAL adapters;
 - R5.4 [TODO] — connect native std façades to PAL services and add capability
@@ -4082,10 +4093,17 @@ dependencies.
 
 R5.2 implementation is sequenced after R1.1.1–R1.2.5 and R1.4 because it
 extends public SDK function signatures and must use the verified C primitive,
-type-import, and alias boundaries. Linux implementation may proceed while the
-R3.1.3 Windows LLP64 execution check remains explicitly deferred to final
-validation; that check is still required before claiming cross-platform ABI
-conformance or closing the release gate.
+type-import, and alias boundaries. R5.2.1 freezes the ABI before adapter work;
+R5.2.2–R5.2.4 may be implemented and Linux-tested while Windows execution,
+including the R3.1.3 LLP64 caller check, remains deferred to final validation.
+R5.2.5 is not complete until that deferred Windows execution and audit pass.
+
+R5.2.1 acceptance evidence: the normative PAL contract, C header, and C+
+declarations agree on version 3, stable error codes, operations, and the
+32-byte metadata record. `AbiLayoutTest.versionThreeFileMetadataHasStableTargetIndependentLayout`
+checks its size, alignment, member offsets, and declarations against Linux and
+Windows x86_64/AArch64 descriptors; `./gradlew build` passes on Linux. The
+Windows entries are descriptor-model checks only, not execution evidence.
 
 ### R5.1 status audit
 
