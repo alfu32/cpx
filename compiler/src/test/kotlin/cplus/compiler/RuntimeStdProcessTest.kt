@@ -9,14 +9,16 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 class RuntimeStdProcessTest {
     @Test
     fun cplusStdProcessForwardsIdentityArgumentsEnvironmentSpawnWaitExitAndChannels() {
-        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val isWindows = System.getProperty("os.name").contains("windows", ignoreCase = true)
+        assumeTrue(isWindows || System.getProperty("os.name").contains("linux", ignoreCase = true))
         val manifestPath = SdkManifestLocator.defaultManifestPath()
         val manifest = requireNotNull(SdkManifestLoader.load(manifestPath).manifest)
-        val target = TargetInfo(targetTriple = "linux-x86_64")
+        val target = TargetInfo(targetTriple = if (isWindows) "windows-x86_64" else "linux-x86_64")
         val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
         val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
         val root = manifestPath.toAbsolutePath().normalize().parent!!.parent!!
         val directory = Files.createTempDirectory("cplus-std-process")
+        val missingExecutable = if (isWindows) "C:/cplus/no-such-program.exe" else "/cplus/no/such/executable"
         val mainSource = directory.resolve("main.cp").also {
             Files.writeString(it, """
                 import {
@@ -59,7 +61,7 @@ class RuntimeStdProcessTest {
                         std_process_stderr_write((const char*)0, 0) != 0) return 4;
                     if (std_process_spawn((const char*)0, (const char* const*)0) != -2 ||
                         std_process_wait(-1, &exit_status) != -2) return 5;
-                    if (std_process_spawn("/cplus/no/such/executable", (const char* const*)0) != -3) return 16;
+                    if (std_process_spawn("$missingExecutable", (const char* const*)0) != -3) return 16;
                     if (argument_count == 2) {
                         if (!same(std_process_argument(1), "child")) return 6;
                         if (std_process_argument(2) != (const char*)0) return 7;
@@ -85,7 +87,7 @@ class RuntimeStdProcessTest {
                 }
             """.trimIndent())
         }
-        val executable = directory.resolve("std-process")
+        val executable = directory.resolve(if (isWindows) "std-process.exe" else "std-process")
         try {
             val compilation = CPlusCompiler().compile(
                 CompileRequest(listOf(root.resolve("std/src/process.cp"), mainSource), target)
@@ -99,10 +101,17 @@ class RuntimeStdProcessTest {
                 plan
             )
             assertTrue(link.isSuccessful, link.output)
-            val undefinedSymbols = ProcessBuilder("nm", "-u", executable.toString()).start()
-            val undefinedOutput = undefinedSymbols.inputStream.bufferedReader().readText()
-            assertEquals(0, undefinedSymbols.waitFor(), undefinedOutput)
-            assertTrue(undefinedOutput.isBlank(), undefinedOutput)
+            if (isWindows) {
+                val descriptor = resolution.targetDescriptor
+                    ?: requireNotNull(TargetRegistry.load(resolution.layout.abiDescriptor).descriptor)
+                val audit = RuntimeDependencyAuditor.inspect(executable, descriptor, target.buildProfile)
+                assertTrue(audit.isSuccessful, audit.diagnostics.joinToString())
+            } else {
+                val undefinedSymbols = ProcessBuilder("nm", "-u", executable.toString()).start()
+                val undefinedOutput = undefinedSymbols.inputStream.bufferedReader().readText()
+                assertEquals(0, undefinedSymbols.waitFor(), undefinedOutput)
+                assertTrue(undefinedOutput.isBlank(), undefinedOutput)
+            }
 
             val process = ProcessBuilder(executable.toString())
                 .apply { environment()["CPX_STD_PROCESS_TEST"] = "present" }

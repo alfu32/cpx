@@ -4814,9 +4814,12 @@ dependencies.
       inherited environment; invalid-argument passthrough; inherited standard
       input/output/error; child exit status and wait behavior; and zero-length
       channel operations. The statically linked Linux executable has no
-      undefined host-runtime symbols. The full Gradle build passes. Strict
+      undefined host-runtime symbols. The same C+ caller now executes on
+      native Windows x86_64, including environment inheritance, child argv,
+      child exit status, separate inherited stdout/stderr, and stdin EOF; the
+      PE passes `RuntimeDependencyAuditor`. The full Gradle build passes. Strict
       warning-as-error C17 checks pass for the forwarding source on Linux and
-      Windows x86_64/AArch64; Windows runtime execution remains deferred.
+      Windows x86_64/AArch64.
     - The first caller compilation exposed and fixed parser lookahead that
       treated `local = functionCall(...)` as an inner-function declaration;
       a focused parser regression test passes.
