@@ -21,7 +21,8 @@ Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
 Windows full-runtime link: native Windows and local MinGW PE products pass
 Latest full test suites: Linux and native Windows `gradle test` pass
 Windows runtime evidence: allocator, process, stdio channels, clocks, threads/TLS,
-                          synchronization, TCP/UDP/IPv6, resolver, and C17 subset
+                          atomics/synchronization, TCP/UDP/IPv6, resolver,
+                          std.math façade, and C17 subset
 
 R0 [DONE]  1/1  implementation inventory and scope freeze
 R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
@@ -4456,16 +4457,16 @@ for missing, planned, or unsupported checks. R4.4/R4.5 were reopened after the
 audit found that `fgetc` always returned EOF and `fprintf`/`fputc` ignored
 their stream argument. R5.3.3 fixed those behaviors; the independent
 `c17-stdio.c` fixture now exercises every function declared by the SDK's
-`stdio.h`, and `cplus libc test --target linux-x86_64` currently reports 47
+`stdio.h`, and `cplus libc test --target linux-x86_64` currently reports 51
 pass, 0 fail, 0 unsupported, and 0 planned, including exact stdin/stdout/stderr
-checks, complex type/header checks, and binary dependency audits. These
-registered checks do not cover the full C17 header list: `<tgmath.h>` and
-complex math function implementations remain open under R4.6. The R4.4/
-R4.5 Linux leaves pass their recorded acceptance checks; the R4 phase gate
+checks, complex type/header checks, and binary dependency audits. The current
+registered suite includes `<tgmath.h>` and complex math fixtures, but does not
+cover the entire C17 header list. The R4.4/R4.5 Linux leaves pass their
+recorded acceptance checks; the R4 phase gate
 remains open for the native Windows family matrix and its deferred-runtime
 families. The shared C17 runner now enables `basic` and `stdio` fixtures for
-Windows x86_64. `ConformanceTest.windowsX8664C17AuditExecutesSupportedCoreAndStdioFixtures`
-passes on the Windows VM: both fixtures execute, stdout/stderr and stdin
+Windows x86_64. `ConformanceTest.windowsX8664C17AuditExecutesAllEnabledFixtures`
+passes on the Windows VM: each enabled fixture executes, stdout/stderr and stdin
 contracts match, and each PE product passes the host/compiler-runtime import
 audit. The shared `basic` fixture also exercises Windows `malloc`, `calloc`,
 `realloc`, `aligned_alloc`, zeroing/alignment, `errno` on allocation overflow,
@@ -4477,8 +4478,12 @@ full C+ complex integration suite for float, double, and long double. The
 verified Windows descriptor now enables `c17_complex`; complex arithmetic,
 complex-type, and tgmath C17 fixtures all execute and pass dependency audits.
 The latest native Windows C17 report is 51 pass, 0 fail, 0 unsupported, and
-0 planned. R4 remains open for broader Windows execution evidence across the
-other runtime/libc families, not because these registered C17 checks fail.
+0 planned. The native Windows `RuntimeStdAtomicTest` also executes the C+
+atomic facade through concurrent fetch operations, compare/exchange, memory
+orders, thread fences, wait/wake, and runtime-managed workers; its PE passes the
+dependency audit. R4 remains open for broader Windows execution evidence
+across the other runtime/libc families, not because these registered checks
+fail.
 
 ### R4.1/R4.2 completion record
 
