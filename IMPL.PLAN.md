@@ -5404,14 +5404,19 @@ hard-coded CLI path.
   that failed `-Werror`. The CLI/LinkDriver now discovers versioned LLD
   executables for Clang/Linux-AArch64 linking. The actual CLI built
   `examples/module_main.cp` as a static AArch64 ELF product; `readelf` reports
-  ELF64/AArch64, `nm -u` is empty, and no dynamic section is present. Its
-  `PT_TLS` segment has a one-byte initialized image, eight-byte memory image,
+  ELF64/AArch64, `nm -u` is empty, no dynamic section is present, and there is
+  no `PT_INTERP` program header. The latter check caught that `-nostdlib` alone
+  still let Clang emit a dynamic-loader interpreter path; Linux self-hosted
+  products now pass `-static`, and the redundant x86-specific `-no-pie` driver
+  flag is omitted for AArch64. A regression test checks both target link plans.
+  Its `PT_TLS` segment has a one-byte initialized image, eight-byte memory image,
   and four-byte alignment, matching the emitted TLS metadata symbols. This
   exposed that `--gc-sections` could remove an empty `.tdata` section required
   by the TLS linker script; Linux startup now retains a minimal initialized
   TLS anchor. Linux x86_64 TLS/C17 regression tests and a fresh module run
   (`Result: 12`, exit 0) pass after that change. AArch64 execution remains
-  unverified because no emulator is available. The prior x86_64 CLI run also
+  unverified: QEMU system emulation is installed, but no AArch64 user-mode
+  runner or configured guest system is available. The prior x86_64 CLI run also
   exposed a missing GNU-stack note in setjmp assembly, now fixed. Windows
   testing and patching remain deferred; the last MinGW full-runtime link
   evidence reports unresolved `__emutls_get_address`, `WaitOnAddress`,

@@ -18,6 +18,7 @@ class RuntimeLinkerTest {
         assertEquals(RuntimeProfile.CPLUS, result.plan!!.profile)
         assertTrue(result.plan.compilerFlags.contains("-nostdlib"))
         assertTrue(result.plan.compilerFlags.contains("-fno-pie"))
+        assertTrue(result.plan.linkerFlags.contains("-static"))
         assertTrue(result.plan.linkerFlags.contains("-no-pie"))
         assertTrue(result.plan.startupSources.single().fileName.toString() == "start.S")
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "runtime.c" })
@@ -31,6 +32,19 @@ class RuntimeLinkerTest {
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "net.c" })
         assertTrue(result.plan.runtimeSources.any { it.fileName.toString() == "network_dns.c" })
         assertTrue(result.plan.linkerFlags.any { it.contains("thread-tls.ld") })
+    }
+
+    @Test
+    fun linuxAarch64UsesStaticLinkWithoutX86SpecificNoPieDriverFlag() {
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "linux-aarch64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+
+        val result = RuntimeLinker.plan(resolution, target)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertTrue(result.plan!!.linkerFlags.contains("-static"))
+        assertTrue(result.plan.linkerFlags.none { it == "-no-pie" })
     }
 
     @Test

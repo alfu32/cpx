@@ -146,7 +146,11 @@ object RuntimeLinker {
                                 }
                             },
                             when (descriptor.os) {
-                                "linux" -> listOf("-Wl,-e,_start", "-Wl,--build-id=none", "-no-pie") + threadTlsScript.map { "-Wl,-T,${it.toAbsolutePath().normalize()}" }
+                                "linux" -> buildList {
+                                    addAll(listOf("-Wl,-e,_start", "-Wl,--build-id=none", "-static"))
+                                    if (descriptor.architecture == "x86_64") add("-no-pie")
+                                    addAll(threadTlsScript.map { "-Wl,-T,${it.toAbsolutePath().normalize()}" })
+                                }
                                 "windows" -> listOf("-Wl,--entry,mainCRTStartup", "-Wl,--subsystem,console", "-lkernel32")
                                 else -> emptyList()
                             }
