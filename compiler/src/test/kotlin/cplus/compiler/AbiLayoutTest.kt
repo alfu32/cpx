@@ -146,6 +146,19 @@ class AbiLayoutTest {
     @Test
     fun laysOutParsedCanonicalIntegerTypesAcrossLp64AndLlp64Targets() {
         val source = """
+            struct parsed_integer_record {
+                char plain_char;
+                signed char signed_char;
+                unsigned char unsigned_char;
+                short signed_short;
+                unsigned short unsigned_short;
+                int signed_int;
+                unsigned int unsigned_int;
+                long signed_long;
+                unsigned long unsigned_long;
+                long long signed_long_long;
+                unsigned long long unsigned_long_long;
+            };
             char plain_char;
             char signed signed_char;
             char unsigned unsigned_char;
@@ -190,6 +203,22 @@ class AbiLayoutTest {
                 assertEquals(expectedSize, layout.size, "$name $symbolName size")
                 assertEquals(expectedSize, layout.alignment, "$name $symbolName alignment")
             }
+
+            val record = layouts.layout(model.structs.getValue("parsed_integer_record"))
+            var expectedOffset = 0
+            var expectedAlignment = 1
+            record.fields.forEachIndexed { index, field ->
+                val memberType = model.structs.getValue("parsed_integer_record").fields[index].symbol.type
+                val memberLayout = layouts.layout(memberType)
+                expectedOffset = ((expectedOffset + memberLayout.alignment - 1) / memberLayout.alignment) * memberLayout.alignment
+                assertEquals(expectedOffset, field.offset, "$name ${field.name} offset")
+                assertEquals(memberLayout.size, field.size, "$name ${field.name} size")
+                assertEquals(memberLayout.alignment, field.alignment, "$name ${field.name} alignment")
+                expectedOffset += memberLayout.size
+                expectedAlignment = maxOf(expectedAlignment, memberLayout.alignment)
+            }
+            val expectedRecordSize = ((expectedOffset + expectedAlignment - 1) / expectedAlignment) * expectedAlignment
+            assertEquals(expectedRecordSize, record.size, "$name parsed record size")
         }
     }
 

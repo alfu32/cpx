@@ -3885,6 +3885,22 @@ target width through the parser, semantic model, emitted C, and independent C
 caller. This specifically covers LP64 and LLP64 differences and the
 `char`/`signed char`/`unsigned char` distinction.
 
+Linux evidence added for the current pass:
+
+- an emitted public header and generated C unit now round-trip every supported
+  standard integer rank and signedness through an independent C17 caller;
+  compile-time checks compare the caller's LP64 `long` size and aggregate
+  offsets, and runtime values exercise signed and unsigned argument/return ABI;
+- semantic assertions verify each parsed declaration's canonical type identity
+  and keep plain, signed, unsigned, `long`, and `long long` types distinct;
+- parsed multi-integer aggregate field sizes, alignments, offsets, and total
+  layout are checked against all four Linux/Windows x86_64/AArch64 descriptors.
+  Windows entries here are descriptor-model checks only, not Windows execution.
+
+R3.1.3 remains `DOING`: the Linux source-to-C and independent-caller checks are
+now present, but Windows LLP64 compilation and independent-caller execution are
+still deferred to the final validation pass.
+
 ### R3.2/R3.3 completion record
 
 Implemented and tested on Linux:

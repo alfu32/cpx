@@ -15,6 +15,7 @@ import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
@@ -1301,6 +1302,116 @@ class CompilerIntegrationTest {
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         val executionOutput = execution.inputStream.bufferedReader().readText()
         assertEquals(42, execution.waitFor(), executionOutput)
+    }
+
+    @Test
+    fun everyCIntegerRankAndSignednessRoundTripsThroughAnIndependentCAbiCaller() {
+        val source = """
+            pub struct parsed_integer_record {
+                char plain_char;
+                signed char signed_char;
+                unsigned char unsigned_char;
+                short signed_short;
+                unsigned short unsigned_short;
+                int signed_int;
+                unsigned int unsigned_int;
+                long signed_long;
+                unsigned long unsigned_long;
+                long long signed_long_long;
+                unsigned long long unsigned_long_long;
+            };
+
+            pub char pass_plain_char(char value) { return value; }
+            pub signed char pass_signed_char(signed char value) { return value; }
+            pub unsigned char pass_unsigned_char(unsigned char value) { return value; }
+            pub short signed int pass_signed_short(short signed int value) { return value; }
+            pub int unsigned short pass_unsigned_short(int unsigned short value) { return value; }
+            pub int signed pass_signed_int(int signed value) { return value; }
+            pub unsigned int pass_unsigned_int(unsigned int value) { return value; }
+            pub int long pass_signed_long(long int value) { return value; }
+            pub long unsigned int pass_unsigned_long(unsigned long int value) { return value; }
+            pub long int long pass_signed_long_long(long long int value) { return value; }
+            pub unsigned long long int pass_unsigned_long_long(unsigned long long int value) { return value; }
+        """.trimIndent()
+        val result = CPlusCompiler().compileText(Files.createTempFile("cplus-primitive-abi", ".cp"), source)
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val model = requireNotNull(result.semanticModel)
+        val expectedTypes = linkedMapOf(
+            "pass_plain_char" to "char",
+            "pass_signed_char" to "signed char",
+            "pass_unsigned_char" to "unsigned char",
+            "pass_signed_short" to "short",
+            "pass_unsigned_short" to "unsigned short",
+            "pass_signed_int" to "int",
+            "pass_unsigned_int" to "unsigned int",
+            "pass_signed_long" to "long",
+            "pass_unsigned_long" to "unsigned long",
+            "pass_signed_long_long" to "long long",
+            "pass_unsigned_long_long" to "unsigned long long"
+        )
+        expectedTypes.forEach { (functionName, typeName) ->
+            val function = model.functions.getValue(functionName)
+            assertEquals(typeName, function.returnType.name, functionName)
+            assertEquals(typeName, function.parameters.single().type.name, functionName)
+        }
+        fun canonicalId(functionName: String) =
+            model.canonicalTypeId(model.functions.getValue(functionName).returnType)
+        assertNotEquals(canonicalId("pass_plain_char"), canonicalId("pass_signed_char"))
+        assertNotEquals(canonicalId("pass_signed_char"), canonicalId("pass_unsigned_char"))
+        assertNotEquals(canonicalId("pass_signed_short"), canonicalId("pass_unsigned_short"))
+        assertNotEquals(canonicalId("pass_signed_int"), canonicalId("pass_unsigned_int"))
+        assertNotEquals(canonicalId("pass_signed_long"), canonicalId("pass_signed_long_long"))
+        assertNotEquals(canonicalId("pass_unsigned_long"), canonicalId("pass_unsigned_long_long"))
+
+        val directory = Files.createTempDirectory("cplus-primitive-abi-e2e")
+        val header = directory.resolve("primitive_api.h").also {
+            it.writeText(result.generatedHeaders.single().text)
+        }
+        val generated = directory.resolve("generated.c").also { it.writeText(result.generatedUnits.single().text) }
+        val caller = directory.resolve("caller.c").also {
+            it.writeText(
+                """
+                    #include <stddef.h>
+                    #include "${header.fileName}"
+                    _Static_assert(sizeof(long) == 8, "Linux x86_64 long ABI");
+                    _Static_assert(sizeof(long long) == 8, "long long ABI");
+                    _Static_assert(sizeof(struct parsed_integer_record) == 48, "record size");
+                    _Static_assert(offsetof(struct parsed_integer_record, signed_short) == 4, "short offset");
+                    _Static_assert(offsetof(struct parsed_integer_record, signed_int) == 8, "int offset");
+                    _Static_assert(offsetof(struct parsed_integer_record, signed_long) == 16, "long offset");
+                    _Static_assert(offsetof(struct parsed_integer_record, signed_long_long) == 32, "long long offset");
+                    int main(void) {
+                        long signed_long_value = -((long)1 << 40);
+                        unsigned long unsigned_long_value = (unsigned long)1 << 55;
+                        long long signed_long_long_value = -((long long)1 << 50);
+                        unsigned long long unsigned_long_long_value = 1ULL << 63;
+                        if (pass_plain_char('Q') != 'Q') return 1;
+                        if (pass_signed_char((signed char)-97) != (signed char)-97) return 2;
+                        if (pass_unsigned_char((unsigned char)250) != (unsigned char)250) return 3;
+                        if (pass_signed_short((short)-12345) != (short)-12345) return 4;
+                        if (pass_unsigned_short((unsigned short)60000) != (unsigned short)60000) return 5;
+                        if (pass_signed_int(-1234567) != -1234567) return 6;
+                        if (pass_unsigned_int(4000000001U) != 4000000001U) return 7;
+                        if (pass_signed_long(signed_long_value) != signed_long_value) return 8;
+                        if (pass_unsigned_long(unsigned_long_value) != unsigned_long_value) return 9;
+                        if (pass_signed_long_long(signed_long_long_value) != signed_long_long_value) return 10;
+                        if (pass_unsigned_long_long(unsigned_long_long_value) != unsigned_long_long_value) return 11;
+                        return 0;
+                    }
+                """.trimIndent()
+            )
+        }
+        val executable = directory.resolve("primitive-abi")
+        val compile = ProcessBuilder(
+            "cc", "-std=c17", "-I", directory.toString(), generated.toString(), caller.toString(),
+            "-o", executable.toString()
+        ).redirectErrorStream(true).start()
+        val compilerOutput = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), compilerOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(0, execution.waitFor(), executionOutput)
     }
 
     @Test
