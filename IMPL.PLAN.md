@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    54/75 accepted with recorded evidence
+Roadmap leaf tasks:    55/75 accepted with recorded evidence
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.4.4.1 — define public std.net types and ABI
+Current task:          R5.4.4.2 — implement the std.net TCP façade
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 Windows full-runtime link: open in R8.3; local MinGW reports unresolved
@@ -24,12 +24,12 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 22/31 native std and platform-service work remains open
+R5 [DOING] 23/31 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       54/75 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       55/75 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
@@ -115,9 +115,13 @@ build passes. Commit `6cb217a` brings the numerator to 54/72 and R5 to 22/28.
 Windows runtime execution remains deferred, and R5.4.4 is now active.
 
 R5.4.4 was decomposed into public types/API, TCP, UDP, and address/DNS façade
-leaves. This increases the roadmap denominator from 72 to 75 and R5 from 28 to
-31 without adding completion credit. The public facade declaration/ABI task
-R5.4.4.1 is now active; transport and address/resolver tasks remain queued.
+leaves. This increased the roadmap denominator from 72 to 75 and R5 from 28 to
+31 without adding completion credit. R5.4.4.1 then passed explicit C+ imports
+and calls for every declared API, four-target struct/enum/handle ABI checks,
+and the forced focused Gradle test run. Commit `9d14930` brings the numerator
+to 55/75 and R5 to 23/31. This closes declaration/ABI evidence only; the
+public functions have no implementations yet. R5.4.4.2 is active, while UDP
+and address/resolver façade behavior remain queued.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
@@ -4419,7 +4423,7 @@ dependencies.
         generated assembly contains no `__atomic_*`, `__sync_*`, or AArch64
         atomic-helper calls. The full Gradle build passes. Windows runtime
         execution remains deferred.
-  - R5.4.4 [DOING] [0/4] — implement portable `std.net` address, DNS, socket,
+  - R5.4.4 [DOING] [1/4] — implement portable `std.net` address, DNS, socket,
     TCP and UDP APIs with explicit partial/unavailable capability behavior;
     - **Language:** SPEC.STDLIB §16–§16.1 public networking behavior and PAL
       mapping.
@@ -4431,16 +4435,18 @@ dependencies.
       checks pass for shared forwarding code on all four targets; production
       Linux executables have no undefined host-runtime symbols. Windows runtime
       execution remains deferred to final validation.
-    - R5.4.4.1 [DOING] — define public `std.net` address, socket, family,
+    - R5.4.4.1 [DONE] — define public `std.net` address, socket, family,
       transport, shutdown, and error types/constants plus the façade
       declarations; verify the public ABI before transport implementation.
-      - **Acceptance:** C+ code explicitly imports the public types and enum
-        constants and compiles every declared API; address layout is 28 bytes,
-        four-byte aligned, with offsets `[0,4,6,8,24]`; handle width is 64 bits;
-        enum widths and all signatures agree across the four target
-        descriptors. This is declaration/ABI acceptance only and does not claim
-        executable socket behavior.
-    - R5.4.4.2 [TODO] — implement and execute the public TCP stream façade for
+      - **Acceptance evidence:** `RuntimeStdNetTest` explicitly imports all
+        public types, constants, and functions and compiles call sites for the
+        complete declared API on Linux/Windows x86_64/AArch64. The address
+        layout is 28 bytes/four-byte aligned with offsets `[0,4,6,8,24]`, the
+        socket alias is 64 bits, and all four enums are four bytes on every
+        target. The forced focused Gradle test run passes. This is
+        declaration/ABI acceptance only and does not claim executable socket
+        behavior.
+    - R5.4.4.2 [DOING] — implement and execute the public TCP stream façade for
       open, bind, listen, accept, connect, local/peer address, send, receive,
       shutdown, and close.
       - **Acceptance:** a C+ caller uses only the public `std.net` API for IPv4
