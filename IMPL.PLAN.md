@@ -16,7 +16,7 @@ Phase gates:           4/9 complete; 5 active; 0 queued
 Current task:          R4 — native Windows runtime/libc conformance gate
 Current milestone:     R4 — native runtime and C17 compatibility
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
-Latest C17 Windows x86_64 report: 46 pass, 0 fail, 3 unsupported, 0 planned
+Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
 Windows full-runtime link: native Windows and local MinGW PE products pass
 
@@ -42,8 +42,9 @@ R4.6.2 was decomposed into five independently testable leaves for C+ complex
 operators, component/projection functions, exponential/root functions,
 trigonometric/hyperbolic functions, and `<tgmath.h>` dispatch. This increases
 the denominator from 88 to 92 and R4 from 7 to 11 without adding completion
-credit; after R4.6.2.5 acceptance the current aggregate is 78/92 overall and
-11/11 for R4. The complex-function leaves are credited only after their
+credit; at R4.6.2.5 acceptance the historical aggregate was 78/92 overall and
+11/11 Linux R4 leaves. The current roadmap totals are recorded in the dashboard
+above and include subsequently accepted platform work. The complex-function leaves are credited only after their
 independent C callers, runtime dependency audits, and full builds pass.
 
 The roadmap denominator increased from 65 to 67 during R5.3.7 planning when
@@ -4344,8 +4345,9 @@ layout, source-map, and dependency audits.
   complete.
   - R4.6.1 [DONE] — add target-described C complex types and the C17
     `<complex.h>` declarations/macros, with semantic, layout, and independent
-    C-caller coverage. The `c17_complex` capability is initially limited to
-    Linux x86_64; other targets reject these types until separately probed.
+    C-caller coverage. At initial acceptance the `c17_complex` capability was
+    limited to Linux x86_64; other targets rejected these types until separately
+    probed. Windows x86_64 GCC/UCRT support is recorded in the addendum below.
     `CPrimitiveTypesTest` verifies legal specifier order and rejects invalid
     combinations; `ComplexAbiIntegrationTest` verifies all three semantic
     identities/layouts, checks unsupported-target diagnostics, exercises the
@@ -4432,6 +4434,19 @@ layout, source-map, and dependency audits.
     execution is claimed.
     **Depends:** R4.6.2.1–R4.6.2.4 and R5.4.5.2–R5.4.5.10.
 
+  **Native Windows x86_64 validation addendum:** the UCRT64 GCC profile now
+  advertises `c17_complex` only after matching the descriptor's size/alignment
+  probe and passing independent C17 caller/callee roundtrips for float, double,
+  and x87 extended complex scalars. `ComplexAbiIntegrationTest` also passes the
+  full generated C+ complex API caller on the native VM, including arithmetic,
+  all three precisions, runtime math operations, and PE dependency audit. The
+  Windows C17 `complex-types` and `tgmath` fixtures execute and pass their
+  dependency audits; the complete report is 51 pass, 0 fail, 0 unsupported,
+  0 planned. This evidence is specific to the tested Windows x86_64 GCC/UCRT
+  profile; it does not claim MSVC complex ABI, Windows AArch64, or Darwin
+  support. R4 remains open for Windows runtime/libc families not exercised by
+  this registered C17 suite.
+
 The Linux x86_64 conformance command reports the individual header, runtime
 source, fixture execution, and binary dependency checks; it returns non-zero
 for missing, planned, or unsupported checks. R4.4/R4.5 were reopened after the
@@ -4453,10 +4468,14 @@ audit. The shared `basic` fixture also exercises Windows `malloc`, `calloc`,
 `realloc`, `aligned_alloc`, zeroing/alignment, `errno` on allocation overflow,
 memory/string operations, and integer/floating conversion. The expanded fixture
 passes on both Windows x86_64 and Linux x86_64. The Windows `context` fixture
-now passes through a dedicated setjmp/longjmp adapter; complex arithmetic,
-complex types, and tgmath remain explicitly unsupported. The native Windows
-C17 report is 46 pass, 0 fail, 3 unsupported, and 0 planned. This is focused
-Windows C17 evidence; R4 remains open for its other runtime/libc families.
+now passes through a dedicated setjmp/longjmp adapter. Native Windows x86_64
+GCC/UCRT also passes the independent C complex ABI caller/callee probe and the
+full C+ complex integration suite for float, double, and long double. The
+verified Windows descriptor now enables `c17_complex`; complex arithmetic,
+complex-type, and tgmath C17 fixtures all execute and pass dependency audits.
+The latest native Windows C17 report is 51 pass, 0 fail, 0 unsupported, and
+0 planned. R4 remains open for broader Windows execution evidence across the
+other runtime/libc families, not because these registered C17 checks fail.
 
 ### R4.1/R4.2 completion record
 

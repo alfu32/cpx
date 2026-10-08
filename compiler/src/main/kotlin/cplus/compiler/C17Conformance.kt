@@ -192,12 +192,12 @@ object C17ConformanceFixtures {
         C17Fixture(
             "complex-types",
             "c17-complex-types.c",
-            { descriptor -> descriptor.targetTriple == "linux-x86_64" && "c17_complex" in descriptor.features }
+            { descriptor -> "c17_complex" in descriptor.features }
         ),
         C17Fixture(
             "tgmath",
             "c17-tgmath.c",
-            { descriptor -> descriptor.targetTriple == "linux-x86_64" && "c17_complex" in descriptor.features }
+            { descriptor -> "c17_complex" in descriptor.features }
         )
     )
 }

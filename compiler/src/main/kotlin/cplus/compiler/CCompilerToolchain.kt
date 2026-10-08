@@ -157,16 +157,16 @@ object CCompilerToolchains {
     }
 
     /**
-     * The initial complex ABI profile is deliberately limited to Linux
-     * x86_64 and GCC/Clang-compatible drivers. Check the compiler's C17
-     * complex type size, alignment, and callable declarations before using
-     * the descriptor's `c17_complex` capability.
+     * Complex support is enabled only for target profiles with independently
+     * verified C17 scalar representation and caller/callee ABI behavior.
      */
     fun supportsC17Complex(target: TargetAbiDescriptor, compiler: String): Boolean {
-        if ("c17_complex" !in target.features || target.targetTriple != "linux-x86_64") return false
+        if ("c17_complex" !in target.features ||
+            target.targetTriple !in setOf("linux-x86_64", "windows-x86_64")
+        ) return false
         if (classify(compiler).kind !in setOf(CCompilerKind.GCC, CCompilerKind.CLANG)) return false
         val executableName = compiler.substringAfterLast('/').substringAfterLast('\\').lowercase()
-        if (executableName.contains("mingw") || executableName.contains("w64")) return false
+        if (target.os == "linux" && (executableName.contains("mingw") || executableName.contains("w64"))) return false
         val key = "$compiler|${target.targetTriple}|${target.floatingTypes}"
         return complexAbiProbeCache.computeIfAbsent(key) {
             val source = complexAbiProbeSource(target)

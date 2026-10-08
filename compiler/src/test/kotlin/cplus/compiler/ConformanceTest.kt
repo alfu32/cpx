@@ -67,7 +67,7 @@ class ConformanceTest {
     }
 
     @Test
-    fun windowsX8664C17AuditExecutesSupportedCoreAndStdioFixtures() {
+    fun windowsX8664C17AuditExecutesAllEnabledFixtures() {
         assumeTrue(System.getProperty("os.name").contains("windows", ignoreCase = true))
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
         val target = TargetInfo(targetTriple = "windows-x86_64")
@@ -75,20 +75,13 @@ class ConformanceTest {
         val report = C17ConformanceRunner.run(resolution, target)
 
         assertTrue(report.failed.isEmpty(), report.failed.joinToString())
-        listOf("basic", "stdio", "context").forEach { fixture ->
+        listOf("basic", "stdio", "context", "complex-types", "tgmath").forEach { fixture ->
             assertTrue(report.cases.any { it.id == "fixture.execution.$fixture" && it.status == "pass" })
             assertTrue(report.cases.any { it.id == "fixture.dependencies.$fixture" && it.status == "pass" })
         }
         assertTrue(report.cases.any { it.id == "fixture.streams.stdio" && it.status == "pass" })
         assertTrue(report.cases.any { it.id == "libc.setjmp-context" && it.status == "pass" })
-        assertEquals(
-            setOf(
-                "runtime.source.complex.arithmetic",
-                "fixture.execution.complex-types",
-                "fixture.execution.tgmath"
-            ),
-            report.unsupported.map { it.id }.toSet()
-        )
+        assertTrue(report.unsupported.isEmpty(), report.unsupported.joinToString())
 
         val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
         val plan = requireNotNull(RuntimeLinker.plan(resolution, target).plan)

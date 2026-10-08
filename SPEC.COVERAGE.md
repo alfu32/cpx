@@ -51,10 +51,10 @@ completion gates are tracked in `IMPL.PLAN.md` under R1–R8.
 - Linux and Windows PAL file open/read/write/seek/close/rename, metadata, and
   directory iteration with canonical UTF-8 slash paths, stable error mapping,
   and the `std_fs_*` forwarding façade; Windows execution is native x86_64.
-- independent C17 `basic`, `context`, and `stdio` fixtures execute on native
-  Windows x86_64 and pass PE dependency audits; the latest report is 46 pass,
-  0 fail, 3 unsupported, 0 planned. Complex types and tgmath remain explicitly
-  unsupported on Windows.
+- independent C17 `basic`, `context`, `stdio`, `complex-types`, and `tgmath`
+  fixtures execute on native Windows x86_64 and pass PE dependency audits; the
+  latest GCC/UCRT report is 51 pass, 0 fail, 0 unsupported, 0 planned. Windows
+  complex scalar ABI is enabled only for a verified compiler/target profile.
 
 ### Contracted but incomplete
 

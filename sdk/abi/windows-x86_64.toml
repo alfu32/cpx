@@ -32,6 +32,6 @@ tls_model = "pe-tls"
 linker = "link"
 startup_entry = "mainCRTStartup"
 system_libraries = ["kernel32"]
-features = ["threads", "atomics"]
+features = ["threads", "atomics", "c17_complex"]
 intrinsics = []
 supported_abis = ["c", "system", "cplus", "intrinsic", "runtime"]

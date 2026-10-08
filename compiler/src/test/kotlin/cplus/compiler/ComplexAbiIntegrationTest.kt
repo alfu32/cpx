@@ -14,8 +14,68 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 
 class ComplexAbiIntegrationTest {
     @Test
-    fun complexScalarFunctionsMatchIndependentLinuxC17CallerAbi() {
-        assumeTrue(System.getProperty("os.name").contains("linux", ignoreCase = true))
+    fun windowsMinGwMatchesIndependentC17ComplexScalarCallerAbi() {
+        assumeTrue(System.getProperty("os.name").contains("windows", ignoreCase = true))
+        val selectedCompiler = listOf("gcc", "clang").firstOrNull(::isCompilerAvailable)
+        assumeTrue(selectedCompiler != null, "native Windows C17 compiler is unavailable")
+        val compiler = requireNotNull(selectedCompiler)
+        val root = SdkManifestLocator.defaultManifestPath().toAbsolutePath().normalize().parent!!.parent!!
+        val directory = Files.createTempDirectory("windows-complex-scalar-abi")
+        val callee = directory.resolve("callee.c").also {
+            Files.writeString(it, """
+                #include "complex.h"
+                float _Complex round_trip_float(float _Complex value) { return value; }
+                double _Complex round_trip_double(double _Complex value) { return value; }
+                long double _Complex round_trip_long_double(long double _Complex value) { return value; }
+            """.trimIndent())
+        }
+        val caller = directory.resolve("caller.c").also {
+            Files.writeString(it, """
+                #include "complex.h"
+                _Static_assert(sizeof(float _Complex) == 2 * sizeof(float), "float complex size");
+                _Static_assert(sizeof(double _Complex) == 2 * sizeof(double), "double complex size");
+                _Static_assert(sizeof(long double _Complex) == 2 * sizeof(long double), "long double complex size");
+                _Static_assert(_Alignof(float _Complex) == _Alignof(float), "float complex alignment");
+                _Static_assert(_Alignof(double _Complex) == _Alignof(double), "double complex alignment");
+                _Static_assert(_Alignof(long double _Complex) == _Alignof(long double), "long double complex alignment");
+                float _Complex round_trip_float(float _Complex value);
+                double _Complex round_trip_double(double _Complex value);
+                long double _Complex round_trip_long_double(long double _Complex value);
+                int main(void) {
+                    float _Complex single = CMPLXF(1.25F, -2.5F);
+                    double _Complex real = CMPLX(3.125, -4.5);
+                    long double _Complex extended = CMPLXL(5.75L, -6.875L);
+                    float _Complex single_result = round_trip_float(single);
+                    double _Complex real_result = round_trip_double(real);
+                    long double _Complex extended_result = round_trip_long_double(extended);
+                    if (crealf(single_result) != 1.25F || cimagf(single_result) != -2.5F) return 1;
+                    if (creal(real_result) != 3.125 || cimag(real_result) != -4.5) return 2;
+                    if (creall(extended_result) != 5.75L || cimagl(extended_result) != -6.875L) return 3;
+                    return 0;
+                }
+            """.trimIndent())
+        }
+        val executable = directory.resolve("complex-abi.exe")
+        try {
+            val compile = ProcessBuilder(
+                compiler, "-std=c17", "-Werror", "-O2", "-I", root.resolve("libc/include").toString(),
+                callee.toString(), caller.toString(), "-o", executable.toString()
+            ).redirectErrorStream(true).start()
+            val compileOutput = compile.inputStream.bufferedReader().readText()
+            assertEquals(0, compile.waitFor(), "$compiler: $compileOutput")
+            val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+            val output = execution.inputStream.bufferedReader().readText()
+            assertEquals(0, execution.waitFor(), "$compiler: $output")
+        } finally {
+            Files.walk(directory).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
+
+    @Test
+    fun complexScalarFunctionsMatchIndependentC17CallerAbi() {
+        val windowsHost = System.getProperty("os.name").contains("windows", ignoreCase = true)
+        assumeTrue(windowsHost || System.getProperty("os.name").contains("linux", ignoreCase = true))
+        val target = TargetInfo(targetTriple = if (windowsHost) "windows-x86_64" else "linux-x86_64")
         val source = """
             import {
                 cexpf, cexp, cexpl, clogf, clog, clogl, cpowf, cpow, cpowl, csqrtf, csqrt, csqrtl,
@@ -92,12 +152,14 @@ class ComplexAbiIntegrationTest {
                     csinhl(value) + ccoshl(value) + ctanhl(value) + casinhl(value) + cacoshl(value) + catanhl(value);
             }
         """.trimIndent()
-        val result = CPlusCompiler().compileText(Files.createTempFile("complex-abi", ".cp"), source)
+        val result = CPlusCompiler().compileText(Files.createTempFile("complex-abi", ".cp"), source, target = target)
 
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         val descriptor = requireNotNull(result.sdkResolution?.targetDescriptor)
-        val compilers = listOf("cc", "clang").filter(::isCompilerAvailable)
-        assertTrue("cc" in compilers, "the Linux test host must provide cc")
+        val compilers = (if (windowsHost) listOf("gcc") else listOf("cc", "clang"))
+            .filter(::isCompilerAvailable)
+        assertTrue(compilers.isNotEmpty(), "a host C17 compiler is required")
+        if (!windowsHost) assertTrue("cc" in compilers, "the Linux test host must provide cc")
         compilers.forEach { compiler ->
             assertTrue(CCompilerToolchains.supportsC17Complex(descriptor, compiler), compiler)
         }
@@ -213,10 +275,10 @@ class ComplexAbiIntegrationTest {
                 """.trimIndent()
             )
             val sdk = requireNotNull(result.sdkResolution)
-            val target = TargetInfo(targetTriple = "linux-x86_64")
             val plan = requireNotNull(RuntimeLinker.plan(sdk, target).plan)
             compilers.forEach { compiler ->
-                val executable = directory.resolve("complex-caller-${compiler.replace('/', '-')}")
+                val extension = if (windowsHost) ".exe" else ""
+                val executable = directory.resolve("complex-caller-${compiler.replace('/', '-')}$extension")
                 val link = LinkDriver.link(
                     LinkRequest(
                         generated,
