@@ -30,5 +30,16 @@ class TargetDescriptorTest {
         assertTrue(target.hasIntrinsic("syscall3"))
         assertTrue(target.supportsAbi("cplus"))
         assertTrue(target.hasFeature("atomics"))
+        assertTrue(target.hasService("file"))
+        assertTrue(target.hasService("socket-transport"))
+
+        val systemProfile = descriptor.toComptimeTarget(
+            TargetInfo(buildProfile = BuildProfile(RuntimeProfile.SYSTEM, LibcProfile.C17))
+        )
+        assertTrue(!systemProfile.hasService("file"))
+
+        val darwin = requireNotNull(TargetRegistry.load(path.parent.resolve("darwin-aarch64.toml")).descriptor)
+            .toComptimeTarget(TargetInfo(targetTriple = "darwin-aarch64"))
+        assertTrue(!darwin.hasService("file"))
     }
 }

@@ -69,20 +69,23 @@ class RuntimeStdMathFacadeTest {
         }
         val generatedC = directory.resolve("std_math_facade.c")
         val executable = directory.resolve("std-math-facade")
+        val declaredNames = Regex("(?m)^pub\\s+.+\\s+(std_math_[A-Za-z0-9_]+)\\s*\\(")
+            .findAll(Files.readString(mathModule))
+            .map { it.groupValues[1] }
+            .toSet()
         try {
+            assertEquals(172, declaredNames.size, "std.math declarations must remain unique and complete")
             val compilation = CPlusCompiler().compile(CompileRequest(listOf(mainSource, mathModule), target))
             assertTrue(compilation.isSuccessful, compilation.diagnostics.joinToString())
             assertEquals(1, compilation.generatedUnits.size)
             Files.writeString(generatedC, compilation.generatedUnits.single().text)
 
-            val link = LinkDriver.link(LinkRequest(generatedC, executable, target, resolution), plan)
+            val exportAuditPlan = plan.copy(
+                linkerFlags = plan.linkerFlags + declaredNames.map { "-Wl,--undefined=$it" }
+            )
+            val link = LinkDriver.link(LinkRequest(generatedC, executable, target, resolution), exportAuditPlan)
             assertTrue(link.isSuccessful, link.output)
 
-            val declaredNames = Regex("(?m)^pub\\s+.+\\s+(std_math_[A-Za-z0-9_]+)\\s*\\(")
-                .findAll(Files.readString(mathModule))
-                .map { it.groupValues[1] }
-                .toSet()
-            assertEquals(172, declaredNames.size, "std.math declarations must remain unique and complete")
             val nm = ProcessBuilder("nm", "-g", "--defined-only", executable.toString())
                 .redirectErrorStream(true)
                 .start()

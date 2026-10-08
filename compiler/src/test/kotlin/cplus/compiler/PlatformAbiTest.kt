@@ -12,7 +12,14 @@ class PlatformAbiTest {
             val descriptor = requireNotNull(TargetRegistry.load(root.resolve("abi/$name.toml")).descriptor)
             val profile = PlatformAbiRegistry.profile(descriptor)
             assertEquals(descriptor.objectFormat, profile.objectFormat)
-            assertTrue(profile.supportedServices.isNotEmpty())
+            if (descriptor.os == "darwin") {
+                assertTrue(profile.supportedServices.isEmpty(), "Darwin C+ services are not implemented yet")
+                assertEquals("unsupported", profile.syscallMode)
+            } else {
+                assertTrue(profile.supportedServices.containsAll(
+                    setOf("memory", "file", "process", "time", "threads", "sync", "atomics", "socket-transport", "dns")
+                ), "${descriptor.targetTriple} service profile is incomplete")
+            }
         }
         val linux = requireNotNull(TargetRegistry.load(root.resolve("abi/linux-x86_64.toml")).descriptor)
         assertEquals(60, LinuxSyscallCatalogue.forTarget(linux).first { it.name == "exit" }.number)

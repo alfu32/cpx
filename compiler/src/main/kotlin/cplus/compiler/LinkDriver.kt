@@ -58,14 +58,20 @@ object LinkDriver {
             listOf("-I", it.toAbsolutePath().normalize().toString())
         }
         val libraries = request.libraries.map(::gnuLibrary)
+        val sectionFlags = if (plan.profile == RuntimeProfile.SYSTEM) {
+            emptyList()
+        } else {
+            listOf("-ffunction-sections", "-fdata-sections")
+        }
+        val sectionLinkerFlags = sectionGarbageCollectionFlags(request, plan, compiler)
         return listOf(compiler, "-std=${request.target.cDialect}") +
             CCompilerToolchains.targetFlags(request.target, compiler) + targetAbiFlags(request, compiler) +
-            plan.compilerFlags + includes +
+            sectionFlags + plan.compilerFlags + includes +
             listOf(request.generatedSource.toString()) +
             plan.runtimeSources.map(Path::toString) +
             plan.startupSources.map(Path::toString) +
             request.sourceDependencies.map(Path::toString) +
-            libraries + plan.linkerFlags + listOf("-o", request.output.toString())
+            libraries + plan.linkerFlags + sectionLinkerFlags + listOf("-o", request.output.toString())
     }
 
     private fun msvcCommand(request: LinkRequest, plan: RuntimeLinkPlan, compiler: String): List<String> {
@@ -85,11 +91,26 @@ object LinkDriver {
         } else {
             emptyList()
         }
+        val sectionFlags = if (plan.profile == RuntimeProfile.SYSTEM) emptyList() else listOf("/Gy", "/Gw")
+        val sectionLinkerFlags = if (plan.profile == RuntimeProfile.SYSTEM) emptyList() else listOf("/OPT:REF")
         return listOf(compiler, "/nologo", "/std:c17", "/GS-", "/Oi-", "/DCPLUS_RUNTIME_NO_WEAK") +
             targetAbiFlags(request, compiler) +
-            clangFlags + includes + sources.map(Path::toString) +
+            sectionFlags + clangFlags + includes + sources.map(Path::toString) +
             listOf("/link", "/NODEFAULTLIB", "/ENTRY:mainCRTStartup", "/SUBSYSTEM:CONSOLE", "/OUT:${request.output}") +
-            runtimeLibraries + libraries
+            sectionLinkerFlags + runtimeLibraries + libraries
+    }
+
+    private fun sectionGarbageCollectionFlags(
+        request: LinkRequest,
+        plan: RuntimeLinkPlan,
+        compiler: String
+    ): List<String> {
+        if (plan.profile == RuntimeProfile.SYSTEM) return emptyList()
+        val windows = request.target.targetTriple.substringBefore('-') == "windows"
+        if (!windows) return listOf("-Wl,--gc-sections")
+        val name = compiler.substringAfterLast('/').substringAfterLast('\\').lowercase()
+        val gnuWindowsDriver = name.contains("mingw") || name.contains("w64")
+        return if (gnuWindowsDriver) listOf("-Wl,--gc-sections") else listOf("-Wl,/OPT:REF")
     }
 
     private fun gnuLibrary(dependency: CLinkDependency): String = when (dependency.kind) {

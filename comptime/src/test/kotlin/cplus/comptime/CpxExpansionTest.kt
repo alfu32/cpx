@@ -11,6 +11,54 @@ import kotlin.test.assertTrue
 
 class CpxExpansionTest {
     @Test
+    fun requireServiceUsesTheConfiguredTargetCapabilitySet() {
+        val source = SourceFile(
+            SourceFileId(29),
+            Path.of("service-capability.cp"),
+            "require_service(\"file\"); require_service(\"dns\");",
+            1
+        )
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander(
+            target = ComptimeTargetInfo(
+                os = "darwin",
+                architecture = "aarch64",
+                services = setOf("file")
+            )
+        ).expand(source, parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        assertEquals(listOf("CPX603"), result.diagnostics.map { it.code })
+        assertEquals(
+            "target 'darwin-aarch64' does not provide platform service 'dns'",
+            result.diagnostics.single().message
+        )
+        assertTrue(result.program.declarations.isEmpty())
+    }
+
+    @Test
+    fun requireServiceRejectsMalformedAndUnknownServiceNames() {
+        val source = SourceFile(
+            SourceFileId(28),
+            Path.of("invalid-service-capability.cp"),
+            "require_service(file); require_service(\"unknown\");",
+            1
+        )
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val result = CpxExpander().expand(source, parsed.syntax)
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        assertEquals(listOf("CPX603", "CPX603"), result.diagnostics.map { it.code })
+        assertEquals(
+            listOf(
+                "require_service expects exactly one quoted canonical service name",
+                "unknown platform service 'unknown'"
+            ),
+            result.diagnostics.map { it.message }
+        )
+    }
+
+    @Test
     fun expandsTypedScalarExpressionAndEntityArguments() {
         val sourceText = """
             comptime cpx<decl> build(type T, expr E, int N, float F, bool B, string S, identifier I) {

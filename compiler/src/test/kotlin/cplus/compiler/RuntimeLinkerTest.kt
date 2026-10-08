@@ -60,6 +60,22 @@ class RuntimeLinkerTest {
     }
 
     @Test
+    fun rejectsUnimplementedDarwinSelfHostedRuntimeWithStableDiagnostic() {
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val target = TargetInfo(targetTriple = "darwin-aarch64")
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, target).resolution)
+
+        val result = RuntimeLinker.plan(resolution, target)
+
+        assertTrue(!result.isSuccessful)
+        assertEquals("SDK013", result.diagnostics.single().code)
+        assertEquals(
+            "self-hosted runtime startup is not available for target 'darwin-aarch64'",
+            result.diagnostics.single().message
+        )
+    }
+
+    @Test
     fun systemRuntimeLeavesStartupToDownstreamToolchain() {
         val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
         val resolution = requireNotNull(SdkResolver.resolve(manifest, TargetInfo()).resolution)

@@ -17,7 +17,7 @@ object PlatformAbiRegistry {
             descriptor.startupEntry,
             descriptor.systemLibraries,
             "direct-syscall",
-            setOf("memory", "file", "process", "time", "threads", "socket-transport")
+            setOf("memory", "file", "process", "time", "threads", "sync", "atomics", "socket-transport", "dns")
         )
         "windows" -> PlatformAbiProfile(
             descriptor.targetTriple,
@@ -25,15 +25,15 @@ object PlatformAbiRegistry {
             descriptor.startupEntry,
             descriptor.systemLibraries,
             "declared-dll",
-            setOf("memory", "file", "process", "sync", "socket-transport")
+            setOf("memory", "file", "process", "time", "threads", "sync", "atomics", "socket-transport", "dns")
         )
         "darwin" -> PlatformAbiProfile(
             descriptor.targetTriple,
             descriptor.objectFormat,
             descriptor.startupEntry,
             descriptor.systemLibraries,
-            "system-userspace",
-            setOf("memory", "file", "process", "time", "threads")
+            "unsupported",
+            emptySet()
         )
         else -> PlatformAbiProfile(descriptor.targetTriple, descriptor.objectFormat, descriptor.startupEntry, descriptor.systemLibraries, "unsupported", emptySet())
     }

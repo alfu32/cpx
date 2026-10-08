@@ -53,7 +53,12 @@ data class TargetAbiDescriptor(
         features = features,
         intrinsics = intrinsics,
         supportedAbis = supportedAbis,
-        libcProfiles = setOf(target.buildProfile.libc.name.lowercase())
+        libcProfiles = setOf(target.buildProfile.libc.name.lowercase()),
+        services = if (target.buildProfile.runtime == RuntimeProfile.SYSTEM) {
+            emptySet()
+        } else {
+            PlatformAbiRegistry.profile(this).supportedServices
+        }
     )
 }
 

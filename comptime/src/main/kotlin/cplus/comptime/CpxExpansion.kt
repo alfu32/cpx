@@ -39,12 +39,14 @@ data class ComptimeTargetInfo(
     val features: Set<String> = emptySet(),
     val intrinsics: Set<String> = emptySet(),
     val supportedAbis: Set<String> = emptySet(),
-    val libcProfiles: Set<String> = emptySet()
+    val libcProfiles: Set<String> = emptySet(),
+    val services: Set<String> = emptySet()
 ) {
     fun hasFeature(name: String): Boolean = name in features
     fun hasIntrinsic(name: String): Boolean = name in intrinsics
     fun hasLibcProfile(name: String): Boolean = name in libcProfiles || libcProfile == name
     fun supportsAbi(name: String): Boolean = name in supportedAbis || abi == name
+    fun hasService(name: String): Boolean = name in services
 }
 
 data class ExpansionId(
@@ -951,6 +953,11 @@ class CpxExpander(
     private val evaluator: ComptimeEvaluator = TemplateComptimeEvaluator(),
     private var target: ComptimeTargetInfo = ComptimeTargetInfo()
 ) {
+    private val platformServices = setOf(
+        "memory", "file", "process", "time", "threads", "sync", "atomics",
+        "socket-transport", "dns"
+    )
+
     @Synchronized
     fun configureTarget(target: ComptimeTargetInfo) {
         this.target = target
@@ -986,6 +993,34 @@ class CpxExpander(
             ancestors: List<ExpansionKey> = emptyList(),
             parentExpansion: ExpansionId? = null
         ) {
+            if (invocation.name == "require_service") {
+                val argument = invocation.arguments.singleOrNull()
+                val service = argument?.let {
+                    Regex("^\"([a-z][a-z0-9-]*)\"$").matchEntire(it)?.groupValues?.get(1)
+                }
+                if (service == null) {
+                    diagnostics.error(
+                        "require_service expects exactly one quoted canonical service name",
+                        invocation.range,
+                        "CPX603"
+                    )
+                } else if (service !in platformServices) {
+                    diagnostics.error(
+                        "unknown platform service '$service'",
+                        invocation.range,
+                        "CPX603"
+                    )
+                } else {
+                    if (!target.hasService(service)) {
+                        diagnostics.error(
+                            "target '${target.os}-${target.architecture}' does not provide platform service '$service'",
+                            invocation.range,
+                            "CPX603"
+                        )
+                    }
+                }
+                return
+            }
             val callSite = syntaxArena.add(astBuilder.buildDeclaration(invocation))
             val definition = definitions[invocation.name]
             if (definition == null) {
