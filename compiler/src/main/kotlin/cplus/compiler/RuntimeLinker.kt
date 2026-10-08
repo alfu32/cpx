@@ -80,6 +80,7 @@ object RuntimeLinker {
                 val filesystem = resolution.layout.runtimeSource.resolve("fs.c")
                 val synchronization = resolution.layout.runtimeSource.resolve("sync.c")
                 val process = resolution.layout.runtimeSource.resolve("process.c")
+                val thread = resolution.layout.runtimeSource.resolve("thread.c")
                 val networkAddress = resolution.layout.runtimeSource.resolve("net_address.c")
                 val platformRuntime = resolution.layout.platformSource.resolve("runtime.c")
                 val setjmp = if (descriptor.os == "linux" && descriptor.architecture == "x86_64") listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S")) else emptyList()
@@ -101,7 +102,7 @@ object RuntimeLinker {
                 val commonRuntime = listOf(
                     startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time,
                     math, ctype, locale, signal, wide, wctype, filesystem, synchronization,
-                    process, networkAddress, platformRuntime
+                    process, thread, networkAddress, platformRuntime
                 )
                 val missing = (commonRuntime + setjmp + threadStartup + platformNetworkRuntime + threadTlsScript)
                     .filterNot(Files::isRegularFile)

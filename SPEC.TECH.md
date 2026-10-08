@@ -2893,6 +2893,12 @@ thread attachment before calling its entry function. Windows uses
 performs the same runtime attachment before user code. Thread-control and stack
 storage use the PAL page allocator and are released by join.
 
+The target-independent `sdk/runtime/src/thread.c` façade implements the public
+`std.thread` create/join/current-identity/yield declarations by forwarding to
+the version-4 PAL. It preserves the 64-bit opaque handle and stable status
+values without exposing native thread types. `RuntimeLinker` includes this
+façade with the common runtime so C+ callers need no pthread or host C runtime.
+
 Portable synchronization algorithms are shared in `sdk/runtime/src/sync.c`:
 32-bit state-word mutexes, sequence-based condition variables, counting
 semaphores, and once initialization use compiler atomic intrinsics for their

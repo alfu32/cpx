@@ -1030,6 +1030,23 @@ long long platform_thread_current_id(void);
 int platform_thread_yield(void);
 ```
 
+The public `std.thread` C+ module SHALL expose the same lifecycle through
+target-independent declarations:
+
+```c
+long long std_thread_create(void* (*entry)(void* context), void* context);
+int std_thread_join(long long thread, void** result);
+long long std_thread_current_id(void);
+int std_thread_yield(void);
+```
+
+`std_thread_create` SHALL preserve the PAL callback, context, opaque positive
+64-bit handle, and stable negative error contract. `std_thread_join` SHALL
+forward the optional result pointer and PAL status unchanged. Current-thread
+identity and yield SHALL preserve the PAL's positive identity and zero-success
+semantics. The façade SHALL not expose native OS handle types or add a host
+thread-library dependency.
+
 Creation SHALL start `entry(context)` on a runtime-managed thread and return an
 opaque positive handle, or a stable negative PAL error. A successful join
 SHALL wait for termination, optionally write the entry's return value to

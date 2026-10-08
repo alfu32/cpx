@@ -787,6 +787,9 @@ class SemanticAnalyzer(
                     resolveType(baseReference, structs, unions, enums, aliases, foreignTypes, ::primitive, diagnostics)
                 }
             }
+            repeat(reference.pointerDepth) {
+                resolved = PointerType(TypeId(nextTypeId.next()), resolved)
+            }
             reference.functionParameters?.let { parameters ->
                 val parameterTypes = parameters.map { parameter ->
                     resolve(parameter.type, moduleName, parameter.arrayDimensions)
@@ -801,9 +804,6 @@ class SemanticAnalyzer(
                     functionType = PointerType(TypeId(nextTypeId.next()), functionType)
                 }
                 resolved = functionType
-            }
-            repeat(reference.pointerDepth) {
-                resolved = PointerType(TypeId(nextTypeId.next()), resolved)
             }
             if (dimensions.isNotEmpty()) {
                 resolved = ArrayType(TypeId(nextTypeId.next()), resolved, dimensions)
@@ -1669,8 +1669,12 @@ class SemanticAnalyzer(
                 }
             }
         }
+        var resolved: CType = base
+        repeat(reference.pointerDepth) {
+            resolved = PointerType(TypeId(nextTypeId.next()), resolved)
+        }
         val functionParameters = reference.functionParameters
-        var resolved: CType = if (functionParameters != null) {
+        if (functionParameters != null) {
             val parameterTypes = functionParameters.map { parameter ->
                 resolveType(
                     parameter.type,
@@ -1686,19 +1690,14 @@ class SemanticAnalyzer(
             }
             var function: CType = FunctionType(
                 TypeId(-1),
-                base,
+                resolved,
                 parameterTypes,
                 reference.functionVariadic
             )
             repeat(reference.functionPointerDepth) {
                 function = PointerType(TypeId(-1), function)
             }
-            function
-        } else {
-            base
-        }
-        repeat(reference.pointerDepth) {
-            resolved = PointerType(TypeId(nextTypeId.next()), resolved)
+            resolved = function
         }
         if (arrayDimensions.isNotEmpty()) {
             resolved = ArrayType(TypeId(nextTypeId.next()), resolved, arrayDimensions)

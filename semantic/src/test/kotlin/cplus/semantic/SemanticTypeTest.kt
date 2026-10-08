@@ -611,4 +611,22 @@ class SemanticTypeTest {
         assertEquals("int", signature.returnType.name)
         assertEquals(signature, add.signature)
     }
+
+    @Test
+    fun functionPointerPreservesPointerReturnType() {
+        val text = """
+            void* identity(void* context) { return context; }
+            void* invoke(void* (*callback)(void* context), void* context) {
+                return callback(context);
+            }
+            int main() { return invoke(identity, (void*)0) != (void*)0; }
+        """.trimIndent()
+        val source = SourceFile(SourceFileId(30), Path.of("function-pointer-pointer-return.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+
+        val result = SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+    }
 }
