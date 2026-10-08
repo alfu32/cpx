@@ -13,8 +13,8 @@ object CHeaderProfileGenerator {
         val headers = inspect(includeRoot, profile).headers
         output.parent?.let(Files::createDirectories)
         Files.writeString(output, buildString {
-            appendLine("/* C+ SDK ${profile.name} header index; generated deterministically. */")
-            headers.forEach { appendLine("#include <$it>") }
+            append("/* C+ SDK ${profile.name} header index; generated deterministically. */\n")
+            headers.forEach { append("#include <$it>\n") }
         })
     }
 }

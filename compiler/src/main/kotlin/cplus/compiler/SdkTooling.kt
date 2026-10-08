@@ -44,12 +44,22 @@ object SdkDoctor {
 data class SdkPackageEntry(val path: String, val hash: String, val bytes: Long)
 
 object SdkPackageIndex {
-    fun build(root: Path): List<SdkPackageEntry> {
+    fun build(root: Path, excludedPaths: Set<Path> = emptySet()): List<SdkPackageEntry> {
         if (!Files.isDirectory(root)) return emptyList()
+        val normalizedRoot = root.toAbsolutePath().normalize()
+        val excluded = (excludedPaths + root.resolve("sdk-package.index"))
+            .map { it.toAbsolutePath().normalize() }
+            .toSet()
         return Files.walk(root).use { stream ->
-            stream.filter { Files.isRegularFile(it) && !it.toString().contains("/cache/") }
+            stream.filter { path ->
+                if (!Files.isRegularFile(path)) return@filter false
+                val normalizedPath = path.toAbsolutePath().normalize()
+                if (normalizedPath in excluded) return@filter false
+                val relative = normalizedRoot.relativize(normalizedPath)
+                relative.none { it.toString() == "cache" }
+            }
                 .map { path ->
-                    val relative = root.toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize())
+                    val relative = normalizedRoot.relativize(path.toAbsolutePath().normalize())
                     SdkPackageEntry(relative.toString().replace('\\', '/'), sha256(path), Files.size(path))
                 }
                 .sorted(compareBy(SdkPackageEntry::path))
@@ -58,8 +68,8 @@ object SdkPackageIndex {
     }
 
     fun serialize(entries: List<SdkPackageEntry>): String = buildString {
-        appendLine("CPLUS_SDK_PACKAGE_INDEX")
-        entries.sortedBy { it.path }.forEach { appendLine("${it.hash}\t${it.bytes}\t${it.path}") }
+        append("CPLUS_SDK_PACKAGE_INDEX\n")
+        entries.sortedBy { it.path }.forEach { append("${it.hash}\t${it.bytes}\t${it.path}\n") }
     }
 
     private fun sha256(path: Path): String = MessageDigest.getInstance("SHA-256")

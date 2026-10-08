@@ -90,6 +90,13 @@ class CliIntegrationTest {
         assertTrue(index.startsWith("CPLUS_SDK_PACKAGE_INDEX"))
         assertTrue(index.contains("manifest/sdk.toml"))
         assertTrue(index.contains("marker.txt"))
+
+        val inRootOutput = root.resolve("sdk-package.index")
+        assertEquals(0, Cli().run(listOf("sdk", "package", inRootOutput.toString(), "--sdk", manifest.toString())))
+        val firstInRootIndex = inRootOutput.readText()
+        assertEquals(0, Cli().run(listOf("sdk", "package", inRootOutput.toString(), "--sdk", manifest.toString())))
+        assertEquals(firstInRootIndex, inRootOutput.readText())
+        assertTrue("sdk-package.index" !in firstInRootIndex)
     }
 
     @Test

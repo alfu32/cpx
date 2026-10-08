@@ -250,7 +250,7 @@ internal class Cli {
                 val output = positionalArguments(options, setOf("--sdk")).firstOrNull()?.let(Path::of)
                     ?: root.resolve("sdk-package.index")
                 output.parent?.let(Files::createDirectories)
-                output.writeText(SdkPackageIndex.serialize(SdkPackageIndex.build(root)))
+                output.writeText(SdkPackageIndex.serialize(SdkPackageIndex.build(root, setOf(output))))
                 println("wrote ${output.toAbsolutePath()}")
                 0
             }

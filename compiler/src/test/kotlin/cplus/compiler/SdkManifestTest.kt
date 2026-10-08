@@ -100,6 +100,9 @@ class SdkManifestTest {
         assertTrue(second.isSuccessful, second.diagnostics.joinToString())
         assertEquals(first.metadata, second.metadata)
         assertTrue(second.metadata!!.sources.any { it.declarations.isNotEmpty() })
+        val targetName = resolution.layout.abiDescriptor.fileName.toString().removeSuffix(".toml")
+        val serialized = Files.readString(resolution.layout.root.resolve("cache/metadata/$targetName.meta"))
+        assertTrue('\r' !in serialized, "SDK metadata cache must use LF newlines")
     }
 
     private fun manifestText(): String = """

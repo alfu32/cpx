@@ -187,10 +187,10 @@ object SdkMetadataCache {
     }.getOrNull()
 
     private fun serialize(metadata: SdkSemanticMetadata): String = buildString {
-        appendLine(HEADER)
-        appendLine("schema=${metadata.schemaVersion}")
-        appendLine("sdk=${metadata.sdkIdentity}")
-        appendLine("target=${metadata.targetTriple}")
+        append("$HEADER\n")
+        append("schema=${metadata.schemaVersion}\n")
+        append("sdk=${metadata.sdkIdentity}\n")
+        append("target=${metadata.targetTriple}\n")
         metadata.sources.sortedBy { it.path }.forEach { source ->
             append("source\t")
                 .append(encode(source.path)).append('\t')
@@ -198,7 +198,7 @@ object SdkMetadataCache {
                 .append(encodeList(source.declarations)).append('\t')
                 .append(encodeList(source.exports)).append('\t')
                 .append(encodeList(source.documentation)).append('\t')
-                .appendLine(encodeList(source.comptimeSignatures))
+                .append(encodeList(source.comptimeSignatures)).append('\n')
         }
     }
 
