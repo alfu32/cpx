@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 144/146 evidenced; target-aware core audit remains open
-Roadmap leaf tasks:    43/67 evidenced on Linux
+Roadmap leaf tasks:    44/67 evidenced on Linux
 Phase gates:           2/9 complete; 4 active; 3 queued
-Current task:          R5.3.7.2 — implement Linux socket syscalls and loopback tests
+Current task:          R5.3.7.3 — implement the Windows Winsock socket PAL
 Current milestone:     R5 — native std and platform services
 Windows execution:     deferred until the final validation pass by request
 
@@ -22,25 +22,26 @@ R1 [DOING] 15/15 Linux leaf tasks evidenced; Windows conformance gate pending
 R2 [DONE]  7/7  CPX, generics and reflection conformance
 R3 [DOING] 4/5  primitive source-to-ABI audit reopened; Windows gate pending
 R4 [DOING] 5/5  Linux runtime/libc leaf tasks evidenced; Windows target gate pending
-R5 [DOING] 11/23 native std and platform-service work remains open
+R5 [DOING] 12/23 native std and platform-service work remains open
 R6 [TODO]  0/4  CLI transcoder and build-product completion
 R7 [TODO]  0/3  LSP and VS Code product completion
 R8 [TODO]  0/4  SDK packaging, target matrix and release conformance
 
-TOTAL       43/67 implementation tasks complete; 2/9 phase gates complete,
+TOTAL       44/67 implementation tasks complete; 2/9 phase gates complete,
             4 active, 3 queued
 ```
 
 The roadmap denominator increased from 65 to 67 during R5.3.7 planning when
 one broad socket work item was decomposed into three verifiable leaves. That
-decomposition credited no work; the numerator increased from 42 to 43 only
-after R5.3.7.1 passed its ABI acceptance checks.
+decomposition credited no work; the numerator increased to 43 after R5.3.7.1
+passed its ABI acceptance checks and to 44 after R5.3.7.2 passed its Linux
+implementation acceptance checks.
 
 The detailed, authoritative R0–R8 work queue is in the
 [completion roadmap](#completion-roadmap--post-foundation-implementation)
 below. Its current execution sequence is:
 
-1. Continue R5.3.7.2–R5.3.7.3, then R5.3.8–R5.5; Linux C17 stdio and
+1. Continue R5.3.7.3, then R5.3.8–R5.5; Linux C17 stdio and
    report tasks R4.4/R4.5 now pass their stated acceptance checks.
 2. Keep the R4 phase gate open until the deferred Windows runtime/libc checks
    pass; Linux leaf completion does not imply cross-platform completion.
@@ -76,6 +77,7 @@ Latest completed implementation commits:
 - `753fc14` — add runtime-managed threads and static TLS (R5.3.5 Linux x86_64-verified; Windows/AArch64 runtime execution deferred).
 - `283c355` — implement portable synchronization primitives (R5.3.6 Linux x86_64-verified; Windows/AArch64 runtime execution deferred).
 - `9da7c39` — define and verify the portable socket PAL ABI (R5.3.7.1 target-layout verified).
+- `480587b` — add Linux IPv4/IPv6 TCP and UDP socket transport (R5.3.7.2 Linux-verified; Windows execution deferred).
 - `bd26d05` — verify standard-channel error mapping and host-runtime isolation.
 - `c39c402` — preserve the target `size_t` ABI in stdio formatting functions.
 - `4952b4d` — verify declared stdio channels in the independent C17 report (Linux x86_64).
@@ -4147,7 +4149,7 @@ dependencies.
     file-stream read/write/seek/close adapters without exposing OS handles;
   - R5.2.5 [TODO] — run the complete Linux/Windows filesystem-PAL conformance
     matrix, error-normalization and dependency audit, and close platform gaps;
-- R5.3 [DOING] 7/10 — implement and Linux-execute the remaining PAL services;
+- R5.3 [DOING] 8/10 — implement and Linux-execute the remaining PAL services;
   Windows adapter execution remains reserved for final validation;
   - R5.3.1 [DONE] — close page-memory PAL failure-path conformance for
     zero/overflow page counts, invalid releases, allocator overflow and invalid
@@ -4166,7 +4168,7 @@ dependencies.
   - R5.3.6 [DONE] — implement mutex, condition, semaphore, once and supported
     atomic wait/wake services; ordinary atomic operations remain compiler/runtime
     intrinsics, not OS calls;
-  - R5.3.7 [DOING] [1/3] — define and implement the fixed-layout binary
+  - R5.3.7 [DOING] [2/3] — define and implement the fixed-layout binary
     socket-address ABI and blocking IPv4/IPv6 socket lifecycle, TCP stream, and
     UDP datagram operations with stable errors;
     - **Language:** SPEC.STDLIB §2.5 Platform Abstraction Layer and §16 `std.net`.
@@ -4184,7 +4186,7 @@ dependencies.
       - **Deliverable:** matching C header and C+ platform API declarations.
       - **Acceptance:** address size/alignment/member offsets and all function
         signatures agree across Linux/Windows x86_64/AArch64 ABI descriptors.
-    - R5.3.7.2 [DOING] — implement Linux x86_64/AArch64 socket operations with
+    - R5.3.7.2 [DONE] — implement Linux x86_64/AArch64 socket operations with
       direct syscalls, stable errors, and freestanding TCP/UDP loopback tests.
       - **Language:** SPEC.STDLIB §16 blocking lifecycle and transport behavior.
       - **Technical:** SPEC.TECH §78 Linux syscall adapters and runtime isolation.
@@ -4194,7 +4196,7 @@ dependencies.
         architectures; Linux x86_64 tests TCP and UDP roundtrips, invalid
         arguments/error normalization, and `nm -u` host-runtime isolation.
       - **Depends:** R5.3.7.1.
-    - R5.3.7.3 [TODO] — implement Windows Winsock lifecycle and transport
+    - R5.3.7.3 [DOING] — implement Windows Winsock lifecycle and transport
       without an unconditional `ws2_32` import.
       - **Language:** SPEC.STDLIB §16 Windows PAL and stable socket error contract.
       - **Technical:** SPEC.TECH §78 Windows documented API and dependency policy.
@@ -4384,6 +4386,20 @@ member offsets `[0, 4, 6, 8, 24]`. An independent C17 syntax check compiles the
 runtime header with static assertions for the same address layout. The focused
 `./gradlew :compiler:test --tests cplus.compiler.RuntimeNetworkPalTest`
 passes. No socket adapter or runtime behavior is included in this leaf.
+
+R5.3.7.2 acceptance evidence: the production freestanding Linux PAL passes
+warning-as-error C syntax checks for x86_64 and AArch64. The Linux x86_64
+`RuntimeNetworkPalTest` builds and executes a static no-host-runtime fixture
+covering IPv4 TCP request/response and orderly shutdown, IPv4 UDP roundtrips,
+IPv6 TCP loopback, address conversion, invalid inputs, normalized connection
+failure, and zero-capacity stream receive; `nm -u` confirms no unresolved host
+symbols. `PlatformAbiTest` verifies the target-specific socket syscall numbers
+and that socket transport is advertised only for Linux. The focused network
+and ABI tests pass, as do `./gradlew build --no-daemon` and the Linux x86_64
+C17 report (42 pass, 0 fail, 0 unsupported, 0 planned). Strict C syntax checks
+also pass for Windows x86_64/AArch64 source, but those are not Windows socket
+runtime or import-table evidence. Windows runtime execution and Linux AArch64
+runtime execution remain deferred and receive no credit from this leaf.
 
 ### R5.1 status audit
 
