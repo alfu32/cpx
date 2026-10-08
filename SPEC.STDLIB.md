@@ -2520,6 +2520,18 @@ return a quiet NaN, while `atanh(±1)` SHALL report a pole (`ERANGE`) and
 return signed infinity. These requirements do not claim IEC 60559 / Annex F
 accuracy or floating-point exception behavior.
 
+The `erf` family SHALL be odd, preserve signed zero, and approach signed one
+for signed infinities. The `erfc` family SHALL return zero for positive
+infinity and two for negative infinity; finite positive-tail underflow SHALL
+set `errno` to `ERANGE`. The `lgamma` family SHALL return positive infinity
+with `ERANGE` at zero and negative integer poles, and report negative infinity
+as a domain error (`EDOM`) with a quiet NaN result. The `tgamma` family SHALL
+return signed infinity with `ERANGE` at signed-zero poles, report negative
+integer arguments and negative infinity as domain errors (`EDOM`) with a
+quiet NaN result, and set `ERANGE` when a finite result overflows or
+underflows. NaN inputs SHALL produce NaN results without being converted into
+domain errors.
+
 The SDK SHALL expose the supported real operations through `std.math` with
 explicit C+ declarations and types. It SHALL preserve the selected target's
 floating formats and ABI, including `long double`, and SHALL NOT silently
