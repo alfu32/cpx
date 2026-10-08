@@ -209,6 +209,252 @@ int platform_page_release(void* address, unsigned long long page_count) {
 #endif
 }
 
+typedef struct cplus_linux_thread_control {
+    volatile int tid;
+    void* result;
+    cplus_thread_entry_t entry;
+    void* context;
+    void* stack;
+    unsigned long long stack_pages;
+    void* tls_memory;
+    unsigned long long tls_pages;
+} cplus_linux_thread_control;
+
+extern unsigned char __cplus_tls_image_start[] __attribute__((weak));
+extern unsigned char __cplus_tls_data_size[] __attribute__((weak));
+extern unsigned char __cplus_tls_image_end[] __attribute__((weak));
+extern unsigned char __cplus_tls_alignment[] __attribute__((weak));
+extern long cplus_linux_clone_thread(
+    unsigned long flags,
+    void* child_stack,
+    int* child_tid,
+    void* thread_pointer,
+    void (*start)(void*),
+    void* context) __attribute__((weak));
+extern int __cplus_runtime_thread_attach(void) __attribute__((weak));
+extern void cplus_linux_set_thread_pointer(void* thread_pointer);
+
+#define CPLUS_LINUX_THREAD_STACK_PAGES 256ULL
+/* AArch64's variant-I TLS block begins after its 16-byte TCB. */
+#define CPLUS_LINUX_THREAD_TLS_CONTROL_BYTES 16ULL
+#define CPLUS_LINUX_CLONE_VM 0x00000100UL
+#define CPLUS_LINUX_CLONE_FS 0x00000200UL
+#define CPLUS_LINUX_CLONE_FILES 0x00000400UL
+#define CPLUS_LINUX_CLONE_SIGHAND 0x00000800UL
+#define CPLUS_LINUX_CLONE_THREAD 0x00010000UL
+#define CPLUS_LINUX_CLONE_SYSVSEM 0x00040000UL
+#define CPLUS_LINUX_CLONE_SETTLS 0x00080000UL
+#define CPLUS_LINUX_CLONE_PARENT_SETTID 0x00100000UL
+#define CPLUS_LINUX_CLONE_CHILD_CLEARTID 0x00200000UL
+#define CPLUS_LINUX_CLONE_CHILD_SETTID 0x01000000UL
+#define CPLUS_LINUX_THREAD_CLONE_FLAGS (CPLUS_LINUX_CLONE_VM | CPLUS_LINUX_CLONE_FS | \
+    CPLUS_LINUX_CLONE_FILES | CPLUS_LINUX_CLONE_SIGHAND | CPLUS_LINUX_CLONE_THREAD | \
+    CPLUS_LINUX_CLONE_SYSVSEM | CPLUS_LINUX_CLONE_SETTLS | \
+    CPLUS_LINUX_CLONE_PARENT_SETTID | CPLUS_LINUX_CLONE_CHILD_CLEARTID | \
+    CPLUS_LINUX_CLONE_CHILD_SETTID)
+
+static unsigned long long cplus_linux_align_up(unsigned long long value, unsigned long long alignment) {
+    if (!alignment || (alignment & (alignment - 1ULL)) != 0 ||
+        value > 0xffffffffffffffffULL - (alignment - 1ULL)) return 0;
+    return (value + alignment - 1ULL) & ~(alignment - 1ULL);
+}
+
+static void cplus_linux_thread_release(cplus_linux_thread_control* thread) {
+    if (thread->stack) platform_page_release(thread->stack, thread->stack_pages);
+    if (thread->tls_memory) platform_page_release(thread->tls_memory, thread->tls_pages);
+    platform_page_release(thread, 1);
+}
+
+static void cplus_linux_thread_start(void* context) {
+    cplus_linux_thread_control* thread = (cplus_linux_thread_control*)context;
+    __cplus_runtime_thread_attach();
+    thread->result = thread->entry(thread->context);
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+#if defined(__x86_64__)
+    cplus_linux_syscall1(60, 0);
+#elif defined(__aarch64__)
+    cplus_linux_syscall1(93, 0);
+#endif
+    for (;;) { }
+}
+
+int __cplus_linux_initialize_main_tls(void) {
+    unsigned long long tls_image_start = (unsigned long long)__cplus_tls_image_start;
+    unsigned long long tls_data_size = (unsigned long long)__cplus_tls_data_size;
+    unsigned long long tls_image_end = (unsigned long long)__cplus_tls_image_end;
+    unsigned long long tls_alignment = (unsigned long long)__cplus_tls_alignment;
+    unsigned long long tls_size;
+    unsigned long long allocation_bytes;
+    unsigned long long tls_pages;
+    unsigned long long index;
+    void* tls_memory;
+    unsigned char* tls_image;
+    unsigned long long thread_pointer;
+#if defined(__x86_64__)
+    long result;
+#endif
+    if (!tls_image_start || !tls_image_end || !tls_alignment) return (int)CPLUS_PAL_UNSUPPORTED;
+    if (tls_image_end < tls_image_start || tls_data_size > tls_image_end - tls_image_start ||
+        (tls_alignment & (tls_alignment - 1ULL)) != 0) return (int)CPLUS_PAL_IO_ERROR;
+    tls_size = cplus_linux_align_up(tls_image_end - tls_image_start, tls_alignment);
+    if (!tls_size || tls_size > 0x7fffffffffffffffULL - tls_alignment - CPLUS_LINUX_THREAD_TLS_CONTROL_BYTES) {
+        return (int)CPLUS_PAL_IO_ERROR;
+    }
+    allocation_bytes = tls_size + tls_alignment + CPLUS_LINUX_THREAD_TLS_CONTROL_BYTES;
+    tls_pages = (allocation_bytes + CPLUS_PAL_PAGE_SIZE - 1ULL) / CPLUS_PAL_PAGE_SIZE;
+    if (!tls_pages || tls_pages > 0x7fffffffffffffffULL / CPLUS_PAL_PAGE_SIZE) return (int)CPLUS_PAL_IO_ERROR;
+    tls_memory = platform_page_allocate(tls_pages);
+    if (!tls_memory) return (int)CPLUS_PAL_IO_ERROR;
+#if defined(__x86_64__)
+    thread_pointer = cplus_linux_align_up((unsigned long long)tls_memory + tls_size, tls_alignment);
+    tls_image = (unsigned char*)(thread_pointer - tls_size);
+    *((void**)thread_pointer) = (void*)thread_pointer;
+    result = cplus_linux_syscall2(158, 0x1002, (long)thread_pointer);
+    if (result < 0) {
+        platform_page_release(tls_memory, tls_pages);
+        return (int)cplus_normalize_linux_result(result);
+    }
+#elif defined(__aarch64__)
+    tls_image = (unsigned char*)cplus_linux_align_up(
+        (unsigned long long)tls_memory + CPLUS_LINUX_THREAD_TLS_CONTROL_BYTES,
+        tls_alignment);
+    thread_pointer = (unsigned long long)tls_image - CPLUS_LINUX_THREAD_TLS_CONTROL_BYTES;
+    ((unsigned long long*)thread_pointer)[0] = 0;
+    ((unsigned long long*)thread_pointer)[1] = thread_pointer;
+    cplus_linux_set_thread_pointer((void*)thread_pointer);
+#else
+    platform_page_release(tls_memory, tls_pages);
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+    for (index = 0; index < tls_data_size; index++) tls_image[index] = __cplus_tls_image_start[index];
+    return 0;
+}
+
+long long platform_thread_create(cplus_thread_entry_t entry, void* context) {
+    unsigned long long tls_image_start = (unsigned long long)__cplus_tls_image_start;
+    unsigned long long tls_data_size = (unsigned long long)__cplus_tls_data_size;
+    unsigned long long tls_image_end = (unsigned long long)__cplus_tls_image_end;
+    unsigned long long tls_alignment = (unsigned long long)__cplus_tls_alignment;
+    unsigned long long tls_size;
+    unsigned long long tls_allocation_bytes;
+    unsigned long long tls_pages;
+    unsigned long long stack_bytes = CPLUS_LINUX_THREAD_STACK_PAGES * CPLUS_PAL_PAGE_SIZE;
+    unsigned long long stack_pages = CPLUS_LINUX_THREAD_STACK_PAGES;
+    unsigned long long index;
+    unsigned long flags = CPLUS_LINUX_THREAD_CLONE_FLAGS;
+    cplus_linux_thread_control* thread;
+    unsigned char* tls_image;
+    unsigned long long thread_pointer;
+    long clone_result;
+    if (!entry) return CPLUS_PAL_INVALID_ARGUMENT;
+    if (!cplus_linux_clone_thread || !__cplus_runtime_thread_attach) return CPLUS_PAL_UNSUPPORTED;
+    if (!tls_image_start || !tls_image_end || !tls_alignment) return CPLUS_PAL_UNSUPPORTED;
+    if (tls_image_end < tls_image_start || tls_data_size > tls_image_end - tls_image_start ||
+        !tls_alignment || (tls_alignment & (tls_alignment - 1ULL)) != 0) return CPLUS_PAL_IO_ERROR;
+    tls_size = cplus_linux_align_up(tls_image_end - tls_image_start, tls_alignment);
+    if (!tls_size || tls_size > 0x7fffffffffffffffULL - tls_alignment - CPLUS_LINUX_THREAD_TLS_CONTROL_BYTES) {
+        return CPLUS_PAL_IO_ERROR;
+    }
+    tls_allocation_bytes = tls_size + tls_alignment + CPLUS_LINUX_THREAD_TLS_CONTROL_BYTES;
+    tls_pages = (tls_allocation_bytes + CPLUS_PAL_PAGE_SIZE - 1ULL) / CPLUS_PAL_PAGE_SIZE;
+    if (!tls_pages || tls_pages > 0x7fffffffffffffffULL / CPLUS_PAL_PAGE_SIZE) return CPLUS_PAL_IO_ERROR;
+
+    thread = (cplus_linux_thread_control*)platform_page_allocate(1);
+    if (!thread) return CPLUS_PAL_IO_ERROR;
+    thread->stack = (void*)0;
+    thread->tls_memory = (void*)0;
+    thread->stack_pages = stack_pages;
+    thread->tls_pages = tls_pages;
+    thread->entry = entry;
+    thread->context = context;
+    thread->result = (void*)0;
+    thread->tid = 0;
+    thread->stack = platform_page_allocate(stack_pages);
+    if (!thread->stack) {
+        cplus_linux_thread_release(thread);
+        return CPLUS_PAL_IO_ERROR;
+    }
+    thread->tls_memory = platform_page_allocate(tls_pages);
+    if (!thread->tls_memory) {
+        cplus_linux_thread_release(thread);
+        return CPLUS_PAL_IO_ERROR;
+    }
+#if defined(__x86_64__)
+    thread_pointer = cplus_linux_align_up(
+        (unsigned long long)thread->tls_memory + tls_size, tls_alignment);
+    tls_image = (unsigned char*)(thread_pointer - tls_size);
+    *((void**)thread_pointer) = (void*)thread_pointer;
+#elif defined(__aarch64__)
+    tls_image = (unsigned char*)cplus_linux_align_up(
+        (unsigned long long)thread->tls_memory + CPLUS_LINUX_THREAD_TLS_CONTROL_BYTES,
+        tls_alignment);
+    thread_pointer = (unsigned long long)tls_image - CPLUS_LINUX_THREAD_TLS_CONTROL_BYTES;
+    ((unsigned long long*)thread_pointer)[0] = 0;
+    ((unsigned long long*)thread_pointer)[1] = thread_pointer;
+#else
+    cplus_linux_thread_release(thread);
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+    for (index = 0; index < tls_data_size; index++) tls_image[index] = __cplus_tls_image_start[index];
+
+    clone_result = cplus_linux_clone_thread(
+        flags,
+        (unsigned char*)thread->stack + stack_bytes,
+        (int*)&thread->tid,
+        (void*)thread_pointer,
+        cplus_linux_thread_start,
+        thread);
+    if (clone_result < 0) {
+        cplus_linux_thread_release(thread);
+        return cplus_normalize_linux_result(clone_result);
+    }
+    return (long long)(long)thread;
+}
+
+int platform_thread_join(long long handle, void** result) {
+    cplus_linux_thread_control* thread = (cplus_linux_thread_control*)(long)handle;
+    if (handle <= 0 || !thread) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    for (;;) {
+        int tid = __atomic_load_n((int*)&thread->tid, __ATOMIC_ACQUIRE);
+        long wait_result;
+        if (tid == 0) break;
+#if defined(__x86_64__)
+        wait_result = cplus_linux_syscall6(202, (long)&thread->tid, 0, tid, 0, 0, 0);
+#elif defined(__aarch64__)
+        wait_result = cplus_linux_syscall6(98, (long)&thread->tid, 0, tid, 0, 0, 0);
+#else
+        return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+        if (wait_result < 0 && wait_result != -4 && wait_result != -11) {
+            return (int)cplus_normalize_linux_result(wait_result);
+        }
+    }
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+    if (result) *result = thread->result;
+    cplus_linux_thread_release(thread);
+    return 0;
+}
+
+long long platform_thread_current_id(void) {
+#if defined(__x86_64__)
+    return cplus_normalize_linux_result(cplus_linux_syscall1(186, 0));
+#elif defined(__aarch64__)
+    return cplus_normalize_linux_result(cplus_linux_syscall1(178, 0));
+#else
+    return CPLUS_PAL_UNSUPPORTED;
+#endif
+}
+
+int platform_thread_yield(void) {
+#if defined(__x86_64__)
+    return (int)cplus_normalize_linux_result(cplus_linux_syscall1(24, 0));
+#elif defined(__aarch64__)
+    return (int)cplus_normalize_linux_result(cplus_linux_syscall1(124, 0));
+#else
+    return (int)CPLUS_PAL_UNSUPPORTED;
+#endif
+}
+
 static long cplus_linux_process_fork(void) {
 #if defined(__x86_64__)
     return cplus_linux_syscall1(57, 0);

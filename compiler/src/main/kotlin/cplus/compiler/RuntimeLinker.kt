@@ -80,7 +80,17 @@ object RuntimeLinker {
                 val filesystem = resolution.layout.runtimeSource.resolve("fs.c")
                 val platformRuntime = resolution.layout.platformSource.resolve("runtime.c")
                 val setjmp = if (descriptor.os == "linux" && descriptor.architecture == "x86_64") listOf(resolution.layout.runtimeSource.resolve("setjmp-x86_64.S")) else emptyList()
-                val missing = (listOf(startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, platformRuntime) + setjmp).filterNot(Files::isRegularFile)
+                val threadStartup = if (descriptor.os == "linux") {
+                    listOf(resolution.layout.platformSource.resolve("thread-${descriptor.architecture}.S"))
+                } else {
+                    emptyList()
+                }
+                val threadTlsScript = if (descriptor.os == "linux") {
+                    listOf(resolution.layout.platformSource.resolve("thread-tls.ld"))
+                } else {
+                    emptyList()
+                }
+                val missing = (listOf(startup, runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, platformRuntime) + setjmp + threadStartup + threadTlsScript).filterNot(Files::isRegularFile)
                 if (missing.isNotEmpty()) {
                     RuntimeLinkPlanResult(
                         null,
@@ -98,7 +108,7 @@ object RuntimeLinker {
                         RuntimeLinkPlan(
                             target.buildProfile.runtime,
                             listOf(startup),
-                            listOf(runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, platformRuntime) + setjmp,
+                            listOf(runtime, compilerRuntime, allocator, formatter, stdio, libcCore, time, math, ctype, locale, signal, wide, wctype, filesystem, platformRuntime) + setjmp + threadStartup,
                             buildList {
                                 addAll(
                                     listOf(
@@ -116,7 +126,7 @@ object RuntimeLinker {
                                 }
                             },
                             when (descriptor.os) {
-                                "linux" -> listOf("-Wl,-e,_start", "-Wl,--build-id=none", "-no-pie")
+                                "linux" -> listOf("-Wl,-e,_start", "-Wl,--build-id=none", "-no-pie") + threadTlsScript.map { "-Wl,-T,${it.toAbsolutePath().normalize()}" }
                                 "windows" -> listOf("-Wl,--entry,mainCRTStartup", "-Wl,--subsystem,console", "-lkernel32")
                                 else -> emptyList()
                             }

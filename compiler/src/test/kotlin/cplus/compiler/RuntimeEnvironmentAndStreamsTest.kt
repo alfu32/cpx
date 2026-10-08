@@ -64,6 +64,7 @@ class RuntimeEnvironmentAndStreamsTest {
             val compile = ProcessBuilder(
                 "cc", "-std=c17", "-ffreestanding", "-fno-builtin", "-fno-stack-protector",
                 "-fno-pie", "-nostdlib", "-static", "-Wl,-e,_start",
+                "-Wl,-T,${root.resolve("platform/linux/thread-tls.ld")}",
                 "-I", root.resolve("libc/include").toString(),
                 "-I", root.resolve("runtime/include").toString(),
                 source.toString(), root.resolve("startup/linux-x86_64/start.S").toString(),

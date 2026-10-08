@@ -933,6 +933,35 @@ once initialization
 atomic wait/wake where available
 ```
 
+The version-4 PAL thread ABI SHALL expose:
+
+```c
+typedef long long cplus_thread_handle_t;
+typedef void* (*cplus_thread_entry_t)(void* context);
+
+cplus_thread_handle_t platform_thread_create(
+    cplus_thread_entry_t entry, void* context);
+int platform_thread_join(cplus_thread_handle_t thread, void** result);
+long long platform_thread_current_id(void);
+int platform_thread_yield(void);
+```
+
+Creation SHALL start `entry(context)` on a runtime-managed thread and return an
+opaque positive handle, or a stable negative PAL error. A successful join
+SHALL wait for termination, optionally write the entry's return value to
+`result`, release the handle's resources, and return zero. A handle SHALL be
+joined at most once. Current-thread identity SHALL be positive; yielding SHALL
+return zero when the request is accepted. Invalid arguments and native
+failures SHALL use the stable PAL error values.
+
+Every runtime-managed thread SHALL enter with its target TLS image initialized
+and runtime TLS attachment completed before invoking user code. This includes
+zero-initialized and explicitly initialized thread-local objects and the
+thread-local C `errno`. Linux adapters SHALL provide independent static TLS
+for each thread while using kernel clone/futex services; Windows adapters
+SHALL use OS-managed TLS with native thread creation/wait services. Neither
+adapter SHALL depend on pthreads or a host C runtime.
+
 Native synchronization SHALL use the cheapest supported platform primitive.
 
 Examples include conceptually:

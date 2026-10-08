@@ -2873,6 +2873,17 @@ FILETIME sources respectively. Overflow and native clock failures map to
 stable PAL errors. The C `time()` and `clock()` façades consume wall and
 process-CPU time rather than aliasing both to a monotonic timer.
 
+The version-4 thread adapter creates runtime-managed threads without pthreads.
+Linux uses an architecture-specific raw `clone` entry, `CLONE_SETTLS`, the
+child-clear-TID futex join protocol, and a linker-script-described static TLS
+image. Freestanding startup allocates and installs the initial thread's TLS
+block before entering common runtime initialization; each child receives a
+copy of initialized TLS data and zeroed TLS storage, then performs runtime
+thread attachment before calling its entry function. Windows uses
+`CreateThread`, `WaitForSingleObject`, and loader-managed TLS; its callback
+performs the same runtime attachment before user code. Thread-control and stack
+storage use the PAL page allocator and are released by join.
+
 The C backend's ABI gate includes an independently compiled C17 caller fixture.
 The fixture MUST consume the generated public header and link against generated
 C, exercising scalar and object-pointer parameters, aggregate by-value

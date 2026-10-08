@@ -65,9 +65,16 @@ typedef struct __cplus_process_information {
     __cplus_dword process_id;
     __cplus_dword thread_id;
 } __cplus_process_information;
+typedef struct __cplus_windows_thread_control {
+    __cplus_handle native_handle;
+    cplus_thread_entry_t entry;
+    void* context;
+    void* result;
+} __cplus_windows_thread_control;
 
 __declspec(dllimport) __cplus_handle __stdcall GetStdHandle(__cplus_dword kind);
 __declspec(dllimport) __cplus_dword __stdcall GetCurrentProcessId(void);
+__declspec(dllimport) __cplus_dword __stdcall GetCurrentThreadId(void);
 __declspec(dllimport) __cplus_handle __stdcall GetCurrentProcess(void);
 __declspec(dllimport) void __stdcall GetSystemTimeAsFileTime(__cplus_filetime* time);
 __declspec(dllimport) __cplus_bool __stdcall QueryPerformanceCounter(long long* counter);
@@ -78,6 +85,14 @@ __declspec(dllimport) __cplus_bool __stdcall GetProcessTimes(
     __cplus_filetime* exit_time,
     __cplus_filetime* kernel_time,
     __cplus_filetime* user_time);
+__declspec(dllimport) __cplus_handle __stdcall CreateThread(
+    void* thread_attributes,
+    unsigned long long stack_size,
+    unsigned long (__stdcall *start_address)(void*),
+    void* parameter,
+    __cplus_dword creation_flags,
+    __cplus_dword* thread_id);
+__declspec(dllimport) __cplus_bool __stdcall SwitchToThread(void);
 __declspec(dllimport) unsigned short* __stdcall GetCommandLineW(void);
 __declspec(dllimport) unsigned short* __stdcall GetEnvironmentStringsW(void);
 __declspec(dllimport) __cplus_bool __stdcall FreeEnvironmentStringsW(unsigned short* environment);
@@ -917,6 +932,56 @@ int platform_process_wait(long long process, int* exit_status) {
     if (!GetExitCodeProcess(process_handle, &status)) return (int)cplus_normalize_windows_error();
     if (!CloseHandle(process_handle)) return (int)cplus_normalize_windows_error();
     *exit_status = (int)status;
+    return 0;
+}
+
+static unsigned long __stdcall cplus_windows_thread_start(void* context) {
+    __cplus_windows_thread_control* thread = (__cplus_windows_thread_control*)context;
+    extern int __cplus_runtime_thread_attach(void);
+    __cplus_runtime_thread_attach();
+    thread->result = thread->entry(thread->context);
+    return 0;
+}
+
+long long platform_thread_create(cplus_thread_entry_t entry, void* context) {
+    __cplus_windows_thread_control* thread;
+    __cplus_dword thread_id = 0;
+    if (!entry) return CPLUS_PAL_INVALID_ARGUMENT;
+    thread = (__cplus_windows_thread_control*)platform_page_allocate(1);
+    if (!thread) return CPLUS_PAL_IO_ERROR;
+    thread->native_handle = (void*)0;
+    thread->entry = entry;
+    thread->context = context;
+    thread->result = (void*)0;
+    thread->native_handle = CreateThread(
+        (void*)0, 0, cplus_windows_thread_start, thread, 0, &thread_id);
+    if (!thread->native_handle) {
+        long error = cplus_normalize_windows_error();
+        platform_page_release(thread, 1);
+        return error;
+    }
+    return (long long)(unsigned long long)thread;
+}
+
+int platform_thread_join(long long handle, void** result) {
+    __cplus_windows_thread_control* thread =
+        (__cplus_windows_thread_control*)(unsigned long long)handle;
+    __cplus_dword wait_result;
+    if (handle <= 0 || !thread || !thread->native_handle) return (int)CPLUS_PAL_INVALID_ARGUMENT;
+    wait_result = WaitForSingleObject(thread->native_handle, __CPLUS_INFINITE);
+    if (wait_result != __CPLUS_WAIT_OBJECT_0) return (int)cplus_normalize_windows_error();
+    if (result) *result = thread->result;
+    if (!CloseHandle(thread->native_handle)) return (int)cplus_normalize_windows_error();
+    thread->native_handle = (void*)0;
+    return platform_page_release(thread, 1);
+}
+
+long long platform_thread_current_id(void) {
+    return (long long)GetCurrentThreadId();
+}
+
+int platform_thread_yield(void) {
+    SwitchToThread();
     return 0;
 }
 

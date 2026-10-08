@@ -25,6 +25,8 @@
 #define CPLUS_PAL_BUFFER_TOO_SMALL (-7L)
 
 typedef long long cplus_process_handle_t;
+typedef long long cplus_thread_handle_t;
+typedef void* (*cplus_thread_entry_t)(void* context);
 
 long long platform_read_stdin(void* buffer, unsigned long long capacity);
 long long platform_write_stdout(const char* buffer, unsigned long long length);
@@ -38,6 +40,10 @@ cplus_process_handle_t platform_process_spawn(
     const char* executable,
     const char* const* arguments);
 int platform_process_wait(cplus_process_handle_t process, int* exit_status);
+cplus_thread_handle_t platform_thread_create(cplus_thread_entry_t entry, void* context);
+int platform_thread_join(cplus_thread_handle_t thread, void** result);
+long long platform_thread_current_id(void);
+int platform_thread_yield(void);
 long long platform_clock_wall_nanoseconds(void);
 long long platform_clock_monotonic_nanoseconds(void);
 long long platform_clock_process_cpu_nanoseconds(void);

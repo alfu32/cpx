@@ -60,6 +60,7 @@ class RuntimeClockPalTest {
             val compile = ProcessBuilder(
                 "cc", "-std=c17", "-ffreestanding", "-fno-builtin", "-fno-stack-protector",
                 "-fno-pie", "-nostdlib", "-static", "-Wl,-e,_start",
+                "-Wl,-T,${root.resolve("platform/linux/thread-tls.ld")}",
                 "-I", root.resolve("libc/include").toString(),
                 "-I", root.resolve("runtime/include").toString(),
                 "-I", root.resolve("platform/linux").toString(),

@@ -6,6 +6,7 @@ static int __cplus_exit_handler_count;
 static int __cplus_quick_exit_handler_count;
 static int __cplus_runtime_initialized;
 static int __cplus_tls_initialized;
+static _Thread_local int __cplus_thread_runtime_initialized;
 static int __cplus_allocator_initialized;
 static int __cplus_global_state_initialized;
 static int __cplus_argc;
@@ -27,6 +28,7 @@ int __cplus_runtime_init(int argc, char** argv, char** environment) {
     __cplus_argv = argv;
     __cplus_environment = environment;
     __cplus_tls_initialized = 1;
+    __cplus_thread_runtime_initialized = 1;
     __cplus_allocator_initialized = 1;
     __cplus_global_state_initialized = 1;
     __cplus_runtime_initialized = 1;
@@ -48,6 +50,13 @@ const char* const* platform_process_environment(void) {
     return (const char* const*)__cplus_environment;
 }
 int __cplus_tls_is_initialized(void) { return __cplus_tls_initialized; }
+int __cplus_runtime_thread_attach(void) {
+    __cplus_thread_runtime_initialized = 1;
+    return 0;
+}
+int __cplus_runtime_thread_is_attached(void) {
+    return __cplus_thread_runtime_initialized;
+}
 int __cplus_allocator_is_initialized(void) { return __cplus_allocator_initialized; }
 int __cplus_global_state_is_initialized(void) { return __cplus_global_state_initialized; }
 
