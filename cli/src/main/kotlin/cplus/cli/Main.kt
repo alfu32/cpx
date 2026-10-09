@@ -1027,6 +1027,10 @@ internal class AstPrinter {
     private fun StringBuilder.appendDeclaration(declaration: AstDeclaration, depth: Int) {
         indent(depth)
         when (declaration) {
+            is AstTestFixture -> {
+                appendLine("TestFixture ${declaration.description}")
+                appendStatement(declaration.body, depth + 1)
+            }
             is AstPackage -> appendLine("Package ${declaration.name}")
             is AstAlias -> appendLine("Alias ${declaration.target.name} ${declaration.name}")
             is AstUnion -> {

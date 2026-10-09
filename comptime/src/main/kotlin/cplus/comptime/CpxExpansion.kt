@@ -937,7 +937,8 @@ fun structuralFingerprint(program: SyntaxProgram): String = program.declarations
             is SyntaxFunction -> "function:${structuralFunction(declaration)}"
             is SyntaxComptimeFunction,
             is SyntaxCpxInvocation,
-            is SyntaxImport -> null
+            is SyntaxImport,
+            is SyntaxTestFixture -> null
         }
     }
     .joinToString("|")
@@ -1715,6 +1716,11 @@ class CpxExpander(
             origin = origin
         )
         is AstPackage -> node.copy(origin = origin)
+        is AstTestFixture -> node.copy(
+            descriptionOrigin = origin,
+            body = captureOrigin(node.body, origin) as AstBlock,
+            origin = origin
+        )
         is AstAlias -> node.copy(target = captureOriginType(node.target, origin), origin = origin)
         is AstUnion -> node.copy(
             fields = node.fields.map { captureOriginField(it, origin) },
@@ -2006,6 +2012,11 @@ class CpxExpander(
     )
 
     private fun reorigin(declaration: SyntaxDeclaration, origin: Origin): SyntaxDeclaration = when (declaration) {
+        is SyntaxTestFixture -> declaration.copy(
+            descriptionOrigin = origin,
+            body = reorigin(declaration.body, origin) as SyntaxBlock,
+            origin = origin
+        )
         is SyntaxPackage -> declaration.copy(origin = origin)
         is SyntaxAlias -> declaration.copy(target = reorigin(declaration.target, origin), origin = origin)
         is SyntaxUnion -> declaration.copy(

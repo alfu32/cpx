@@ -11,6 +11,15 @@ data class SyntaxProgram(
     override val origin: Origin
 ) : SyntaxNode
 
+data class SyntaxTestFixture(
+    val description: String,
+    val descriptionRange: SourceRange,
+    val descriptionOrigin: Origin,
+    val body: SyntaxBlock,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxDeclaration
+
 sealed interface SyntaxDeclaration : SyntaxNode {
     val isPublic: Boolean
         get() = false

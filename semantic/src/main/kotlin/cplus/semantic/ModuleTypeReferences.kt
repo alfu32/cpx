@@ -132,6 +132,7 @@ internal object ModuleTypeReferenceCollector {
                     collectType(moduleName, declaration.type)
                     declaration.initializer?.let { collectExpression(moduleName, it) }
                 }
+                is AstTestFixture,
                 is AstPackage,
                 is AstEnum,
                 is AstImport,

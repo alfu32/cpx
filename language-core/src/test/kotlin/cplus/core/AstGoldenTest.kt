@@ -16,6 +16,7 @@ class AstGoldenTest {
         assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
         assertEquals(listOf("point_t", "main"), ast.declarations.map {
             when (it) {
+                is AstTestFixture -> it.description
                 is AstStruct -> it.name
                 is AstTrait -> it.targetName
                 is AstPackage -> it.name
@@ -32,6 +33,20 @@ class AstGoldenTest {
         val structure = ast.declarations.first() as AstStruct
         assertEquals("int", structure.fields.single().type.name)
         assertEquals("x", structure.fields.single().name)
+    }
+
+    @Test
+    fun fixtureAstGoldenRetainsBodyAndDescriptionOrigins() {
+        val text = "test generated box stores value { int value = 42; value += 1; }"
+        val source = SourceFile(SourceFileId(89), Path.of("fixture-golden.cp"), text, 1)
+        val parsed = Parser(Lexer().lex(source)).parse()
+        val fixture = AstBuilder().build(parsed.syntax).declarations.filterIsInstance<AstTestFixture>().single()
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        assertEquals("generated box stores value", fixture.description)
+        assertEquals(SourceRange(source.id, text.indexOf("test") + "test".length, text.indexOf('{')), fixture.descriptionOrigin.primaryRange)
+        assertEquals(2, fixture.body.statements.size)
+        assertEquals(source.id, fixture.body.origin.primaryRange?.file)
     }
 
     @Test

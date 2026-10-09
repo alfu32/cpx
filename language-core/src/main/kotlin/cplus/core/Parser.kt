@@ -50,6 +50,7 @@ class Parser(private val lexed: LexedSource) {
     }
 
     private fun parseDeclaration(): SyntaxDeclaration? {
+        if (isTestFixtureStart(index)) return parseTestFixture(isPublic = false)
         val attributes = parseAttributes()
         var isPublic = false
         var threadLocal = false
@@ -60,6 +61,7 @@ class Parser(private val lexed: LexedSource) {
                 else -> advance()
             }
         }
+        if (isTestFixtureStart(index)) return parseTestFixture(isPublic)
         if (peek().isLexeme("package")) return parsePackage()
         if (match("typedef")) return parseAlias(previous(), isPublic)
         if (peek().isLexeme("import")) return parseImport()
@@ -111,6 +113,94 @@ class Parser(private val lexed: LexedSource) {
         expect(";", "expected ';' after package declaration")
         val range = span(start.range, previous().range)
         return SyntaxPackage(parts.joinToString(""), range, direct(range))
+    }
+
+    private fun parseTestFixture(isPublic: Boolean): SyntaxTestFixture? {
+        val startIndex = index
+        val start = advance()
+        val openIndex = fixtureOpenBraceIndex(startIndex) ?: return null
+        val open = tokens[openIndex]
+        val descriptionRange = SourceRange(lexed.source.id, start.range.endOffset, open.range.startOffset)
+        val rawDescription = lexed.source.text.substring(descriptionRange.startOffset, descriptionRange.endOffset)
+        val description = normalizeFixtureDescription(rawDescription)
+        if (description.isEmpty()) {
+            diagnostics.error("test fixture description must not be empty", descriptionRange, "PARSE530")
+        }
+        if (rawDescription.contains('\n') || rawDescription.contains('\r')) {
+            diagnostics.error("test fixture description must be on the declaration line", descriptionRange, "PARSE531")
+        }
+        if (isPublic) {
+            diagnostics.error("test fixtures cannot be public", start.range, "PARSE532")
+        }
+        index = openIndex + 1
+        val body = parseBlockAfterOpen(open)
+        val range = span(start.range, body.range)
+        return SyntaxTestFixture(
+            description,
+            descriptionRange,
+            Origin.Direct(descriptionRange),
+            body,
+            range,
+            direct(range)
+        )
+    }
+
+    private fun isTestFixtureStart(startIndex: Int): Boolean = fixtureOpenBraceIndex(startIndex) != null
+
+    private fun fixtureOpenBraceIndex(startIndex: Int): Int? {
+        val start = tokens.getOrNull(startIndex)?.takeIf { it.isLexeme("test") } ?: return null
+        // Preserve C-style function declarations whose return type happens to be
+        // named `test`, including pointer returns. Fixture descriptions remain
+        // free-form, so only the unambiguous declarator shape is reserved here.
+        var declaratorIndex = startIndex + 1
+        while (tokens.getOrNull(declaratorIndex)?.isLexeme("*") == true) declaratorIndex++
+        val functionName = tokens.getOrNull(declaratorIndex)
+        if (functionName?.kind == TokenKind.IDENTIFIER && tokens.getOrNull(declaratorIndex + 1)?.isLexeme("(") == true) {
+            return null
+        }
+        for (candidateIndex in startIndex + 1 until tokens.size) {
+            val candidate = tokens[candidateIndex]
+            if (candidate.kind == TokenKind.END_OF_FILE || candidate.isLexeme(";")) return null
+            if (candidate.isLexeme("{")) return candidateIndex
+        }
+        return null
+    }
+
+    private fun normalizeFixtureDescription(raw: String): String {
+        val withoutComments = buildString(raw.length) {
+            var cursor = 0
+            var quote: Char? = null
+            while (cursor < raw.length) {
+                val character = raw[cursor]
+                if (quote != null) {
+                    append(character)
+                    if (character == '\\' && cursor + 1 < raw.length) {
+                        append(raw[cursor + 1])
+                        cursor += 2
+                        continue
+                    }
+                    if (character == quote) quote = null
+                    cursor++
+                } else if (character == '"' || character == '\'') {
+                    quote = character
+                    append(character)
+                    cursor++
+                } else if (character == '/' && raw.getOrNull(cursor + 1) == '/') {
+                    append(' ')
+                    cursor += 2
+                    while (cursor < raw.length && raw[cursor] != '\n' && raw[cursor] != '\r') cursor++
+                } else if (character == '/' && raw.getOrNull(cursor + 1) == '*') {
+                    append(' ')
+                    cursor += 2
+                    while (cursor + 1 < raw.length && !(raw[cursor] == '*' && raw[cursor + 1] == '/')) cursor++
+                    cursor = (cursor + 2).coerceAtMost(raw.length)
+                } else {
+                    append(character)
+                    cursor++
+                }
+            }
+        }
+        return withoutComments.trim().replace(Regex("\\s+"), " ")
     }
 
     private fun parseAlias(start: Token, isPublic: Boolean): SyntaxAlias? {
@@ -600,17 +690,9 @@ class Parser(private val lexed: LexedSource) {
     }
 
     private fun parseStatement(): SyntaxStatement? {
+        if (isTestFixtureStart(index)) return consumeNestedTestFixture()
         if (match("{")) {
-            val open = previous()
-            val statements = mutableListOf<SyntaxStatement>()
-            while (!atEnd() && !peek().isLexeme("}")) {
-                val before = index
-                parseStatement()?.let(statements::add)
-                if (index == before) advance()
-            }
-            val close = expect("}", "expected '}' after block") ?: previous()
-            val range = span(open.range, close.range)
-            return SyntaxBlock(statements, range, direct(range))
+            return parseBlockAfterOpen(previous())
         }
         if (match("return")) {
             val start = previous()
@@ -692,6 +774,46 @@ class Parser(private val lexed: LexedSource) {
         expect(";", "expected ';' after expression")
         val range = span(expression.range, previous().range)
         return SyntaxExpressionStatement(expression, range, direct(range))
+    }
+
+    private fun parseBlockAfterOpen(open: Token): SyntaxBlock {
+        val statements = mutableListOf<SyntaxStatement>()
+        while (!atEnd() && !peek().isLexeme("}")) {
+            val before = index
+            parseStatement()?.let(statements::add)
+            if (index == before) advance()
+        }
+        val close = if (match("}")) {
+            previous()
+        } else {
+            diagnostics.error("expected '}' after block", peek().range, "PARSE534")
+            previous()
+        }
+        val range = span(open.range, close.range)
+        return SyntaxBlock(statements, range, direct(range))
+    }
+
+    private fun consumeNestedTestFixture(): SyntaxBlock {
+        val startIndex = index
+        val start = advance()
+        val openIndex = fixtureOpenBraceIndex(startIndex)
+        if (openIndex == null) {
+            val range = start.range
+            diagnostics.error("test fixtures may only be declared at module scope", range, "PARSE533")
+            return SyntaxBlock(emptyList(), range, direct(range))
+        }
+        diagnostics.error("test fixtures may not be nested", start.range, "PARSE533")
+        index = openIndex + 1
+        var depth = 1
+        while (!atEnd() && depth > 0) {
+            when (advance().lexeme) {
+                "{" -> depth++
+                "}" -> depth--
+            }
+        }
+        val range = span(start.range, previous().range)
+        if (depth > 0) diagnostics.error("expected '}' after nested test fixture", peek().range, "PARSE534")
+        return SyntaxBlock(emptyList(), range, direct(range))
     }
 
     private fun parseVariableDeclaration(): SyntaxVariableDeclaration? {

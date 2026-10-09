@@ -239,6 +239,7 @@ internal object ReferenceCollector {
                     declaration.initializer?.let { collectExpression(it, emptyMap()) }
                 }
                 is AstFunction -> collectFunction(declaration)
+                is AstTestFixture,
                 is AstPackage,
                 is AstComptimeFunction,
                 is AstCpxInvocation,

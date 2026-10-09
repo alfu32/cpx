@@ -13,6 +13,12 @@ class AstBuilder {
     fun buildExpression(syntax: SyntaxExpression): AstExpression = expression(syntax)
 
     private fun declaration(node: SyntaxDeclaration): AstDeclaration = when (node) {
+        is SyntaxTestFixture -> AstTestFixture(
+            node.description,
+            node.descriptionOrigin,
+            statement(node.body) as AstBlock,
+            node.origin
+        )
         is SyntaxPackage -> AstPackage(node.name, node.origin)
         is SyntaxAlias -> AstAlias(type(node.target), node.name, node.arrayDimensions, node.origin, node.isPublic)
         is SyntaxUnion -> AstUnion(node.name, node.fields.map(::field), node.origin, node.isPublic)

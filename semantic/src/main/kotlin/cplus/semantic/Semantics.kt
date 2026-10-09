@@ -560,6 +560,7 @@ fun buildDeclarationCatalogue(
     program.declarations.forEach { declaration ->
         val moduleScope = moduleScope(declaration)
         when (declaration) {
+            is AstTestFixture -> Unit
             is AstPackage -> add(declaration.name, "package", declaration.origin, moduleScope)
             is AstAlias -> add(
                 declaration.name,
@@ -1494,6 +1495,7 @@ class SemanticAnalyzer(
         program.declarations.forEach { declaration ->
             val moduleName = declarationModules[declaration] ?: defaultModule
             when (declaration) {
+                is AstTestFixture -> Unit
                 is AstUnion -> if (unions.containsKey(declaration.name)) {
                     diagnostics.error("duplicate union '${declaration.name}'", rangeOf(declaration.origin), "SEM005")
                 } else {
@@ -1531,6 +1533,7 @@ class SemanticAnalyzer(
         program.declarations.forEach { declaration ->
             val moduleName = declarationModules[declaration] ?: defaultModule
             when (declaration) {
+                is AstTestFixture -> Unit
                 is AstPackage -> Unit
                 is AstAlias -> {
                     if (aliasDeclarations[declaration.name]?.singleOrNull() !== declaration) {

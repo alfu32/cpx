@@ -19,6 +19,13 @@ data class AstModule(
     val comptimeInvocations: List<AstCpxInvocation> = emptyList()
 )
 
+data class AstTestFixture(
+    val description: String,
+    val descriptionOrigin: Origin,
+    val body: AstBlock,
+    override val origin: Origin
+) : AstDeclaration
+
 sealed interface AstDeclaration : AstNode {
     val isPublic: Boolean
         get() = false
