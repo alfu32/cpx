@@ -1756,6 +1756,11 @@ class CpxExpander(
         is AstBlock -> node.copy(statements = node.statements.map { captureOriginStatement(it, origin) }, origin = origin)
         is AstReturn -> node.copy(expression = node.expression?.let { captureOriginExpression(it, origin) }, origin = origin)
         is AstExpressionStatement -> node.copy(expression = captureOriginExpression(node.expression, origin), origin = origin)
+        is AstAssertion -> node.copy(
+            description = node.description?.let { captureOriginExpression(it, origin) },
+            operands = node.operands.map { captureOriginExpression(it, origin) },
+            origin = origin
+        )
         is AstDefer -> node.copy(expression = captureOriginExpression(node.expression, origin), origin = origin)
         is AstIf -> node.copy(
             condition = captureOriginExpression(node.condition, origin),
@@ -2096,6 +2101,7 @@ class CpxExpander(
                 }
                 is SyntaxReturn,
                 is SyntaxExpressionStatement,
+                is SyntaxAssertion,
                 is SyntaxDefer,
                 is SyntaxBreak,
                 is SyntaxContinue -> Unit
@@ -2112,6 +2118,10 @@ class CpxExpander(
         is SyntaxBlock -> statement.copy(statements = statement.statements.map { hygienize(it, renames, key) })
         is SyntaxReturn -> statement.copy(expression = statement.expression?.let { hygienize(it, renames) })
         is SyntaxExpressionStatement -> statement.copy(expression = hygienize(statement.expression, renames))
+        is SyntaxAssertion -> statement.copy(
+            description = statement.description?.let { hygienize(it, renames) },
+            operands = statement.operands.map { hygienize(it, renames) }
+        )
         is SyntaxDefer -> statement.copy(expression = hygienize(statement.expression, renames))
         is SyntaxIf -> statement.copy(
             condition = hygienize(statement.condition, renames),
@@ -2202,6 +2212,11 @@ class CpxExpander(
         is SyntaxBlock -> statement.copy(statements = statement.statements.map { reorigin(it, origin) }, origin = origin)
         is SyntaxReturn -> statement.copy(expression = statement.expression?.let { reorigin(it, origin) }, origin = origin)
         is SyntaxExpressionStatement -> statement.copy(expression = reorigin(statement.expression, origin), origin = origin)
+        is SyntaxAssertion -> statement.copy(
+            description = statement.description?.let { reorigin(it, origin) },
+            operands = statement.operands.map { reorigin(it, origin) },
+            origin = origin
+        )
         is SyntaxDefer -> statement.copy(expression = reorigin(statement.expression, origin), origin = origin)
         is SyntaxIf -> statement.copy(
             condition = reorigin(statement.condition, origin),

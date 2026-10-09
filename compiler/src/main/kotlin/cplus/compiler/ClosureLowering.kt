@@ -131,6 +131,7 @@ class ClosurePlanner {
                 is AstVariableDeclaration -> names += node.name
                 is AstReturn,
                 is AstExpressionStatement,
+                is AstAssertion,
                 is AstDefer,
                 is AstBreak,
                 is AstContinue,
@@ -171,6 +172,10 @@ class ClosurePlanner {
                 is AstBlock -> node.statements.forEach(::visit)
                 is AstReturn -> node.expression?.let(::expression)
                 is AstExpressionStatement -> expression(node.expression)
+                is AstAssertion -> {
+                    node.description?.let(::expression)
+                    node.operands.forEach(::expression)
+                }
                 is AstDefer -> expression(node.expression)
                 is AstIf -> { expression(node.condition); visit(node.thenBranch); node.elseBranch?.let(::visit) }
                 is AstWhile -> { expression(node.condition); visit(node.body) }
@@ -258,6 +263,10 @@ class AstClosureLowerer {
         is AstBlock -> lowerBlock(statement, bindings, callables, rewrites, enclosingName, allowInner)
         is AstReturn -> statement.copy(expression = statement.expression?.let { lowerExpression(it, callables, rewrites) })
         is AstExpressionStatement -> statement.copy(expression = lowerExpression(statement.expression, callables, rewrites))
+        is AstAssertion -> statement.copy(
+            description = statement.description?.let { lowerExpression(it, callables, rewrites) },
+            operands = statement.operands.map { lowerExpression(it, callables, rewrites) }
+        )
         is AstDefer -> statement.copy(expression = lowerExpression(statement.expression, callables, rewrites))
         is AstIf -> statement.copy(
             condition = lowerExpression(statement.condition, callables, rewrites),
@@ -480,7 +489,7 @@ class AstClosureLowerer {
                 is AstWhile -> visit(node.body)
                 is AstFor -> { node.initializer?.let(::visit); visit(node.body) }
                 is AstVariableDeclaration -> result += node.name
-                is AstReturn, is AstExpressionStatement, is AstDefer, is AstBreak, is AstContinue, is AstInnerFunction -> Unit
+                is AstReturn, is AstExpressionStatement, is AstAssertion, is AstDefer, is AstBreak, is AstContinue, is AstInnerFunction -> Unit
             }
         }
         visit(statement)
@@ -510,6 +519,7 @@ class AstClosureLowerer {
                 is AstBlock -> node.statements.forEach(::visit)
                 is AstReturn -> node.expression?.let(::expression)
                 is AstExpressionStatement -> expression(node.expression)
+                is AstAssertion -> { node.description?.let(::expression); node.operands.forEach(::expression) }
                 is AstDefer -> expression(node.expression)
                 is AstIf -> { expression(node.condition); visit(node.thenBranch); node.elseBranch?.let(::visit) }
                 is AstWhile -> { expression(node.condition); visit(node.body) }

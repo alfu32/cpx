@@ -2529,6 +2529,10 @@ class SemanticAnalyzer(
                 }
             }
             is AstExpressionStatement -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+            is AstAssertion -> {
+                statement.description?.let { validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive) }
+                statement.operands.forEach { validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive) }
+            }
             is AstDefer -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstIf -> {
                 validateExpression(statement.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)

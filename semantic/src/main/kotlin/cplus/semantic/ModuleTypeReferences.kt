@@ -86,6 +86,10 @@ internal object ModuleTypeReferenceCollector {
                 is AstBlock -> statement.statements.forEach { collectStatement(moduleName, it) }
                 is AstReturn -> statement.expression?.let { collectExpression(moduleName, it) }
                 is AstExpressionStatement -> collectExpression(moduleName, statement.expression)
+                is AstAssertion -> {
+                    statement.description?.let { collectExpression(moduleName, it) }
+                    statement.operands.forEach { collectExpression(moduleName, it) }
+                }
                 is AstDefer -> collectExpression(moduleName, statement.expression)
                 is AstIf -> {
                     collectExpression(moduleName, statement.condition)

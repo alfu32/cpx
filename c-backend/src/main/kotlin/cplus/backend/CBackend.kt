@@ -321,6 +321,8 @@ class CLowerer(
         is AstBlock -> statement.statements.any(::containsStringTemplate)
         is AstReturn -> statement.expression?.let(::containsStringTemplate) == true
         is AstExpressionStatement -> containsStringTemplate(statement.expression)
+        is AstAssertion -> statement.description?.let(::containsStringTemplate) == true ||
+            statement.operands.any(::containsStringTemplate)
         is AstDefer -> containsStringTemplate(statement.expression)
         is AstIf -> containsStringTemplate(statement.condition) ||
             containsStringTemplate(statement.thenBranch) ||
@@ -591,6 +593,7 @@ class CLowerer(
             listOf(CExpressionStatement(expression(node.expression, ownerName, instanceMethod), node.origin)),
             fallsThrough = true
         )
+        is AstAssertion -> LoweredStatements(emptyList(), fallsThrough = true)
         is AstDefer -> {
             val scope = context.cleanupScopes.lastOrNull()
             if (scope == null) {

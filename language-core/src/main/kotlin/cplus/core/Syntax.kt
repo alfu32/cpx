@@ -195,6 +195,17 @@ data class SyntaxExpressionStatement(
     override val origin: Origin
 ) : SyntaxStatement
 
+enum class AssertionKind { TRUTH, EQUALITY, INVALID }
+
+data class SyntaxAssertion(
+    val kind: AssertionKind,
+    val description: SyntaxExpression?,
+    val operands: List<SyntaxExpression>,
+    val operandSourceText: List<String>,
+    override val range: SourceRange,
+    override val origin: Origin
+) : SyntaxStatement
+
 data class SyntaxDefer(
     val expression: SyntaxExpression,
     override val range: SourceRange,

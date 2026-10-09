@@ -1101,6 +1101,7 @@ internal class AstPrinter {
             }
             is AstReturn -> appendLine("Return ${statement.expression?.let(::expression) ?: ""}")
             is AstExpressionStatement -> appendLine("Expression ${expression(statement.expression)}")
+            is AstAssertion -> appendLine("Assertion ${statement.kind} ${statement.operandSourceText.joinToString(", ")}")
             is AstDefer -> appendLine("Defer ${expression(statement.expression)}")
             is AstIf -> {
                 appendLine("If ${expression(statement.condition)}")

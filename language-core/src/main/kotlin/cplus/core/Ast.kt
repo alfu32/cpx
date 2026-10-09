@@ -177,6 +177,14 @@ data class AstExpressionStatement(
     override val origin: Origin
 ) : AstStatement
 
+data class AstAssertion(
+    val kind: AssertionKind,
+    val description: AstExpression?,
+    val operands: List<AstExpression>,
+    val operandSourceText: List<String>,
+    override val origin: Origin
+) : AstStatement
+
 data class AstDefer(
     val expression: AstExpression,
     override val origin: Origin

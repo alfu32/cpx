@@ -115,6 +115,13 @@ class AstBuilder {
         is SyntaxBlock -> AstBlock(node.statements.map(::statement), node.origin)
         is SyntaxReturn -> AstReturn(node.expression?.let(::expression), node.origin)
         is SyntaxExpressionStatement -> AstExpressionStatement(expression(node.expression), node.origin)
+        is SyntaxAssertion -> AstAssertion(
+            node.kind,
+            node.description?.let(::expression),
+            node.operands.map(::expression),
+            node.operandSourceText,
+            node.origin
+        )
         is SyntaxDefer -> AstDefer(expression(node.expression), node.origin)
         is SyntaxIf -> AstIf(
             expression(node.condition),

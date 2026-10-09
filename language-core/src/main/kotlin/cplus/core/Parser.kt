@@ -5,6 +5,7 @@ class Parser(private val lexed: LexedSource) {
     private var index = 0
     private val diagnostics = DiagnosticBag()
     private val candidateTypeNames = mutableSetOf<String>()
+    private var insideFixtureBody = false
 
     data class ParsedExpression(
         val expression: SyntaxExpression?,
@@ -133,7 +134,13 @@ class Parser(private val lexed: LexedSource) {
             diagnostics.error("test fixtures cannot be public", start.range, "PARSE532")
         }
         index = openIndex + 1
-        val body = parseBlockAfterOpen(open)
+        val outerFixtureContext = insideFixtureBody
+        insideFixtureBody = true
+        val body = try {
+            parseBlockAfterOpen(open)
+        } finally {
+            insideFixtureBody = outerFixtureContext
+        }
         val range = span(start.range, body.range)
         return SyntaxTestFixture(
             description,
@@ -764,6 +771,7 @@ class Parser(private val lexed: LexedSource) {
             val range = span(start.range, previous().range)
             return SyntaxContinue(range, direct(range))
         }
+        parseAssertionStatement()?.let { return it }
         if (looksLikeInnerFunction()) {
             return parseInnerFunction()
         }
@@ -774,6 +782,60 @@ class Parser(private val lexed: LexedSource) {
         expect(";", "expected ';' after expression")
         val range = span(expression.range, previous().range)
         return SyntaxExpressionStatement(expression, range, direct(range))
+    }
+
+    private fun parseAssertionStatement(): SyntaxAssertion? {
+        if (!insideFixtureBody || peek().lexeme !in setOf("assert", "assertEquals") || !peek(1).isLexeme("(")) {
+            return null
+        }
+        val startIndex = index
+        val expression = parseExpression() as? SyntaxCall ?: run {
+            index = startIndex
+            return null
+        }
+        val callee = expression.callee as? SyntaxIdentifier ?: run {
+            index = startIndex
+            return null
+        }
+        val equality = callee.name == "assertEquals"
+        val expectedArity = if (equality) setOf(2, 3) else setOf(1, 2)
+        val isValid = expression.arguments.size in expectedArity
+        if (!isValid) {
+            diagnostics.error(
+                "${callee.name} expects ${if (equality) "two or three" else "one or two"} arguments",
+                expression.range,
+                "PARSE535"
+            )
+        }
+        val explicitDescription = isValid && expression.arguments.size == if (equality) 3 else 2
+        val description = if (explicitDescription) expression.arguments.first() else null
+        val operands = when {
+            !isValid -> expression.arguments
+            explicitDescription -> expression.arguments.drop(1)
+            else -> expression.arguments
+        }
+        val sourceTexts = operands.map { operand ->
+            lexed.source.text.substring(operand.range.startOffset, operand.range.endOffset)
+        }
+        val kind = when {
+            !isValid -> AssertionKind.INVALID
+            equality -> AssertionKind.EQUALITY
+            else -> AssertionKind.TRUTH
+        }
+        if (match(";")) {
+            // Explicit terminator.
+        } else if (!assertionMayOmitSemicolon(expression.range.endOffset)) {
+            diagnostics.error("expected ';' after assertion", peek().range, "PARSE536")
+        }
+        val end = if (previous().isLexeme(";")) previous().range else expression.range
+        val range = span(expression.range, end)
+        return SyntaxAssertion(kind, description, operands, sourceTexts, range, direct(range))
+    }
+
+    private fun assertionMayOmitSemicolon(expressionEndOffset: Int): Boolean {
+        if (peek().kind == TokenKind.END_OF_FILE || peek().isLexeme("}")) return true
+        val trivia = lexed.source.text.substring(expressionEndOffset, peek().range.startOffset)
+        return '\n' in trivia || '\r' in trivia
     }
 
     private fun parseBlockAfterOpen(open: Token): SyntaxBlock {
@@ -829,7 +891,13 @@ class Parser(private val lexed: LexedSource) {
         val returnType = parseType() ?: return null
         val name = expectIdentifier("expected inner function name") ?: return null
         expect("(", "expected '(' after inner function name")
-        val parsed = parseFunction(returnType, name)
+        val outerFixtureContext = insideFixtureBody
+        insideFixtureBody = false
+        val parsed = try {
+            parseFunction(returnType, name)
+        } finally {
+            insideFixtureBody = outerFixtureContext
+        }
         val body = parsed.body ?: run {
             val range = parsed.range
             SyntaxBlock(emptyList(), range, direct(range))

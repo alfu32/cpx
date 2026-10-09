@@ -162,6 +162,10 @@ internal object ReferenceCollector {
                 is AstBlock -> statement.statements.forEach { collectStatement(it, locals) }
                 is AstReturn -> statement.expression?.let { collectExpression(it, locals) }
                 is AstExpressionStatement -> collectExpression(statement.expression, locals)
+                is AstAssertion -> {
+                    statement.description?.let { collectExpression(it, locals) }
+                    statement.operands.forEach { collectExpression(it, locals) }
+                }
                 is AstDefer -> collectExpression(statement.expression, locals)
                 is AstIf -> {
                     collectExpression(statement.condition, locals)
