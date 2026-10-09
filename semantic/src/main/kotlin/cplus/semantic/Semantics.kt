@@ -406,6 +406,31 @@ data class SemanticModel(
             requestingModule
         )
 
+    fun visibleMethods(receiver: CType, requestingModule: String = "<main>"): List<MethodSymbol> =
+        methodRegistry.forReceiver(
+            ReceiverIdentity.of(receiver),
+            extensionModuleImports[requestingModule].orEmpty(),
+            requestingModule
+        )
+
+    fun extensionMethodFor(trait: AstTrait, declaration: AstFunction): MethodSymbol? {
+        val moduleName = program.modules.firstOrNull { module ->
+            module.declarations.any { it === trait }
+        }?.name ?: "<main>"
+        val targetType = moduleTypeBindings[moduleName]?.get(trait.targetName)?.symbol?.type
+            ?: structs[trait.targetName]
+            ?: unions[trait.targetName]
+            ?: enums[trait.targetName]
+            ?: aliases[trait.targetName]
+            ?: types.filterIsInstance<PrimitiveType>().firstOrNull { it.name == trait.targetName }
+        val targetIdentity = targetType?.let(ReceiverIdentity::of)
+        return methodRegistry.allMethods.firstOrNull { method ->
+            method.isExtension && method.definingModule == moduleName && method.symbol.name == declaration.name &&
+                method.symbol.origin.primaryRange == declaration.origin.primaryRange &&
+                (targetIdentity == null || method.receiverIdentity == targetIdentity)
+        }
+    }
+
     fun resolveComptimeReferences(
         node: AstNode,
         arena: AstArena,

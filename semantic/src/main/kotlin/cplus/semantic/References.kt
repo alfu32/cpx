@@ -108,7 +108,31 @@ internal object ReferenceCollector {
                     collectExpression(expression.operand, locals)
                 }
                 is AstCall -> {
-                    collectExpression(expression.callee, locals, ReferenceKind.CALL)
+                    val member = expression.callee as? AstMemberAccess
+                    val resolvedMethod = model.resolvedMethodCalls[expression]?.method
+                    if (member != null && resolvedMethod?.isExtension == true) {
+                        collectExpression(member.receiver, locals)
+                        val sourceRange = member.origin.primaryRange
+                        val memberOrigin = if (sourceRange != null && member.origin is Origin.Direct) {
+                            Origin.Direct(
+                                SourceRange(
+                                    sourceRange.file,
+                                    sourceRange.endOffset - member.member.length,
+                                    sourceRange.endOffset
+                                )
+                            )
+                        } else {
+                            member.origin
+                        }
+                        references += SymbolReference(
+                            resolvedMethod.symbol.id,
+                            id(member),
+                            memberOrigin,
+                            ReferenceKind.CALL
+                        )
+                    } else {
+                        collectExpression(expression.callee, locals, ReferenceKind.CALL)
+                    }
                     expression.arguments.forEach { collectExpression(it, locals) }
                 }
                 is AstMemberAccess -> {
@@ -172,10 +196,12 @@ internal object ReferenceCollector {
             }
         }
 
-        fun collectFunction(function: AstFunction, owner: String? = null) {
+        fun collectFunction(function: AstFunction, owner: String? = null, extensionMethod: MethodSymbol? = null) {
             id(function)
             collectType(function.returnType)
-            val semanticFunction = if (owner == null) model.functions[function.name] else {
+            val semanticFunction = extensionMethod?.let { method ->
+                FunctionSymbol(method.symbol, method.returnType, method.parameters, signature = method.signature)
+            } ?: if (owner == null) model.functions[function.name] else {
                 model.methods[owner]?.get(function.name)?.let { method ->
                     FunctionSymbol(method.symbol, method.returnType, method.parameters, signature = method.signature)
                 }
@@ -185,6 +211,9 @@ internal object ReferenceCollector {
             function.parameters.forEach { parameter ->
                 id(parameter)
                 collectType(parameter.type)
+                if (parameter.isReceiver || parameter.name !in locals) {
+                    locals[parameter.name] = SymbolId(nextLocalId--)
+                }
             }
             function.body?.let { collectStatement(it, locals) }
         }
@@ -199,7 +228,12 @@ internal object ReferenceCollector {
                     declaration.fields.forEach { field -> id(field); collectType(field.type) }
                     declaration.methods.forEach { collectFunction(it, declaration.name) }
                 }
-                is AstTrait -> Unit
+                is AstTrait -> {
+                    declaration.methods.forEach { method ->
+                        val extension = model.extensionMethodFor(declaration, method)
+                        collectFunction(method, extensionMethod = extension)
+                    }
+                }
                 is AstGlobalVariable -> {
                     collectType(declaration.type)
                     declaration.initializer?.let { collectExpression(it, emptyMap()) }

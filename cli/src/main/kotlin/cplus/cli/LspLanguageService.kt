@@ -13,6 +13,7 @@ import cplus.core.SourceFileId
 import cplus.core.TokenKind
 import cplus.core.Token
 import cplus.core.AstIdentifier
+import cplus.core.AstMemberAccess
 import cplus.semantic.AliasType
 import cplus.semantic.ArrayType
 import cplus.semantic.CType
@@ -194,7 +195,12 @@ internal object LspLanguageService {
         val member = Regex("([A-Za-z_][A-Za-z0-9_]*)\\s*(?:\\.|->)\\s*([A-Za-z_]\\w*)?$").find(before)
         val prefix = member?.groupValues?.getOrNull(2).orEmpty()
         val candidates = if (member != null && model != null) {
-            memberCandidates(model, member.groupValues[1], prefix)
+            memberCandidates(
+                model,
+                member.groupValues[1],
+                prefix,
+                moduleForSource(model, artifactFor(result, sourcePath)?.source?.id)
+            )
         } else if (member == null && model != null) {
             val identifier = Regex("[A-Za-z_]\\w*$").find(before)?.value.orEmpty()
             model.symbols
@@ -303,7 +309,7 @@ internal object LspLanguageService {
         sourcePathFor: (SourceFileId) -> Path?,
         sourceTextFor: (SourceFileId) -> String?
     ): SourceRange? {
-        val declaration = symbol.origin.primaryRange ?: return null
+        val declaration = declarationSourceRange(symbol.origin) ?: return null
         val declarationPath = sourcePathFor(declaration.file)?.toAbsolutePath()?.normalize()
         val text = sourceTextFor(declaration.file)
         val tokens = if (declarationPath != null && text != null) {
@@ -319,6 +325,15 @@ internal object LspLanguageService {
         return token?.range ?: declaration
     }
 
+    private fun declarationSourceRange(origin: Origin): SourceRange? = when (origin) {
+        is Origin.Direct -> origin.primaryRange
+        is Origin.Generated -> declarationSourceRange(origin.cause) ?: origin.primaryRange
+        is Origin.Expansion -> declarationSourceRange(origin.definition)
+            ?: origin.parent?.let(::declarationSourceRange)
+            ?: declarationSourceRange(origin.invocation)
+        is Origin.Synthetic -> origin.parent?.let(::declarationSourceRange) ?: origin.primaryRange
+    }
+
     fun signatureHelp(result: CompileResult, text: String, position: LspPosition, sourcePath: Path? = null): SignatureInfo? {
         val model = result.semanticModel ?: return null
         val artifact = artifactFor(result, sourcePath) ?: return null
@@ -327,6 +342,24 @@ internal object LspLanguageService {
             .filterIsInstance<cplus.core.AstCall>()
             .firstOrNull { contains(it.origin, SourceRange(artifact.source.id, offset, offset)) }
             ?: return null
+        val resolvedExtension = model.resolvedMethodCalls[call]?.method?.takeIf(MethodSymbol::isExtension)
+        if (resolvedExtension != null) {
+            val parameters = buildList {
+                add(SignatureParameterInfo("${resolvedExtension.receiverType.name} self"))
+                resolvedExtension.parameters.forEach { parameter ->
+                    add(SignatureParameterInfo("${parameter.type.name} ${parameter.name}"))
+                }
+            }
+            val activeParameter = call.arguments.indexOfFirst { argument ->
+                contains(argument.origin, SourceRange(artifact.source.id, offset, offset))
+            }.takeIf { it >= 0 }?.plus(1)
+                ?: (call.arguments.size + 1).coerceAtMost(parameters.lastIndex.coerceAtLeast(0))
+            return SignatureInfo(
+                "${resolvedExtension.symbol.name}(${parameters.joinToString(", ") { it.label }}): ${resolvedExtension.returnType.name}",
+                parameters,
+                activeParameter
+            )
+        }
         val function = when (val callee = call.callee) {
             is AstIdentifier -> model.resolveFunction(callee.name)
             is cplus.core.AstMemberAccess -> {
@@ -358,24 +391,33 @@ internal object LspLanguageService {
     private fun memberCandidates(
         model: cplus.semantic.SemanticModel,
         receiverName: String,
-        prefix: String
+        prefix: String,
+        requestingModule: String
     ): List<CompletionItem> {
-        val type = model.structs[receiverName]
-            ?: model.symbolNamed(receiverName)?.type
-                ?.let { aggregateType(it) }
+        val receiverType = model.symbolNamed(receiverName)?.type
+            ?: model.structs[receiverName]
             ?: model.expressionTypes.entries
                 .firstOrNull { (expression, _) -> expression is AstIdentifier && expression.name == receiverName }
-                ?.value
-                ?.let(::aggregateType)
-        val aggregate = type ?: return emptyList()
+                ?.value ?: return emptyList()
+        val aggregate = aggregateType(receiverType)
         val fields = when (aggregate) {
             is StructType -> aggregate.fields.map { CompletionItem(it.symbol.name, 5, it.symbol.type.name) }
             is UnionType -> aggregate.fields.map { CompletionItem(it.symbol.name, 5, it.symbol.type.name) }
             else -> emptyList()
         }
-        val methods = (aggregate as? StructType)?.methods.orEmpty()
-            .map { method -> CompletionItem(method.symbol.name, 2, method.signature.name) }
+        val methods = model.visibleMethods(receiverType, requestingModule)
+            .map { method ->
+                val provider = if (method.isExtension) " — ${method.definingModule}" else ""
+                CompletionItem(method.symbol.name, 2, "${method.signature.name}$provider")
+            }
         return (fields + methods).filter { it.label.startsWith(prefix) }
+    }
+
+    private fun moduleForSource(model: cplus.semantic.SemanticModel, sourceId: SourceFileId?): String {
+        if (sourceId == null) return "<main>"
+        return model.program.modules.firstOrNull { module ->
+            module.declarations.any { declaration -> declaration.origin.primaryRange?.file == sourceId }
+        }?.name ?: "<main>"
     }
 
     private fun aggregateType(type: CType): CType? = when (type) {
@@ -387,6 +429,10 @@ internal object LspLanguageService {
     }
 
     private fun symbolAt(model: cplus.semantic.SemanticModel, token: Token): Symbol? {
+        model.resolvedMethodCalls.entries.firstOrNull { (call, resolved) ->
+            val member = call.callee as? AstMemberAccess
+            resolved.method.isExtension && member?.member == token.lexeme && contains(member.origin, token.range)
+        }?.value?.method?.symbol?.let { return it }
         val reference = model.referenceIndex.all().firstOrNull { it.origin.primaryRange == token.range }
         return reference?.let { ref -> model.symbols.firstOrNull { it.id == ref.symbol } }
             ?: model.symbols

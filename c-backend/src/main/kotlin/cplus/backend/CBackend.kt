@@ -242,11 +242,7 @@ class CLowerer(
         } + program.declarations.filterIsInstance<AstTrait>().flatMap { trait ->
             activeModuleName = moduleByDeclaration[trait] ?: "<main>"
             trait.methods.mapNotNull { method ->
-                val registered = semantic.methodRegistry.allMethods.singleOrNull { candidate ->
-                    candidate.isExtension && candidate.definingModule == activeModuleName &&
-                        candidate.symbol.name == method.name &&
-                        candidate.symbol.origin.primaryRange == method.origin.primaryRange
-                }
+                val registered = semantic.extensionMethodFor(trait, method)
                 if (registered == null) {
                     diagnostics.error(
                         "trait method '${method.name}' has no resolved semantic symbol",

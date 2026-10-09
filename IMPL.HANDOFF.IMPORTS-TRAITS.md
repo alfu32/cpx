@@ -3,7 +3,7 @@
 ## Start here
 
 This is the active implementation runbook. The current leaf is tracked in
-`IMPL.PLAN.md` (currently `R11.2.2.1`); consult that file for status and evidence.
+`IMPL.PLAN.md` (currently `R11.2.2.2`); consult that file for status and evidence.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
@@ -15,7 +15,7 @@ The requested outcomes are:
   `comptime trait type_identifier { ... }`.
 
 Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1–
-R10.1.2.3, R10.2, R10.3.1, R10.3.2.1, R10.3.2.2 and R11.1.1.1–R11.1.1.3 plus R11.1.2.1–R11.1.2.3 and R11.2.1.1–R11.2.1.3 are accepted; resume at **R11.2.2.1**, not by restarting
+R10.1.2.3, R10.2, R10.3.1, R10.3.2.1, R10.3.2.2 and R11.1.1.1–R11.1.1.3 plus R11.1.2.1–R11.1.2.3, R11.2.1.1–R11.2.1.3 and R11.2.2.1 are accepted; resume at **R11.2.2.2**, not by restarting
 the parser foundation or jumping ahead to the VS Code UI. Do not restart R0–R9
 or rewrite the compiler.
 
@@ -271,7 +271,7 @@ Windows test. Their task dependencies permit this order.
 25. `R11.2.1.1` — Emit one typed C function per extension definition. (Accepted.)
 26. `R11.2.1.2` — Lower resolved calls with correct receiver storage. (Accepted.)
 27. `R11.2.1.3` — Verify the complete trait execution and provenance matrix. (Accepted.)
-28. `R11.2.2.1` — Use visible extension symbols in language tooling.
+28. `R11.2.2.1` — Use visible extension symbols in language tooling. (Accepted.)
 29. `R11.2.2.2` — Document and highlight the exact trait syntax.
 30. `R10.3.2.3` — Close import regression, documentation and platform evidence.
 31. `R11.2.2.3` — Close trait regression and packaged cross-platform gates.
@@ -390,7 +390,7 @@ Counting rules:
 Implement the next dependency-ready terminal task in IMPL.PLAN.md R10/R11.
 Read AGENTS.md and IMPL.PLAN.RULES.md, then
 IMPL.HANDOFF.IMPORTS-TRAITS.md and that task's referenced spec sections.
-Resume at R11.2.2.1, the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
+Resume at R11.2.2.2, the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
 especially sdk/libc/include/stdio.h. Use comptime trait type_identifier { ... }.
 Implement one leaf, add/run its acceptance tests, record evidence, update all
 counts honestly, and make a Conventional Commit before proceeding.

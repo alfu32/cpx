@@ -289,6 +289,49 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun sameNamedCpxTraitMethodsStayBoundToTheirDistinctReceivers() {
+        val directory = Files.createTempDirectory("cplus-trait-cpx-same-method")
+        val source = directory.resolve("main.cp")
+        val result = CPlusCompiler().compileText(
+            source,
+            """
+                comptime cpx<decl> make(type T) {
+                    return {
+                        struct left_{T}_t { T value; };
+                        struct right_{T}_t { T value; };
+                        comptime trait left_{T}_t { int read(self) { return self.value; } }
+                        comptime trait right_{T}_t { int read(self) { return self.value + 1; } }
+                    };
+                }
+                make(int);
+                int main() {
+                    left_int_t left;
+                    right_int_t right;
+                    left.value = 2;
+                    right.value = 4;
+                    return left.read() + right.read();
+                }
+            """.trimIndent()
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        assertTrue(generated.contains("__cplus_ext__main__left_int_t_read(&left)"), generated)
+        assertTrue(generated.contains("__cplus_ext__main__right_int_t_read(&right)"), generated)
+        val cFile = directory.resolve("main.c").also { it.writeText(generated) }
+        val executable = directory.resolve("main")
+        val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), compileOutput)
+
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(7, execution.waitFor(), executionOutput)
+    }
+
+    @Test
     fun externalCCompilerDiagnosticsMapGeneratedRangesAndRetainForeignLocations() {
         val directory = Files.createTempDirectory("cplus-c-diagnostics")
         val source = SourceRepository().let { repository ->
