@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const vscode = require('vscode');
@@ -136,6 +137,62 @@ async function run() {
   assert.ok(await vscode.workspace.applyEdit(importAction.edit), 'VS Code should apply the quick-fix workspace edit');
   await cleanDiagnostics;
 
+  const traitTypesPath = path.join(workspace, 'trait-types.cp');
+  const traitExtensionsPath = path.join(workspace, 'trait-extensions.cp');
+  const traitSourcePath = path.join(workspace, 'trait-consumer.cp');
+  fs.writeFileSync(traitTypesPath, 'pub struct point_t { int value; };\n');
+  fs.writeFileSync(traitExtensionsPath, [
+    'import { point_t } from "./trait-types.cp";',
+    'pub comptime trait point_t { int area(self) { return self.value; } }',
+    ''
+  ].join('\n'));
+  const traitText = [
+    'import { point_t } from "./trait-types.cp";',
+    'import { area } from "./trait-extensions.cp";',
+    'int main() { point_t point; point.value = 3; return point.area() == 3 ? 0 : 1; }',
+    ''
+  ].join('\n');
+  fs.writeFileSync(traitSourcePath, traitText);
+  const traitUri = vscode.Uri.file(traitSourcePath);
+  const traitDiagnostics = waitForDiagnostics(traitUri, (items) => items.length === 0);
+  const traitDocument = await vscode.workspace.openTextDocument(traitUri);
+  await vscode.window.showTextDocument(traitDocument);
+  await traitDiagnostics;
+
+  const traitCallOffset = traitText.indexOf('point.area');
+  const traitCompletionPosition = traitDocument.positionAt(traitCallOffset + 'point.'.length);
+  const traitCompletions = await vscode.commands.executeCommand(
+    'vscode.executeCompletionItemProvider', traitUri, traitCompletionPosition
+  );
+  const traitCompletionItems = Array.isArray(traitCompletions) ? traitCompletions : traitCompletions.items;
+  assert.ok(traitCompletionItems.some((item) => item.label === 'area'),
+    'the packaged server should complete an imported compile-time trait method');
+
+  const traitDefinitionPosition = traitDocument.positionAt(traitCallOffset + 'point.'.length + 1);
+  const traitDefinitions = await vscode.commands.executeCommand(
+    'vscode.executeDefinitionProvider', traitUri, traitDefinitionPosition
+  );
+  const definitionList = Array.isArray(traitDefinitions) ? traitDefinitions : [traitDefinitions].filter(Boolean);
+  assert.ok(definitionList.some((location) =>
+    (location.targetUri || location.uri)?.fsPath === traitExtensionsPath),
+  'the packaged server should navigate an extension call to its trait method declaration');
+
+  await vscode.commands.executeCommand('cplus.runMain');
+  assert.ok(vscode.window.terminals.some((terminal) => terminal.name === 'C+ Run'),
+    'Run Main should open its configured CLI terminal');
+  const packagedApi = require(path.join(extension.extensionPath, 'dist', 'extension.js'));
+  const runConfiguration = packagedApi.cliConfiguration(['run', traitSourcePath]);
+  assert.ok(runConfiguration, 'Run Main should resolve the configured CLI JAR');
+  const runResult = spawnSync(runConfiguration.command, runConfiguration.args, {
+    cwd: runConfiguration.cwd,
+    encoding: 'utf8',
+    timeout: 120000,
+    windowsHide: true
+  });
+  assert.ifError(runResult.error);
+  assert.equal(runResult.status, 0,
+    `Run Main's configured CLI invocation should execute the trait consumer: ${runResult.stdout}\n${runResult.stderr}`);
+
   const sourcePath = path.join(workspace, 'host-diagnostic.cp');
   fs.writeFileSync(sourcePath, 'int main() { return missing_host_test_function(); }\n');
   const sourceUri = vscode.Uri.file(sourcePath);
@@ -145,7 +202,7 @@ async function run() {
 
   assert.equal(document.languageId, 'cplus', 'the .cp file should use the C+ language mode');
   await diagnostics;
-  console.log('Installed C+ VSIX completed import completion, import quick-fix, and diagnostic recovery');
+  console.log('Installed C+ VSIX completed import/trait completion, quick fixes, trait navigation, Run Main, and diagnostic recovery');
 }
 
 module.exports = { run };
