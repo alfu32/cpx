@@ -22,6 +22,62 @@ import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
     @Test
+    fun importedComptimeExpansionAddsGeneratedTypeToClientWorkspace() {
+        val workspace = Files.createTempDirectory("cplus-imported-box")
+            .resolve("workspace with spaces").also(Files::createDirectories)
+        val provider = workspace.resolve("box.cp")
+        val main = workspace.resolve("main.cp")
+        val providerText = """
+            pub comptime cpx<decl> box(type T) {
+                return {
+                    struct box_{T}_t { T value; };
+                };
+            }
+        """.trimIndent()
+        val mainText = """
+            import { box } from "./box.cp";
+            box(int);
+
+            int main() {
+                struct box_int_t item;
+                item.value = 42;
+                return item.value;
+            }
+        """.trimIndent()
+        Files.writeString(provider, providerText)
+        Files.writeString(main, mainText)
+
+        val compiler = CPlusCompiler()
+        val disk = compiler.compile(CompileRequest(listOf(main, provider)))
+
+        assertTrue(disk.isSuccessful, disk.diagnostics.joinToString())
+        assertFalse(disk.diagnostics.any { it.code in setOf("SEM404", "CPX001", "SEM102", "SEM101") })
+        val semantic = assertNotNull(disk.semanticModel)
+        val generatedType = semantic.structs.getValue("box_int_t")
+        assertEquals("main", generatedType.moduleName)
+        val cFile = workspace.resolve("main.c").also { it.writeText(disk.generatedUnits.single().text) }
+        val executable = workspace.resolve("main")
+        val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(42, execution.waitFor(), executionOutput)
+
+        val reversed = CPlusCompiler().compile(CompileRequest(listOf(provider, main)))
+        assertTrue(reversed.isSuccessful, reversed.diagnostics.joinToString())
+        assertEquals("main", reversed.semanticModel?.structs?.get("box_int_t")?.moduleName)
+
+        val textWorkspace = CPlusCompiler().compileTextWorkspace(
+            listOf(TextSource(main, mainText), TextSource(provider, providerText))
+        )
+        assertTrue(textWorkspace.isSuccessful, textWorkspace.diagnostics.joinToString())
+        assertEquals("main", textWorkspace.semanticModel?.structs?.get("box_int_t")?.moduleName)
+    }
+
+    @Test
     fun importsPublicComptimeAsTypedNonRuntimeBindingAndRejectsInvalidExports() {
         val directory = Files.createTempDirectory("cplus-comptime-export-bindings")
         val provider = directory.resolve("box.cp").also { path ->

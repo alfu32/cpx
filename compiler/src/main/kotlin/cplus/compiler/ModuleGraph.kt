@@ -30,7 +30,8 @@ data class ModuleComponent(
 
 data class ModuleGraph(
     val nodes: Map<ModuleId, ModuleNode>,
-    val components: List<ModuleComponent>
+    val components: List<ModuleComponent>,
+    val importBindings: Map<ModuleId, Map<String, ModuleId>> = emptyMap()
 ) {
     val moduleNames: Set<String>
         get() = nodes.keys.map(ModuleId::value).toSet()
@@ -55,15 +56,19 @@ data class ModuleGraph(
 class ModuleGraphBuilder {
     fun build(sources: List<ModuleSource>): ModuleGraph {
         val idsByPath = moduleIdentities(sources)
-        val nodes = sources.associate { unit ->
+        val bindings = sources.associate { unit ->
             val id = idsByPath.getValue(normalize(unit.source.path))
             val imports = unit.program.declarations
                 .filterIsInstance<SyntaxImport>()
-                .mapNotNull { import -> resolveImport(unit, import.module, sources, idsByPath) }
-                .toSet()
-            id to ModuleNode(id, unit.source.path, imports)
+                .mapNotNull { import -> resolveImport(unit, import.module, sources, idsByPath)?.let { import.module to it } }
+                .toMap()
+            id to imports
         }
-        return ModuleGraph(nodes, stronglyConnectedComponents(nodes))
+        val nodes = sources.associate { unit ->
+            val id = idsByPath.getValue(normalize(unit.source.path))
+            id to ModuleNode(id, unit.source.path, bindings[id].orEmpty().values.toSet())
+        }
+        return ModuleGraph(nodes, stronglyConnectedComponents(nodes), bindings)
     }
 
     private fun moduleIdentities(sources: List<ModuleSource>): Map<Path, ModuleId> {

@@ -359,7 +359,15 @@ class CPlusCompiler(
         // Besides making the phase boundary explicit, this keeps source IDs
         // and parse results independent of expansion order.
         val parsedUnits = sourceFiles.map(::parseFrontend)
-        val frontends = parsedUnits.map { expandFrontend(it, headerEnvironment, deferImportedCpx = sourceFiles.size > 1) }
+        val importedDefinitions = workspaceComptimeDefinitions(parsedUnits)
+        val frontends = parsedUnits.map { unit ->
+            expandFrontend(
+                unit,
+                headerEnvironment,
+                deferImportedCpx = sourceFiles.size > 1,
+                importedDefinitions = importedDefinitions[unit.source.path.toAbsolutePath().normalize()].orEmpty()
+            )
+        }
         if (frontends.size <= 1) {
             return resultOf(
                 frontends.map { frontend ->
@@ -829,6 +837,9 @@ class CPlusCompiler(
             }
         }
 
+        val workspaceUnits = paths.mapNotNull { parsedUnits[it] }
+        val importedDefinitions = workspaceComptimeDefinitions(workspaceUnits)
+
         // This second pass cannot begin until every requested source has a
         // ParsedUnit (or an explicit missing-source result) above.
         return paths.associateWith { path ->
@@ -837,8 +848,49 @@ class CPlusCompiler(
             else expandFrontend(
                 requireNotNull(parsedUnits[path]),
                 headerEnvironment,
-                deferImportedCpx = paths.size > 1
+                deferImportedCpx = paths.size > 1,
+                importedDefinitions = importedDefinitions[path.toAbsolutePath().normalize()].orEmpty()
             )
+        }
+    }
+
+    private fun workspaceComptimeDefinitions(
+        parsedUnits: List<ParsedUnit>
+    ): Map<Path, Map<String, SyntaxComptimeFunction>> {
+        if (parsedUnits.size < 2) return emptyMap()
+        val sources = parsedUnits.map { ModuleSource(it.source, it.parsed.syntax) }
+        val graph = ModuleGraphBuilder().build(sources)
+        val unitsById = parsedUnits.associateBy { unit -> requireNotNull(graph.moduleIdForPath(unit.source.path)) }
+        return parsedUnits.associate { importer ->
+            val importerId = requireNotNull(graph.moduleIdForPath(importer.source.path))
+            val candidates = linkedMapOf<String, MutableList<SyntaxComptimeFunction>>()
+            importer.parsed.syntax.declarations.filterIsInstance<SyntaxImport>().forEach { import ->
+                val providerId = graph.importBindings[importerId]?.get(import.module) ?: return@forEach
+                val definitions = unitsById[providerId]?.parsed?.syntax?.declarations
+                    ?.filterIsInstance<SyntaxComptimeFunction>()
+                    ?.filter(SyntaxComptimeFunction::isPublic)
+                    .orEmpty()
+                fun offer(localName: String, definition: SyntaxComptimeFunction) {
+                    candidates.getOrPut(localName) { mutableListOf() } += definition
+                }
+                if (import.names.isEmpty()) {
+                    import.alias?.let { alias -> definitions.forEach { definition ->
+                        offer("$alias.${definition.name}", definition)
+                    } }
+                } else {
+                    import.names.forEach { importedName ->
+                        val definition = definitions.singleOrNull { it.name == importedName } ?: return@forEach
+                        val localName = import.nameAliases[importedName] ?: importedName
+                        offer(localName, definition)
+                        import.alias?.let { alias -> offer("$alias.$localName", definition) }
+                    }
+                }
+            }
+            val unambiguous = candidates.mapNotNull { (name, definitions) ->
+                val distinct = definitions.distinctBy { it.origin to it.name }
+                distinct.singleOrNull()?.let { name to it }
+            }.toMap()
+            importer.source.path.toAbsolutePath().normalize() to unambiguous
         }
     }
 
@@ -870,7 +922,8 @@ class CPlusCompiler(
     private fun expandFrontend(
         parsedUnit: ParsedUnit,
         headerEnvironment: HeaderEnvironment,
-        deferImportedCpx: Boolean = false
+        deferImportedCpx: Boolean = false,
+        importedDefinitions: Map<String, SyntaxComptimeFunction> = emptyMap()
     ): FrontendUnit {
         val source = parsedUnit.source
         val lexed = parsedUnit.lexed
@@ -905,7 +958,8 @@ class CPlusCompiler(
                 comptimeTypeDescriptors(model, activeTargetAbiDescriptor)
             }.orEmpty(),
             deferredInvocationNames,
-            deferredInvocationPrefixes
+            deferredInvocationPrefixes,
+            importedDefinitions
         )
         val ast = context.astBuilder.build(expanded.program)
         val closure = context.closureLowerer.lower(ast)

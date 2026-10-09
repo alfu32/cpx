@@ -978,7 +978,8 @@ class CpxExpander(
         referenceResolver: ComptimeReferenceResolver? = null,
         typeDescriptors: Iterable<StructuralTypeDescriptor> = emptyList(),
         deferredInvocationNames: Set<String> = emptySet(),
-        deferredInvocationPrefixes: Set<String> = emptySet()
+        deferredInvocationPrefixes: Set<String> = emptySet(),
+        importedDefinitions: Map<String, SyntaxComptimeFunction> = emptyMap()
     ): CpxExpansionResult {
         val diagnostics = DiagnosticBag()
         val syntaxArena = AstArena()
@@ -991,6 +992,7 @@ class CpxExpander(
         program.declarations
             .filterIsInstance<SyntaxComptimeFunction>()
             .forEach { definitions[it.name] = it }
+        importedDefinitions.forEach { (name, definition) -> definitions.putIfAbsent(name, definition) }
         val scheduler = ComptimeScheduler()
         val deferredInvocations = mutableListOf<DeferredCpxInvocation>()
 

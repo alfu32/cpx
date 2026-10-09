@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    133/161 accepted with recorded evidence; 28 TODO
+Roadmap leaf tasks:    134/161 accepted with recorded evidence; 27 TODO
 Phase gates:           13/15 complete; 1 active; 1 queued
-Current task:          Next: R13.2.1 — expand an imported definition into the client type universe
+Current task:          Next: R13.2.2 — separate definition bindings from argument and insertion scopes
 Current milestone:     imported comptime functions and source test fixtures (planned)
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -40,10 +40,10 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
-R13 [DOING] 4/12 imported comptime bindings, expansion and product conformance
+R13 [DOING] 5/12 imported comptime bindings, expansion and product conformance
 R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       133/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       134/161 implementation tasks accepted; 13/15 phase gates complete,
             0 active, 2 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 133/161 accepted; 28 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 134/161 accepted; 27 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
 Active phase gates: 1 (R13); queued phase gates: 1 (R14)
@@ -3813,16 +3813,16 @@ Active phase gates: 1 (R13); queued phase gates: 1 (R14)
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
-[DOING] R13 — imported comptime functions (4/12 leaves; next R13.2.1)
+[DOING] R13 — imported comptime functions (5/12 leaves; next R13.2.2)
 [TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 133 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 134 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1 is complete; the other
-28 new leaves remain TODO. R13 is the active phase.
+27 new leaves remain TODO. R13 is the active phase.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6687,7 +6687,7 @@ Version” using the configured Java executable and CLI JAR.
 `./gradlew :cli:fatJar --no-daemon`, both `java -jar ... version` and no-argument help,
 and the VS Code extension `npm test` pass on Linux.
 
-## R13 [DOING] [4/12] Imported compile-time functions
+## R13 [DOING] [5/12] Imported compile-time functions
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion.
@@ -6807,18 +6807,18 @@ local generator reports exactly one CPX001. Ordinary function calls remain
 runtime calls. Focused tests and the complete language-core, comptime,
 semantic and compiler suites pass.
 
-### R13.2 [TODO] [0/4] Workspace expansion, scope and identity
+### R13.2 [DOING] [1/4] Workspace expansion, scope and identity
 
 **Language:** LS §10 CPX expansion model; §12 Hygiene; §17–18 Structural phase and type-universe barrier; §21.6 Importing compile-time functions.
 **Technical:** TS §17–24 CPX evaluation and stabilization; §27.1 Compile-time import binding and workspace expansion.
 **Depends:** R13.1.
 
-#### R13.2.1 [TODO] Expand an imported definition into the client type universe
+#### R13.2.1 [DONE] Expand an imported definition into the client type universe
 
 **Language:** LS §21.6 Importing compile-time functions; §18 Type-universe barrier.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion; §24 Type-universe stabilization.
 **Depends:** R13.1.4.
-**Files:** compiler/.../Compiler.kt; comptime/.../CpxExpansion.kt expand and taskFor.
+**Files:** compiler/.../Compiler.kt, ModuleGraph.kt; comptime/.../CpxExpansion.kt expand and taskFor; compiler/src/test/kotlin/cplus/compiler/CompilerIntegrationTest.kt.
 
 **Deliverable:** Pass imported callable records and client type/reference resolvers into the existing expander. Insert generated declarations into the owning client before type stabilization and final analysis, preserving the export catalogue.
 
@@ -6828,7 +6828,16 @@ semantic and compiler suites pass.
 
 **Acceptance:** The exact two-file box example checks, expands, emits valid C and executes with exit 42. No SEM404, CPX001 or unknown-type error. Repeat through compileTextWorkspace and reversed request order; the generated struct belongs to main, not box.
 
-**Verify:** `./gradlew :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+**Verify:** Focused imported-box runtime regression, followed by `./gradlew :compiler:test :semantic:test :comptime:test --no-daemon`.
+
+**Evidence:** Linux, 2026-10-09 — the exact two-file box example expands
+`box(int)`, places `box_int_t` in `main`'s semantic module, compiles emitted C
+and exits 42. Reversed provider/client request order retains client ownership;
+`compileTextWorkspace` also succeeds. The import graph now retains raw-reference
+to-provider bindings, and workspace CPX expansion receives only public,
+unambiguous imported definitions under their selective/module aliases. No
+SEM404, CPX001 or unknown-type diagnostic occurs. The focused test and full
+compiler, semantic and comptime suites pass.
 
 #### R13.2.2 [TODO] Separate definition bindings from argument and insertion scopes
 
