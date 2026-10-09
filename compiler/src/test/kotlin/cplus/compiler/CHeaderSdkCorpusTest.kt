@@ -174,6 +174,7 @@ class CHeaderSdkCorpusTest {
     @Test
     fun compilesAndRunsImportFromDiscoveredCustomHeader() {
         val compiler = findExecutable("cc") ?: return
+        val target = TargetInfo(targetTriple = defaultHostTargetTriple())
         val includeRoot = Files.createTempDirectory("cplus-custom-header-build")
         val demo = Files.createDirectories(includeRoot.resolve("demo"))
         Files.writeString(
@@ -184,6 +185,7 @@ class CHeaderSdkCorpusTest {
         val result = CPlusCompiler().compileText(
             sourcePath,
             "import { coucou } from c.demo.coucou;\nint main() { return coucou() == 42 ? 0 : 1; }",
+            target = target,
             cCompiler = compiler,
             cIncludeDirectories = listOf(includeRoot)
         )
@@ -204,6 +206,7 @@ class CHeaderSdkCorpusTest {
         val missing = CPlusCompiler().compileText(
             sourcePath.resolveSibling("missing.cp"),
             "import { not_in_header } from c.demo.coucou;\nint main() { return 0; }",
+            target = target,
             cCompiler = compiler,
             cIncludeDirectories = listOf(includeRoot)
         )

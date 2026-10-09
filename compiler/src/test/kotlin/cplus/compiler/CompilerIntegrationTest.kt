@@ -201,7 +201,11 @@ class CompilerIntegrationTest {
             }
         """.trimIndent()
         val sourcePath = directory.resolve("main.cp")
-        val result = CPlusCompiler().compileText(sourcePath, sourceText)
+        val result = CPlusCompiler().compileText(
+            sourcePath,
+            sourceText,
+            target = TargetInfo(targetTriple = defaultHostTargetTriple())
+        )
 
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         val generated = result.generatedUnits.single()

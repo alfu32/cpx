@@ -68,10 +68,11 @@ class CHeaderDiscoveryTest {
         for (compiler in available) {
             val result = CHeaderDiscovery().discover("c.demo.api", environment(root, compiler))
             val output = assertNotNull(result.preprocessed)
+            val linuxHost = defaultHostTargetTriple().startsWith("linux-")
             assertTrue(result.isSuccessful, "$compiler: ${result.diagnostics.joinToString()}")
             assertTrue(output.text.contains("header_answer"), compiler)
-            assertTrue(output.text.contains("ACTIVE_PLATFORM"), compiler)
-            assertFalse(output.text.contains("INACTIVE_PLATFORM"), compiler)
+            assertEquals(linuxHost, output.text.contains("ACTIVE_PLATFORM"), compiler)
+            assertEquals(!linuxHost, output.text.contains("INACTIVE_PLATFORM"), compiler)
             assertTrue(output.includedFiles.contains(header.toAbsolutePath().normalize()), compiler)
             assertTrue(output.includedFiles.contains(nestedHeader.toAbsolutePath().normalize()), compiler)
             assertTrue(
