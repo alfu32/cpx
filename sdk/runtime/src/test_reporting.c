@@ -328,7 +328,12 @@ static int __cplus_test_write_record(__cplus_test_record* record) {
 }
 
 static void __cplus_test_record_begin(void) {
-    __cplus_test_record record = { { 0 }, 0, 0 };
+    /* Keep the bounded record buffer out of the stack frame.  On MinGW a
+     * 4096-byte local triggers a compiler stack-probe helper, but freestanding
+     * products intentionally do not link the host compiler runtime. */
+    static __cplus_test_record record;
+    record.used = 0;
+    record.failed = 0;
     __cplus_test_record_text(&record, "CPLUS-TEST\t1\tBEGIN\t");
     __cplus_test_record_identity(&record, __cplus_test_fixture_identity);
     __cplus_test_record_char(&record, '\n');
@@ -363,7 +368,9 @@ int __cplus_test_dispatch_match(const char* actual, const char* expected) {
 }
 
 static int __cplus_test_record_assertion(int passed) {
-    __cplus_test_record record = { { 0 }, 0, 0 };
+    static __cplus_test_record record;
+    record.used = 0;
+    record.failed = 0;
     __cplus_test_record_text(&record, "CPLUS-TEST\t1\tASSERT\t");
     __cplus_test_record_decimal(&record, ++__cplus_test_sequence);
     __cplus_test_record_char(&record, '\t');
@@ -431,7 +438,9 @@ void __cplus_test_report_equality(const char* description,
 }
 
 int __cplus_test_finish(void) {
-    __cplus_test_record record = { { 0 }, 0, 0 };
+    static __cplus_test_record record;
+    record.used = 0;
+    record.failed = 0;
     int close_result = 0;
     if (__cplus_test_result_handle < 0) return -1;
     __cplus_test_record_text(&record, "CPLUS-TEST\t1\tCOMPLETE\t");
