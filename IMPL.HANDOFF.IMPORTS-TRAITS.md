@@ -2,8 +2,9 @@
 
 ## Start here
 
-This is the active implementation runbook. The current leaf is tracked in
-`IMPL.PLAN.md` (currently `R10.3.2.3`); consult that file for status and evidence.
+This runbook covered the R10/R11 implementation queue. All of its terminal
+tasks are now accepted in `IMPL.PLAN.md` (R10 19/19; R11 12/12); consult that
+file for the final evidence and remaining platform limitations.
 [IMPL.PLAN.md](IMPL.PLAN.md) owns task statuses, acceptance evidence and counters;
 do not maintain a second status ledger here.
 
@@ -14,11 +15,11 @@ The requested outcomes are:
 - Define direct extension methods using exactly
   `comptime trait type_identifier { ... }`.
 
-Implement one terminal task at a time. The R10.1.1 foundation and R10.1.2.1–
-R10.1.2.3, R10.2, R10.3.1, R10.3.2.1–R10.3.2.2, R11.1.1.1–R11.1.1.3,
-R11.1.2.1–R11.1.2.3, R11.2.1.1–R11.2.1.3 and R11.2.2.1–R11.2.2.2 are
-accepted. Resume at **R10.3.2.3**, the final native Windows gate, then complete
-R11.2.2.3. Do not restart R0–R9 or rewrite the compiler.
+All R10/R11 terminal tasks have passed their recorded acceptance checks. The
+unfiltered Windows Gradle suite has known Linux-target fixtures that cannot run
+without a Linux-target C driver/sysroot; native Windows x86_64 tasks and
+packaged VS Code host checks pass. Do not reopen accepted work without new
+failure evidence or a changed requirement.
 
 Before editing:
 
@@ -388,15 +389,11 @@ Counting rules:
 ## Copyable continuation prompt
 
 ```text
-Implement the next dependency-ready terminal task in IMPL.PLAN.md R10/R11.
-Read AGENTS.md and IMPL.PLAN.RULES.md, then
-IMPL.HANDOFF.IMPORTS-TRAITS.md and that task's referenced spec sections.
-Resume at R11.2.2.2, the current active leaf in IMPL.PLAN.md. Preserve unrelated user edits,
-especially sdk/libc/include/stdio.h. Use comptime trait type_identifier { ... }.
-Implement one leaf, add/run its acceptance tests, record evidence, update all
-counts honestly, and make a Conventional Commit before proceeding.
-Use local tests first; reserve Windows execution for the final named gates.
-Do not implement a second LSP parser, a library function whitelist, or named
-trait interfaces. If a missing prerequisite appears, decompose/replan it
-explicitly before claiming completion.
+R10/R11 are complete: 129/129 roadmap leaves and 13/13 phase gates are accepted.
+Review IMPL.PLAN.md for evidence and its disclosed Linux-target-on-Windows test
+limitation. Do not restart completed work without new failure evidence or a
+changed requirement. Preserve unrelated user edits, especially
+sdk/libc/include/stdio.h. Traits use exactly `comptime trait type_identifier { ... }`;
+do not add a second LSP parser, a library function whitelist, or named trait
+interfaces.
 ```

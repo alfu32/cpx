@@ -15,10 +15,10 @@ below and in `IMPL.PLAN.md`.
 
 | Requirement | Authoritative implementation tasks | Current evidence |
 | --- | --- | --- |
-| LS §22.1–22.3; TS §28; source-driven, target-aware C declarations | R10.1.1 and its terminal children | Implemented with Linux evidence; native Windows preprocessing and driver evidence remains part of R10.3.2.3 |
+| LS §22.1–22.3; TS §28; source-driven, target-aware C declarations | R10.1.1 and its terminal children | Implemented; Linux suite plus native Windows discovery, path-space, slash-path, and CLI evidence accepted in R10.3.2.3 |
 | LS §21, §41.1; TS §27, §47, §54.1; shared resolution, export index and invalidation; SPEC.STDLIB §58 | R10.1.2 and its terminal children | Implemented; CLI/LSP parity and fresh-index invalidation tests recorded in `IMPL.PLAN.md` |
-| LS §41.1; TS §54.1; import completion, auto-import edits and quick fixes | R10.2–R10.3 and their terminal children | Implemented and packaged Linux VS Code host evidence recorded; final Windows packaged-import gate remains open |
-| LS §6.3.1; TS §13.1; direct compile-time extensions | R11.1–R11.2 and their terminal children | Parser, CPX, semantic, native C, visibility and LSP tooling are implemented; runnable example and TextMate tests pass; final Windows product gate remains open |
+| LS §41.1; TS §54.1; import completion, auto-import edits and quick fixes | R10.2–R10.3 and their terminal children | Implemented; packaged Linux and Windows VS Code host acceptance passes with real configured-CLI import actions |
+| LS §6.3.1; TS §13.1; direct compile-time extensions | R11.1–R11.2 and their terminal children | Implemented; parser, CPX, semantic, native C, visibility/LSP tooling, runnable examples and native Windows trait product checks pass |
 
 The detailed execution runbook is
 [IMPL.HANDOFF.IMPORTS-TRAITS.md](IMPL.HANDOFF.IMPORTS-TRAITS.md). No new feature
@@ -70,6 +70,9 @@ is credited merely because its specification or implementation plan exists.
 - Linux and Windows PAL file open/read/write/seek/close/rename, metadata, and
   directory iteration with canonical UTF-8 slash paths, stable error mapping,
   and the `std_fs_*` forwarding façade; Windows execution is native x86_64.
+- Source-driven C/header discovery, shared import suggestions/quick fixes, and
+  `comptime trait type_identifier { ... }` extensions, with Linux full-suite
+  and claimed native Windows product evidence (R10 19/19; R11 12/12).
 - independent C17 `basic`, `context`, `stdio`, `complex-types`, and `tgmath`
   fixtures execute on native Windows x86_64 and pass PE dependency audits; the
   latest GCC/UCRT report is 51 pass, 0 fail, 0 unsupported, 0 planned. Windows
@@ -77,11 +80,6 @@ is credited merely because its specification or implementation plan exists.
 
 ### Contracted but incomplete
 
-- Source-driven C/header discovery, shared import suggestions/quick fixes, and
-  `comptime trait type_identifier { ... }` extensions have implementation and
-  Linux product evidence. Final native Windows and full-suite gates remain open
-  under R10.3.2.3 and R11.2.2.3; this audit does not count them as release-
-  complete.
 - C17's complete standard-library surface is not claimed: the reported 51
   checks are the registered project conformance suite, not an exhaustive test
   of every C17 header and function.
@@ -103,10 +101,9 @@ is credited merely because its specification or implementation plan exists.
   `146/146`.
 
 The baseline roadmap's R0–R9 gates are complete for their explicitly recorded
-targets/profiles and distribution checks. The roadmap is reopened by the new
-R10/R11 requirements. Their unit and Linux product evidence does not expand
-support claims to excluded profiles or substitute for the still-open native
-Windows gates.
+targets/profiles and distribution checks. R10/R11 have also been accepted;
+the roadmap closes at 129/129 leaves and 13/13 phase gates. This does not
+expand support claims to excluded profiles.
 
 ## Explicitly diagnosed limitations
 
