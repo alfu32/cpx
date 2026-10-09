@@ -190,9 +190,14 @@ class CHeaderDiscoveryTest {
 
     private fun findExecutable(name: String): String? {
         val path = System.getenv("PATH").orEmpty().split(java.io.File.pathSeparator)
+        val executableNames = if (System.getProperty("os.name").contains("windows", ignoreCase = true)) {
+            listOf(name, "$name.exe")
+        } else {
+            listOf(name)
+        }
         return path.asSequence()
-            .map { Path.of(it).resolve(name) }
-            .firstOrNull(Files::isExecutable)
+            .flatMap { directory -> executableNames.asSequence().map { Path.of(directory).resolve(it) } }
+            .firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }
             ?.toString()
     }
 }

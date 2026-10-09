@@ -211,10 +211,16 @@ class CHeaderSdkCorpusTest {
         assertTrue(missing.diagnostics.any { it.code == "SEM408" })
     }
 
-    private fun findExecutable(name: String): String? = System.getenv("PATH").orEmpty()
-        .split(java.io.File.pathSeparator)
-        .asSequence()
-        .map { java.nio.file.Path.of(it).resolve(name) }
-        .firstOrNull(java.nio.file.Files::isExecutable)
-        ?.toString()
+    private fun findExecutable(name: String): String? {
+        val path = System.getenv("PATH").orEmpty().split(java.io.File.pathSeparator)
+        val executableNames = if (System.getProperty("os.name").contains("windows", ignoreCase = true)) {
+            listOf(name, "$name.exe")
+        } else {
+            listOf(name)
+        }
+        return path.asSequence()
+            .flatMap { directory -> executableNames.asSequence().map { java.nio.file.Path.of(directory).resolve(it) } }
+            .firstOrNull { java.nio.file.Files.isRegularFile(it) && java.nio.file.Files.isExecutable(it) }
+            ?.toString()
+    }
 }
