@@ -306,14 +306,13 @@ internal class Cli {
         }
         try {
             val builds = buildTestProducts(parsed, temporaryDirectory)
-            var totalPassed = 0
-            var totalFailed = 0
-            var totalErrors = 0
+            val renderer = TestReportRenderer()
+            val summaries = mutableListOf<TestFileSummary>()
             var cancelled = false
             builds.forEachIndexed { fileIndex, build ->
                 if (cancelled) return@forEachIndexed
                 val fixtureCount = if (build.exitCode == 0) build.fixtures.size else 0
-                println("::: [${fileIndex + 1}/${builds.size}] ${build.root}")
+                println(renderer.fileHeader(fileIndex + 1, builds.size, build.root))
                 var filePassed = 0
                 var fileFailed = 0
                 var fileErrors = 0
@@ -321,7 +320,7 @@ internal class Cli {
                     System.err.println("test product build failed for ${build.root} (exit ${build.exitCode})")
                     fileErrors++
                 } else if (fixtureCount == 0) {
-                    println("... NO TESTS")
+                    println(renderer.noFixtures())
                 } else {
                     build.fixtures.forEachIndexed { fixtureIndex, fixture ->
                         if (cancelled) return@forEachIndexed
@@ -329,7 +328,7 @@ internal class Cli {
                             cancelled = true
                             return@forEachIndexed
                         }
-                        println("... [${fixtureIndex + 1}/$fixtureCount] ${fixture.description}")
+                        println(renderer.fixtureHeader(fixtureIndex + 1, fixtureCount, fixture.description))
                         val result = TestProcessRunner().run(
                             build.executable,
                             fixture.identity,
@@ -339,23 +338,24 @@ internal class Cli {
                         val protocol = result.protocol
                         filePassed += protocol?.passed ?: 0
                         fileFailed += protocol?.failed ?: 0
+                        if (result.stdoutNeedsSeparator) println()
                         if (result.error != null) {
                             fileErrors++
+                            if (result.stderrNeedsSeparator) System.err.println()
                             System.err.println("fixture execution error: ${result.error}")
                             if (result.error == "fixture execution was interrupted") cancelled = true
                         }
-                        println("... asserts passed ${protocol?.passed ?: 0} / failed ${protocol?.failed ?: 0} / total ${protocol?.total ?: 0}; errors ${if (result.error == null) 0 else 1}")
+                        if (protocol?.total == 0 && result.error == null) println(renderer.emptyFixture())
+                        println(renderer.fixtureFooter(result))
                     }
                 }
-                totalPassed += filePassed
-                totalFailed += fileFailed
-                totalErrors += fileErrors
-                println("::: asserts passed $filePassed / failed $fileFailed / total ${filePassed + fileFailed}; errors $fileErrors")
+                val summary = TestFileSummary(build.root, filePassed, fileFailed, fileErrors, fixtureCount)
+                summaries += summary
+                println(renderer.fileFooter(summary))
             }
-            println("::: final report")
-            println("::: total passed $totalPassed / failed $totalFailed / total ${totalPassed + totalFailed}; errors $totalErrors")
+            renderer.finalReport(summaries).forEach(::println)
             if (cancelled) return 130
-            return if (totalFailed == 0 && totalErrors == 0) 0 else 1
+            return if (summaries.all { it.failed == 0 && it.errors == 0 }) 0 else 1
         } finally {
             deleteTemporaryProduct(temporaryDirectory)
         }
@@ -1087,6 +1087,12 @@ internal class Cli {
         stream.println("  libc        list delivered libc headers or run C17 conformance [test]")
         stream.println("  audit       inspect binary runtime dependencies [--target <triple>]")
         stream.println("  lsp         serve compiler diagnostics over stdio JSON-RPC")
+        stream.println()
+        stream.println("test usage: cplus test <file.cp> [other.cp ...] [--timeout <seconds>] [shared build options]")
+        stream.println("  assertions: assert(expr), assert(description, expr), assertEquals(expected, actual),")
+        stream.println("              assertEquals(description, expected, actual)")
+        stream.println("  roots are explicit files (shell globs may expand); default timeout is 30 seconds per fixture")
+        stream.println("  exit status: 0 all pass, 1 assertion/build/execution failure, 2 invalid options or setup error")
         stream.println()
         stream.println("JVM options (place before -jar):")
         stream.println("  -Dcplus.sdk.manifest=<path>  select or override the SDK manifest")

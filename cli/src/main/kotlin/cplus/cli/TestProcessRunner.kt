@@ -6,12 +6,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 internal data class FixtureProcessResult(
     val exitCode: Int?,
     val protocol: TestProtocolResult?,
     val timedOut: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val stdoutNeedsSeparator: Boolean = false,
+    val stderrNeedsSeparator: Boolean = false
 ) {
     val isSuccessful: Boolean
         get() = !timedOut && error == null && exitCode == 0 && protocol?.completed == true && protocol.error == null
@@ -42,6 +46,10 @@ internal class TestProcessRunner(
         var outDrain: Thread? = null
         var errDrain: Thread? = null
         val outputError = AtomicReference<String?>(null)
+        val stdoutSawBytes = AtomicBoolean(false)
+        val stderrSawBytes = AtomicBoolean(false)
+        val stdoutLastByte = AtomicInteger(-1)
+        val stderrLastByte = AtomicInteger(-1)
         try {
             process = try {
                 ProcessBuilder(executable.toAbsolutePath().normalize().toString(), fixtureIdentity, resultPath.toString())
@@ -52,8 +60,8 @@ internal class TestProcessRunner(
                 null
             }
             if (process != null) {
-                outDrain = drain(process.inputStream, stdout, "cplus-test-stdout", outputError)
-                errDrain = drain(process.errorStream, stderr, "cplus-test-stderr", outputError)
+                outDrain = drain(process.inputStream, stdout, "cplus-test-stdout", outputError, stdoutSawBytes, stdoutLastByte)
+                errDrain = drain(process.errorStream, stderr, "cplus-test-stderr", outputError, stderrSawBytes, stderrLastByte)
                 try {
                     if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                         timedOut = true
@@ -82,7 +90,14 @@ internal class TestProcessRunner(
                 protocol.error != null -> protocol.error
                 else -> null
             }
-            return FixtureProcessResult(exitCode, protocol, timedOut, error)
+            return FixtureProcessResult(
+                exitCode,
+                protocol,
+                timedOut,
+                error,
+                stdoutSawBytes.get() && stdoutLastByte.get() != '\n'.code,
+                stderrSawBytes.get() && stderrLastByte.get() != '\n'.code
+            )
         } finally {
             if (process?.isAlive == true) terminateTree(process)
             runCatching { Files.deleteIfExists(resultPath) }
@@ -94,7 +109,9 @@ internal class TestProcessRunner(
         input: java.io.InputStream,
         output: OutputStream,
         name: String,
-        outputError: AtomicReference<String?>
+        outputError: AtomicReference<String?>,
+        sawBytes: AtomicBoolean,
+        lastByte: AtomicInteger
     ): Thread =
         Thread({
             var forwarding = true
@@ -104,6 +121,8 @@ internal class TestProcessRunner(
                     while (true) {
                         val count = stream.read(buffer)
                         if (count < 0) break
+                        sawBytes.set(true)
+                        lastByte.set(buffer[count - 1].toInt() and 0xff)
                         if (forwarding) {
                             try {
                                 synchronized(output) {

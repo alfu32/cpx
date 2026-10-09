@@ -33,6 +33,8 @@ class TestProcessRunnerTest {
             assertTrue(noisy.isSuccessful, noisy.error.orEmpty())
             assertTrue(stdout.size() > 128 * 1024)
             assertTrue(stderr.size() > 128 * 1024)
+            assertTrue(noisy.stdoutNeedsSeparator)
+            assertTrue(noisy.stderrNeedsSeparator)
             assertEquals(emptyList(), Files.list(directory).use { it.filter { path -> path.fileName.toString().startsWith("cplus-test-result-") }.toList() })
         } finally {
             removeTree(directory)
@@ -52,10 +54,12 @@ class TestProcessRunnerTest {
 
             assertFalse(missingCompletion.isSuccessful)
             assertTrue(assertNotNull(missingCompletion.error).contains("COMPLETE"))
+            assertEquals(1, missingCompletion.protocol?.passed, "validated assertion before missing completion must be retained")
             assertFalse(nonzero.isSuccessful)
             assertTrue(assertNotNull(nonzero.error).contains("status 7"))
             assertFalse(crash.isSuccessful)
             assertTrue(assertNotNull(crash.error).contains("status"))
+            assertEquals(1, crash.protocol?.passed, "validated assertion before crash must be retained")
             assertFalse(noReport.isSuccessful)
             assertTrue(assertNotNull(noReport.error).contains("did not produce"))
         } finally {

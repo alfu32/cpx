@@ -39,6 +39,9 @@ static unsigned long long __cplus_test_failed;
 static int __cplus_test_io_failed;
 static const char* __cplus_test_fixture_identity;
 
+extern void __cplus_stdio_note_stdout(const char* buffer, unsigned long long length);
+extern int __cplus_stdio_ensure_stdout_line(void);
+
 static void __cplus_test_flush(__cplus_test_output* output) {
     unsigned long long written = 0;
     while (!output->failed && written < output->used) {
@@ -49,6 +52,7 @@ static void __cplus_test_flush(__cplus_test_output* output) {
         }
         written += (unsigned long long)result;
     }
+    if (output->used > 0) __cplus_stdio_note_stdout(output->buffer, output->used);
     output->used = 0;
 }
 
@@ -385,16 +389,15 @@ void __cplus_test_report_truth(const char* description, const char* expression,
                                       int is_null_pointer, int passed) {
     __cplus_test_output output = { { 0 }, 0, 0 };
     int format_result;
+    (void)type_name;
+    if (__cplus_stdio_ensure_stdout_line() != 0) __cplus_test_io_failed = 1;
     __cplus_test_text(&output, "---- ");
     __cplus_test_escaped(&output, description);
-    __cplus_test_text(&output, " ----------------\n---- ");
+    __cplus_test_text(&output, " ----------------\n---- expression: ");
     __cplus_test_escaped(&output, expression);
-    __cplus_test_text(&output, "\n---- evaluated: ");
-    __cplus_test_text(&output, type_name);
-    __cplus_test_char(&output, ' ');
+    __cplus_test_text(&output, "\n---- value: ");
     format_result = __cplus_test_value(&output, value, value_size, value_kind, is_null_pointer);
-    __cplus_test_text(&output, "\nresult: ");
-    __cplus_test_text(&output, passed ? "SUCCESS\n" : "FAIL\n");
+    __cplus_test_text(&output, passed ? "\n---- SUCCESS\n" : "\n---- FAIL\n");
     __cplus_test_flush(&output);
     if (format_result != 0 || output.failed) __cplus_test_io_failed = 1;
     __cplus_test_record_assertion(passed);
@@ -417,22 +420,20 @@ void __cplus_test_report_equality(const char* description,
     __cplus_test_output output = { { 0 }, 0, 0 };
     int expected_result;
     int actual_result;
+    (void)expected_type;
+    (void)actual_type;
+    if (__cplus_stdio_ensure_stdout_line() != 0) __cplus_test_io_failed = 1;
     __cplus_test_text(&output, "    - ");
     __cplus_test_escaped(&output, description);
     __cplus_test_text(&output, " ----------------\n    - expected expression: ");
     __cplus_test_escaped(&output, expected_expression);
     __cplus_test_text(&output, "\n    - expected value: ");
-    __cplus_test_text(&output, expected_type);
-    __cplus_test_char(&output, ' ');
     expected_result = __cplus_test_value(&output, expected_value, expected_size, expected_kind, expected_is_null_pointer);
     __cplus_test_text(&output, "\n    - evaluated expression: ");
     __cplus_test_escaped(&output, actual_expression);
     __cplus_test_text(&output, "\n    - evaluated value: ");
-    __cplus_test_text(&output, actual_type);
-    __cplus_test_char(&output, ' ');
     actual_result = __cplus_test_value(&output, actual_value, actual_size, actual_kind, actual_is_null_pointer);
-    __cplus_test_text(&output, "\nresult: ");
-    __cplus_test_text(&output, passed ? "SUCCESS\n" : "FAIL\n");
+    __cplus_test_text(&output, passed ? "\n    - SUCCESS\n" : "\n    - FAIL\n");
     __cplus_test_flush(&output);
     if (expected_result != 0 || actual_result != 0 || output.failed) __cplus_test_io_failed = 1;
     __cplus_test_record_assertion(passed);

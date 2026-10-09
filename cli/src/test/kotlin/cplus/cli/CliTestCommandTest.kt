@@ -156,7 +156,30 @@ class CliTestCommandTest {
         assertTrue(capturedOut.toString().contains("cli fixture"), capturedOut.toString())
         assertTrue(capturedOut.toString().contains("expected failure"), capturedOut.toString())
         assertTrue(capturedOut.toString().contains("asserts passed 1 / failed 1 / total 2"), capturedOut.toString())
+        assertTrue(capturedOut.toString().contains("::: ${source}: passed 1 / failed 1 / total 2; errors 0"), capturedOut.toString())
+        assertTrue(capturedOut.toString().contains("::: total: passed 1 / failed 1 / total 2; errors 0"), capturedOut.toString())
         assertTrue(capturedErr.toString().isEmpty(), capturedErr.toString())
+    }
+
+    @Test
+    fun reportSeparatesUnterminatedUserOutputAndMarksEmptyFixture() {
+        val directory = Files.createTempDirectory("cplus-test-output-boundary")
+        val source = Files.writeString(
+            directory.resolve("output.cp"),
+            "import { printf } from c.stdio; int main() { return 0; } test empty fixture { printf(\"unterminated\"); }"
+        )
+        val capturedOut = ByteArrayOutputStream()
+        val originalOut = System.out
+        val status = try {
+            System.setOut(PrintStream(capturedOut))
+            Cli().run(listOf("test", source.toString()))
+        } finally {
+            System.setOut(originalOut)
+        }
+
+        assertEquals(0, status, capturedOut.toString())
+        assertTrue(capturedOut.toString().contains("unterminated\n... EMPTY"), capturedOut.toString())
+        assertTrue(capturedOut.toString().contains("passed 0 / failed 0 / total 0; errors 0"), capturedOut.toString())
     }
 
     @Test

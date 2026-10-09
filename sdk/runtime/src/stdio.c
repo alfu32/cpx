@@ -32,6 +32,22 @@ FILE* stdin = &__cplus_stdin_marker;
 FILE* stdout = &__cplus_stdout_marker;
 FILE* stderr = &__cplus_stderr_marker;
 
+static int __cplus_stdout_has_output;
+static char __cplus_stdout_last_character;
+
+void __cplus_stdio_note_stdout(const char* buffer, unsigned long long length) {
+    if (!buffer || length == 0) return;
+    __cplus_stdout_has_output = 1;
+    __cplus_stdout_last_character = buffer[length - 1];
+}
+
+int __cplus_stdio_ensure_stdout_line(void) {
+    if (!__cplus_stdout_has_output || __cplus_stdout_last_character == '\n') return 0;
+    if (platform_write_stdout("\n", 1) != 1) return -1;
+    __cplus_stdio_note_stdout("\n", 1);
+    return 0;
+}
+
 static long long __cplus_write(FILE* stream, const char* buffer, unsigned long long length) {
     unsigned long long written_total = 0;
     long long (*write_channel)(const char*, unsigned long long);
@@ -50,6 +66,7 @@ static long long __cplus_write(FILE* stream, const char* buffer, unsigned long l
         }
         written_total += (unsigned long long)result;
     }
+    if (stream == stdout) __cplus_stdio_note_stdout(buffer, length);
     return (long long)written_total;
 }
 

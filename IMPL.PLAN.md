@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    152/161 accepted with recorded evidence; 9 TODO
+Roadmap leaf tasks:    154/161 accepted with recorded evidence; 7 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.3.3.1 — render ordered file, fixture and assertion reports
+Current task:          DOING: R14.4.1.1 — support fixture diagnostics and navigation in the shared LSP
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 12/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 14/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       152/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       154/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 152/161 accepted; 9 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 154/161 accepted; 7 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (4/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
@@ -3814,13 +3814,13 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (12/20 leaves; next R14.3.3.1)
+[DOING] R14 — source test fixtures and CLI runner (14/20 leaves; next R14.4.1.1)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 152 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 154 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
 implementation is active; fifteen leaves remain open.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [12/20] Source test fixtures and CLI runner
+## R14 [DOING] [14/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7194,7 +7194,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :comptime:test`.
 
-### R14.3 [DOING] [4/6] CLI execution and reporting
+### R14.3 [DONE] [6/6] CLI execution and reporting
 
 **Language:** LS §53.3 Compilation and selection; §53.4 Execution outcome.
 **Technical:** TS §57.1 Source test command and report; §80.3 Child process and result protocol.
@@ -7272,13 +7272,13 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.TestProcessRunnerTest`.
 
-#### R14.3.3 [TODO] [0/2] Human reports and aggregate outcomes
+#### R14.3.3 [DONE] [2/2] Human reports and aggregate outcomes
 
 **Language:** LS §53.2 Assertion statements; §53.4 Execution outcome.
 **Technical:** TS §57.1 Source test command and report.
 **Depends:** R14.3.2.
 
-##### R14.3.3.1 [TODO] Render ordered file, fixture and assertion reports
+##### R14.3.3.1 [DONE] Render ordered file, fixture and assertion reports
 
 **Language:** LS §53.2 Assertion statements; §53.4 Execution outcome.
 **Technical:** TS §57.1 Source test command and report; §80.2 Typed lowering and runtime reporting.
@@ -7289,9 +7289,11 @@ non-string descriptions with source-ranged diagnostics.
 
 **Acceptance:** Golden output covers multiple files/fixtures, pass/fail truth and equality, expected/actual values, blank and unterminated user output, escaped multiline labels, EMPTY and NO TESTS. Ordering is deterministic on each stream without claiming cross-stream ordering.
 
+**Evidence:** Added `TestReportRenderer` and a native CLI golden that runs two explicit roots with two fixtures, all four assertion forms, expected/actual values, escaped multiline labels, blank and unterminated user output, an EMPTY fixture and a NO TESTS file. Runtime output labels match TS §57.1. SDK stdio tracks its last stdout byte and inserts a line separator before the next assertion report when needed; the CLI adds one after an unterminated final child output. Per-file and final aggregate rows have deterministic order. `./gradlew :cli:test --tests cplus.cli.CliTestReportTest --no-daemon` passes; combined report/protocol/process and compiler runtime reporting tests plus freestanding C17 `-Wall -Wextra -Werror` syntax checks pass on Linux.
+
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestReportTest`.
 
-##### R14.3.3.2 [TODO] Aggregate actual assertion results and enforce exit status
+##### R14.3.3.2 [DONE] Aggregate actual assertion results and enforce exit status
 
 **Language:** LS §53.4 Execution outcome.
 **Technical:** TS §57.1 Source test command and report.
@@ -7301,6 +7303,8 @@ non-string descriptions with source-ranged diagnostics.
 **Deliverable:** Compute fixture/file/final pass-fail-total counts from validated execution events; count build/execution errors separately. Include every root in final output, with interrupted/incomplete runs explicit. Apply statuses 0/1/2 as specified.
 
 **Acceptance:** Mixed passing/failing/empty/uncompiled/crashed roots yield exact totals with passed+failed=total at every level. A crash after a passing assertion preserves that pass but exits 1. A completed fixture with a false assertion has zero execution errors: its child exits 0 and the test command exits 1. No executed assertions adds zero passes; invalid CLI/setup exits 2. All clean roots return 0.
+
+**Evidence:** File/final summaries consume only validated assertion events, retain valid assertion prefixes from crash/missing-completion cases, and count build/fixture errors separately. The CLI matrix verifies a failed assertion produces 1/1 assertions with errors=0 and exit 1; a bad root followed by a passing root keeps both in totals, reports 0/0 plus one build error for the bad root, counts the later pass and exits 1; all-clean roots and empty/no-test cases return 0; invalid arguments and non-native target setup return 2. Process protocol tests assert a pass preceding crash is retained. `./gradlew :cli:test --tests cplus.cli.CliTestReportTest --tests cplus.cli.TestProcessRunnerTest --tests cplus.cli.CliTestCommandTest --no-daemon` passes on Linux.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestReportTest`.
 
