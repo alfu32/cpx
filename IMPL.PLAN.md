@@ -11,7 +11,7 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    138/161 accepted with recorded evidence; 23 TODO
+Roadmap leaf tasks:    139/161 accepted with recorded evidence; 22 TODO
 Phase gates:           13/15 complete; 1 active; 1 queued
 Current task:          DOING: R13.3.1 — invalidate client expansions when providers or bindings change
 Current milestone:     imported comptime functions and source test fixtures (planned)
@@ -40,17 +40,17 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
-R13 [DOING] 9/12 imported comptime bindings, expansion and product conformance
+R13 [DOING] 10/12 imported comptime bindings, expansion and product conformance
 R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       138/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       139/161 implementation tasks accepted; 13/15 phase gates complete,
             1 active, 1 queued
 ```
 
 The current Luna 6 Medium execution runbook is
 [IMPL.HANDOFF.COMPTIME-TESTS.md](IMPL.HANDOFF.COMPTIME-TESTS.md).
 R13 adds 12 terminal tasks and R14 adds 20: 129 + 12 + 20 = 161.
-Nine of the 32 new leaves are accepted with implementation evidence; 23 remain
+Ten of the 32 new leaves are accepted with implementation evidence; 22 remain
 TODO. The overall roadmap is DOING, with R13 active, R14 queued and R0–R12 retained as accepted historical
 scope. Newly specified CPX import conformance is explicitly outstanding even
 though the earlier R2/R10 gates passed their then-recorded tests.
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 138/161 accepted; 23 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 139/161 accepted; 22 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
 Active phase gates: 1 (R13); queued phase gates: 1 (R14)
@@ -3813,7 +3813,7 @@ Active phase gates: 1 (R13); queued phase gates: 1 (R14)
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
-[DOING] R13 — imported comptime functions (9/12 leaves; next R13.3.2)
+[DOING] R13 — imported comptime functions (10/12 leaves; next R13.4.1)
 [TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
 ```
 
@@ -6687,7 +6687,7 @@ Version” using the configured Java executable and CLI JAR.
 `./gradlew :cli:fatJar --no-daemon`, both `java -jar ... version` and no-argument help,
 and the VS Code extension `npm test` pass on Linux.
 
-## R13 [DOING] [9/12] Imported compile-time functions
+## R13 [DOING] [10/12] Imported compile-time functions
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion.
@@ -6922,7 +6922,7 @@ isolation, alias reuse, private-helper invalidation, independent client origins,
 cache-hit call-site origins, and ordinary generated-name collision diagnostics.
 Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
-### R13.3 [DOING] [1/2] Incremental and editor integration
+### R13.3 [DONE] [2/2] Incremental and editor integration
 
 **Language:** LS §21.6 Importing compile-time functions; §41.1 Import assistance.
 **Technical:** TS §47 Incremental compilation model; §48 Compile-time dependency graph; §54.1 Discoverable imports.
@@ -6943,18 +6943,20 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `./gradlew :compiler:test :comptime:test :semantic:test :cli:test --no-daemon` passes on Linux. Windows remains part of the final R13/R14 platform gate.
 
-#### R13.3.2 [TODO] Expose imported compile-time declarations through shared tooling
+#### R13.3.2 [DONE] Expose imported compile-time declarations through shared tooling
 
 **Language:** LS §21.6 Importing compile-time functions; §41 Language-server model; §41.1 Import assistance.
 **Technical:** TS §30 Reference index; §54.1 Discoverable imports; §55 Hover.
 **Depends:** R13.3.1.
-**Files:** compiler/.../ImportIndex.kt; semantic reference collection; cli/.../LspLanguageService.kt, LspServer.kt.
+**Files:** cli/.../LspLanguageService.kt, LspServer.kt; cli/src/test/kotlin/cplus/cli/LspComptimeImportTest.kt.
 
 **Deliverable:** Offer public comptime signatures, completion and import fixes; resolve invocation definition/hover/references using retained bindings. Expose generated client types and origin navigation from the same compilation result.
 
 **Acceptance:** LSP tests apply an import edit then expand box without stale diagnostics; qualified/aliased navigation reaches the provider. Generated item.value completes correctly; private generators are not suggested. Provider edits refresh diagnostics and references without executing runtime code.
 
-**Verify:** `./gradlew :cli:test --tests cplus.cli.LspComptimeImportTest`.
+**Evidence:** The import index exposes public comptime signatures. LSP completion and quick fixes include `COMPTIME_FUNCTION`; a `CPX001` at an unresolved generator now offers an import edit, which the test applies before recompiling `box_int_t` and completing `item.value`. Private generators are not suggested. Aliased invocations resolve hover, definition and references to their provider. Provider overlay edits schedule diagnostics for dependent open documents; tests verify refreshed `SEM406` diagnostics and stale references disappear. These editor paths compile only and do not execute user runtime code.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.LspComptimeImportTest --no-daemon` and `./gradlew :compiler:test :comptime:test :semantic:test :cli:test --no-daemon` pass on Linux. Windows remains part of the final R13/R14 platform gate.
 
 ### R13.4 [TODO] [0/2] Imported comptime release evidence
 

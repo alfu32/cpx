@@ -115,7 +115,7 @@ internal class LspServer(
             }
             if (method == "textDocument/didOpen" || method == "textDocument/didChange") {
                 val uri = (params["textDocument"] as? Map<*, *>)?.get("uri") as? String
-                if (uri != null) scheduleDiagnostics(uri, outputStream)
+                if (uri != null) scheduleDiagnosticsForChangedDocument(uri, outputStream)
             }
             outputStream.flush()
             if (method == "exit" || (shutdownRequested && method != "shutdown")) break@loop
@@ -184,6 +184,17 @@ internal class LspServer(
                 }
             }
         }
+    }
+
+    private fun scheduleDiagnosticsForChangedDocument(uri: String, output: OutputStream) {
+        val changed = workspace.get(uri) ?: return
+        val changedPath = changed.path.toAbsolutePath().normalize()
+        workspace.snapshot().filter { document ->
+            document.path.toAbsolutePath().normalize() == changedPath ||
+                connectedOpenDocuments(document).any { dependency ->
+                    dependency.path.toAbsolutePath().normalize() == changedPath
+                }
+        }.forEach { affected -> scheduleDiagnostics(affected.uri, output) }
     }
 
     private fun didOpen(params: Map<*, *>) {
@@ -480,7 +491,13 @@ internal class LspServer(
     private fun hover(params: Map<*, *>): Map<String, Any?>? {
         val request = requestDocument(params) ?: return null
         val result = compileWorkspace(request.document)
-        val hover = LspLanguageService.hover(result, request.document.text, request.position, request.document.path) ?: return null
+        val hover = LspLanguageService.hover(
+            result,
+            request.document.text,
+            request.position,
+            request.document.path,
+            discoverImports(request.document)
+        ) ?: return null
         return linkedMapOf(
             "contents" to linkedMapOf(
                 "kind" to "markdown",
@@ -492,13 +509,15 @@ internal class LspServer(
 
     private fun definition(params: Map<*, *>): Map<String, Any?>? {
         val request = requestDocument(params) ?: return null
+        val result = compileWorkspace(request.document)
         val navigation = LspLanguageService.navigation(
-            compileWorkspace(request.document),
+            result,
             request.document.text,
             request.position,
             sourcePath = request.document.path,
             sourcePathFor = compiler::sourcePathFor,
-            sourceTextFor = ::sourceTextFor
+            sourceTextFor = ::sourceTextFor,
+            importIndex = discoverImports(request.document)
         ) ?: return null
         navigation.externalDefinition?.let { external ->
             val path = external.path.toAbsolutePath().normalize()
@@ -525,9 +544,14 @@ internal class LspServer(
             includeDeclaration,
             request.document.path,
             compiler::sourcePathFor,
-            ::sourceTextFor
+            ::sourceTextFor,
+            discoverImports(request.document)
         ) ?: return emptyList()
-        return navigation.references.map { range -> location(range, request.document) }
+        val locations = navigation.references.map { range -> location(range, request.document) }.toMutableList()
+        if (includeDeclaration) {
+            navigation.externalDefinition?.let(::externalLocation)?.let(locations::add)
+        }
+        return locations
     }
 
     private fun documentSymbols(params: Map<*, *>): List<Map<String, Any?>> {
@@ -619,6 +643,18 @@ internal class LspServer(
         val uri = open?.uri ?: path?.toUri()?.toString() ?: fallback.uri
         val text = open?.text ?: path?.let { runCatching { Files.readString(it) }.getOrNull() } ?: fallback.text
         return linkedMapOf("uri" to uri, "range" to lspRange(range, text))
+    }
+
+    private fun externalLocation(definition: ExternalDefinition): Map<String, Any?>? {
+        val path = definition.path.toAbsolutePath().normalize()
+        val text = runCatching { Files.readString(path) }.getOrNull() ?: return null
+        val line = text.lineSequence().drop(definition.line - 1).firstOrNull() ?: return null
+        val column = line.indexOf(definition.name).takeIf { it >= 0 } ?: return null
+        val offset = LineIndex.from(text).offsetAt(cplus.core.SourcePosition(definition.line, column + 1))
+        return linkedMapOf(
+            "uri" to path.toUri().toString(),
+            "range" to lspRange(SourceRange(cplus.core.SourceFileId(0), offset, offset + definition.name.length), text)
+        )
     }
 
     private fun requestedDocument(params: Map<*, *>): WorkspaceDocument? {

@@ -14,6 +14,7 @@ import cplus.core.TokenKind
 import cplus.core.Token
 import cplus.core.AstIdentifier
 import cplus.core.AstMemberAccess
+import java.nio.file.Files
 import cplus.semantic.AliasType
 import cplus.semantic.ArrayType
 import cplus.semantic.CType
@@ -97,12 +98,12 @@ internal object LspLanguageService {
                 candidate.kind == TokenKind.IDENTIFIER && candidate.lexeme == unresolved &&
                     candidate.range.startOffset >= range.startOffset && candidate.range.endOffset <= range.endOffset
             } ?: return@forEach
-            val callable = diagnostic.code == "SEM301" && model.nodeIds.values
+            val callable = diagnostic.code == "CPX001" || diagnostic.code == "SEM301" && model.nodeIds.values
                 .filterIsInstance<cplus.core.AstCall>()
                 .any { call -> call.callee is AstIdentifier && call.callee.origin.primaryRange == token.range }
             val compatibleKinds = when {
                 diagnostic.code in TYPE_DIAGNOSTICS -> TYPE_EXPORTS
-                diagnostic.code == "SEM301" && callable -> CALLABLE_EXPORTS
+                diagnostic.code in setOf("SEM301", "CPX001") && callable -> CALLABLE_EXPORTS
                 diagnostic.code == "SEM301" -> VALUE_EXPORTS
                 else -> return@forEach
             }
@@ -254,13 +255,22 @@ internal object LspLanguageService {
         return names
     }
 
-    fun hover(result: CompileResult, text: String, position: LspPosition, sourcePath: Path? = null): HoverInfo? {
+    fun hover(
+        result: CompileResult,
+        text: String,
+        position: LspPosition,
+        sourcePath: Path? = null,
+        importIndex: ImportIndexResult? = null
+    ): HoverInfo? {
         val model = result.semanticModel ?: return null
         val artifact = artifactFor(result, sourcePath) ?: return null
         val offset = offsetAt(text, position) ?: return null
         val token = artifact.lexed.tokens.firstOrNull {
             it.range.startOffset <= offset && offset < it.range.endOffset
         } ?: return null
+        importedComptimeExportAt(result, artifact, token, importIndex)?.let { export ->
+            return HoverInfo("```cplus\n${export.signature}\n```", token.range)
+        }
         val symbol = symbolAt(model, token) ?: return null
         val kind = symbol.kind.name.lowercase().replace('_', ' ')
         return HoverInfo(
@@ -276,7 +286,8 @@ internal object LspLanguageService {
         includeDeclaration: Boolean = true,
         sourcePath: Path? = null,
         sourcePathFor: (SourceFileId) -> Path? = { null },
-        sourceTextFor: (SourceFileId) -> String? = { null }
+        sourceTextFor: (SourceFileId) -> String? = { null },
+        importIndex: ImportIndexResult? = null
     ): NavigationInfo? {
         val model = result.semanticModel ?: return null
         val artifact = artifactFor(result, sourcePath) ?: return null
@@ -284,6 +295,23 @@ internal object LspLanguageService {
         val token = artifact.lexed.tokens.firstOrNull {
             it.range.startOffset <= offset && offset < it.range.endOffset
         } ?: return null
+        importedComptimeExportAt(result, artifact, token, importIndex)?.let { export ->
+            val providerPath = runCatching { Path.of(java.net.URI.create(export.sourceUri)).toAbsolutePath().normalize() }
+                .getOrNull()
+            val exportedRange = export.sourceRange
+            if (providerPath != null && exportedRange != null) {
+                val providerText = runCatching { Files.readString(providerPath) }.getOrNull()
+                if (providerText != null) {
+                    val offset = exportedRange.startOffset.coerceIn(0, providerText.length)
+                    val line = providerText.take(offset).count { it == '\n' } + 1
+                    return NavigationInfo(
+                        definition = null,
+                        references = listOf(token.range),
+                        externalDefinition = ExternalDefinition(providerPath, line, export.name)
+                    )
+                }
+            }
+        }
         val symbol = symbolAt(model, token) ?: return null
         val declaration = model.symbols.firstOrNull { it.id == symbol.id }
         val externalDefinition = declaration?.let { resolved ->
@@ -301,6 +329,45 @@ internal object LspLanguageService {
             .distinct()
             .sortedWith(compareBy<SourceRange>({ it.file.value }, { it.startOffset }, { it.endOffset }))
         return NavigationInfo(definition, references, externalDefinition)
+    }
+
+    private fun importedComptimeExportAt(
+        result: CompileResult,
+        artifact: cplus.compiler.CompilationArtifacts,
+        token: Token,
+        index: ImportIndexResult?
+    ): ImportExport? {
+        val graph = result.moduleGraph ?: return null
+        val indexResult = index ?: return null
+        val importerId = graph.moduleIdForPath(artifact.source.path) ?: return null
+        val invocation = artifact.parsed.syntax.declarations
+            .filterIsInstance<cplus.core.SyntaxCpxInvocation>()
+            .firstOrNull { declaration ->
+                declaration.range.file == token.range.file &&
+                    declaration.range.startOffset <= token.range.startOffset &&
+                    token.range.endOffset <= declaration.range.endOffset
+            } ?: return null
+        val imports = artifact.parsed.syntax.declarations.filterIsInstance<cplus.core.SyntaxImport>()
+        for (import in imports) {
+            val providerId = graph.importBindings[importerId]?.get(import.module) ?: continue
+            val providerPath = graph.nodes[providerId]?.path?.toAbsolutePath()?.normalize() ?: continue
+            val importedName = when {
+                import.names.isNotEmpty() -> import.names.firstOrNull { name ->
+                    val local = import.nameAliases[name] ?: name
+                    invocation.name == local || import.alias?.let { invocation.name == "$it.$local" } == true
+                }
+                import.alias != null -> invocation.name.removePrefix("${import.alias}.")
+                    .takeIf { invocation.name.startsWith("${import.alias}.") }
+                else -> null
+            } ?: continue
+            return indexResult.exports.firstOrNull { export ->
+                export.kind == ImportExportKind.COMPTIME_FUNCTION && export.name == importedName &&
+                    runCatching {
+                        Path.of(java.net.URI.create(export.sourceUri)).toAbsolutePath().normalize() == providerPath
+                    }.getOrDefault(false)
+            }
+        }
+        return null
     }
 
     private fun symbolDeclarationRange(
@@ -473,8 +540,12 @@ internal object LspLanguageService {
     }
 
     private fun unresolvedImportName(code: String?, message: String): String? {
-        if (code !in TYPE_DIAGNOSTICS && code != "SEM301") return null
-        val expectedPrefix = if (code == "SEM301") "unknown identifier" else "unknown"
+        if (code !in TYPE_DIAGNOSTICS && code != "SEM301" && code != "CPX001") return null
+        val expectedPrefix = when (code) {
+            "SEM301" -> "unknown identifier"
+            "CPX001" -> "unknown compile-time function"
+            else -> "unknown"
+        }
         if (!message.startsWith(expectedPrefix)) return null
         return Regex("'([^']+)'").find(message)?.groupValues?.getOrNull(1)
     }
