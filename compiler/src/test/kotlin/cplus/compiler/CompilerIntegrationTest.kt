@@ -504,6 +504,60 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun importedComptimePreservesLocalParameterAndCpxCategoryBehavior() {
+        val directory = Files.createTempDirectory("cplus-imported-cpx-parameter-parity")
+        val definitions = """
+            pub comptime cpx<decl> render(type T, expr E, int N, bool B, string S, identifier I) {
+                return {
+                    struct generated_{I}_t { T value; };
+                    const char* label_{I} = S;
+                    int generated_{I}() { return E + N + (B ? 1 : 0); }
+                };
+            }
+            pub comptime cpx<stmt> makeMarker() {
+                return { int marker() { return 1; } };
+            }
+        """.trimIndent()
+        val provider = directory.resolve("generators.cp").also { it.writeText(definitions) }
+        val importedMain = directory.resolve("imported.cp").also {
+            it.writeText(
+                """
+                    import { render as generate, makeMarker } from "./generators.cp";
+                    generate(int, 1 + 2, 38, true, "ok", answer);
+                    makeMarker();
+                    int main() { struct generated_answer_t result; result.value = generated_answer(); return result.value; }
+                """.trimIndent()
+            )
+        }
+        val localMain = directory.resolve("local.cp").also {
+            it.writeText(
+                """
+                    $definitions
+                    render(int, 1 + 2, 38, true, "ok", answer);
+                    makeMarker();
+                    int main() { struct generated_answer_t result; result.value = generated_answer(); return result.value; }
+                """.trimIndent()
+            )
+        }
+
+        val imported = CPlusCompiler().compile(CompileRequest(listOf(importedMain)))
+        val local = CPlusCompiler().compile(CompileRequest(listOf(localMain)))
+
+        assertTrue(imported.isSuccessful, imported.diagnostics.joinToString())
+        assertTrue(local.isSuccessful, local.diagnostics.joinToString())
+        assertTrue(imported.generatedUnits.single().text.contains("generated_answer()"))
+        assertTrue(imported.generatedUnits.single().text.contains("label_answer"))
+        assertTrue(imported.generatedUnits.single().text.contains("int marker()"))
+        assertTrue(local.generatedUnits.single().text.contains("generated_answer()"))
+        assertEquals(
+            setOf("generated_answer_t"),
+            imported.semanticModel?.structs?.keys?.filter { it == "generated_answer_t" }?.toSet()
+        )
+        assertFalse(imported.generatedUnits.single().text.contains("render("))
+        assertFalse(imported.generatedUnits.single().text.contains("makeMarker("))
+    }
+
+    @Test
     fun bindsDirectAliasedAndModuleQualifiedComptimeInvocationTargets() {
         val directory = Files.createTempDirectory("cplus-comptime-invocation-targets")
         val provider = directory.resolve("box.cp").also { path ->

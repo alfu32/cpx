@@ -253,6 +253,29 @@ This avoids C-style token concatenation such as:
 optional_##T##_t
 ```
 
+## Importing compile-time generators
+
+Public compile-time functions can be imported and invoked by the client
+module's expansion phase. Their generated declarations belong to that client:
+
+```c
+import { box } from "./box.cp";
+
+box(int);
+
+int main() {
+    struct box_int_t item;
+    item.value = 42;
+    return item.value;
+}
+```
+
+An imported declaration may be locally aliased with
+`import { box as makeBox } from "./box.cp";`. A generator may call private
+comptime helpers declared in its provider; helpers are evaluated in the
+provider's lexical environment and are not exported to clients. The CLI follows
+relative imports automatically for `check`, `expand`, `transcode`, and `run`.
+
 ---
 
 # Generic programming
@@ -769,6 +792,24 @@ cd path/to/my-project
 cplus check --project cplus.toml
 cplus run --project cplus.toml
 ```
+
+The complete imported-generator example is in
+`examples/comptime_import/`. From the repository root:
+
+```bash
+cplus check examples/comptime_import/main.cp
+cplus expand examples/comptime_import/main.cp
+cplus transcode examples/comptime_import/main.cp \
+    --output /tmp/cplus-box.c \
+    --header /tmp/cplus-box.h \
+    --map /tmp/cplus-box.map
+cplus run examples/comptime_import/main.cp
+```
+
+The final command returns process status `42`, because the example's `main`
+returns the generated field's value. `alias_main.cp` demonstrates a local
+generator alias; `helper_main.cp` demonstrates a public generator invoking a
+private provider helper.
 
 ---
 

@@ -350,6 +350,48 @@ class CliIntegrationTest {
     }
 
     @Test
+    fun importedComptimeExamplesPassCheckExpansionTranscodeAndRuntime() {
+        val examples = Path.of("../examples/comptime_import").toAbsolutePath().normalize()
+        val main = examples.resolve("main.cp")
+        val aliasMain = examples.resolve("alias_main.cp")
+        val helperMain = examples.resolve("helper_main.cp")
+
+        listOf(main, aliasMain, helperMain).forEach { source ->
+            assertEquals(0, Cli().run(listOf("check", source.toString())), source.toString())
+        }
+
+        val expanded = captureStdout {
+            assertEquals(0, Cli().run(listOf("expand", main.toString())))
+        }
+        assertTrue(expanded.contains("Struct box_int_t"), expanded)
+        assertTrue(!expanded.contains("CpxInvocation"), expanded)
+
+        val outputDirectory = Files.createTempDirectory("cplus-imported-comptime-products")
+        val generatedC = outputDirectory.resolve("main.c")
+        val generatedHeader = outputDirectory.resolve("main.h")
+        val sourceMap = outputDirectory.resolve("main.map")
+        assertEquals(
+            0,
+            Cli().run(
+                listOf(
+                    "transcode", main.toString(), "--output", generatedC.toString(),
+                    "--header", generatedHeader.toString(), "--map", sourceMap.toString()
+                )
+            )
+        )
+        assertTrue(Files.isRegularFile(generatedC))
+        assertTrue(Files.isRegularFile(generatedHeader))
+        assertTrue(Files.isRegularFile(sourceMap))
+        assertTrue(Files.readString(generatedC).contains("struct box_int_t"))
+        assertTrue(!Files.readString(generatedC).contains("box("), "compile-time provider must not become runtime code")
+        assertTrue(Files.readString(sourceMap).contains("main.cp"), "generated mappings retain the client invocation origin")
+
+        listOf(main, aliasMain, helperMain).forEach { source ->
+            assertEquals(42, Cli().run(listOf("run", source.toString())), source.toString())
+        }
+    }
+
+    @Test
     fun astInspectionKeepsTraitMethodsGroupedAndPrintsTheirBodies() {
         val directory = Files.createTempDirectory("cplus-cli-trait-ast")
         val source = directory.resolve("main.cp").also {

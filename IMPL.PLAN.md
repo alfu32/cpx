@@ -11,10 +11,10 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    139/161 accepted with recorded evidence; 22 TODO
-Phase gates:           13/15 complete; 1 active; 1 queued
-Current task:          DOING: R13.3.1 — invalidate client expansions when providers or bindings change
-Current milestone:     imported comptime functions and source test fixtures (planned)
+Roadmap leaf tasks:    140/161 accepted with recorded evidence; 21 TODO
+Phase gates:           13/15 complete; 2 active; 0 queued
+Current task:          DOING: R14.1.1 — parse fixture descriptions and preserve structured bodies
+Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
@@ -40,17 +40,17 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
-R13 [DOING] 10/12 imported comptime bindings, expansion and product conformance
-R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
+R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
+R14 [DOING] 0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       139/161 implementation tasks accepted; 13/15 phase gates complete,
-            1 active, 1 queued
+TOTAL       140/161 implementation tasks accepted; 13/15 phase gates complete,
+            2 active, 0 queued
 ```
 
 The current Luna 6 Medium execution runbook is
 [IMPL.HANDOFF.COMPTIME-TESTS.md](IMPL.HANDOFF.COMPTIME-TESTS.md).
 R13 adds 12 terminal tasks and R14 adds 20: 129 + 12 + 20 = 161.
-Ten of the 32 new leaves are accepted with implementation evidence; 22 remain
+Eleven of the 32 new leaves are accepted with implementation evidence; 21 remain
 TODO. The overall roadmap is DOING, with R13 active, R14 queued and R0–R12 retained as accepted historical
 scope. Newly specified CPX import conformance is explicitly outstanding even
 though the earlier R2/R10 gates passed their then-recorded tests.
@@ -3794,11 +3794,11 @@ self-hosted SDK described by the specifications.
 
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
-Completion phases: [DOING] [13/15 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 139/161 accepted; 22 TODO; R10.1 (10/10), R10.2 (4/4),
+Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
+Roadmap leaf tasks: 140/161 accepted; 21 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
-Active phase gates: 1 (R13); queued phase gates: 1 (R14)
+Active phase gates: 2 (R13/R14); queued phase gates: 0
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3813,16 +3813,17 @@ Active phase gates: 1 (R13); queued phase gates: 1 (R14)
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
-[DOING] R13 — imported comptime functions (10/12 leaves; next R13.4.1)
-[TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
+[DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
+[DOING] R14 — source test fixtures and CLI runner (0/20 leaves; next R14.1.1)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 137 of 161 terminal leaves and thirteen of fifteen
-phase gates have recorded acceptance evidence. R13.1 is complete; the other
-24 new leaves remain TODO. R13 is the active phase.
+overall roadmap is DOING: 140 of 161 terminal leaves and thirteen of fifteen
+phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
+accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
+implementation is active; twenty-one leaves remain open.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6687,7 +6688,7 @@ Version” using the configured Java executable and CLI JAR.
 `./gradlew :cli:fatJar --no-daemon`, both `java -jar ... version` and no-argument help,
 and the VS Code extension `npm test` pass on Linux.
 
-## R13 [DOING] [10/12] Imported compile-time functions
+## R13 [DOING] [11/12] Imported compile-time functions
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion.
@@ -6958,13 +6959,13 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.LspComptimeImportTest --no-daemon` and `./gradlew :compiler:test :comptime:test :semantic:test :cli:test --no-daemon` pass on Linux. Windows remains part of the final R13/R14 platform gate.
 
-### R13.4 [TODO] [0/2] Imported comptime release evidence
+### R13.4 [DOING] [1/2] Imported comptime release evidence
 
 **Language:** LS §21.6 Importing compile-time functions; §28 Source provenance.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion; §64 Golden compiler tests.
 **Depends:** R13.3.
 
-#### R13.4.1 [TODO] Accept imported comptime products on Linux and document usage
+#### R13.4.1 [DONE] Accept imported comptime products on Linux and document usage
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions; §28 Source provenance.
 **Technical:** TS §57 CLI architecture; §64 Golden compiler tests; §27.1 Compile-time import binding and workspace expansion.
@@ -6975,7 +6976,9 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Acceptance:** Full Gradle suite and CLI product builds pass. CLI check succeeds; run returns 42 for the literal requested program (not an expected zero). A zero-exit wrapper may test value 42 separately. Import/local parity covers existing supported parameter kinds and CPX categories, preserving existing evaluator capability diagnostics. Negative fixtures verify visibility/cycle/collision errors and provenance; no imported-only definition is emitted as runtime code.
 
-**Verify:** `./gradlew test :cli:fatJar :cli:installDist --no-daemon; installed CLI check/expand/transcode/run on documented fixtures`.
+**Evidence:** Added `examples/comptime_import/{box,main,alias_main,helper_box,helper_main}.cp` and README usage. Linux parity coverage exercises type, expression, integer, boolean, string and identifier parameters plus declaration/statement categories; existing regressions cover private visibility, cycles, collisions and invocation provenance. Full `./gradlew test :cli:fatJar :cli:installDist --no-daemon` passed. Installed launcher `check`, `expand`, `transcode` (C/header/map) succeeded; installed launcher and fat JAR ran the exact box program with exit status 42. Alias and provider-helper examples also ran with status 42. Generated C contains `box_int_t`, omits the compile-time `box` function, and its map retains the client invocation origin. Shared LSP behavior passed in R13.3.2.
+
+**Verify:** Linux evidence above; native Windows imported-comptime execution remains the separate R13.4.2 gate.
 
 #### R13.4.2 [TODO] Accept native Windows imported comptime products
 
@@ -6990,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [TODO] [0/20] Source test fixtures and CLI runner
+## R14 [DOING] [0/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
