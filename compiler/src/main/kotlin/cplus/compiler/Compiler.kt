@@ -359,7 +359,7 @@ class CPlusCompiler(
         // Besides making the phase boundary explicit, this keeps source IDs
         // and parse results independent of expansion order.
         val parsedUnits = sourceFiles.map(::parseFrontend)
-        val frontends = parsedUnits.map { expandFrontend(it, headerEnvironment) }
+        val frontends = parsedUnits.map { expandFrontend(it, headerEnvironment, deferImportedCpx = sourceFiles.size > 1) }
         if (frontends.size <= 1) {
             return resultOf(
                 frontends.map { frontend ->
@@ -503,7 +503,9 @@ class CPlusCompiler(
                     unit.ast.declarations,
                     unit.source.path.toAbsolutePath().normalize().toString(),
                     context.astBuilder.build(unit.parsed.syntax).declarations
-                        .filterIsInstance<AstComptimeFunction>()
+                        .filterIsInstance<AstComptimeFunction>(),
+                    context.astBuilder.build(unit.parsed.syntax).declarations
+                        .filterIsInstance<AstCpxInvocation>()
                 )
             }
         )
@@ -832,7 +834,11 @@ class CPlusCompiler(
         return paths.associateWith { path ->
             val source = prepared.getValue(path)
             if (source.missing) missingFrontend(source.source)
-            else expandFrontend(requireNotNull(parsedUnits[path]), headerEnvironment)
+            else expandFrontend(
+                requireNotNull(parsedUnits[path]),
+                headerEnvironment,
+                deferImportedCpx = paths.size > 1
+            )
         }
     }
 
@@ -861,7 +867,11 @@ class CPlusCompiler(
         return ParsedUnit(source, lexed, Parser(lexed).parse())
     }
 
-    private fun expandFrontend(parsedUnit: ParsedUnit, headerEnvironment: HeaderEnvironment): FrontendUnit {
+    private fun expandFrontend(
+        parsedUnit: ParsedUnit,
+        headerEnvironment: HeaderEnvironment,
+        deferImportedCpx: Boolean = false
+    ): FrontendUnit {
         val source = parsedUnit.source
         val lexed = parsedUnit.lexed
         val parsed = parsedUnit.parsed
@@ -880,6 +890,12 @@ class CPlusCompiler(
         val referenceResolver = provisionalSemantic.model?.let { model ->
             ComptimeReferenceResolver { node, arena -> model.resolveComptimeReferences(node, arena) }
         }
+        val imports = parsed.syntax.declarations.filterIsInstance<SyntaxImport>()
+        val deferredInvocationNames = if (deferImportedCpx) imports.flatMapTo(linkedSetOf()) { import ->
+            import.names + import.nameAliases.values
+        } else emptySet()
+        val deferredInvocationPrefixes = if (deferImportedCpx) imports.mapNotNullTo(linkedSetOf()) { it.alias }
+        else emptySet()
         val expanded = context.cpxExpander.expand(
             source,
             parsed.syntax,
@@ -887,7 +903,9 @@ class CPlusCompiler(
             referenceResolver,
             provisionalSemantic.model?.let { model ->
                 comptimeTypeDescriptors(model, activeTargetAbiDescriptor)
-            }.orEmpty()
+            }.orEmpty(),
+            deferredInvocationNames,
+            deferredInvocationPrefixes
         )
         val ast = context.astBuilder.build(expanded.program)
         val closure = context.closureLowerer.lower(ast)

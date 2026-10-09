@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    132/161 accepted with recorded evidence; 29 TODO
+Roadmap leaf tasks:    133/161 accepted with recorded evidence; 28 TODO
 Phase gates:           13/15 complete; 1 active; 1 queued
-Current task:          Next: R13.1.4 — resolve selective aliases and qualified CPX invocation syntax
+Current task:          Next: R13.2.1 — expand an imported definition into the client type universe
 Current milestone:     imported comptime functions and source test fixtures (planned)
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -40,10 +40,10 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
-R13 [DOING] 3/12 imported comptime bindings, expansion and product conformance
+R13 [DOING] 4/12 imported comptime bindings, expansion and product conformance
 R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       132/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       133/161 implementation tasks accepted; 13/15 phase gates complete,
             0 active, 2 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 132/161 accepted; 29 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 133/161 accepted; 28 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
 Active phase gates: 1 (R13); queued phase gates: 1 (R14)
@@ -3813,16 +3813,16 @@ Active phase gates: 1 (R13); queued phase gates: 1 (R14)
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
-[DOING] R13 — imported comptime functions (3/12 leaves; next R13.1.4)
+[DOING] R13 — imported comptime functions (4/12 leaves; next R13.2.1)
 [TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 132 of 161 terminal leaves and thirteen of fifteen
-phase gates have recorded acceptance evidence. R13.1.1 through R13.1.3 are
-accepted; the other 29 new leaves remain TODO. R13 is the active phase.
+overall roadmap is DOING: 133 of 161 terminal leaves and thirteen of fifteen
+phase gates have recorded acceptance evidence. R13.1 is complete; the other
+28 new leaves remain TODO. R13 is the active phase.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6687,7 +6687,7 @@ Version” using the configured Java executable and CLI JAR.
 `./gradlew :cli:fatJar --no-daemon`, both `java -jar ... version` and no-argument help,
 and the VS Code extension `npm test` pass on Linux.
 
-## R13 [DOING] [3/12] Imported compile-time functions
+## R13 [DOING] [4/12] Imported compile-time functions
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion.
@@ -6699,7 +6699,7 @@ construction, uses name-keyed CPX definitions/cache identity, and removes
 comptime definitions before final import validation. All leaves below are
 unimplemented; the plan is not passing regression evidence.
 
-### R13.1 [DOING] [3/4] Catalogue and binding foundations
+### R13.1 [DONE] [4/4] Catalogue and binding foundations
 
 **Language:** LS §5 Declaration catalogue; §7.4 Public compile-time declarations; §21 Imports.
 **Technical:** TS §26 Imports and modules; §27.1 Compile-time import binding and workspace expansion.
@@ -6781,12 +6781,12 @@ from runtime functions and retains them when indexing a validated expanded
 snapshot; SDK export metadata preserves their callable kind/signature. Focused
 compiler tests and the complete compiler and semantic suites pass.
 
-#### R13.1.4 [TODO] Resolve selective aliases and qualified CPX invocation syntax
+#### R13.1.4 [DONE] Resolve selective aliases and qualified CPX invocation syntax
 
 **Language:** LS §21.3 Aliased import; §21.6 Importing compile-time functions; §35 CPX versus runtime function calls.
 **Technical:** TS §6 Parser; §27.1 Compile-time import binding and workspace expansion.
 **Depends:** R13.1.3.
-**Files:** language-core/.../Parser.kt parseCpxInvocation, Syntax.kt, Ast.kt, AstBuilder.kt; shared comptime binding resolver.
+**Files:** language-core/.../Parser.kt, Syntax.kt, Ast.kt, AstBuilder.kt; comptime/.../CpxExpansion.kt; compiler/.../Compiler.kt; semantic/.../Semantics.kt.
 
 **Deliverable:** Retain structured invocation target/ranges; bind box(int), make_box(int) and boxes.box(int) to catalogue identities. Preserve ordinary runtime member-call parsing and compiler-owned require_service handling.
 
@@ -6796,7 +6796,16 @@ compiler tests and the complete compiler and semantic suites pass.
 
 **Acceptance:** Parser/binding tests cover direct, selective-as and module-qualified calls, unresolved/private targets and runtime-call disambiguation. A failed import has one causal binding diagnostic, not an additional misleading CPX001.
 
-**Verify:** `./gradlew :language-core:test :semantic:test :comptime:test`.
+**Verify:** Focused parser and binding regressions, `./gradlew :language-core:test :comptime:test :semantic:test --no-daemon`, and `./gradlew :compiler:test --no-daemon`.
+
+**Evidence:** Linux, 2026-10-09 — parser tests preserve direct and dotted CPX
+target components and source ranges. Workspace bindings resolve direct,
+selective-as and module-alias targets to the exact provider declaration.
+Private and missing selective imports report SEM406/SEM404 without secondary
+CPX001; a private module-qualified target reports SEM406, while an unknown
+local generator reports exactly one CPX001. Ordinary function calls remain
+runtime calls. Focused tests and the complete language-core, comptime,
+semantic and compiler suites pass.
 
 ### R13.2 [TODO] [0/4] Workspace expansion, scope and identity
 

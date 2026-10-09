@@ -73,6 +73,62 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun bindsDirectAliasedAndModuleQualifiedComptimeInvocationTargets() {
+        val directory = Files.createTempDirectory("cplus-comptime-invocation-targets")
+        val provider = directory.resolve("box.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> box(type T) { return { struct box_{T}_t { T value; }; }; }
+                    comptime cpx<decl> privateBox(type T) { return { }; }
+                """.trimIndent()
+            )
+        }
+        val clients = listOf(
+            "import { box } from \"./box.cp\"; box(int);" to "box",
+            "import { box as makeBox } from \"./box.cp\"; makeBox(int);" to "makeBox",
+            "import \"./box.cp\" as boxes; boxes.box(int);" to "boxes.box"
+        )
+
+        clients.forEachIndexed { index, (clientPrefix, target) ->
+            val main = directory.resolve("client$index.cp").also { path ->
+                path.writeText("$clientPrefix int main() { return 0; }")
+            }
+            val result = CPlusCompiler().compile(CompileRequest(listOf(main, provider)))
+
+            assertTrue(result.isSuccessful, "${target}: ${result.diagnostics.joinToString()}")
+            val semantic = assertNotNull(result.semanticModel)
+            val invocation = semantic.resolvedComptimeInvocations.keys.single()
+            assertEquals(target, invocation.name)
+            assertEquals("box", semantic.resolvedComptimeInvocations.getValue(invocation).name)
+        }
+
+        val privateMain = directory.resolve("private-client.cp").also { path ->
+            path.writeText("import \"./box.cp\" as boxes; boxes.privateBox(int); int main() { return 0; }")
+        }
+        val privateResult = CPlusCompiler().compile(CompileRequest(listOf(privateMain, provider)))
+        assertTrue(
+            privateResult.diagnostics.any { it.code == "SEM406" },
+            "${privateResult.diagnostics}; aliases=${privateResult.semanticModel?.moduleTypeAliases}; " +
+                "comptime=${privateResult.semanticModel?.comptimeFunctions}; " +
+                "expanded=${privateResult.artifacts.flatMap { it.expanded?.diagnostics.orEmpty() }}"
+        )
+        assertFalse(privateResult.diagnostics.any { it.code == "CPX001" }, privateResult.diagnostics.joinToString())
+
+        val missingMain = directory.resolve("missing-client.cp").also { path ->
+            path.writeText("import { absent } from \"./box.cp\"; absent(int); int main() { return 0; }")
+        }
+        val missingResult = CPlusCompiler().compile(CompileRequest(listOf(missingMain, provider)))
+        assertTrue(missingResult.diagnostics.any { it.code == "SEM404" }, missingResult.diagnostics.joinToString())
+        assertFalse(missingResult.diagnostics.any { it.code == "CPX001" }, missingResult.diagnostics.joinToString())
+
+        val unknownMain = directory.resolve("unknown-client.cp").also { path ->
+            path.writeText("missingGenerator(int); int main() { return 0; }")
+        }
+        val unknownResult = CPlusCompiler().compile(CompileRequest(listOf(unknownMain, provider)))
+        assertEquals(1, unknownResult.diagnostics.count { it.code == "CPX001" }, unknownResult.diagnostics.joinToString())
+    }
+
+    @Test
     fun sameBasenamePathImportsKeepProviderFunctionsAndSymbolsDistinct() {
         val workspace = Files.createTempDirectory("cplus-duplicate-module-basename")
         val directory = workspace.resolve("workspace with spaces").also(Files::createDirectories)

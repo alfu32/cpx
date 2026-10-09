@@ -7,8 +7,9 @@ at a time. That file is the only status/evidence ledger. This handoff supplies
 execution instructions, design boundaries and regression inputs; it does not
 claim that either feature is complete. R0–R12 record prior accepted scope.
 Progress checkpoint, 2026-10-09: R13.1.1 (batch parse boundary), R13.1.2
-(provider identity across same-basename paths), and R13.1.3 (typed comptime
-export bindings) are DONE. Resume at R13.1.4.
+(provider identity across same-basename paths), R13.1.3 (typed comptime export
+bindings), and R13.1.4 (selective and qualified invocation binding) are DONE.
+Resume at R13.2.1.
 The active counters and all acceptance evidence remain authoritative in
 `IMPL.PLAN.md`.
 
@@ -243,8 +244,8 @@ At the initial planning checkpoint: 129 accepted baseline leaves + 12 R13 leaves
 20 R14 leaves = 161 total. R13 has four children containing 4/4/2/2 leaves;
 R14 has four children containing 4/4/6/6 leaves. The two six-leaf branches each
 have three two-leaf children, preserving bounded branching. All new statuses
-were TODO. R13.1.1 through R13.1.3 are now accepted, so the current counter is
-132/161 while 29 new leaves remain open. No planning-only task is counted as
+were TODO. R13.1.1 through R13.1.4 are now accepted, so the current counter is
+133/161 while 28 new leaves remain open. No planning-only task is counted as
 implementation.
 
 On completion, check all dependency edges, mandatory acceptance criteria,
@@ -257,7 +258,7 @@ Historical foundation 146/146 is a different metric and is not added to 161.
 ```text
 Implement the remaining R13/R14 leaves in IMPL.PLAN.md using
 IMPL.HANDOFF.COMPTIME-TESTS.md. Read repository instructions first. Resume at
-R13.1.4 (unless the dashboard records later progress); do not redo accepted tasks.
+R13.2.1 (unless the dashboard records later progress); do not redo accepted tasks.
 Support imported public comptime expansion and all four assertion forms in
 source fixtures, with the specified cplus test reports. Keep one principal
 DOING leaf, preserve user changes, add meaningful regression evidence, commit

@@ -245,6 +245,25 @@ class AstGoldenTest {
         assertEquals("T", definition.parameters.single().name)
         assertTrue(definition.template.contains("optional_{T}_t"))
         assertEquals(listOf("int"), invocation.arguments)
+        assertEquals(listOf("optional"), invocation.targetComponents)
+    }
+
+    @Test
+    fun qualifiedComptimeInvocationPreservesItsStructuredTarget() {
+        val source = SourceFile(
+            SourceFileId(31),
+            Path.of("qualified-cpx.cp"),
+            "boxes.box(int);",
+            1
+        )
+        val parsed = Parser(Lexer().lex(source)).parse()
+
+        assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
+        val invocation = parsed.syntax.declarations.single() as SyntaxCpxInvocation
+        assertEquals("boxes.box", invocation.name)
+        assertEquals(listOf("boxes", "box"), invocation.targetComponents)
+        assertEquals(listOf("int"), invocation.arguments)
+        assertEquals(source.text, source.text.substring(invocation.range.startOffset, invocation.range.endOffset))
     }
 
     @Test

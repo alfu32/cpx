@@ -128,7 +128,8 @@ data class SyntaxCpxInvocation(
     val arguments: List<String>,
     override val range: SourceRange,
     override val origin: Origin,
-    override val isPublic: Boolean = false
+    override val isPublic: Boolean = false,
+    val targetComponents: List<String> = name.split('.')
 ) : SyntaxDeclaration
 
 data class SyntaxImport(

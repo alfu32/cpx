@@ -54,7 +54,13 @@ class AstBuilder {
             node.isPublic,
             node.parameters.map { it.kind }
         )
-        is SyntaxCpxInvocation -> AstCpxInvocation(node.name, node.arguments, node.origin, node.isPublic)
+        is SyntaxCpxInvocation -> AstCpxInvocation(
+            node.name,
+            node.arguments,
+            node.origin,
+            node.isPublic,
+            node.targetComponents
+        )
         is SyntaxImport -> AstImport(node.names, node.module, node.alias, node.nameAliases, node.origin, node.isPublic)
         is SyntaxFunction -> function(node, node.ownerName)
     }

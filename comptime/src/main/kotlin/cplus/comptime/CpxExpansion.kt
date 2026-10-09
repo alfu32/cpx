@@ -976,7 +976,9 @@ class CpxExpander(
         program: SyntaxProgram,
         typeResolver: ComptimeTypeResolver? = null,
         referenceResolver: ComptimeReferenceResolver? = null,
-        typeDescriptors: Iterable<StructuralTypeDescriptor> = emptyList()
+        typeDescriptors: Iterable<StructuralTypeDescriptor> = emptyList(),
+        deferredInvocationNames: Set<String> = emptySet(),
+        deferredInvocationPrefixes: Set<String> = emptySet()
     ): CpxExpansionResult {
         val diagnostics = DiagnosticBag()
         val syntaxArena = AstArena()
@@ -1270,7 +1272,12 @@ class CpxExpander(
 
         resolveDeferredInvocations()
         deferredInvocations.forEach { deferred ->
-            diagnostics.error("unknown compile-time function '${deferred.invocation.name}'", deferred.invocation.origin.primaryRange, "CPX001")
+            val name = deferred.invocation.name
+            val deferredToWorkspace = name in deferredInvocationNames ||
+                deferredInvocationPrefixes.any { prefix -> name.startsWith("$prefix.") }
+            if (!deferredToWorkspace) {
+                diagnostics.error("unknown compile-time function '$name'", deferred.invocation.origin.primaryRange, "CPX001")
+            }
         }
         if (scheduler.pendingKeys().isEmpty()) scheduler.closeStructuralPhase()
         val retained = program.declarations.filterNot { it is SyntaxComptimeFunction || it is SyntaxCpxInvocation }

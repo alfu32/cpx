@@ -396,7 +396,8 @@ data class SemanticModel(
     val resolvedMethodCalls: Map<AstCall, ResolvedMethodCall> = emptyMap(),
     val extensionModuleImports: Map<String, Set<String>> = emptyMap(),
     val comptimeFunctions: Map<String, Map<String, ComptimeFunctionBinding>> = emptyMap(),
-    val importedComptimeFunctions: Map<String, Map<String, ComptimeFunctionBinding>> = emptyMap()
+    val importedComptimeFunctions: Map<String, Map<String, ComptimeFunctionBinding>> = emptyMap(),
+    val resolvedComptimeInvocations: Map<AstCpxInvocation, ComptimeFunctionBinding> = emptyMap()
 ) {
     val sourceTypeCatalogue: SourceTypeCatalogue
         get() = SourceTypeCatalogue.from(symbols)
@@ -708,6 +709,16 @@ fun buildDeclarationCatalogue(
                 compileTime = true
             )
         }
+        module.comptimeInvocations.filterNot(module.declarations::contains).forEach { invocation ->
+            add(
+                invocation.name,
+                "cpxInvocation",
+                invocation.origin,
+                moduleScopes[module.name] ?: moduleScopes.values.firstOrNull() ?: ScopeId(1),
+                parameters = invocation.arguments,
+                compileTime = true
+            )
+        }
     }
     return DeclarationCatalogue(entries)
 }
@@ -821,6 +832,7 @@ class SemanticAnalyzer(
             }
         }
         val importedComptimeFunctions = linkedMapOf<String, MutableMap<String, ComptimeFunctionBinding>>()
+        val resolvedComptimeInvocations = linkedMapOf<AstCpxInvocation, ComptimeFunctionBinding>()
         val sourceExtensionNamesByModule = moduleDeclarationLists.mapValues { (_, declarations) ->
             declarations.filterIsInstance<AstTrait>()
                 .filter(AstTrait::isPublic)
@@ -1696,6 +1708,52 @@ class SemanticAnalyzer(
             diagnostics,
             knownModules
         )
+        program.modules.forEach { module ->
+            module.comptimeInvocations.forEach { invocation ->
+                val components = invocation.targetComponents
+                val binding = when (components.size) {
+                    1 -> importedComptimeFunctions[module.name]?.get(components.single())
+                        ?: comptimeFunctionsByModule[module.name]?.get(components.single())
+                    else -> moduleTypeAliases[module.name]?.get(components.first())?.let { targetModule ->
+                        comptimeFunctionsByModule[targetModule]?.get(components.drop(1).joinToString("."))
+                    }
+                }
+                if (binding != null) {
+                    if (binding.visibility == Visibility.PUBLIC || binding.moduleName == module.name) {
+                        resolvedComptimeInvocations[invocation] = binding
+                    } else {
+                        diagnostics.error(
+                            "comptime function '${invocation.name}' is not public in module '${binding.moduleName}'",
+                            rangeOf(invocation.origin),
+                            "SEM406"
+                        )
+                    }
+                } else {
+                    val matchingImport = moduleDeclarationLists[module.name]
+                        .orEmpty().filterIsInstance<AstImport>().firstOrNull { import ->
+                            if (components.size == 1) {
+                                components.single() in import.names ||
+                                    import.nameAliases.values.contains(components.single())
+                            } else {
+                                import.alias == components.first()
+                            }
+                        }
+                    if (matchingImport != null) {
+                        val importRange = rangeOf(matchingImport.origin)
+                        val importAlreadyFailed = diagnostics.diagnostics.any {
+                            it.range == importRange && it.code in setOf("SEM402", "SEM404", "SEM406")
+                        }
+                        if (!importAlreadyFailed) {
+                            diagnostics.error(
+                                "unknown compile-time function '${invocation.name}'",
+                                rangeOf(invocation.origin),
+                                "CPX001"
+                            )
+                        }
+                    }
+                }
+            }
+        }
         moduleTypeBindingRefs.forEach { (moduleName, bindings) ->
             bindings.keys.forEach { localName ->
                 if (visibleFunctions[moduleName]?.containsKey(localName) == true ||
@@ -2147,7 +2205,8 @@ class SemanticAnalyzer(
             resolvedMethodCalls = resolvedMethodCalls,
             extensionModuleImports = moduleExtensionImports,
             comptimeFunctions = comptimeFunctionsByModule,
-            importedComptimeFunctions = importedComptimeFunctions.mapValues { (_, bindings) -> bindings.toMap() }
+            importedComptimeFunctions = importedComptimeFunctions.mapValues { (_, bindings) -> bindings.toMap() },
+            resolvedComptimeInvocations = resolvedComptimeInvocations
         )
         val cataloguedModel = initialModel.copy(
             declarationCatalogue = buildDeclarationCatalogue(

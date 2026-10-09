@@ -67,7 +67,7 @@ class Parser(private val lexed: LexedSource) {
             return parseTrait(isPublic)
         }
         if (peek().isLexeme("comptime")) return parseComptimeFunction(isPublic)
-        if (peek().kind == TokenKind.IDENTIFIER && peek(1).isLexeme("(")) return parseCpxInvocation()
+        if (isCpxInvocationStart()) return parseCpxInvocation()
         if (match("struct") && peek(1).isLexeme("{")) {
             return parseStruct(peek(-1), isPublic)
         }
@@ -274,7 +274,12 @@ class Parser(private val lexed: LexedSource) {
     }
 
     private fun parseCpxInvocation(): SyntaxCpxInvocation {
-        val name = advance()
+        val start = expectIdentifier("expected CPX target") ?: advance()
+        val targetComponents = mutableListOf(start.lexeme)
+        while (match(".")) {
+            targetComponents += expectIdentifier("expected CPX target name after '.'")?.lexeme ?: break
+        }
+        val name = targetComponents.joinToString(".")
         expect("(", "expected '(' after CPX invocation name")
         val arguments = mutableListOf<String>()
         while (!atEnd() && !peek().isLexeme(")")) {
@@ -296,8 +301,19 @@ class Parser(private val lexed: LexedSource) {
         }
         val close = expect(")", "expected ')' after CPX invocation arguments") ?: previous()
         expect(";", "expected ';' after CPX invocation")
-        val range = span(name.range, previous().range)
-        return SyntaxCpxInvocation(name.lexeme, arguments, range, direct(range))
+        val range = span(start.range, previous().range)
+        return SyntaxCpxInvocation(name, arguments, range, direct(range), targetComponents = targetComponents)
+    }
+
+    private fun isCpxInvocationStart(): Boolean {
+        if (peek().kind != TokenKind.IDENTIFIER) return false
+        var lookahead = 1
+        while (tokens.getOrNull(index + lookahead)?.isLexeme(".") == true &&
+            tokens.getOrNull(index + lookahead + 1)?.kind == TokenKind.IDENTIFIER
+        ) {
+            lookahead += 2
+        }
+        return tokens.getOrNull(index + lookahead)?.isLexeme("(") == true
     }
 
     private fun parseImport(): SyntaxImport {
