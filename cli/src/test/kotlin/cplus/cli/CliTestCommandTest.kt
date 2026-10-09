@@ -183,7 +183,8 @@ class CliTestCommandTest {
         }
 
         assertEquals(0, status, capturedOut.toString())
-        assertTrue(capturedOut.toString().contains("unterminated\n... EMPTY"), capturedOut.toString())
+        val report = capturedOut.toString().replace("\r\n", "\n")
+        assertTrue(report.contains("unterminated\n... EMPTY"), report)
         assertTrue(capturedOut.toString().contains("passed 0 / failed 0 / total 0; errors 0"), capturedOut.toString())
     }
 

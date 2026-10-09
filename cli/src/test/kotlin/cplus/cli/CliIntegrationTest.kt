@@ -828,6 +828,7 @@ class CliIntegrationTest {
 
     @Test
     fun lspAndCliResolveCustomHeadersAndAliasedSourceTypesFromInstalledStyleInputs() {
+        assumeTrue(cplus.compiler.defaultHostTargetTriple() == "linux-x86_64", "this fixture exercises Linux C-header discovery")
         val root = Files.createTempDirectory("cplus-cli-lsp-import-parity")
         val include = Files.createDirectories(root.resolve("custom headers"))
         include.resolve("custom_probe.h").writeText("int custom_add(int left, int right);\n")
@@ -896,6 +897,7 @@ class CliIntegrationTest {
 
     @Test
     fun lspForeignSymbolsParticipateInCompletionHoverAndSignatureHelp() {
+        assumeTrue(cplus.compiler.defaultHostTargetTriple() == "linux-x86_64", "this fixture exercises Linux C-header discovery")
         val directory = Files.createTempDirectory("cplus-cli-foreign-language-service")
         val source = directory.resolve("main.cp")
         val uri = source.toUri().toString()

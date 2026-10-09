@@ -42,7 +42,7 @@ class CliTestReportTest {
             System.setOut(originalOut)
             System.setErr(originalErr)
         }
-        val report = out.toString()
+        val report = out.toString().replace("\r\n", "\n")
 
         assertEquals(0, status, "${err}; $report")
         assertTrue(report.contains("::: [1/2] $first"), report)
@@ -88,7 +88,7 @@ class CliTestReportTest {
             System.setErr(originalErr)
         }
 
-        val report = out.toString()
+        val report = out.toString().replace("\r\n", "\n")
         assertEquals(1, status, "${err}; $report")
         assertTrue(report.contains("::: [1/2] $broken"), report)
         assertTrue(report.contains("::: [2/2] $passing"), report)

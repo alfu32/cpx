@@ -7,6 +7,7 @@ import cplus.compiler.TargetInfo
 import cplus.compiler.defaultHostTargetTriple
 import cplus.backend.CTestFixtureMetadata
 import java.nio.file.Files
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
 internal data class TestCommandArguments(
@@ -97,7 +98,11 @@ internal data class TestCommandArguments(
                     }
                     return fail("unsupported test option '$argument'")
                 }
-                roots.add(path(argument))
+                try {
+                    roots.add(path(argument))
+                } catch (_: InvalidPathException) {
+                    return fail("invalid test root path '$argument'")
+                }
                 index++
             }
             if (project != null && workspace != null) return fail("choose either --project or --workspace, not both")
