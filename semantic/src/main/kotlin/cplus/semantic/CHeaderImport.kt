@@ -479,7 +479,7 @@ class CHeaderImportService(
     }
 
     private fun lex(text: String): List<Token> = Lexer().lex(
-        SourceFile(cplus.core.SourceFileId(0), java.nio.file.Path.of("<c-header>"), maskPreprocessorLines(text), 0)
+        SourceFile(cplus.core.SourceFileId(0), java.nio.file.Path.of("c-header"), maskPreprocessorLines(text), 0)
     ).tokens.filter { it.kind != TokenKind.END_OF_FILE }
 
     private fun maskPreprocessorLines(text: String): String {
@@ -646,7 +646,7 @@ class CHeaderImportService(
 
     private fun parameterType(parameter: String): String {
         val tokens = Lexer().lex(
-            SourceFile(cplus.core.SourceFileId(0), java.nio.file.Path.of("<c-parameter>"), parameter, 0)
+            SourceFile(cplus.core.SourceFileId(0), java.nio.file.Path.of("c-parameter"), parameter, 0)
         ).tokens
             .filter { it.kind != TokenKind.END_OF_FILE }
         if (tokens.size < 2) return normalizeType(parameter)
