@@ -11,10 +11,10 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    129/129 accepted with recorded evidence; 0 TODO
-Phase gates:           13/13 complete; 0 active; 0 queued
-Current task:          Complete — all R0–R12 roadmap leaves accepted
-Current milestone:     R10/R11 accepted; import discovery and compile-time traits shipped
+Roadmap leaf tasks:    129/161 accepted with recorded evidence; 32 TODO
+Phase gates:           13/15 complete; 0 active; 2 queued
+Current task:          Next: R13.1.1 — separate parsing/cataloguing from CPX expansion
+Current milestone:     imported comptime functions and source test fixtures (planned)
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Windows execution:     native Windows x86_64/UCRT64 GCC validation passes
@@ -40,16 +40,25 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
+R13 [TODO]  0/12 imported comptime bindings, expansion and product conformance
+R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       129/129 implementation tasks accepted; 13/13 phase gates complete,
-            0 active, 0 queued
+TOTAL       129/161 implementation tasks accepted; 13/15 phase gates complete,
+            0 active, 2 queued
 ```
 
-The Luna 6 Medium execution runbook is
+The current Luna 6 Medium execution runbook is
+[IMPL.HANDOFF.COMPTIME-TESTS.md](IMPL.HANDOFF.COMPTIME-TESTS.md).
+R13 adds 12 terminal tasks and R14 adds 20: 129 + 12 + 20 = 161.
+All 32 new leaves are TODO; planning adds no completion credit. The overall
+roadmap is DOING, with R13/R14 queued and R0–R12 retained as accepted historical
+scope. Newly specified CPX import conformance is explicitly outstanding even
+though the earlier R2/R10 gates passed their then-recorded tests.
+The closed R10/R11 runbook remains
 [IMPL.HANDOFF.IMPORTS-TRAITS.md](IMPL.HANDOFF.IMPORTS-TRAITS.md).
 R10 adds 19 terminal tasks and R11 adds 12, increasing the prior 97-task
 denominator to 128. R12 adds one independently accepted generated-version
-task, bringing the current denominator to 129. Their broader existing task IDs
+task, bringing that checkpoint's denominator to 129. Their broader existing task IDs
 are retained as composites, not double-counted as leaves.
 The historical Linux/Windows results above apply to the prior R0–R9 baseline.
 R10 and R11 have separate current Linux and native Windows evidence recorded
@@ -3785,8 +3794,8 @@ self-hosted SDK described by the specifications.
 
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
-Completion phases: [DONE] [13/13 gates complete; 0 active, 0 queued]
-Roadmap leaf tasks: 129/129 accepted; R10.1 (10/10), R10.2 (4/4),
+Completion phases: [DOING] [13/15 gates complete; 0 active, 2 queued]
+Roadmap leaf tasks: 129/161 accepted; 32 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
 
@@ -3803,13 +3812,15 @@ Roadmap leaf tasks: 129/129 accepted; R10.1 (10/10), R10.2 (4/4),
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
+[TODO]  R13 — imported comptime functions (0/12 leaves)
+[TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
 ```
 
-The completion phase counter counts only the thirteen phase gates above. A phase
+The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DONE: all 129 terminal leaves and all thirteen phase gates
-have recorded acceptance evidence.
+overall roadmap is DOING: 129 of 161 terminal leaves and thirteen of fifteen
+phase gates have recorded acceptance evidence. R13/R14 are planned, not implemented.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6643,8 +6654,9 @@ completion, quick fixes, diagnostics, and Run Main behavior. The exact
 Linux/Windows commands and tool versions are recorded under R10.3.2.3; the
 unfiltered Windows suite's Linux-target toolchain limitation is disclosed
 there, without substituting it for native Windows target evidence. All R11
-leaves are accepted, and the coverage audit and dashboard agree at 129/129
-leaves and 13/13 gates.
+leaves are accepted. At this R10/R11 acceptance checkpoint, the coverage audit
+and dashboard agreed at 129/129 leaves and 13/13 gates; the current expanded
+roadmap is recorded in the dashboard above.
 
 ### Planning validation checkpoint — 2026-10-08
 
@@ -6673,16 +6685,621 @@ Version” using the configured Java executable and CLI JAR.
 `./gradlew :cli:fatJar --no-daemon`, both `java -jar ... version` and no-argument help,
 and the VS Code extension `npm test` pass on Linux.
 
+## R13 [TODO] [0/12] Imported compile-time functions
+
+**Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
+**Technical:** TS §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R2, R10, R12.
+
+This is the new conformance scope requested after the R0–R12 acceptance
+checkpoint. The observed pipeline expands each file before module graph
+construction, uses name-keyed CPX definitions/cache identity, and removes
+comptime definitions before final import validation. All leaves below are
+unimplemented; the plan is not passing regression evidence.
+
+### R13.1 [TODO] [0/4] Catalogue and binding foundations
+
+**Language:** LS §5 Declaration catalogue; §7.4 Public compile-time declarations; §21 Imports.
+**Technical:** TS §26 Imports and modules; §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R12.
+
+#### R13.1.1 [TODO] Separate parsing and cataloguing from expansion
+
+**Language:** LS §5 Declaration catalogue; §17 Structural compile-time phase.
+**Technical:** TS §27.1 Compile-time import binding and workspace expansion; §59 Pipeline orchestration.
+**Depends:** R12.
+**Files:** compiler/.../Compiler.kt (`frontend`, `prepareFrontends`, all compile entry points); IncrementalCompiler.kt.
+
+**Deliverable:** Introduce a parsed-unit boundary before CPX expansion; register all source snapshots before constructing a workspace catalogue. Keep existing frontend/result APIs coherent while routing disk, text and incremental paths through the boundary.
+
+**Preconditions:** Source closure and request configuration are available.
+**Postconditions:** All providers can be catalogued without running their CPX.
+**Invalid states:** Expanding a client before its provider is parsed; losing per-file origins.
+
+**Acceptance:** Existing local CPX/import/trait fixtures produce equivalent diagnostics, origins and emitted C in serial and parallel compilation. A boundary test proves all requested modules are parsed before expansion starts.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+
+#### R13.1.2 [TODO] Preserve resolved provider identity across the module graph
+
+**Language:** LS §21.1 Import declaration; §23 Symbol identity and C symbol generation.
+**Technical:** TS §26.1 Module model; §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R13.1.1.
+**Files:** compiler/.../ModuleSourceResolver.kt, ModuleGraph.kt, Compiler.kt; semantic/.../Semantics.kt module ownership.
+
+**Deliverable:** Carry canonical resolved module identity separately from basename/package display names. Bind path and logical imports to resolver results; adapt graph, semantic ownership and emitted naming consumers as necessary.
+
+**Preconditions:** Resolved paths and package spellings are known.
+**Postconditions:** Each binding points to one canonical provider.
+**Invalid states:** Using basename-only identity or choosing a provider by iteration order.
+
+**Acceptance:** Two directories each containing box.cp can export a function named box and be imported with distinct aliases; neither graph nodes, types nor C symbols merge. Slash paths, space-containing paths and existing package aliases still resolve.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :semantic:test`.
+
+#### R13.1.3 [TODO] Retain kind-aware compile-time export bindings
+
+**Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
+**Technical:** TS §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R13.1.2.
+**Files:** semantic/.../Semantics.kt catalogue and resolveImportedFunctions; compiler/.../ImportIndex.kt, SdkMetadata.kt.
+
+**Deliverable:** Represent comptime callable identity, visibility, definition, signature and environment in the shared catalogue. Final import validation consumes these records after runtime AST erasure; export discovery includes public definitions without executing them.
+
+**Preconditions:** Unexpanded declarations are catalogued.
+**Postconditions:** Typed import records outlive runtime body erasure.
+**Invalid states:** Public visibility inferred from a name or definitions copied into the client's public scope.
+
+**Acceptance:** A module exporting only pub comptime imports successfully without SEM404; private, missing, conflicting and unselected names are diagnosed. Runtime call validation never treats the binding as a runtime function. Expanded import-index snapshots do not discard comptime exports.
+
+**Verify:** `./gradlew :semantic:test :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+
+#### R13.1.4 [TODO] Resolve selective aliases and qualified CPX invocation syntax
+
+**Language:** LS §21.3 Aliased import; §21.6 Importing compile-time functions; §35 CPX versus runtime function calls.
+**Technical:** TS §6 Parser; §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R13.1.3.
+**Files:** language-core/.../Parser.kt parseCpxInvocation, Syntax.kt, Ast.kt, AstBuilder.kt; shared comptime binding resolver.
+
+**Deliverable:** Retain structured invocation target/ranges; bind box(int), make_box(int) and boxes.box(int) to catalogue identities. Preserve ordinary runtime member-call parsing and compiler-owned require_service handling.
+
+**Preconditions:** Import records and syntax targets exist.
+**Postconditions:** Every schedulable invocation has a canonical callable or explicit pending state.
+**Invalid states:** Resolving aliases by globally rewriting names; runtime methods classified as CPX.
+
+**Acceptance:** Parser/binding tests cover direct, selective-as and module-qualified calls, unresolved/private targets and runtime-call disambiguation. A failed import has one causal binding diagnostic, not an additional misleading CPX001.
+
+**Verify:** `./gradlew :language-core:test :semantic:test :comptime:test`.
+
+### R13.2 [TODO] [0/4] Workspace expansion, scope and identity
+
+**Language:** LS §10 CPX expansion model; §12 Hygiene; §17–18 Structural phase and type-universe barrier; §21.6 Importing compile-time functions.
+**Technical:** TS §17–24 CPX evaluation and stabilization; §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R13.1.
+
+#### R13.2.1 [TODO] Expand an imported definition into the client type universe
+
+**Language:** LS §21.6 Importing compile-time functions; §18 Type-universe barrier.
+**Technical:** TS §27.1 Compile-time import binding and workspace expansion; §24 Type-universe stabilization.
+**Depends:** R13.1.4.
+**Files:** compiler/.../Compiler.kt; comptime/.../CpxExpansion.kt expand and taskFor.
+
+**Deliverable:** Pass imported callable records and client type/reference resolvers into the existing expander. Insert generated declarations into the owning client before type stabilization and final analysis, preserving the export catalogue.
+
+**Preconditions:** Parsed catalogue and invocation bindings are ready.
+**Postconditions:** Generated box_int_t is in the client's stabilized semantic model.
+**Invalid states:** Type barrier closed before imported structural work; provider definitions emitted as runtime functions.
+
+**Acceptance:** The exact two-file box example checks, expands, emits valid C and executes with exit 42. No SEM404, CPX001 or unknown-type error. Repeat through compileTextWorkspace and reversed request order; the generated struct belongs to main, not box.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+
+#### R13.2.2 [TODO] Separate definition bindings from argument and insertion scopes
+
+**Language:** LS §12 Hygiene; §13 Scope-sensitive CPX expansion; §21.6 Importing compile-time functions.
+**Technical:** TS §17 CPX evaluator; §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R13.2.1.
+**Files:** comptime/.../CpxExpansion.kt context/reference resolution; semantic reference identities; compiler workspace catalogue.
+
+**Deliverable:** Carry provider lexical/import environment alongside client argument and insertion context. Preserve bound references through emitted syntax; permit a public generator to use private helper generators without exposing them as client names.
+
+**Preconditions:** Canonical callable and client arguments resolve.
+**Postconditions:** Nested expansion retains correct scope identities and origins.
+**Invalid states:** Textual capture or private helper leakage.
+
+**Acceptance:** Provider and client define conflicting helper/type names: provider references bind to the provider, interpolated client expressions/types retain client identity. Nested private helper expansion succeeds; direct client import of that helper fails. Generated names retain ordinary collision diagnostics.
+
+**Verify:** `./gradlew :comptime:test :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+
+#### R13.2.3 [TODO] Drive workspace structural dependencies to a bounded fixed point
+
+**Language:** LS §10 CPX expansion model; §17 Structural compile-time phase; §21.5 Cyclic imports; §21.6 Importing compile-time functions.
+**Technical:** TS §20 CPX scheduler; §22 Structural fixed-point engine; §23 Compile-time cycle detection; §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R13.2.2.
+**Files:** compiler/.../Compiler.kt, ModuleGraph.kt, ModuleSourceResolver.kt; comptime/.../CpxExpansion.kt scheduler.
+
+**Deliverable:** Schedule across module components; recatalogue generated declarations and discover permitted generated imports before closing structural work. Record pending dependencies rather than recursively invoking the compiler. Reuse generation/depth limits and reflection barriers.
+
+**Preconditions:** Each module has a catalogue and explicit pending dependencies.
+**Postconditions:** One workspace structural fixed point precedes reflection.
+**Invalid states:** Premature per-file stabilization, deadlock or recursive file loading in comptime.
+
+**Acceptance:** Declaration-only A/B cycles and a provider depending on another generator succeed independent of input order. A real evaluation cycle and unbounded generation terminate with origin-aware diagnostics. Generated import/function becomes available before use; reflective structural mutation is rejected.
+
+**Verify:** `./gradlew :comptime:test :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+
+#### R13.2.4 [TODO] Make imported evaluation cache identity and replay provenance safe
+
+**Language:** LS §11 CPX instance identity; §29 CPX and source provenance; §39 Determinism.
+**Technical:** TS §19 Expansion identity; §27.1 Compile-time import binding and workspace expansion; §49 Generic specialization cache.
+**Depends:** R13.2.3.
+**Files:** comptime/.../CpxExpansion.kt ExpansionKey, SpecializationKey, ExpansionId and replay; compiler dependency fingerprints.
+
+**Deliverable:** Use canonical callable plus dependency/configuration identity for evaluation caching. Keep evaluation reuse separate from per-insertion hygiene/origins; retain provider and client source chains on misses and hits.
+
+**Preconditions:** Resolved identities and dependency graph exist.
+**Postconditions:** Replay is semantically equivalent to fresh expansion.
+**Invalid states:** Alias-based cache keys, stale provider bodies or reused call-site origins.
+
+**Acceptance:** Two providers with the same function spelling never share results; aliases share permitted evaluation reuse. Two clients receive correct independent insertion origins. Cache hits preserve provider definition and current call-site locations; same-scope repeated-name behavior still follows LS §12.3.
+
+**Verify:** `./gradlew :comptime:test :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+
+### R13.3 [TODO] [0/2] Incremental and editor integration
+
+**Language:** LS §21.6 Importing compile-time functions; §41.1 Import assistance.
+**Technical:** TS §47 Incremental compilation model; §48 Compile-time dependency graph; §54.1 Discoverable imports.
+**Depends:** R13.2.
+
+#### R13.3.1 [TODO] Invalidate client expansions when providers or bindings change
+
+**Language:** LS §21.6 Importing compile-time functions; §39 Determinism.
+**Technical:** TS §47 Incremental compilation model; §48 Compile-time dependency graph; §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R13.2.4.
+**Files:** compiler/.../IncrementalCompiler.kt, Compiler.kt, ImportIndex.kt, SdkMetadata.kt; cli/.../LspWorkspace.kt.
+
+**Deliverable:** Include comptime provider/private-helper/generated-import edges in invalidation. Separate reusable parsed snapshots from context-dependent expansion; cover overlays, deletions, import retargeting and target/SDK configuration.
+
+**Acceptance:** Edit provider field name/type, remove pub, change a private helper and retarget an alias: only valid fresh client results survive. Unsaved provider overlays are respected. Warm compilation equals cold compilation; unrelated modules remain reusable.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.IncrementalCompilerTest --tests cplus.compiler.WorkspaceComptimeImportTest`.
+
+#### R13.3.2 [TODO] Expose imported compile-time declarations through shared tooling
+
+**Language:** LS §21.6 Importing compile-time functions; §41 Language-server model; §41.1 Import assistance.
+**Technical:** TS §30 Reference index; §54.1 Discoverable imports; §55 Hover.
+**Depends:** R13.3.1.
+**Files:** compiler/.../ImportIndex.kt; semantic reference collection; cli/.../LspLanguageService.kt, LspServer.kt.
+
+**Deliverable:** Offer public comptime signatures, completion and import fixes; resolve invocation definition/hover/references using retained bindings. Expose generated client types and origin navigation from the same compilation result.
+
+**Acceptance:** LSP tests apply an import edit then expand box without stale diagnostics; qualified/aliased navigation reaches the provider. Generated item.value completes correctly; private generators are not suggested. Provider edits refresh diagnostics and references without executing runtime code.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.LspComptimeImportTest`.
+
+### R13.4 [TODO] [0/2] Imported comptime release evidence
+
+**Language:** LS §21.6 Importing compile-time functions; §28 Source provenance.
+**Technical:** TS §27.1 Compile-time import binding and workspace expansion; §64 Golden compiler tests.
+**Depends:** R13.3.
+
+#### R13.4.1 [TODO] Accept imported comptime products on Linux and document usage
+
+**Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions; §28 Source provenance.
+**Technical:** TS §57 CLI architecture; §64 Golden compiler tests; §27.1 Compile-time import binding and workspace expansion.
+**Depends:** R13.3.2.
+**Files:** compiler and cli integration/golden fixtures; examples/comptime_import/ (new); README.md; SPEC.COVERAGE.md.
+
+**Deliverable:** Publish the exact box example plus aliases/provider-helper examples. Verify installed launcher, fat JAR, expanded source, generated C/header/map and shared LSP behavior on Linux; record actual evidence.
+
+**Acceptance:** Full Gradle suite and CLI product builds pass. CLI check succeeds; run returns 42 for the literal requested program (not an expected zero). A zero-exit wrapper may test value 42 separately. Import/local parity covers existing supported parameter kinds and CPX categories, preserving existing evaluator capability diagnostics. Negative fixtures verify visibility/cycle/collision errors and provenance; no imported-only definition is emitted as runtime code.
+
+**Verify:** `./gradlew test :cli:fatJar :cli:installDist --no-daemon; installed CLI check/expand/transcode/run on documented fixtures`.
+
+#### R13.4.2 [TODO] Accept native Windows imported comptime products
+
+**Language:** LS §21.6 Importing compile-time functions; §39 Determinism.
+**Technical:** TS §27.1 Compile-time import binding and workspace expansion; §64 Golden compiler tests.
+**Depends:** R13.4.1.
+**Files:** same R13 regression fixtures and isolated native Windows checkout.
+
+**Deliverable:** Run the native-host imported CPX suite and packaged JAR/launcher on Windows using the selected SDK/C driver; correct platform defects with local regression checks. Record native evidence and any cross-target exclusions.
+
+**Acceptance:** Exact box, aliases, cycles, cache invalidation, slash paths and paths with spaces pass native Windows x86_64. Source origins and exit 42 are verified. Skipped or unavailable tests leave this leaf TODO/DOING and R13 open.
+
+**Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
+
+## R14 [TODO] [0/20] Source test fixtures and CLI runner
+
+**Language:** LS §53 Test fixtures and assertions.
+**Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
+**Depends:** R12 (frontend work); R13.3/R13.4 at the integration/release leaves.
+
+The four forms are `assert(expr)`, `assert(description, expr)`,
+`assertEquals(expected, actual)` and `assertEquals(description, expected, actual)`.
+Descriptions omitted by the caller are generated from operand source text.
+No top-level CLI `test` command or source fixture model currently exists.
+All leaves below remain TODO.
+
+### R14.1 [TODO] [0/4] Fixture syntax and semantics
+
+**Language:** LS §53.1 Fixture declarations; §53.2 Assertion statements.
+**Technical:** TS §6 Parser; §29 Semantic model; §80.1 Shared fixture and assertion model.
+**Depends:** R12.
+
+#### R14.1.1 [TODO] Parse fixture descriptions and preserve structured bodies
+
+**Language:** LS §53.1 Fixture declarations.
+**Technical:** TS §6 Parser; §8 AST architecture; §80.1 Shared fixture and assertion model.
+**Depends:** R12.
+**Files:** language-core/.../Parser.kt, Token.kt, Syntax.kt, Ast.kt, AstBuilder.kt; all sealed declaration consumers.
+
+**Deliverable:** Add SyntaxTestFixture/AstTestFixture with normalized display description, original ranges and ordinary block body. Recognize the contextual declaration without breaking ordinary uses of test as an identifier. Update exhaustive consumers explicitly so modules compile.
+
+**Preconditions:** Shared lexer tokens retain source ranges.
+**Postconditions:** Fixture bodies are ordinary structured blocks.
+**Invalid states:** Regex body extraction or interpreting description words as C identifiers.
+
+**Acceptance:** Spaced and punctuated descriptions, comments/quoted braces, duplicate names, LF/CRLF and EOF recovery are covered. Empty/multiline/pub/nested declarations get precise diagnostics; following declarations still parse. AstGoldenTest asserts body and description origins.
+
+**Verify:** `./gradlew :language-core:test :cli:compileKotlin`.
+
+#### R14.1.2 [TODO] Parse all four assertion forms and narrow semicolon omission
+
+**Language:** LS §53.2 Assertion statements.
+**Technical:** TS §6 Parser; §80.1 Shared fixture and assertion model.
+**Depends:** R14.1.1.
+**Files:** language-core/.../Parser.kt statement context, Syntax.kt, Ast.kt, AstBuilder.kt.
+
+**Deliverable:** Add structured truth/equality assertion statements with optional description and original operand ranges. Recognize only fixture lexical context, restoring context around inner functions. Implement the assertion-only newline/closing-brace terminator rule.
+
+**Preconditions:** Parser knows whether it is inside a fixture body, excluding inner-function bodies.
+**Postconditions:** Arity and source operands survive AST conversion.
+**Invalid states:** Dropping expression text or reserving ordinary C assert imports globally.
+
+**Acceptance:** Parse assert(expr), assert(desc, expr), assertEquals(expected, actual), assertEquals(desc, expected, actual), with and without allowed semicolons. Cover nested calls/commas, multiline arguments/comments, invalid arity, same-line missing separator and ordinary assert calls outside fixtures. No global semicolon insertion.
+
+**Verify:** `./gradlew :language-core:test`.
+
+#### R14.1.3 [TODO] Resolve fixture scopes and control flow
+
+**Language:** LS §53.1 Fixture declarations; §53.3 Compilation and selection.
+**Technical:** TS §11 Scope model; §29 Semantic model; §80.1 Shared fixture and assertion model.
+**Depends:** R14.1.2.
+**Files:** semantic/.../Semantics.kt and reference collection; compiler/.../ImportIndex.kt.
+
+**Deliverable:** Give each fixture a private function-like void scope and stable owning identity. Validate declarations, returns, loops, defer and references through the ordinary analyzer. Keep fixtures out of imports/public symbols.
+
+**Preconditions:** Structured fixture/statement AST exists.
+**Postconditions:** Fixture bodies have resolved lexical scopes and ordinary control-flow rules.
+**Invalid states:** Fixture callable exports or unresolved scopes hidden by normal-mode omission.
+
+**Acceptance:** Module globals/imports/types/methods resolve inside fixtures; local names do not leak across fixtures. return; works, return value and invalid loop control fail. Duplicate descriptions have distinct IDs. check reports errors inside test bodies without executing them; import discovery never exports fixture names.
+
+**Verify:** `./gradlew :semantic:test --tests cplus.semantic.TestFixtureSemanticsTest`.
+
+#### R14.1.4 [TODO] Type assertions with ordinary truth and equality rules
+
+**Language:** LS §53.2 Assertion statements.
+**Technical:** TS §12 Type system model; §80.1 Shared fixture and assertion model; §80.2 Typed lowering and runtime reporting.
+**Depends:** R14.1.3.
+**Files:** semantic/.../Semantics.kt expression validation and typed assertion records.
+
+**Deliverable:** Resolve optional string descriptions, scalar conditions, expected/actual types and ordinary equality conversions. Record operands and pre-conversion types for reporting; do not reparse expressions or invent equality operators.
+
+**Preconditions:** Fixture expressions and names resolve.
+**Postconditions:** Assertions carry exact operand types and conversion/comparison information.
+**Invalid states:** String-content/deep equality invented implicitly or operand values folded away for reporting.
+
+**Acceptance:** Positive/negative typing covers all four forms, signed/unsigned multiword integers, typedefs, enums, floating/complex supported targets, pointers/null and strings. Void/aggregate-invalid conditions, incomparable operands and non-string descriptions fail at their source ranges.
+
+**Verify:** `./gradlew :semantic:test --tests cplus.semantic.TestFixtureSemanticsTest`.
+
+### R14.2 [TODO] [0/4] Typed test products and runtime integration
+
+**Language:** LS §53.2 Assertion statements; §53.3 Compilation and selection.
+**Technical:** TS §80.2 Typed lowering and runtime reporting; SDK §103 Internal test reporting support.
+**Depends:** R14.1.
+
+#### R14.2.1 [TODO] Select test mode and synthesize one fixture entry dispatcher
+
+**Language:** LS §53.3 Compilation and selection.
+**Technical:** TS §58 Compiler pipeline API; §80.2 Typed lowering and runtime reporting.
+**Depends:** R14.1.4.
+**Files:** compiler/.../Compiler.kt CompilerOptions/CompileRequest, BackendPipeline.kt, IncrementalCompiler.kt; c-backend/.../CBackend.kt.
+
+**Deliverable:** Add explicit normal/test mode and requested root selection, including cache identity. In test mode produce stable fixture functions and dispatcher metadata; retain user main under a symbol-mapped private emitted name. Normal mode erases validated fixtures before backend lowering.
+
+**Preconditions:** Fixtures are semantically validated and owning root is explicit.
+**Postconditions:** Normal/test products have the correct unique entry and selection.
+**Invalid states:** Renaming main by text, cache reuse across modes or silently executing imported fixtures.
+
+**Acceptance:** Normal C/header/map omit test runtime/code; test mode contains one entry and selected root fixtures only. User main remains callable from a fixture. Imported tests are not selected; switching modes in a warm cache matches cold results. Zero fixtures needs no synthetic fake assertion.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :c-backend:test`.
+
+#### R14.2.2 [TODO] Lower assertions to ordered typed temporaries
+
+**Language:** LS §53.2 Assertion statements; §28 Source provenance.
+**Technical:** TS §31 Lowering framework; §80.2 Typed lowering and runtime reporting.
+**Depends:** R14.2.1.
+**Files:** compiler AST rewrite/lowering passes; c-backend assertion lowering; semantic assertion records.
+
+**Deliverable:** Lower optional description, expected and actual evaluations into separate typed statements, then comparison and report calls. Keep originals for display values and use converted values only for comparison; generated nodes retain assertion origins.
+
+**Preconditions:** Assertion types/conversions are resolved.
+**Postconditions:** Only ordinary statements and internal helper calls remain.
+**Invalid states:** Relying on C argument order, reevaluating for display or flattening all values to double.
+
+**Acceptance:** Generated-C/structural tests verify each operand appears once in executable evaluation and order is explicit. Side-effecting calls, volatile operands, pointer values, loops and mixed signedness preserve ordinary semantics. Assertions remain active regardless of NDEBUG.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :c-backend:test`.
+
+#### R14.2.3 [TODO] Provide portable typed assertion reporting in the SDK
+
+**Language:** LS §53.2 Assertion statements; §53.4 Execution outcome.
+**Technical:** TS §80.2 Typed lowering and runtime reporting; §80.3 Child process and result protocol; SDK §103 Internal test reporting support.
+**Depends:** R14.2.2.
+**Files:** sdk/runtime/ test reporting helper (new); compiler/.../RuntimeHelperCatalogue.kt, RuntimeLinker.kt; SDK manifest/source packaging.
+
+**Deliverable:** Implement typed human-report formatting and flushed versioned pass/fail/completion record writes using SDK stdio/file support. Link only test products. Include finite/NaN/infinite/negative-zero floating values, supported wide integers/complex values and safe pointer formatting.
+
+**Preconditions:** Typed calls match the declared helper ABI and target profile.
+**Postconditions:** Human output and control records describe exactly the values supplied.
+**Invalid states:** Unchecked varargs width, arbitrary pointer dereference, unflushed records or reporting I/O failure as pass.
+
+**Acceptance:** Independent native helper tests verify all type families, escaping, every assertion form's labels/default descriptions, write failure and protocol completion. Self-hosted linked test executable has no unexpected host-runtime imports; normal product has no test symbols. Runtime dependency audit passes locally.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestRuntimeReportTest; native helper vectors and CLI audit`.
+
+#### R14.2.4 [TODO] Integrate fixture execution with defer, CPX traversal and source maps
+
+**Language:** LS §15 Deferred execution; §29 CPX and source provenance; §53.1–53.3 Test fixtures and assertions.
+**Technical:** TS §32 AST rewrite framework; §35 defer lowering; §43 Source-map builder; §80.2 Typed lowering and runtime reporting.
+**Depends:** R14.2.3.
+**Files:** compiler/.../AstRewrite.kt, ClosureLowering.kt, BackendPipeline.kt; comptime/.../CpxExpansion.kt traversals; c-backend; cli AstPrinter.
+
+**Deliverable:** Wire dispatcher/report lifecycle into executable fixture products. Traverse fixtures/assertions in rewriting, hashing, hygiene, printers and origin reconstruction. Keep defer and inner-function transformations in their existing pass order.
+
+**Preconditions:** Fixture selection, assertion lowering and runtime helpers are available.
+**Postconditions:** An executable fixture reports completion only after ordinary exit/defer work.
+**Invalid states:** Silent node loss in walkers, duplicate completion, leaked test nodes or discarded source chains.
+
+**Acceptance:** Native execution proves false assertions continue, loop assertions count per execution, return; runs defers and completion follows them. User main is callable but not auto-run. CPX-originated nodes preserve nested origin chains in maps; C-subset validator sees no test syntax.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :comptime:test`.
+
+### R14.3 [TODO] [0/6] CLI execution and reporting
+
+**Language:** LS §53.3 Compilation and selection; §53.4 Execution outcome.
+**Technical:** TS §57.1 Source test command and report; §80.3 Child process and result protocol.
+**Depends:** R14.2.
+
+#### R14.3.1 [TODO] [0/2] Root selection and product builds
+
+**Language:** LS §53.3 Compilation and selection.
+**Technical:** TS §57.1 Source test command and report.
+**Depends:** R14.2.
+
+##### R14.3.1.1 [TODO] Parse test command roots and shared build configuration
+
+**Language:** LS §53.3 Compilation and selection.
+**Technical:** TS §57.1 Source test command and report.
+**Depends:** R14.2.4.
+**Files:** cli/.../Main.kt dispatch and argument helpers; new cli/.../TestCommand.kt; compiler/.../ModuleSourceResolver.kt.
+
+**Deliverable:** Add test dispatch with explicit file roots, -- delimiter, ordered normalized deduplication, positive --timeout and allowed shared configuration. Discover each root closure separately; manifest configuration does not add hidden test roots.
+
+**Acceptance:** CLI argument tests cover multiple shell-expanded paths, no files, nonexistent files, duplicate roots, quoted wildcard literal, spaces, invalid timeout/unsupported output options and shared SDK override. Keep libc test and run behavior intact.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest`.
+
+##### R14.3.1.2 [TODO] Build independent temporary test products per root
+
+**Language:** LS §53.3 Compilation and selection; §53.4 Execution outcome.
+**Technical:** TS §57.1 Source test command and report; §80.3 Child process and result protocol.
+**Depends:** R14.3.1.1.
+**Files:** cli/.../TestCommand.kt and existing buildExecutable plumbing; compiler/.../LinkDriver.kt.
+
+**Deliverable:** Reuse normal compiler/SDK/link planning with test mode, one product per requested root closure, and .exe host handling. Return fixture metadata with build results. Keep build errors associated with their root and proceed to later roots.
+
+**Acceptance:** Two roots may both declare main without collision. Imported fixture files run only when also explicit roots. A bad root followed by a good one produces both outcomes. SDK/compiler/sysroot overrides reach compilation; unsupported runnable target/profile fails clearly.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest`.
+
+#### R14.3.2 [TODO] [0/2] Result integrity and process lifecycle
+
+**Language:** LS §53.4 Execution outcome.
+**Technical:** TS §80.3 Child process and result protocol; SDK §103 Internal test reporting support.
+**Depends:** R14.3.1.
+
+##### R14.3.2.1 [TODO] Validate fixture control records independently of user output
+
+**Language:** LS §53.4 Execution outcome.
+**Technical:** TS §80.3 Child process and result protocol; SDK §103 Internal test reporting support.
+**Depends:** R14.3.1.2.
+**Files:** new cli/.../TestResultProtocol.kt; SDK test helper record contract.
+
+**Deliverable:** Implement incremental bounded-record decoding and validation of version, fixture identity, monotonic assertion IDs and final totals. Preserve valid prefix counts on truncated/corrupt output and distinguish completion from child exit status.
+
+**Acceptance:** Protocol tests cover pass/fail, no assertions, duplicate/wrong IDs, unknown version, missing/truncated completion, mismatched totals, oversized records and valid partial results. Human stdout containing fake SUCCESS/footer/protocol text cannot alter counts.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.TestResultProtocolTest`.
+
+##### R14.3.2.2 [TODO] Run isolated fixtures with timeout and reliable cleanup
+
+**Language:** LS §53.4 Execution outcome.
+**Technical:** TS §57.1 Source test command and report; §80.3 Child process and result protocol.
+**Depends:** R14.3.2.1.
+**Files:** new cli/.../TestProcessRunner.kt; TestCommand.kt.
+
+**Deliverable:** Invoke each fixture in a fresh child with private report path and inherited/drained output. Reap on completion/timeout/cancellation, validate records, continue after fixture errors, and clean only owned temp artifacts. Reuse existing Java process and SDK path facilities.
+
+**Acceptance:** Native tests cover global-state isolation, exit(0) without completion, nonzero exit, crash, sleep timeout, noisy stdout/stderr beyond pipe capacity, missing report and start failure. Later fixtures run after errors; cancellation stops the queue; products/reports are removed on every path.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.TestProcessRunnerTest`.
+
+#### R14.3.3 [TODO] [0/2] Human reports and aggregate outcomes
+
+**Language:** LS §53.2 Assertion statements; §53.4 Execution outcome.
+**Technical:** TS §57.1 Source test command and report.
+**Depends:** R14.3.2.
+
+##### R14.3.3.1 [TODO] Render ordered file, fixture and assertion reports
+
+**Language:** LS §53.2 Assertion statements; §53.4 Execution outcome.
+**Technical:** TS §57.1 Source test command and report; §80.2 Typed lowering and runtime reporting.
+**Depends:** R14.3.2.2.
+**Files:** new cli/.../TestReportRenderer.kt; TestCommand.kt; SDK human report helper.
+
+**Deliverable:** Print file/fixture headers before children, preserve statement output and render footers after completion. Match ::: and ... numbering and ---- assertion detail labels, including expression/default descriptions for all four forms.
+
+**Acceptance:** Golden output covers multiple files/fixtures, pass/fail truth and equality, expected/actual values, blank and unterminated user output, escaped multiline labels, EMPTY and NO TESTS. Ordering is deterministic on each stream without claiming cross-stream ordering.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestReportTest`.
+
+##### R14.3.3.2 [TODO] Aggregate actual assertion results and enforce exit status
+
+**Language:** LS §53.4 Execution outcome.
+**Technical:** TS §57.1 Source test command and report.
+**Depends:** R14.3.3.1.
+**Files:** cli/.../TestReportRenderer.kt, TestCommand.kt, result models.
+
+**Deliverable:** Compute fixture/file/final pass-fail-total counts from validated execution events; count build/execution errors separately. Include every root in final output, with interrupted/incomplete runs explicit. Apply statuses 0/1/2 as specified.
+
+**Acceptance:** Mixed passing/failing/empty/uncompiled/crashed roots yield exact totals with passed+failed=total at every level. A crash after a passing assertion preserves that pass but exits 1. A completed fixture with a false assertion has zero execution errors: its child exits 0 and the test command exits 1. No executed assertions adds zero passes; invalid CLI/setup exits 2. All clean roots return 0.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestReportTest`.
+
+### R14.4 [TODO] [0/6] Editor support and product conformance
+
+**Language:** LS §21.6 Importing compile-time functions; §41 Language-server model; §53 Test fixtures and assertions.
+**Technical:** TS §80.4 Acceptance and editor integration.
+**Depends:** R14.2 (tooling); R14.3 and R13.3 at the integration leaves.
+
+#### R14.4.1 [TODO] [0/2] Tooling and user documentation
+
+**Language:** LS §41–42 Language-server model and lexical highlighting; §53 Test fixtures and assertions.
+**Technical:** TS §80.1 Shared fixture and assertion model; §80.4 Acceptance and editor integration.
+**Depends:** R14.2.4, R13.3.2.
+
+##### R14.4.1.1 [TODO] Support fixture diagnostics and navigation in the shared LSP
+
+**Language:** LS §41 Language-server model; §53.1–53.3 Test fixtures and assertions.
+**Technical:** TS §80.1 Shared fixture and assertion model; §80.4 Acceptance and editor integration.
+**Depends:** R14.2.4, R13.3.2.
+**Files:** cli/.../LspLanguageService.kt, LspServer.kt, SemanticTokens.kt; semantic reference index.
+
+**Deliverable:** Expose fixture symbols/descriptions for tooling and builtin assertion signatures in fixture context. Traverse ordinary operands for completion, references, rename and diagnostics; use generated-type origins from imported CPX.
+
+**Acceptance:** LSP fixture tests verify four assertion signatures/arity diagnostics, type errors, local and imported symbol navigation, generated member completion and document edits. No runtime fixture executes during indexing/checking; assert remains an ordinary symbol outside fixtures.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.LspTestFixtureTest`.
+
+##### R14.4.1.2 [TODO] Document and highlight the four assertion forms
+
+**Language:** LS §42 TextMate and editor lexical highlighting; §53 Test fixtures and assertions.
+**Technical:** TS §57.1 Source test command and report; §80.4 Acceptance and editor integration.
+**Depends:** R14.4.1.1, R14.3.3.2.
+**Files:** vscode-extension/syntaxes/cplus.tmLanguage.json and tests; README.md; CLI help; examples/tests/ (new).
+
+**Deliverable:** Add lexical fixture highlighting, documented executable examples and test command help. Explain optional descriptions/semicolons, exact equality, process isolation, error counts and exits. Retain configured JAR/SDK behavior; no independent extension runner/parser is introduced.
+
+**Acceptance:** Grammar/npm tests and package checks pass. Documentation demonstrates all four forms, multiple roots and shell glob use; expected-failure examples are clearly labeled. Help and examples agree with actual CLI output.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest; cd vscode-extension && npm test && npm run check`.
+
+#### R14.4.2 [TODO] [0/2] Native execution regression matrix
+
+**Language:** LS §21.6 Importing compile-time functions; §53 Test fixtures and assertions.
+**Technical:** TS §27.1 Compile-time import binding and workspace expansion; §80.4 Acceptance and editor integration.
+**Depends:** R14.3.3, R13.3.
+
+##### R14.4.2.1 [TODO] Exercise the CLI acceptance matrix through native products
+
+**Language:** LS §53 Test fixtures and assertions.
+**Technical:** TS §57.1 Source test command and report; §80.4 Acceptance and editor integration.
+**Depends:** R14.3.3.2.
+**Files:** cli integration/golden fixtures and new CliTestCommandTest/CliTestReportTest suites.
+
+**Deliverable:** Add product-level execution fixtures covering the report/failure contract instead of only mocked process outcomes. Check all four forms, expressions with side effects and types, loops, defers, main, independent roots and protocol isolation.
+
+**Acceptance:** Actual generated C programs reproduce exact counts and exit statuses for pass/fail/empty/build-error/crash/timeout cases. Include i128/u128 only on supported targets, otherwise explicit capability diagnostics. Source-map errors point to assertion operands; ordinary run/build regressions pass.
+
+**Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest --tests cplus.cli.CliTestReportTest`.
+
+##### R14.4.2.2 [TODO] Execute imported generators inside source test scenarios
+
+**Language:** LS §21.6 Importing compile-time functions; §53.3 Compilation and selection.
+**Technical:** TS §27.1 Compile-time import binding and workspace expansion; §80.4 Acceptance and editor integration.
+**Depends:** R13.3.2, R14.4.2.1.
+**Files:** compiler/.../WorkspaceComptimeImportTest and TestFixtureLoweringTest tests; CLI combined feature fixtures.
+
+**Deliverable:** Combine the user box provider/client with fixtures using box_int_t and all four assertions. Add a provider which generates a fixture and verify selection, provenance and cache refresh.
+
+**Acceptance:** Test mode runs generated/client-owned fixtures once; provider fixtures are not implicitly run. Editing a generator updates fixture types/results in CLI and LSP; normal mode emits no test code. Alias, private-helper and cyclic-declaration variants preserve R13 behavior.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest --tests cplus.compiler.TestFixtureLoweringTest :cli:test`.
+
+#### R14.4.3 [TODO] [0/2] Packaged Linux and Windows evidence
+
+**Language:** LS §53 Test fixtures and assertions; §39 Determinism.
+**Technical:** TS §80.4 Acceptance and editor integration; SDK §103 Internal test reporting support.
+**Depends:** R14.4.1, R14.4.2; R13.4 at the respective platform gates.
+
+##### R14.4.3.1 [TODO] Accept Linux packaged test products and reconcile evidence
+
+**Language:** LS §53 Test fixtures and assertions; §39 Determinism.
+**Technical:** TS §80.4 Acceptance and editor integration; SDK §103 Internal test reporting support.
+**Depends:** R13.4.1, R14.4.1.2, R14.4.2.2.
+**Files:** Gradle/CLI distribution fixtures; vscode-extension packaged host test; IMPL.PLAN.md, SPEC.COVERAGE.md.
+
+**Deliverable:** Run full Linux regression, fat-JAR/install/package tests and runtime dependency audits. Verify fixture diagnostics/navigation in the packaged extension using the configured JAR. Record commands/results, publish docs and recompute all counters.
+
+**Acceptance:** Full Gradle test/build-product checks pass; installed c+ and java -jar run passing/failing multi-file tests outside the repo with bundled SDK and override. Packaged editor opens fixtures without false parser/import errors. Only accepted local leaves become DONE; Windows gates stay open.
+
+**Verify:** `./gradlew test :cli:fatJar :cli:installDist --no-daemon; cd vscode-extension && npm test && npm run package && npm run test:host`.
+
+##### R14.4.3.2 [TODO] Accept native Windows test products and close the feature gates
+
+**Language:** LS §53 Test fixtures and assertions.
+**Technical:** TS §57.1 Source test command and report; §80.4 Acceptance and editor integration; SDK §103 Internal test reporting support.
+**Depends:** R14.4.3.1, R13.4.2.
+**Files:** same native-host fixture/CLI suites; packaged Windows CLI/VSIX in isolated checkout.
+
+**Deliverable:** Run Windows x86_64 packaged test command and combined imported-CPX fixtures, including PAL report paths, exit/crash/timeout cleanup and native dependency audit. Patch platform defects with local regressions, then record exact gate evidence.
+
+**Acceptance:** All four forms and multi-file reports pass with CRLF, slash literals and space-containing paths. Products require no separately selected host libc. Packaged LSP fixture/import behavior passes; required native tests cannot be skipped. Counts reach 161/161 and 15/15 only when every R13/R14 criterion passes.
+
+**Verify:** `gradlew.bat test :cli:fatJar :cli:installDist --no-daemon (classify cross-target-only exclusions explicitly); npm test/package/test:host; native installed test fixtures and audit`.
+
+### R13/R14 planning validation checkpoint — 2026-10-09
+
+Documentation-only validation found 48 new task nodes: 16 composites and 32
+terminal leaves (R13: 12; R14: 20), all TODO. Read-only checks verified required
+fields, unique identities, each ancestor subtotal, at most four immediate
+children, dependency existence, absence of dependency cycles and the handoff's
+local-before-Windows execution order. All new normative sections have explicit
+coverage mappings. `git diff --check` passes. No compiler/runtime/CLI feature
+tests were run or claimed for this planning change. The accepted numerator
+remains 129; the denominator is 161, with 13/15 phase gates accepted.
+
 ## Execution order and commit policy
 
 The work proceeds vertically in this order:
 
 ```text
 R0 → R1 → R2 → R3 → R4 → R5 → R6 → R7 → R8 → R9
-   → R10 local work → R11 local work → final R10/R11 platform gates
+   → R10 local work → R11 local work → final R10/R11 platform gates → R12
+   → R13 local work → R14 local work → final R13/R14 platform gates
 ```
 
-For the new queue, execute R10 in dependency order through R10.3.2.2, then
+For the current queue, use `IMPL.HANDOFF.COMPTIME-TESTS.md`: R13 through
+R13.4.1, R14 through R14.4.3.1, then R13.4.2 and R14.4.3.2 for native Windows
+acceptance. These dependencies permit local progress before the Windows pass.
+No runtime implementation was performed while writing this plan.
+
+For the previously accepted queue, the sequence was R10 through R10.3.2.2, then
 R11 through R11.2.2.2. Perform the final Windows pass in R10.3.2.3 followed by
 R11.2.2.3. Their prerequisites explicitly permit this order. An unstarted
 final gate remains TODO while local implementation advances; do not count it
@@ -7059,6 +7676,7 @@ LS §1–4       → project structure, 1.*, pipeline milestones
 LS §5         → 2.1
 LS §6         → 1.3, 2.2, 4.2.1
 LS §7         → 3.1, 3.3
+LS §7.4       → R13.1–R13.4
 LS §8         → 1.2.3, 3.2
 LS §9         → 3.4
 LS §10        → 3.3.4, 3.4.4
@@ -7073,6 +7691,7 @@ LS §18        → 3.5.2
 LS §19        → 3.5.3
 LS §20        → 3.5.4
 LS §21        → 2.3, R1.4
+LS §21.6      → R13.1–R13.4
 LS §22        → 2.4
 LS §23        → 2.1.1, 4.3.4
 LS §24        → 4.3.2
@@ -7101,6 +7720,8 @@ LS §49        → 3.5.3
 LS §50        → 4.*
 LS §51        → phase invariants and 5.3
 LS §52        → complete component architecture
+LS §53.1–53.2 → R14.1, R14.2, R14.4
+LS §53.3–53.4 → R14.2–R14.4
 ```
 
 ## Technical specification
@@ -7118,6 +7739,7 @@ TS §16        → 3.2
 TS §17–20     → 3.3
 TS §21–25     → 3.5
 TS §26–27     → 2.3
+TS §27.1      → R13.1–R13.4
 TS §28        → 2.4
 TS §29–30     → 4.1.4 and 5.1
 TS §31–32     → 4.1
@@ -7129,12 +7751,17 @@ TS §45–46     → compiler context/diagnostics throughout
 TS §47–49     → 3.3, 3.4, 5.2
 TS §50–56     → 5.1
 TS §57–62     → 5.2
+TS §57.1      → R14.3–R14.4
 TS §63–64     → 5.3
 TS §65        → 1.3.4
 TS §66–68     → 1.1, 1.4
 TS §69–75     → architectural constraints across all branches
 TS §76        → milestones M1–M6
 TS §77–78     → final audit 5.3.4
+TS §80.1      → R14.1, R14.4.1
+TS §80.2      → R14.2, R14.4.2
+TS §80.3      → R14.3, R14.4.2
+TS §80.4      → R14.4
 ```
 
 ## C+ Standard Library, Runtime, SDK and Platform ABI Specification
@@ -7159,6 +7786,7 @@ SDK §82–89     → 6.4.2.3–6.4.2.4
 SDK §90–94     → 6.3.1, 6.1.1.3
 SDK §95–97     → 6.4.2.1, 6.4.2.4
 SDK §98–102    → 6.*, final SDK/runtime architecture audit
+SDK §103       → R14.2.3, R14.3.2, R14.4.3
 ```
 
 ```text

@@ -513,6 +513,13 @@ Any structural modification SHALL occur through defined CPX expansion or compile
 
 Compiler implementations SHALL ensure deterministic output for deterministic compile-time inputs.
 
+## 7.4 Public compile-time declarations
+
+`pub comptime` functions SHALL be importable declarations. An import binds the
+compile-time callable, including its definition and defining environment, before
+the client's CPX evaluation. Importing SHALL NOT execute the function or turn it
+into a runtime function. See §21.6 for binding, expansion and visibility rules.
+
 ---
 
 # 8. CPX source templates
@@ -1245,6 +1252,65 @@ Name collisions are compile-time errors unless explicitly resolved through quali
 Package/module import cycles MAY exist only if all declarations necessary to resolve the cycle can be catalogued without requiring execution of an unresolved compile-time dependency.
 
 A compile-time dependency cycle across imports that cannot reach a fixed point SHALL be diagnosed.
+
+## 21.6 Importing compile-time functions
+
+Public compile-time functions SHALL participate in selective imports, selective
+aliases, module-qualified imports, declaration discovery and editor navigation.
+Private functions SHALL NOT be directly importable. A file merely present in
+the workspace SHALL NOT contribute unbound compile-time names to a client.
+
+```c
+// box.cp
+pub comptime cpx<decl> box(type T) {
+    return {
+        struct box_{T}_t {
+            T value;
+        };
+    };
+}
+```
+
+```c
+// main.cp
+import { box } from "./box.cp";
+
+box(int);
+
+int main() {
+    struct box_int_t item;
+    item.value = 42;
+    return item.value;
+}
+```
+
+This program SHALL expand `box(int)` before client type-universe stabilization;
+`box_int_t` SHALL belong to the client insertion scope and be available to
+semantic analysis and C generation. The import SHALL remain valid after the
+compile-time body is erased from runtime output. No missing-function import,
+unknown-CPX or unknown-generated-type diagnostic is permitted for this program.
+
+`import { box as make_box } from "./box.cp"; make_box(int);` and
+`import box as boxes; boxes.box(int);` SHALL resolve the same definition.
+Aliases do not create new callable identities. Imported calls obey the same
+argument, category, hygiene, collision and phase rules as local calls (§8–13,
+§17–20, §35–38); importability does not change the permitted evaluator language.
+
+Argument expressions and type arguments resolve in the client environment.
+Definition-bound references and nested compile-time calls resolve in the
+provider's lexical/import environment, including its private helpers. An
+explicitly interpolated expression retains its client binding. Injected names
+follow the existing insertion-scope rules; provider-private names do not become
+unqualified client imports. Imported modules are not implicitly re-exported.
+
+All participating modules SHALL be catalogued before evaluating dependencies
+between them. Declaration-only cycles MAY succeed; unresolved evaluation cycles
+SHALL terminate with a dependency diagnostic. Structural generation, including
+permitted generated imports and compile-time declarations, SHALL reach a
+workspace fixed point before the type-universe barrier closes. Reflection SHALL
+NOT introduce late structural changes. Diagnostic origins SHALL retain both
+provider definition and client invocation locations. Provider edits, dependency
+edits and changed import bindings SHALL invalidate affected client expansions.
 
 ---
 
@@ -2428,3 +2494,117 @@ The defining distinction is:
 And the defining compilation property is:
 
 > C+ resolves compile-time structure first, stabilizes the type universe, performs semantic and reflective processing, then progressively lowers the resulting program until only valid C remains.
+
+---
+
+# 53. Test fixtures and assertions
+
+## 53.1 Fixture declarations
+
+A top-level `test` declaration defines a runtime fixture:
+
+```c
+test generated box stores a value {
+    struct box_int_t item;
+    item.value = 42;
+    assert(item.value)
+    assert("value is nonzero", item.value)
+    assertEquals(42, item.value)
+    assertEquals("stored value", 42, item.value);
+}
+```
+
+`test` is contextual at declaration start, not a globally reserved identifier.
+The description is nonempty unquoted text between `test` and the opening `{`
+on the same logical source line. It may contain spaces and punctuation other
+than braces; comments are trivia. Trim outer whitespace and normalize internal
+whitespace to one space for display, retaining the original source range.
+Strings/comments containing braces SHALL NOT prematurely open the body.
+Multiline descriptions, empty descriptions, nested fixture declarations and
+`pub test` SHALL be diagnosed. Equal descriptions are permitted; fixtures have
+distinct identities based on owning module and declaration location.
+
+The body uses ordinary statement grammar and a fresh local scope with access
+to its module's declarations, imports, methods and CPX-generated types. No
+implicit scope or state sharing occurs between fixtures. Fixtures cannot be
+imported or called as functions. `return;` completes a fixture normally and
+runs applicable `defer` statements; a return value is invalid. Existing rules
+for loops, control transfers, inner functions and `defer` otherwise apply.
+
+## 53.2 Assertion statements
+
+Inside a fixture, exactly four unqualified statement forms are built-in
+assertions and require no imports:
+
+```c
+assert(condition);
+assert(description, condition);
+assertEquals(expected, actual);
+assertEquals(description, expected, actual);
+```
+
+Descriptions have the existing `string` type. For `assert(condition)`, the
+display description is the condition's source text. For two-argument equality,
+it is `expectedSource == actualSource`. Assertions may appear in nested blocks
+and `defer` bodies of the fixture, but not inside separately declared inner
+functions. Outside this lexical fixture context, `assert` and `assertEquals`
+remain ordinary names; C imports are unaffected.
+
+The semicolon MAY be omitted after an assertion's closing `)` only when the
+next nontrivia token is `}`, end of file, or begins on a later source line.
+This exception does not introduce general automatic semicolon insertion.
+Multiline arguments, nested calls and comments SHALL parse structurally.
+
+`assert` evaluates its optional description and then its condition exactly
+once; it passes when the condition compares unequal to zero under ordinary
+C+ scalar truth rules. Zero is failure. Void or non-scalar conditions are errors.
+`assertEquals` evaluates the optional description, expected expression, then
+actual expression, each exactly once in that order. It uses the existing
+typed `==` semantics, including conversions, enum/alias rules and supported
+target-gated complex arithmetic. It SHALL NOT introduce approximate floating
+comparison, deep aggregate equality or string-content comparison. String and
+other pointer equality follows existing pointer equality. Incomparable types
+are diagnosed before code generation.
+
+Each executed assertion records a pass or failure and continues execution;
+failure SHALL NOT abort the fixture or skip its `defer` statements. Assertions
+in loops count on each execution; unreached assertions contribute no counts.
+Equality reports preserve both operands' expression text and pre-comparison
+values. Printed diagnostics SHALL NOT reevaluate an operand or dereference an
+arbitrary pointer. Reports for `assert` include the condition source, value
+and truth result. The numeric formatting contract is TS §80.2.
+
+## 53.3 Compilation and selection
+
+All source modes SHALL parse and type-check fixture bodies using the shared
+compiler model. Normal `check`, `build`, `run` and `transcode` SHALL NOT execute
+fixtures. Normal emitted products SHALL contain no fixture functions, test
+entry point or test runtime dependency. Syntax/expanded inspection and LSP
+representations SHALL retain fixtures for inspection and diagnostics.
+
+Test compilation SHALL lower fixtures into ordinary callable implementation
+functions and supply a dedicated entry point. An existing user `main` MAY
+coexist and be called from a fixture; the compiler SHALL preserve its identity
+under a private emitted name in test mode. Normal builds retain their ordinary
+entry-point behavior. Test mode is part of compilation/cache identity.
+
+The CLI selects only fixtures owned by each explicitly requested root file,
+in declaration order after CPX expansion. Imported files provide declarations
+but their fixtures run only if those files are also requested as roots. A
+CPX-generated fixture obeys the same rules and preserves expansion origins.
+
+## 53.4 Execution outcome
+
+Each fixture executes in a fresh process. Globals are initialized afresh;
+external filesystem or service side effects are not automatically rolled back.
+Assertions passed plus failed SHALL equal assertions executed. A fixture with
+no executed assertions is reported with zero counts and an `EMPTY` label;
+it is neither an invented assertion pass nor an error.
+
+A crash, timeout, explicit process exit before normal fixture completion,
+missing completion record or test-report I/O failure is a fixture execution
+error. Completed assertion counts remain reportable, but such an error SHALL
+prevent overall success even if all recorded assertions passed. Remaining
+fixtures/files SHALL still be attempted, except on user cancellation. Build
+errors similarly mark the affected file as an error without fabricating a
+failed assertion. TS §57.1 defines CLI output, counts and exit status.

@@ -1249,6 +1249,51 @@ class ModuleGraph(
 
 Cycles SHALL be analyzed before compile-time evaluation requiring imported generated symbols.
 
+## 27.1 Compile-time import binding and workspace expansion
+
+The pre-expansion catalogue SHALL retain public/private compile-time
+declarations, their definition syntax, defining module/scope, signature and
+origin independently of runtime AST erasure. Selective and qualified bindings
+SHALL refer to a canonical declaration identity, not a copied definition under
+the import alias. The catalogue SHALL remain available to final import
+validation, the import index and the language server.
+
+Compiler orchestration SHALL separate parsing/cataloguing from expansion:
+
+```text
+discover source closure -> parse modules -> catalogue and bind imports
+ -> schedule structural CPX across modules -> repeat discovery/cataloguing
+    for newly generated declarations/imports until stable
+ -> close type universe -> reflective work -> final semantics -> lowering
+```
+
+Use the shared source resolver, semantic catalogue and scheduler. The compiler
+owns filesystem discovery; the comptime module consumes declaration/binding
+records and requests dependency work without recursively loading files itself.
+Module identity SHALL distinguish resolved provider paths, including providers
+with the same basename, while retaining package/import spellings separately.
+Every entry path (disk, incremental, text workspace and LSP overlays) SHALL
+use the same ordering. Per-file expansion before imports bind is insufficient.
+
+The expansion context SHALL distinguish definition environment, argument
+environment and insertion scope. Expansion/specialization caches SHALL include
+canonical callable identity, definition/dependency fingerprints, semantic
+arguments, target/profile and any relevant scope identity. Aliases share
+evaluation identity; separate insertion sites retain their own origins and
+hygiene identities. Identically named functions in unrelated modules SHALL
+NOT share cache entries. Replaying cached syntax SHALL reconstruct the current
+invocation provenance. Incremental invalidation SHALL follow compile-time
+dependency edges, including private helpers and generated imports.
+
+Preconditions: participating source snapshots are registered, declarations
+have stable identities, and imports bind or have explicit pending/error state.
+Postconditions: no ready structural task remains, generated client declarations
+are catalogued before stabilization, and erased comptime exports still validate.
+Invalid states: unresolved dependency cycles, private/missing/ambiguous imports,
+binding collisions and reflective structural mutation. These produce bounded,
+origin-aware diagnostics; unresolved imports SHALL NOT cascade into a second
+misleading unknown-CPX error for the same failed binding.
+
 ---
 
 # 28. C import architecture
@@ -2224,6 +2269,80 @@ one installable product. The CLI SHALL discover that adjacent SDK by default;
 and alternate SDK testing. CLI help SHALL identify this JVM option and state
 that it precedes `-jar`. The fat JAR and distribution archives SHALL use
 reproducible entry ordering and timestamps.
+
+## 57.1 Source test command and report
+
+`cplus test file.cp [other.cp ...]` SHALL compile and run LS §53 fixtures.
+`c+ test` uses the same installed launcher behavior. At least one explicit
+root file is required; shell-expanded globs supply ordinary file arguments.
+The CLI does not expand quoted wildcard patterns. Preserve argument order and
+deduplicate normalized absolute root paths, keeping the first occurrence.
+Compile each root with its own directed import closure, so independent roots
+may each declare `main`. Imported fixtures are not implicitly selected.
+
+Reuse SDK discovery and `--sdk`, `--target`, `--runtime`, `--libc`,
+`--c-compiler`, `--sysroot`, `--include-dir`, `--c-source` and `--library`
+configuration. `--project`/`--workspace` MAY supply configuration and source
+roots, but SHALL NOT silently add a test root. Resolve explicit files against
+the invocation directory. `--` ends option parsing. Test products are managed
+temporary artifacts; output/header/map options are rejected in this command.
+No implicit directory scan, fixture filter, watch mode or parallel execution
+is required. A non-runnable target/profile SHALL produce an explicit error.
+
+Execute roots and fixtures sequentially. `--timeout <seconds>` SHALL accept
+a positive integer per-fixture limit, defaulting to 30 seconds. A timeout
+terminates that child, records an error and proceeds to the next fixture.
+The CLI SHALL clean its temporary products after success, failure or
+cancellation and never use a shell to invoke compilers or test products.
+
+The standard text report SHALL use these labels (counts are assertion counts):
+
+```text
+::: [1/2] tests/box.cp
+... [1/2] generated box stores a value
+<ordinary fixture stdout, unchanged>
+---- value is nonzero ----------------
+---- expression: item.value
+---- value: 42
+---- SUCCESS
+---- stored value ----------------
+---- expected expression: 42
+---- expected value: 42
+---- evaluated expression: item.value
+---- evaluated value: 42
+---- SUCCESS
+... asserts passed 2 / failed 0 / total 2; errors 0
+<next fixture header, output and footer>
+::: asserts passed 2 / failed 1 / total 3; errors 0
+<next file header, fixtures and footer>
+::: final report
+::: tests/box.cp: passed 2 / failed 1 / total 3; errors 0
+::: tests/other.cp: passed 1 / failed 0 / total 1; errors 0
+::: total: passed 3 / failed 1 / total 4; errors 0
+```
+
+`FAIL` replaces `SUCCESS` for a false assertion. Generated descriptions cover
+both description-free forms. Print headers before user code and assertion
+reports at the point of execution; fixture footers follow process completion.
+Preserve stdout and stderr on their respective streams. Cross-stream ordering
+is not promised. Add a separating newline where user output has no terminating
+newline. Do not prefix, discard, or parse arbitrary user output as test results.
+Reporter labels are fixed; paths, descriptions, source text and values are data.
+
+File and final reports SHALL include all requested roots, even files which
+failed to compile. A file with no fixtures is explicitly `NO TESTS`, counts
+0/0/0; a zero-assertion fixture is `EMPTY`. Neither invents successes. Build or
+fixture execution errors are counted separately, once per failing file build
+or fixture execution, with their diagnostic reason. They do not increase the
+assertion failure total. Partial valid assertion events before a crash remain
+counted. Report assertion totals from actual execution, not static syntax.
+
+Exit status: 0 only when all roots completed with no failed assertion or
+execution/build error; 1 for any such test/build failure; 2 for invalid CLI
+arguments or runner setup failure. User interruption is nonzero, stops further
+execution and marks the run incomplete. Zero discovered fixtures is explicitly
+reported but is not itself failure. Help SHALL document all four assertion
+forms, file selection, timeout, equality and exit behavior.
 
 ---
 
@@ -3207,3 +3326,101 @@ The central invariant of the implementation is:
 > Every compiler transformation operates on structured program representations, every generated construct retains provenance, and no feature requires the compiler, transcoder, and language server to maintain separate interpretations of C+.
 
 That invariant governs the parser, CPX system, semantic model, lowering pipeline, C backend, and IDE tooling.
+
+---
+
+# 80. Source test implementation architecture
+
+## 80.1 Shared fixture and assertion model
+
+Use structured syntax/AST nodes for fixture declarations and assertions, with
+description/operand ranges and origins. Reuse normal block/expression parsing;
+do not extract test bodies with regex or preprocess them into a second source
+language. All walkers, fingerprints, CPX reorigin/hygiene, printers, reference
+collectors and lowering passes SHALL handle the new nodes explicitly.
+
+The semantic model SHALL record fixture scopes, typed operands, equality
+conversions and source expressions. Built-in assertion recognition is confined
+to the fixture lexical context in LS §53.2. LSP diagnostics, completion,
+navigation and semantic tokens SHALL consume this model without executing
+fixtures. The import index SHALL never offer a fixture as an export.
+
+## 80.2 Typed lowering and runtime reporting
+
+Compilation mode and selected root fixture identities SHALL be explicit
+request inputs and cache-key fields. After semantic validation, normal modes
+erase fixture bodies before runtime lowering. Test mode produces fixture
+functions, an index dispatcher and one entry wrapper per root product, with
+user `main` remapped by symbol identity. Reuse method/closure/defer lowering.
+Generated statements and helper calls SHALL retain fixture/assertion origins.
+
+Lower each assertion through typed temporaries, enforcing description,
+expected and actual evaluation order before reporting or comparison. Do not
+rely on C function-argument evaluation order. Reports print original operand
+values separately from the converted equality result. Use target-correct
+integer formatting (including supported 128-bit types), round-trip-capable
+real floating formatting including NaN/infinity/signed zero, real/imaginary
+components for supported complex values, and hexadecimal addresses or `null`
+for pointers. Aliases/enums use underlying value formatting. Never dereference
+an arbitrary pointer to format equality operands; explicit descriptions are
+valid language strings. Escape embedded control characters in descriptions and
+source labels so one label cannot forge report lines. Arbitrary user output
+remains unchanged.
+
+Test reporting helpers SHALL be internal SDK/runtime services using existing
+stdio/file/PAL support, included only in test products. The compiler records
+their runtime dependencies through the helper catalogue and normal linker.
+No host-libc-specific assertion library or new public `std.test` API is required.
+Self-hosted Linux and Windows products SHALL retain existing ABI and dependency
+audit guarantees. Unsupported runnable profiles fail explicitly.
+
+Preconditions: fixture scopes and operand types are resolved, selected roots
+are known and the report helper contract matches the compiler.
+Postconditions: C-subset validation sees ordinary functions/statements only;
+normal products have no test entry/dependency; test operands execute once.
+Invalid states: unresolved assertion types, duplicate entry symbols, leaked
+test syntax at C emission or unsupported report value representation.
+
+## 80.3 Child process and result protocol
+
+Build one executable per root import closure, then invoke it once per selected
+fixture, passing fixture identity and a private result-file path as arguments.
+Each invocation has a fresh process and result file. The generated entry wrapper
+must initialize reporting before the fixture and finalize it only after normal
+return and deferred actions. Stdout/stderr stay available for user output;
+control records SHALL NOT be recovered by scraping human-readable output.
+
+On normal fixture return, the wrapper SHALL finish the completion record and
+exit zero even when assertions failed; the CLI derives test failure from those
+records. A nonzero child exit is an execution error. This keeps ordinary failed
+assertions from also being counted as fixture execution errors.
+
+Use a small versioned UTF-8 append-only record protocol with fixture identity,
+monotonic assertion sequence numbers, pass/fail records and a final completion
+record containing matching totals. Flush each complete record. Descriptions
+and values belong to human output, not this control channel. The CLI validates
+version, identity, sequence and totals; malformed/truncated records or a missing
+completion record are errors. Valid preceding assertions remain countable.
+Exit zero alone never proves successful completion. A protocol writer failure
+causes an execution error. This is an internal integrity contract, not a sandbox
+against deliberately malicious fixture code.
+
+Children SHALL inherit/drain user output without pipe deadlock; bound protocol
+record size and parse it incrementally rather than reading unbounded output
+into memory. The timeout/cancellation path reaps the process, attempts cleanup
+of spawned descendants where supported and removes only owned temporary files.
+Report files are ordinary paths passed as data, including Windows slash paths
+and paths containing spaces. Runtime file access uses the existing PAL.
+
+## 80.4 Acceptance and editor integration
+
+Parser/semantic/lowering tests SHALL cover all four assertion forms, recovery,
+single evaluation, equality conversions, `defer`, main coexistence and source
+maps. CLI golden/execution tests SHALL cover multiple roots/fixtures, output
+ordering, loops, empty tests, failing assertions, compilation failure, early
+exit, crash, timeout, malformed protocol, paths with spaces and cleanup.
+Compiler integration SHALL execute imported-CPX-generated types inside fixtures
+and fixtures generated by CPX. Cache tests SHALL alternate normal/test modes.
+Editor tests SHALL prove shared diagnostics and navigation inside fixtures and
+correct lexical highlighting without running user code. Final release gates
+require local Linux and native Windows evidence; unavailable gates remain open.

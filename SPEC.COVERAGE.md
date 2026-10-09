@@ -6,7 +6,8 @@ by focused tests and the claimed runtime behavior is executable-tested. A
 source contract, header, metadata entry, or declaration-only façade is marked
 **contracted** and does not satisfy a release gate by itself. The post-foundation
 completion gates are tracked in `IMPL.PLAN.md`; R0–R9 record the accepted
-baseline, while R10–R11 track the import-assistance and trait features. Broad
+baseline, R10–R12 record accepted import/trait/version features, and R13–R14
+plan imported comptime execution and source testing. Broad
 section ranges in the historical matrix below do not imply implementation of
 newly added subsections. Evidence and remaining platform gates are listed
 below and in `IMPL.PLAN.md`.
@@ -19,9 +20,14 @@ below and in `IMPL.PLAN.md`.
 | LS §21, §41.1; TS §27, §47, §54.1; shared resolution, export index and invalidation; SPEC.STDLIB §58 | R10.1.2 and its terminal children | Implemented; CLI/LSP parity and fresh-index invalidation tests recorded in `IMPL.PLAN.md` |
 | LS §41.1; TS §54.1; import completion, auto-import edits and quick fixes | R10.2–R10.3 and their terminal children | Implemented; packaged Linux and Windows VS Code host acceptance passes with real configured-CLI import actions |
 | LS §6.3.1; TS §13.1; direct compile-time extensions | R11.1–R11.2 and their terminal children | Implemented; parser, CPX, semantic, native C, visibility/LSP tooling, runnable examples and native Windows trait product checks pass |
+| LS §7.4, §21.6; TS §27.1; imported compile-time bindings, workspace expansion, identity and invalidation | R13.1–R13.4 | Planned, 0/12; current per-file expansion precedes module binding and erases definitions |
+| LS §53.1–53.2; TS §80.1–80.2; fixture syntax and four assertion forms | R14.1–R14.2 | Planned; no implementation credit |
+| LS §53.3–53.4; TS §57.1, §80.3; test selection, execution, reports and exit status | R14.3 | Planned; no top-level CLI test runner exists |
+| TS §80.4; SDK §103; runtime helper, tooling and platform conformance | R14.2.3, R14.4 | Planned; R14 total 0/20 |
 
-The detailed execution runbook is
-[IMPL.HANDOFF.IMPORTS-TRAITS.md](IMPL.HANDOFF.IMPORTS-TRAITS.md). No new feature
+The current detailed execution runbook is
+[IMPL.HANDOFF.COMPTIME-TESTS.md](IMPL.HANDOFF.COMPTIME-TESTS.md); the closed
+R10/R11 runbook is [IMPL.HANDOFF.IMPORTS-TRAITS.md](IMPL.HANDOFF.IMPORTS-TRAITS.md). No new feature
 is credited merely because its specification or implementation plan exists.
 
 ## Historical foundation evidence
@@ -80,6 +86,10 @@ is credited merely because its specification or implementation plan exists.
 
 ### Contracted but incomplete
 
+- Public comptime function imports into client CPX expansion, including generated
+  client types, remain open under R13 (LS §7.4/§21.6; TS §27.1).
+- Test fixture declarations, all four assertion forms and the CLI test/report
+  runner remain open under R14 (LS §53; TS §57.1/§80; SDK §103).
 - C17's complete standard-library surface is not claimed: the reported 51
   checks are the registered project conformance suite, not an exhaustive test
   of every C17 header and function.
@@ -102,7 +112,9 @@ is credited merely because its specification or implementation plan exists.
 
 The baseline roadmap's R0–R9 gates are complete for their explicitly recorded
 targets/profiles and distribution checks. R10/R11 have also been accepted;
-the roadmap closes at 129/129 leaves and 13/13 phase gates. This does not
+R12 has also been accepted. The expanded roadmap is 129/161 leaves and 13/15
+phase gates, with all 32 R13/R14 leaves TODO. Planning coverage for the new
+normative sections is complete; implementation coverage is not. This does not
 expand support claims to excluded profiles.
 
 ## Explicitly diagnosed limitations

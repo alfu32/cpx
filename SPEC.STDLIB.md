@@ -3665,3 +3665,23 @@ The complete C+ stack therefore becomes:
 ```
 
 This architecture makes the C+ SDK a complete development environment, runtime source distribution, C compatibility implementation, and target-platform abstraction without making an external libc part of the fundamental C+ execution model.
+
+---
+
+# 103. Internal test reporting support
+
+Source test products (LS §53; TS §57.1 and §80) SHALL use an internal runtime
+reporting helper distributed in the SDK. It SHALL write assertion descriptions,
+source expressions, typed values and results through existing stdio support,
+and versioned assertion/completion records through existing file/PAL support.
+Record writes SHALL be flushed and checked; failure SHALL prevent a successful
+test completion. Paths use the same canonical slash-path abstraction as other
+SDK file services, including on Windows.
+
+The helper SHALL support the value representations in TS §80.2 without host
+type-size assumptions or unchecked varargs formats. It SHALL be selected through
+the compiler runtime-helper catalogue and normal link planner, only for test
+products. Ordinary products SHALL NOT acquire test helper symbols or new
+dependencies. No new syscall interface, external test framework, host libc
+selection or public `std.test` API is required. Native Linux and Windows test
+products SHALL pass the normal runtime dependency audit.
