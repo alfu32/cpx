@@ -35,7 +35,13 @@ class CliTestCommandTest {
     @Test
     fun delimiterAllowsOptionLookingRootAndQuotedWildcardIsNeverExpanded() {
         val directory = Files.createTempDirectory("cplus-test-cli-glob")
-        val literalGlob = Files.writeString(directory.resolve("*.cp"), "int main() { return 0; }")
+        val literalGlobPath = runCatching { directory.resolve("*.cp") }.getOrNull()
+        if (literalGlobPath == null) {
+            assertNull(TestCommandArguments.parse(listOf("*.cp"), directory))
+            assertNull(TestCommandArguments.parse(listOf("--", "*.cp"), directory))
+            return
+        }
+        val literalGlob = Files.writeString(literalGlobPath, "int main() { return 0; }")
         val other = Files.writeString(directory.resolve("other.cp"), "int main() { return 0; }")
 
         val glob = TestCommandArguments.parse(listOf("*.cp"), directory)
