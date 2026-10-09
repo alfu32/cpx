@@ -44,6 +44,16 @@ test('TextMate grammar scopes trait declarations, target types, and self receive
     pattern.name === 'entity.name.type.cplus' && pattern.match.includes('trait')));
 });
 
+test('TextMate grammar scopes fixture declarations and recognizes all assertion names', () => {
+  const grammar = JSON.parse(fs.readFileSync(path.join(root, 'syntaxes', 'cplus.tmLanguage.json'), 'utf8'));
+  const fixturePattern = grammar.repository.testFixtures.patterns[0];
+  assert.equal(fixturePattern.name, 'meta.test.fixture.declaration.cplus');
+  assert.equal(fixturePattern.beginCaptures['1'].name, 'keyword.declaration.test.cplus');
+  assert.ok(fixturePattern.patterns.some((pattern) => pattern.name === 'entity.name.test-fixture.cplus'));
+  const functionPattern = grammar.repository.functions.patterns.find((pattern) => pattern.name === 'entity.name.function.cplus');
+  assert.deepEqual('assert() assertEquals()'.match(new RegExp(functionPattern.match, 'g')), ['assert', 'assertEquals']);
+});
+
 function loadExtension(vscode, LanguageClient = class {}, childProcess) {
   const originalLoad = Module._load;
   Module._load = function (request, parent, isMain) {

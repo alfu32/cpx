@@ -9,6 +9,9 @@
       "include": "#strings"
     },
     {
+      "include": "#testFixtures"
+    },
+    {
       "include": "#cpx"
     },
     {
@@ -34,6 +37,26 @@
     }
   ],
   "repository": {
+    "testFixtures": {
+      "patterns": [
+        {
+          "name": "meta.test.fixture.declaration.cplus",
+          "begin": "\\b(test)(?=\\s+[^;{}]+\\s*\\{)",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.declaration.test.cplus"
+            }
+          },
+          "end": "(?=\\{)",
+          "patterns": [
+            {
+              "name": "entity.name.test-fixture.cplus",
+              "match": "[^{}]+(?=\\{)"
+            }
+          ]
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {

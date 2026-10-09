@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    155/161 accepted with recorded evidence; 6 TODO
+Roadmap leaf tasks:    156/161 accepted with recorded evidence; 5 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.4.1.2 — document and highlight the four assertion forms
+Current task:          DOING: R14.4.2.1 — exercise the CLI acceptance matrix through native products
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 15/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 16/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       155/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       156/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 155/161 accepted; 6 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 156/161 accepted; 5 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (4/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
@@ -3814,16 +3814,16 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (15/20 leaves; next R14.4.1.2)
+[DOING] R14 — source test fixtures and CLI runner (16/20 leaves; next R14.4.2.1)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 155 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 156 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
-implementation is active; fourteen leaves remain open.
+implementation is active; thirteen leaves remain open.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [15/20] Source test fixtures and CLI runner
+## R14 [DOING] [16/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7308,13 +7308,13 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestReportTest`.
 
-### R14.4 [DOING] [1/6] Editor support and product conformance
+### R14.4 [DOING] [2/6] Editor support and product conformance
 
 **Language:** LS §21.6 Importing compile-time functions; §41 Language-server model; §53 Test fixtures and assertions.
 **Technical:** TS §80.4 Acceptance and editor integration.
 **Depends:** R14.2 (tooling); R14.3 and R13.3 at the integration leaves.
 
-#### R14.4.1 [DOING] [1/2] Tooling and user documentation
+#### R14.4.1 [DONE] [2/2] Tooling and user documentation
 
 **Language:** LS §41–42 Language-server model and lexical highlighting; §53 Test fixtures and assertions.
 **Technical:** TS §80.1 Shared fixture and assertion model; §80.4 Acceptance and editor integration.
@@ -7335,7 +7335,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.LspTestFixtureTest`.
 
-##### R14.4.1.2 [TODO] Document and highlight the four assertion forms
+##### R14.4.1.2 [DONE] Document and highlight the four assertion forms
 
 **Language:** LS §42 TextMate and editor lexical highlighting; §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80.4 Acceptance and editor integration.
@@ -7345,6 +7345,8 @@ non-string descriptions with source-ranged diagnostics.
 **Deliverable:** Add lexical fixture highlighting, documented executable examples and test command help. Explain optional descriptions/semicolons, exact equality, process isolation, error counts and exits. Retain configured JAR/SDK behavior; no independent extension runner/parser is introduced.
 
 **Acceptance:** Grammar/npm tests and package checks pass. Documentation demonstrates all four forms, multiple roots and shell glob use; expected-failure examples are clearly labeled. Help and examples agree with actual CLI output.
+
+**Evidence:** Added TextMate scopes for the fixture keyword and spaced fixture description, with regression tests confirming fixture grammar and both assertion call names. README documents all forms, exact equality behavior, semicolon omission, shell-expanded roots, process isolation, reports, errors, exits and timeout; runnable passing and explicitly expected-failure examples are included. CLI help matches these forms and documents isolation/terminators. `npm test`, `npm run check`, `npm run package`, `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest`, and a rebuilt fat-JAR run of the passing example pass on Linux; the intentionally failing example reports one failed assertion. (2026-10-09.)
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest; cd vscode-extension && npm test && npm run check`.
 

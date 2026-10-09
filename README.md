@@ -43,6 +43,49 @@ C+ transpiles to C and can then be compiled using an ordinary C compiler.
 
 ---
 
+# Source tests
+
+Declare a test fixture at file scope with `test`, followed by a human-readable
+description and a block. Fixture bodies use normal C+ statements and exactly
+four built-in assertion forms:
+
+```c
+assert(condition);
+assert("description", condition);
+assertEquals(expected, actual);
+assertEquals("description", expected, actual);
+```
+
+`assert` passes when its condition is nonzero. `assertEquals` evaluates the
+expected and actual expressions once, in that order, and compares them using
+ordinary C+ `==` semantics; it does not perform deep object or string-content
+comparison. Omitted descriptions are generated from the operand source text.
+An assertion semicolon may be omitted only before the fixture's closing brace,
+end of file, or a following source line.
+
+Run one or more explicit source roots with:
+
+```sh
+cplus test examples/tests/assertions.cp
+cplus test src/*.cp --timeout 60
+```
+
+The shell expands globs before invoking the CLI. Each fixture runs in a fresh
+process, so globals are reset between fixtures; external side effects are not
+rolled back. The runner prints each file and fixture, assertion results, and
+pass/fail/total counts. Build and execution errors are counted separately from
+assertion failures. Exit status is `0` when all requested roots pass (including
+roots with no fixtures), `1` for assertion/build/execution failures, and `2`
+for invalid options or setup errors. The timeout is per fixture and defaults to
+30 seconds.
+
+The runnable four-form example is [`examples/tests/assertions.cp`](examples/tests/assertions.cp).
+[`examples/tests/expected_failure.cp`](examples/tests/expected_failure.cp) is
+intentionally failing and is provided only to inspect a failure report; do not
+include it in a command expected to exit successfully.
+
+---
+
 
 # Language features
 
