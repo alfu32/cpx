@@ -182,6 +182,72 @@ class IncrementalCompilerTest {
     }
 
     @Test
+    fun importedProviderEditsRefreshGeneratedFixtureExpansionAndSourceOrigins() {
+        val directory = Files.createTempDirectory("cplus-incremental-imported-test-fixture")
+        val provider = directory.resolve("box.cp")
+        val main = directory.resolve("main.cp")
+        fun writeProvider(expected: Int, fieldType: String) {
+            provider.writeText(
+                """
+                    pub comptime cpx<decl> box(type T) {
+                        return {
+                            struct box_{T}_t { $fieldType value; };
+                            test generated box fixture {
+                                struct box_int_t item;
+                                item.value = 42;
+                                assertEquals($expected, item.value);
+                            }
+                        };
+                    }
+                """.trimIndent()
+            )
+        }
+        writeProvider(42, "int")
+        main.writeText(
+            """
+                import { box } from "./box.cp";
+                box(int);
+                int main() { return 0; }
+                test client fixture {
+                    struct box_int_t item;
+                    item.value = 7;
+                    assertEquals(7, item.value);
+                }
+            """.trimIndent()
+        )
+        val request = CompileRequest(listOf(main), mode = CompilationMode.TEST)
+        val incremental = IncrementalCompiler()
+        val first = incremental.compile(request)
+        assertTrue(first.isSuccessful, first.result.diagnostics.joinToString())
+        val initialGenerated = first.result.generatedUnits.single().text
+        val initialFixture = first.result.semanticModel!!.testFixtures
+            .single { it.fixture.description == "generated box fixture" }
+        assertTrue(initialFixture.fixture.origin is cplus.core.Origin.Expansion)
+        val initialAssertion = initialFixture.fixture.body.statements
+            .filterIsInstance<cplus.core.AstAssertion>().single().origin
+        assertTrue(first.result.generatedUnits.single().sourceMap.any { it.origin == initialAssertion })
+
+        writeProvider(99, "long")
+        val updated = incremental.compile(request)
+        val cold = CPlusCompiler().compile(request)
+        assertTrue(updated.isSuccessful, updated.result.diagnostics.joinToString())
+        assertTrue(cold.isSuccessful, cold.diagnostics.joinToString())
+        assertTrue(updated.result.generatedUnits.single().text != initialGenerated)
+        assertEquals(cold.generatedUnits.single().text, updated.result.generatedUnits.single().text)
+        assertTrue(updated.result.generatedUnits.single().text.contains("99"), updated.result.generatedUnits.single().text)
+        assertEquals("long", updated.result.semanticModel!!.structs.getValue("box_int_t").fields.single().symbol.type.name)
+        assertTrue(provider.toAbsolutePath().normalize() in updated.invalidation.changedSources)
+        assertTrue(main.toAbsolutePath().normalize() in updated.invalidation.invalidatedSources)
+        val refreshedFixture = updated.result.semanticModel!!.testFixtures
+            .single { it.fixture.description == "generated box fixture" }
+        assertTrue(refreshedFixture.fixture.origin is cplus.core.Origin.Expansion)
+        assertTrue(updated.result.generatedUnits.single().sourceMap.any {
+            it.origin == refreshedFixture.fixture.body.statements
+                .filterIsInstance<cplus.core.AstAssertion>().single().origin
+        })
+    }
+
+    @Test
     fun privateImportedComptimeHelperEditsInvalidateClientExpansion() {
         val directory = Files.createTempDirectory("cplus-incremental-imported-helper")
         val provider = directory.resolve("box.cp")

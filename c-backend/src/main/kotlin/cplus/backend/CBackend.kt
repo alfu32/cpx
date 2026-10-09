@@ -20,6 +20,7 @@ class CLowerer(
     private var activeModuleName = "<main>"
     private var activeTestMode = false
     private var activeTestFixtureIdentity: String? = null
+    private var activeTestAssertionOrdinal = 0
 
     fun lower(
         program: AstProgram,
@@ -301,9 +302,12 @@ class CLowerer(
             activeModuleName = selected.moduleName
             val stableIdentity = stableFixtureIdentity(selected)
             val previousFixtureIdentity = activeTestFixtureIdentity
+            val previousAssertionOrdinal = activeTestAssertionOrdinal
             activeTestFixtureIdentity = stableIdentity
+            activeTestAssertionOrdinal = 0
             val body = lowerBody(selected.fixture.body, null, instanceMethod = false)
             activeTestFixtureIdentity = previousFixtureIdentity
+            activeTestAssertionOrdinal = previousAssertionOrdinal
             CFunction(
                 CType.Primitive("void"),
                 fixtureFunctionName(stableIdentity),
@@ -680,7 +684,8 @@ class CLowerer(
             return LoweredStatements(emptyList(), fallsThrough = true)
         }
         val stableId = activeTestFixtureIdentity ?: "${typed.fixtureIdentity}:${assertion.origin.primaryRange?.startOffset ?: 0}"
-        val prefix = "__cplus_test_${stableSuffix("$stableId:${assertion.origin.primaryRange?.startOffset ?: 0}")}"
+        val assertionOrdinal = activeTestAssertionOrdinal++
+        val prefix = "__cplus_test_${stableSuffix("$stableId:$assertionOrdinal")}"
         val statements = mutableListOf<CStatement>()
         val descriptionName = "${prefix}_description"
         val descriptionText = when (assertion.kind) {

@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    157/161 accepted with recorded evidence; 4 TODO
+Roadmap leaf tasks:    158/161 accepted with recorded evidence; 3 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.4.2.2 — execute imported generators inside source test scenarios
+Current task:          DOING: R14.4.3.1 — accept Linux packaged test products and reconcile evidence
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 17/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 18/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       157/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       158/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 157/161 accepted; 4 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 158/161 accepted; 3 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (4/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
@@ -3814,13 +3814,13 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (17/20 leaves; next R14.4.2.2)
+[DOING] R14 — source test fixtures and CLI runner (18/20 leaves; next R14.4.3.1)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 157 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 158 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
 implementation is active; thirteen leaves remain open.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [17/20] Source test fixtures and CLI runner
+## R14 [DOING] [18/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7308,7 +7308,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestReportTest`.
 
-### R14.4 [DOING] [3/6] Editor support and product conformance
+### R14.4 [DOING] [4/6] Editor support and product conformance
 
 **Language:** LS §21.6 Importing compile-time functions; §41 Language-server model; §53 Test fixtures and assertions.
 **Technical:** TS §80.4 Acceptance and editor integration.
@@ -7350,7 +7350,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest; cd vscode-extension && npm test && npm run check`.
 
-#### R14.4.2 [DOING] [1/2] Native execution regression matrix
+#### R14.4.2 [DONE] [2/2] Native execution regression matrix
 
 **Language:** LS §21.6 Importing compile-time functions; §53 Test fixtures and assertions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion; §80.4 Acceptance and editor integration.
@@ -7371,18 +7371,20 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest --tests cplus.cli.CliTestReportTest`.
 
-##### R14.4.2.2 [TODO] Execute imported generators inside source test scenarios
+##### R14.4.2.2 [DONE] Execute imported generators inside source test scenarios
 
 **Language:** LS §21.6 Importing compile-time functions; §53.3 Compilation and selection.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion; §80.4 Acceptance and editor integration.
 **Depends:** R13.3.2, R14.4.2.1.
-**Files:** compiler/.../WorkspaceComptimeImportTest and TestFixtureLoweringTest tests; CLI combined feature fixtures.
+**Files:** compiler/.../CompilerIntegrationTest.kt, IncrementalCompilerTest.kt and TestFixtureLoweringTest.kt; cli/.../CliTestCommandTest.kt.
 
 **Deliverable:** Combine the user box provider/client with fixtures using box_int_t and all four assertions. Add a provider which generates a fixture and verify selection, provenance and cache refresh.
 
 **Acceptance:** Test mode runs generated/client-owned fixtures once; provider fixtures are not implicitly run. Editing a generator updates fixture types/results in CLI and LSP; normal mode emits no test code. Alias, private-helper and cyclic-declaration variants preserve R13 behavior.
 
-**Verify:** `./gradlew :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest --tests cplus.compiler.TestFixtureLoweringTest :cli:test`.
+**Evidence:** An aliased imported `box` generator calls a private helper and emits both a struct and a test fixture; the generated fixture and client fixture compile and run with all four assertion forms. A provider-owned failing fixture is excluded when only the client is a root and included exactly once when the provider is explicitly added. After changing the imported generated field type from `int` to `long`, the CLI still runs the refreshed fixture, and incremental compilation refreshes its type/result and matches a cold compilation. Expansion origins and source maps are asserted. This integration exposed colliding C temporaries when multiple CPX-generated assertions shared one invocation range; the backend now allocates deterministic per-fixture assertion ordinals, covered by a four-form CPX lowering regression. Existing imported-generator cycle diagnostics remain covered at the client invocation origin. Focused CLI tests, `./gradlew :cli:test`, and the imported-fixture/cache/lowering/cycle compiler tests pass on Linux (2026-10-09).
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.IncrementalCompilerTest.importedProviderEditsRefreshGeneratedFixtureExpansionAndSourceOrigins --tests cplus.compiler.TestFixtureLoweringTest --tests cplus.compiler.CompilerIntegrationTest.importedGeneratorCycleReportsTheClientInvocationOrigin; ./gradlew :cli:test --tests cplus.cli.CliTestCommandTest.importedGeneratorTypesAndFixturesExecuteOnlyForExplicitRoots`.
 
 #### R14.4.3 [TODO] [0/2] Packaged Linux and Windows evidence
 

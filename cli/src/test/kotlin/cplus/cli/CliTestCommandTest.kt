@@ -2,12 +2,17 @@ package cplus.cli
 
 import cplus.compiler.LibcProfile
 import cplus.compiler.RuntimeProfile
+import cplus.compiler.CompilationMode
+import cplus.compiler.CompileRequest
+import cplus.compiler.CPlusCompiler
+import cplus.core.Origin
 import java.nio.file.Files
 import java.nio.file.Path
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -310,6 +315,88 @@ class CliTestCommandTest {
         assertTrue(result.stderr.contains("$source:4:"), result.stderr)
         assertTrue(result.stderr.contains("assert condition must have scalar type"), result.stderr)
         assertTrue(result.stdout.contains("errors 1"), result.stdout)
+    }
+
+    @Test
+    fun importedGeneratorTypesAndFixturesExecuteOnlyForExplicitRoots() {
+        val directory = Files.createTempDirectory("cplus-test-imported-generator")
+        val provider = Files.writeString(
+            directory.resolve("box provider.cp"),
+            """
+                comptime cpx<decl> make_value(type T) {
+                    return { struct value_{T}_t { T item; }; };
+                }
+                pub comptime cpx<decl> box(type T) {
+                    return {
+                        make_value(T);
+                        struct box_{T}_t { T value; };
+                        test generated box fixture {
+                            struct box_int_t item;
+                            struct value_int_t generatedValue;
+                            item.value = 42;
+                            generatedValue.item = 42;
+                            assert(item.value != 0);
+                            assert("generated member is visible", item.value == 42);
+                            assertEquals(42, item.value);
+                            assertEquals("generated type equality", 6 * 7, item.value);
+                            assertEquals(42, generatedValue.item);
+                        }
+                    };
+                }
+                test provider-owned fixture { assert(0); }
+            """.trimIndent()
+        )
+        val main = Files.writeString(
+            directory.resolve("main.cp"),
+            """
+                import { box as makeBox } from "./box provider.cp";
+                makeBox(int);
+                int main() { return 0; }
+                test client box fixture {
+                    struct box_int_t item;
+                    item.value = 7;
+                    assert(item.value);
+                    assert("client generated member", item.value == 7);
+                    assertEquals(7, item.value);
+                    assertEquals("client generated equality", 3 + 4, item.value);
+                }
+            """.trimIndent()
+        )
+        val compiled = CPlusCompiler().compile(CompileRequest(listOf(main), mode = CompilationMode.TEST))
+        assertTrue(compiled.isSuccessful, compiled.diagnostics.joinToString())
+        assertTrue(compiled.semanticModel!!.structs.containsKey("value_int_t"))
+        val generatedFixture = assertNotNull(
+            compiled.semanticModel?.testFixtures?.firstOrNull { it.fixture.description == "generated box fixture" }
+        )
+        assertTrue(generatedFixture.fixture.origin is Origin.Expansion)
+        val generatedAssertionOrigin = generatedFixture.fixture.body.statements.first().origin
+        assertTrue(
+            compiled.generatedUnits.single().sourceMap.any { it.origin == generatedAssertionOrigin },
+            "generated fixture assertions should retain their expansion mapping"
+        )
+
+        val clientOnly = runCli(listOf("test", main.toString()))
+        assertEquals(0, clientOnly.status, "${clientOnly.stderr}\n${clientOnly.stdout}")
+        assertTrue(clientOnly.stdout.contains("generated box fixture"), clientOnly.stdout)
+        assertTrue(clientOnly.stdout.contains("client box fixture"), clientOnly.stdout)
+        assertTrue(!clientOnly.stdout.contains("provider-owned fixture"), clientOnly.stdout)
+        assertTrue(clientOnly.stdout.contains("::: total: passed 9 / failed 0 / total 9; errors 0"), clientOnly.stdout)
+
+        Files.writeString(
+            provider,
+            Files.readString(provider).replace(
+                "struct box_{T}_t { T value; };",
+                "struct box_{T}_t { long value; };"
+            )
+        )
+        val afterProviderEdit = runCli(listOf("test", main.toString()))
+        assertEquals(0, afterProviderEdit.status, "${afterProviderEdit.stderr}\n${afterProviderEdit.stdout}")
+        assertTrue(afterProviderEdit.stdout.contains("::: total: passed 9 / failed 0 / total 9; errors 0"), afterProviderEdit.stdout)
+
+        val bothRoots = runCli(listOf("test", main.toString(), provider.toString()))
+        assertEquals(1, bothRoots.status, "${bothRoots.stderr}\n${bothRoots.stdout}")
+        assertTrue(bothRoots.stdout.contains("provider-owned fixture"), bothRoots.stdout)
+        assertTrue(bothRoots.stdout.contains("::: total: passed 9 / failed 1 / total 10; errors 0"), bothRoots.stdout)
     }
 
     private data class CliCapture(val status: Int, val stdout: String, val stderr: String)

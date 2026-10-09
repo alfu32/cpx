@@ -126,6 +126,40 @@ class TestFixtureLoweringTest {
     }
 
     @Test
+    fun assertionsFromOneCpxExpansionReceiveDistinctStableTemporaries() {
+        val directory = Files.createTempDirectory("cplus-cpx-fixture-assertion-identities")
+        val source = directory.resolve("main.cp")
+        Files.writeString(
+            source,
+            """
+                comptime cpx<decl> make_fixture() {
+                    return {
+                        test generated fixture {
+                            assert(1);
+                            assert("truth", 1);
+                            assertEquals(2, 2);
+                            assertEquals("equality", 3, 3);
+                        }
+                    };
+                }
+                make_fixture();
+                int main() { return 0; }
+            """.trimIndent()
+        )
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(source), mode = CompilationMode.TEST))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        val temporaries = Regex("__cplus_test_[0-9a-f]+_description")
+            .findAll(generated)
+            .map { it.value }
+            .distinct()
+            .toList()
+        assertEquals(4, temporaries.size, generated)
+    }
+
+    @Test
     fun switchingWarmIncrementalCompilerModesMatchesColdTestBuild() {
         val directory = Files.createTempDirectory("cplus-test-cache-mode")
         val source = directory.resolve("main.cp")
