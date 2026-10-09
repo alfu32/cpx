@@ -2,6 +2,7 @@ package cplus.cli
 
 import cplus.compiler.CPlusCompiler
 import cplus.compiler.CompileRequest
+import cplus.compiler.CompilationMode
 import cplus.compiler.BuildProfile
 import cplus.compiler.C17ConformanceRunner
 import cplus.compiler.LibcProfile
@@ -294,10 +295,56 @@ internal class Cli {
     }
 
     private fun testCommand(arguments: List<String>): Int {
-        TestCommandArguments.parse(arguments) ?: return 2
-        System.err.println("test product execution is not yet available")
+        val parsed = TestCommandArguments.parse(arguments) ?: return 2
+        val temporaryDirectory = runCatching { Files.createTempDirectory("cplus-test") }.getOrElse {
+            System.err.println("unable to create temporary test directory: ${it.message}")
+            return 2
+        }
+        try {
+            val builds = buildTestProducts(parsed, temporaryDirectory)
+            builds.forEach { build ->
+                if (build.exitCode != 0) System.err.println("test product build failed for ${build.root} (exit ${build.exitCode})")
+                else println("prepared ${build.fixtures.size} fixture(s) for ${build.root}")
+            }
+            if (builds.any { it.exitCode != 0 }) return 1
+        } finally {
+            deleteTemporaryProduct(temporaryDirectory)
+        }
+        System.err.println("test execution is not yet available")
         return 2
     }
+
+    internal fun buildTestProducts(arguments: TestCommandArguments, temporaryDirectory: Path): List<TestRootBuildResult> =
+        arguments.roots.mapIndexed { index, root ->
+            val executable = executablePath(temporaryDirectory.resolve("root-$index").resolve("test-product"), arguments.target)
+            var metadata: cplus.backend.CTestProductMetadata? = null
+            val workspace = (arguments.projectManifest ?: arguments.workspaceManifest)?.let(::loadWorkspaceManifest)
+            val manifestInvalid = (arguments.projectManifest != null || arguments.workspaceManifest != null) && workspace == null
+            val sdkRoot = arguments.sdkManifest.toAbsolutePath().normalize().parent?.parent
+            val sourceClosure = if (manifestInvalid) listOf(root) else discoverModuleSources(
+                listOf(root), workspace?.sourceRoots.orEmpty(), sdkRoot
+            ).map { it.toAbsolutePath().normalize() }.distinct()
+            val exitCode = if (manifestInvalid) {
+                1
+            } else {
+                buildExecutable(
+                    sources = sourceClosure,
+                    cSources = arguments.cSources,
+                    executable = executable,
+                    libraries = arguments.libraries,
+                    includeDirectories = arguments.includeDirectories,
+                    sdkManifest = arguments.sdkManifest,
+                    externalSysroot = arguments.externalSysroot,
+                    target = arguments.target,
+                    cCompiler = arguments.cCompiler?.let { normalizeCompiler(it, Path.of("").toAbsolutePath().normalize()) },
+                    sourceBase = root.toAbsolutePath().normalize().parent ?: Path.of(".").toAbsolutePath(),
+                    mode = CompilationMode.TEST,
+                    rootSources = listOf(root),
+                    testProductSink = { metadata = it }
+                )
+            }
+            TestRootBuildResult(root, executable, exitCode, metadata?.fixtures.orEmpty())
+        }
 
     private fun executablePath(path: Path, target: TargetInfo): Path =
         if (target.targetTriple.substringBefore('-') == "windows" &&
@@ -542,7 +589,10 @@ internal class Cli {
         target: TargetInfo = TargetInfo(),
         cCompiler: String? = null,
         mapOutput: Path? = null,
-        sourceBase: Path = Path.of("").toAbsolutePath().normalize()
+        sourceBase: Path = Path.of("").toAbsolutePath().normalize(),
+        mode: CompilationMode = CompilationMode.NORMAL,
+        rootSources: List<Path> = sources,
+        testProductSink: ((cplus.backend.CTestProductMetadata?) -> Unit)? = null
     ): Int {
         val compiler = CPlusCompiler()
         val result = compiler.compile(
@@ -554,11 +604,14 @@ internal class Cli {
                 sdkManifest = sdkManifest,
                 externalSysroot = externalSysroot,
                 target = target,
-                cCompiler = cCompiler
+                cCompiler = cCompiler,
+                mode = mode,
+                rootSources = rootSources
             )
         )
         printDiagnostics(result.diagnostics, sources.first())
         if (!result.isSuccessful) return 1
+        testProductSink?.invoke(result.generatedUnits.singleOrNull()?.let { result.artifacts.singleOrNull()?.lowered?.unit?.testProduct })
         val generated = result.generatedUnits.singleOrNull()?.text ?: return 2
         val sdkResolution = result.sdkResolution ?: return 2
         val runtimeHelpers = result.artifacts.flatMap { it.lowered?.unit?.runtimeDependencies.orEmpty() }.toSet()

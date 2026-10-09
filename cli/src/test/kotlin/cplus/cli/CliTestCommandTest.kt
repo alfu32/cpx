@@ -4,6 +4,8 @@ import cplus.compiler.LibcProfile
 import cplus.compiler.RuntimeProfile
 import java.nio.file.Files
 import java.nio.file.Path
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -87,5 +89,46 @@ class CliTestCommandTest {
         assertEquals(listOf(root.toAbsolutePath().normalize()), parsed?.roots)
         assertEquals(manifest.toAbsolutePath().normalize(), parsed?.projectManifest)
         assertTrue(parsed?.workspaceManifest == null)
+    }
+
+    @Test
+    fun buildsIndependentProductsForRootsWithDuplicateMainAndDoesNotSelectImportedFixtures() {
+        val directory = Files.createTempDirectory("cplus-cli-test-roots")
+        val provider = Files.writeString(
+            directory.resolve("provider.cp"),
+            "pub int helper() { return 1; } test imported fixture { assert(1); }"
+        )
+        val first = Files.writeString(
+            directory.resolve("first.cp"),
+            "import { helper } from \"./provider.cp\"; int main() { return 0; } test first fixture { assert(helper()); }"
+        )
+        val second = Files.writeString(
+            directory.resolve("second.cp"),
+            "int main() { return 0; } test second fixture { assert(1); }"
+        )
+        val broken = Files.writeString(directory.resolve("broken.cp"), "int main( {")
+        val capturedOut = ByteArrayOutputStream()
+        val capturedErr = ByteArrayOutputStream()
+        val originalOut = System.out
+        val originalErr = System.err
+        val arguments = requireNotNull(TestCommandArguments.parse(listOf(broken.toString(), first.toString(), second.toString())))
+        val temporary = Files.createTempDirectory("cplus-test-products")
+        val builds = try {
+            System.setOut(PrintStream(capturedOut))
+            System.setErr(PrintStream(capturedErr))
+            Cli().buildTestProducts(arguments, temporary)
+        } finally {
+            System.setOut(originalOut)
+            System.setErr(originalErr)
+            Files.walk(temporary).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+
+        assertEquals(listOf(broken, first, second), builds.map { it.root })
+        assertTrue(builds[0].exitCode != 0, capturedErr.toString())
+        assertEquals(0, builds[1].exitCode, "expected a successful root build: ${capturedOut}; ${capturedErr}")
+        assertEquals(0, builds[2].exitCode, "expected a successful root build: ${capturedOut}; ${capturedErr}")
+        assertEquals(1, builds[1].fixtures.size, "imported fixture was incorrectly selected")
+        assertEquals(1, builds[2].fixtures.size)
+        assertTrue(Files.isRegularFile(provider))
     }
 }

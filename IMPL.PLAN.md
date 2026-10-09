@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    149/161 accepted with recorded evidence; 12 TODO
+Roadmap leaf tasks:    150/161 accepted with recorded evidence; 11 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.3.1.2 — build independent temporary test products per root
+Current task:          DOING: R14.3.2.1 — validate fixture control records independently of user output
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 9/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 10/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       149/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       150/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 149/161 accepted; 12 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 150/161 accepted; 11 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (4/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
@@ -3814,13 +3814,13 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (9/20 leaves; next R14.3.1.2)
+[DOING] R14 — source test fixtures and CLI runner (10/20 leaves; next R14.3.2.1)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 149 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 150 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
 implementation is active; fifteen leaves remain open.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [9/20] Source test fixtures and CLI runner
+## R14 [DOING] [10/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7194,13 +7194,13 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :comptime:test`.
 
-### R14.3 [DOING] [1/6] CLI execution and reporting
+### R14.3 [DOING] [2/6] CLI execution and reporting
 
 **Language:** LS §53.3 Compilation and selection; §53.4 Execution outcome.
 **Technical:** TS §57.1 Source test command and report; §80.3 Child process and result protocol.
 **Depends:** R14.2.
 
-#### R14.3.1 [DOING] [1/2] Root selection and product builds
+#### R14.3.1 [DONE] [2/2] Root selection and product builds
 
 **Language:** LS §53.3 Compilation and selection.
 **Technical:** TS §57.1 Source test command and report.
@@ -7221,7 +7221,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest`.
 
-##### R14.3.1.2 [TODO] Build independent temporary test products per root
+##### R14.3.1.2 [DONE] Build independent temporary test products per root
 
 **Language:** LS §53.3 Compilation and selection; §53.4 Execution outcome.
 **Technical:** TS §57.1 Source test command and report; §80.3 Child process and result protocol.
@@ -7231,6 +7231,8 @@ non-string descriptions with source-ranged diagnostics.
 **Deliverable:** Reuse normal compiler/SDK/link planning with test mode, one product per requested root closure, and .exe host handling. Return fixture metadata with build results. Keep build errors associated with their root and proceed to later roots.
 
 **Acceptance:** Two roots may both declare main without collision. Imported fixture files run only when also explicit roots. A bad root followed by a good one produces both outcomes. SDK/compiler/sysroot overrides reach compilation; unsupported runnable target/profile fails clearly.
+
+**Evidence:** `Cli.buildTestProducts` builds each normalized root separately into an owned temporary path in test mode and returns per-root executable/exit/fixture metadata. It resolves each root's directed import closure using project/workspace source roots and the selected SDK root, while passing only the explicit root as `rootSources`. Tests build two roots that both define `main`, confirm an imported provider fixture is not selected, and prove a broken first root does not prevent later valid products from building. The build path forwards SDK, target, runtime/libc profile, sysroot, C compiler, C sources, libraries, and include directories. Full `./gradlew :cli:test --no-daemon` passes on Linux (2026-10-09). Fixture process execution remains the next stage.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest`.
 

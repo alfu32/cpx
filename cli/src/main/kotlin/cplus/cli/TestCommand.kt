@@ -5,6 +5,7 @@ import cplus.compiler.LibcProfile
 import cplus.compiler.RuntimeProfile
 import cplus.compiler.TargetInfo
 import cplus.compiler.defaultHostTargetTriple
+import cplus.backend.CTestFixtureMetadata
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -130,3 +131,10 @@ internal data class TestCommandArguments(
                 }
     }
 }
+
+internal data class TestRootBuildResult(
+    val root: Path,
+    val executable: Path,
+    val exitCode: Int,
+    val fixtures: List<CTestFixtureMetadata>
+)
