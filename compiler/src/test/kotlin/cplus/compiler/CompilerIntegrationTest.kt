@@ -373,6 +373,44 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun providersWithSameComptimeNameKeepSeparateCacheIdentity() {
+        val directory = Files.createTempDirectory("cplus-comptime-cache-provider-identity")
+        val providerA = directory.resolve("provider_a.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> make(type T) {
+                        return { struct from_a_{T}_t { T value; }; };
+                    }
+                """.trimIndent()
+            )
+        }
+        val providerB = directory.resolve("provider_b.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> make(type T) {
+                        return { struct from_b_{T}_t { T value; }; };
+                    }
+                """.trimIndent()
+            )
+        }
+        val clientA = directory.resolve("client_a.cp").also { path ->
+            path.writeText("import { make } from \"./provider_a.cp\"; make(int);")
+        }
+        val clientB = directory.resolve("client_b.cp").also { path ->
+            path.writeText("import { make } from \"./provider_b.cp\"; make(int);")
+        }
+        val expander = CpxExpander()
+        val result = CPlusCompiler(CompilerContext(cpxExpander = expander))
+            .compile(CompileRequest(listOf(clientA, clientB, providerA, providerB)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("client_a", result.semanticModel?.structs?.get("from_a_int_t")?.moduleName)
+        assertEquals("client_b", result.semanticModel?.structs?.get("from_b_int_t")?.moduleName)
+        assertEquals(2, expander.specializationCache.statistics().entries)
+        assertTrue(expander.specializationCache.statistics().hits > 0L)
+    }
+
+    @Test
     fun importsPublicComptimeAsTypedNonRuntimeBindingAndRejectsInvalidExports() {
         val directory = Files.createTempDirectory("cplus-comptime-export-bindings")
         val provider = directory.resolve("box.cp").also { path ->

@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    136/161 accepted with recorded evidence; 25 TODO
+Roadmap leaf tasks:    137/161 accepted with recorded evidence; 24 TODO
 Phase gates:           13/15 complete; 1 active; 1 queued
-Current task:          DOING: R13.2.4 — make imported evaluation cache identity and replay provenance safe
+Current task:          DOING: R13.3.1 — invalidate client expansions when providers or bindings change
 Current milestone:     imported comptime functions and source test fixtures (planned)
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -40,17 +40,17 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
-R13 [DOING] 7/12 imported comptime bindings, expansion and product conformance
+R13 [DOING] 8/12 imported comptime bindings, expansion and product conformance
 R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       136/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       137/161 implementation tasks accepted; 13/15 phase gates complete,
             1 active, 1 queued
 ```
 
 The current Luna 6 Medium execution runbook is
 [IMPL.HANDOFF.COMPTIME-TESTS.md](IMPL.HANDOFF.COMPTIME-TESTS.md).
 R13 adds 12 terminal tasks and R14 adds 20: 129 + 12 + 20 = 161.
-Seven of the 32 new leaves are accepted with implementation evidence; 25 remain
+Eight of the 32 new leaves are accepted with implementation evidence; 24 remain
 TODO. The overall roadmap is DOING, with R13 active, R14 queued and R0–R12 retained as accepted historical
 scope. Newly specified CPX import conformance is explicitly outstanding even
 though the earlier R2/R10 gates passed their then-recorded tests.
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 136/161 accepted; 25 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 137/161 accepted; 24 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
 Active phase gates: 1 (R13); queued phase gates: 1 (R14)
@@ -3813,16 +3813,16 @@ Active phase gates: 1 (R13); queued phase gates: 1 (R14)
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
-[DOING] R13 — imported comptime functions (7/12 leaves; next R13.2.4)
+[DOING] R13 — imported comptime functions (8/12 leaves; next R13.3.1)
 [TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 136 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 137 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1 is complete; the other
-25 new leaves remain TODO. R13 is the active phase.
+24 new leaves remain TODO. R13 is the active phase.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6687,7 +6687,7 @@ Version” using the configured Java executable and CLI JAR.
 `./gradlew :cli:fatJar --no-daemon`, both `java -jar ... version` and no-argument help,
 and the VS Code extension `npm test` pass on Linux.
 
-## R13 [DOING] [7/12] Imported compile-time functions
+## R13 [DOING] [8/12] Imported compile-time functions
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion.
@@ -6807,7 +6807,7 @@ local generator reports exactly one CPX001. Ordinary function calls remain
 runtime calls. Focused tests and the complete language-core, comptime,
 semantic and compiler suites pass.
 
-### R13.2 [DOING] [3/4] Workspace expansion, scope and identity
+### R13.2 [DONE] [4/4] Workspace expansion, scope and identity
 
 **Language:** LS §10 CPX expansion model; §12 Hygiene; §17–18 Structural phase and type-universe barrier; §21.6 Importing compile-time functions.
 **Technical:** TS §17–24 CPX evaluation and stabilization; §27.1 Compile-time import binding and workspace expansion.
@@ -6893,7 +6893,7 @@ tests continue to reject reflective structural mutation and bound expansion.
 Focused generated-import/export regressions and full
 `:compiler:test :comptime:test :semantic:test :cli:test` pass.
 
-#### R13.2.4 [TODO] Make imported evaluation cache identity and replay provenance safe
+#### R13.2.4 [DONE] Make imported evaluation cache identity and replay provenance safe
 
 **Language:** LS §11 CPX instance identity; §29 CPX and source provenance; §39 Determinism.
 **Technical:** TS §19 Expansion identity; §27.1 Compile-time import binding and workspace expansion; §49 Generic specialization cache.
@@ -6908,15 +6908,26 @@ Focused generated-import/export regressions and full
 
 **Acceptance:** Two providers with the same function spelling never share results; aliases share permitted evaluation reuse. Two clients receive correct independent insertion origins. Cache hits preserve provider definition and current call-site locations; same-scope repeated-name behavior still follows LS §12.3.
 
-**Verify:** `./gradlew :comptime:test :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+**Verify:** `CpxExpansionTest.importedCallableIdentityPartitionsProvidersButAliasesReuseAndReoriginOutput`, `CpxExpansionTest.importedEvaluationCacheInvalidatesWhenProviderHelperChanges`, `CompilerIntegrationTest.providersWithSameComptimeNameKeepSeparateCacheIdentity`, plus `./gradlew :compiler:test :comptime:test :semantic:test :cli:test --no-daemon`.
 
-### R13.3 [TODO] [0/2] Incremental and editor integration
+**Evidence:** Linux, 2026-10-09 — imported expansion and specialization keys
+carry a normalized provider-path/declaration identity, so equal spellings from
+different providers cannot collide while aliases of one provider share cache
+entries. Fingerprints include lexical dependency bodies, target configuration,
+client module context, and the structural type-universe snapshot. Evaluations
+with diagnostics or insertion-specific node channels are not cached; reusable
+rendered text is reparsed and re-originated for each call. Tests cover provider
+isolation, alias reuse, private-helper invalidation, independent client origins,
+cache-hit call-site origins, and ordinary generated-name collision diagnostics.
+Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
+
+### R13.3 [DOING] [0/2] Incremental and editor integration
 
 **Language:** LS §21.6 Importing compile-time functions; §41.1 Import assistance.
 **Technical:** TS §47 Incremental compilation model; §48 Compile-time dependency graph; §54.1 Discoverable imports.
 **Depends:** R13.2.
 
-#### R13.3.1 [TODO] Invalidate client expansions when providers or bindings change
+#### R13.3.1 [DOING] Invalidate client expansions when providers or bindings change
 
 **Language:** LS §21.6 Importing compile-time functions; §39 Determinism.
 **Technical:** TS §47 Incremental compilation model; §48 Compile-time dependency graph; §27.1 Compile-time import binding and workspace expansion.

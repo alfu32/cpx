@@ -473,10 +473,11 @@ data class ExpansionKey(
     val functionName: String,
     val arguments: List<String>,
     val argumentKinds: List<String> = emptyList(),
-    val argumentIdentities: List<String> = emptyList()
+    val argumentIdentities: List<String> = emptyList(),
+    val callableIdentity: String = ""
 ) {
     val canonical: String
-        get() = "$functionName(${arguments.joinToString(",")})"
+        get() = "${callableIdentity.takeIf(String::isNotEmpty)?.plus("::").orEmpty()}$functionName(${arguments.joinToString(",")})"
 
     val specializationKey: SpecializationKey
         get() = SpecializationKey(
@@ -486,7 +487,8 @@ data class ExpansionKey(
                     argumentKinds.getOrNull(index) ?: "type",
                     argumentIdentities.getOrNull(index) ?: argument
                 )
-            }
+            },
+            callableIdentity
         )
 }
 
@@ -500,10 +502,11 @@ data class CanonicalComptimeValue(
 
 data class SpecializationKey(
     val declaration: String,
-    val arguments: List<CanonicalComptimeValue>
+    val arguments: List<CanonicalComptimeValue>,
+    val callableIdentity: String = ""
 ) {
     val canonical: String
-        get() = "$declaration(${arguments.joinToString(",") { it.canonical }})"
+        get() = "${callableIdentity.takeIf(String::isNotEmpty)?.plus("::").orEmpty()}$declaration(${arguments.joinToString(",") { it.canonical }})"
 }
 
 data class SpecializationCacheStatistics(
@@ -518,11 +521,11 @@ private data class SpecializationCacheEntry(
 )
 
 /**
- * Definition-sensitive cache for rendered structural CPX templates.
+ * Definition- and context-sensitive cache for reusable CPX evaluation results.
  *
- * The cache stores only canonical rendered text. Each invocation is still
- * reparsed and re-originated at its own call site, so cached output cannot
- * leak source locations between modules or suppress parser diagnostics.
+ * Each invocation is still reparsed and re-originated at its own call site.
+ * Results with diagnostics or insertion-specific node channels are not cached,
+ * so a hit cannot leak stale source locations or arena identities.
  */
 class SpecializationCache {
     private val entries = linkedMapOf<SpecializationKey, SpecializationCacheEntry>()
@@ -734,7 +737,9 @@ data class ExpansionTask(
     val ancestors: List<ExpansionKey> = emptyList(),
     val phase: CpxPhase = CpxPhase.STRUCTURAL,
     val dependencies: Set<ComptimeDependency> = emptySet(),
-    val definitionEnvironment: Map<String, SyntaxComptimeFunction> = emptyMap()
+    val definitionEnvironment: Map<String, SyntaxComptimeFunction> = emptyMap(),
+    val definitionIdentities: Map<String, String> = emptyMap(),
+    val callableIdentity: String = ""
 ) {
     val expansionId: ExpansionId
         get() = ExpansionId(definition.name, callSite, parentExpansion, key)
@@ -744,12 +749,15 @@ private data class DeferredCpxInvocation(
     val invocation: SyntaxCpxInvocation,
     val ancestors: List<ExpansionKey>,
     val parentExpansion: ExpansionId?,
-    val definitionEnvironment: Map<String, SyntaxComptimeFunction>
+    val definitionEnvironment: Map<String, SyntaxComptimeFunction>,
+    val definitionIdentities: Map<String, String>
 )
 
 data class ImportedComptimeDefinition(
     val declaration: SyntaxComptimeFunction,
-    val lexicalDefinitions: Map<String, SyntaxComptimeFunction>
+    val lexicalDefinitions: Map<String, SyntaxComptimeFunction>,
+    val callableIdentity: String = "",
+    val lexicalIdentities: Map<String, String> = emptyMap()
 )
 
 /**
@@ -998,6 +1006,7 @@ class CpxExpander(
         val evaluationResults = linkedMapOf<ExpansionKey, ComptimeEvaluationResult>()
         val expansionIds = mutableListOf<ExpansionId>()
         val definitions = linkedMapOf<String, SyntaxComptimeFunction>()
+        val definitionIdentities = linkedMapOf<String, String>()
         program.declarations
             .filterIsInstance<SyntaxComptimeFunction>()
             .forEach { definitions[it.name] = it }
@@ -1008,7 +1017,8 @@ class CpxExpander(
             invocation: SyntaxCpxInvocation,
             ancestors: List<ExpansionKey> = emptyList(),
             parentExpansion: ExpansionId? = null,
-            definitionEnvironment: Map<String, SyntaxComptimeFunction> = definitions
+            definitionEnvironment: Map<String, SyntaxComptimeFunction> = definitions,
+            lexicalIdentities: Map<String, String> = definitionIdentities
         ) {
             if (invocation.name == "require_service") {
                 val argument = invocation.arguments.singleOrNull()
@@ -1041,13 +1051,17 @@ class CpxExpander(
             val callSite = syntaxArena.add(astBuilder.buildDeclaration(invocation))
             val importedDefinition = importedDefinitions[invocation.name]
             val selectedEnvironment = importedDefinition?.lexicalDefinitions ?: definitionEnvironment
+            val selectedIdentities = importedDefinition?.lexicalIdentities ?: lexicalIdentities
             val definition = importedDefinition?.declaration ?: selectedEnvironment[invocation.name]
+            val callableIdentity = importedDefinition?.callableIdentity
+                ?: selectedIdentities[invocation.name].orEmpty()
             if (definition == null) {
                 deferredInvocations += DeferredCpxInvocation(
                     invocation,
                     ancestors,
                     parentExpansion,
-                    selectedEnvironment
+                    selectedEnvironment,
+                    selectedIdentities
                 )
             } else {
                 val task = taskFor(
@@ -1057,7 +1071,9 @@ class CpxExpander(
                     parentExpansion,
                     ancestors,
                     typeResolver,
-                    selectedEnvironment
+                    selectedEnvironment,
+                    selectedIdentities,
+                    callableIdentity
                 )
                 expansionIds += task.expansionId
                 scheduler.enqueue(task)
@@ -1085,7 +1101,9 @@ class CpxExpander(
                         deferred.parentExpansion,
                         deferred.ancestors,
                         typeResolver,
-                        deferred.definitionEnvironment
+                        deferred.definitionEnvironment,
+                        deferred.definitionIdentities,
+                        deferred.definitionIdentities[deferred.invocation.name].orEmpty()
                     )
                     expansionIds += task.expansionId
                     scheduler.enqueue(task)
@@ -1186,12 +1204,21 @@ class CpxExpander(
             argumentValues[task.key] = values
             val specializationKey = SpecializationKey(
                 task.definition.name,
-                values.map { value -> CanonicalComptimeValue(value.canonicalKind, value.canonicalText) }
+                values.map { value -> CanonicalComptimeValue(value.canonicalKind, value.canonicalText) },
+                task.callableIdentity
             )
             specializationKeys += specializationKey
 
             val category = parseCategory(task.definition.category)
+            val typeAccess = if (task.phase == CpxPhase.REFLECTIVE) {
+                TypeUniverseAccess.FULL
+            } else {
+                TypeUniverseAccess.EARLY_SAFE
+            }
+            val typeUniverse = scheduler.typeUniverse.snapshot(typeAccess)
             val definitionFingerprint = buildString {
+                append(task.callableIdentity)
+                append('|')
                 append(task.definition.name)
                 append('|')
                 append(task.definition.category)
@@ -1199,6 +1226,37 @@ class CpxExpander(
                 append(task.definition.parameters.joinToString(",") { "${it.kind}:${it.name}" })
                 append('|')
                 append(canonicalSyntax(task.definition.template))
+                append("|environment=")
+                task.definitionEnvironment.toSortedMap().forEach { (name, function) ->
+                    append(name)
+                    append(':')
+                    append(task.definitionIdentities[name].orEmpty())
+                    append(':')
+                    append(function.name)
+                    append(':')
+                    append(function.category)
+                    append(':')
+                    append(function.parameters.joinToString(",") { "${it.kind}:${it.name}" })
+                    append(':')
+                    append(canonicalSyntax(function.template))
+                    append(';')
+                }
+                append("|target=")
+                append(comptimeTargetFingerprint(target))
+                if (task.callableIdentity.isNotEmpty()) {
+                    append("|module=")
+                    append(source.path.toAbsolutePath().normalize())
+                }
+                append("|type-universe=")
+                append(typeUniverse.access)
+                append(':')
+                append(typeUniverse.names.sorted().joinToString(","))
+                typeUniverse.descriptors.toSortedMap().forEach { (name, descriptor) ->
+                    append('|').append(name).append(':').append(descriptor)
+                }
+                typeUniverse.typeIds.toSortedMap(compareBy { it.value }).forEach { (id, name) ->
+                    append("|type-id=").append(id.value).append(':').append(name)
+                }
             }
             val context = ComptimeContext(
                 module = source.path.fileName.toString(),
@@ -1209,9 +1267,7 @@ class CpxExpander(
                 target = target,
                 sourceOrigin = task.invocation.origin,
                 expansion = task.expansionId,
-                typeUniverse = scheduler.typeUniverse.snapshot(
-                    if (task.phase == CpxPhase.REFLECTIVE) TypeUniverseAccess.FULL else TypeUniverseAccess.EARLY_SAFE
-                )
+                typeUniverse = typeUniverse
             )
             val template = templateParser.parse(
                 task.definition.template,
@@ -1241,7 +1297,9 @@ class CpxExpander(
                 evaluationResults[task.key] = evaluation
                 diagnostics.addAll(evaluation.diagnostics)
                 scheduler.publishAll(evaluation.channels.dependencies)
-                specializationCache.putEvaluation(specializationKey, definitionFingerprint, evaluation)
+                if (isReusableEvaluation(evaluation)) {
+                    specializationCache.putEvaluation(specializationKey, definitionFingerprint, evaluation)
+                }
                 evaluation.renderedText
             }
             val generatedFile = SourceFile(
@@ -1281,9 +1339,19 @@ class CpxExpander(
             acceptedDeclarations
                 .filterIsInstance<SyntaxComptimeFunction>()
                 .forEach { definitions.putIfAbsent(it.name, it) }
-            val nestedDefinitionEnvironment = task.definitionEnvironment + acceptedDeclarations
-                .filterIsInstance<SyntaxComptimeFunction>()
+            val generatedFunctions = acceptedDeclarations.filterIsInstance<SyntaxComptimeFunction>()
+            generatedFunctions.forEach { function ->
+                definitionIdentities.putIfAbsent(
+                    function.name,
+                    generatedCallableIdentity(task.callableIdentity, function.name)
+                )
+            }
+            val nestedDefinitionEnvironment = task.definitionEnvironment + generatedFunctions
                 .associateBy(SyntaxComptimeFunction::name)
+            val nestedGeneratedIdentities = generatedFunctions.associate { function ->
+                function.name to generatedCallableIdentity(task.callableIdentity, function.name)
+            }
+            val nestedDefinitionIdentities = definitionIdentities + task.definitionIdentities + nestedGeneratedIdentities
             resolveDeferredInvocations()
             if (generated.size + acceptedDeclarations.count { it !is SyntaxComptimeFunction && it !is SyntaxCpxInvocation } > limits.maxGeneratedDeclarations) {
                 scheduler.markFailed(task.key)
@@ -1300,7 +1368,8 @@ class CpxExpander(
                     invocation,
                     task.ancestors + task.key,
                     task.expansionId,
-                    nestedDefinitionEnvironment
+                    nestedDefinitionEnvironment,
+                    nestedDefinitionIdentities
                 )
             }
         }
@@ -1337,7 +1406,9 @@ class CpxExpander(
         parentExpansion: ExpansionId? = null,
         ancestors: List<ExpansionKey> = emptyList(),
         typeResolver: ComptimeTypeResolver? = null,
-        definitionEnvironment: Map<String, SyntaxComptimeFunction> = emptyMap()
+        definitionEnvironment: Map<String, SyntaxComptimeFunction> = emptyMap(),
+        definitionIdentities: Map<String, String> = emptyMap(),
+        callableIdentity: String = ""
     ): ExpansionTask = ExpansionTask(
         invocation,
         definition,
@@ -1356,17 +1427,43 @@ class CpxExpander(
                 } else {
                     typeResolver?.resolve(argument.trim())?.typeId?.let { "id:${it.value}" }.orEmpty()
                 }
-            }.takeUnless { identities -> identities.all(String::isEmpty) }.orEmpty()
+            }.takeUnless { identities -> identities.all(String::isEmpty) }.orEmpty(),
+            callableIdentity
         ),
         callSite,
         parentExpansion,
         ancestors,
         phase = phaseFor(definition.category),
-        definitionEnvironment = definitionEnvironment
+        definitionEnvironment = definitionEnvironment,
+        definitionIdentities = definitionIdentities,
+        callableIdentity = callableIdentity
     ).let { task ->
         task.copy(
             dependencies = ancestors.lastOrNull()?.let { setOf(ComptimeDependency.Expansion(it)) }.orEmpty()
         )
+    }
+
+    private fun isReusableEvaluation(evaluation: ComptimeEvaluationResult): Boolean =
+        evaluation.diagnostics.isEmpty() &&
+            evaluation.channels.replacement.isEmpty() &&
+            evaluation.channels.hoistedDeclarations.isEmpty() &&
+            evaluation.channels.localDeclarations.isEmpty() &&
+            evaluation.channels.beforeStatements.isEmpty() &&
+            evaluation.channels.afterStatements.isEmpty()
+
+    private fun generatedCallableIdentity(parentIdentity: String, name: String): String =
+        if (parentIdentity.isEmpty()) "" else "$parentIdentity::generated::$name"
+
+    private fun comptimeTargetFingerprint(value: ComptimeTargetInfo): String = buildString {
+        append(value.cDialect).append('|').append(value.runtimeProfile).append('|').append(value.libcProfile)
+        append('|').append(value.os).append('|').append(value.architecture).append('|').append(value.vendor)
+        append('|').append(value.abi).append('|').append(value.objectFormat).append('|').append(value.endianness)
+        append('|').append(value.pointerBits).append('|').append(value.wordBits).append('|').append(value.cIntegerModel)
+        append('|').append(value.features.sorted().joinToString(","))
+        append('|').append(value.intrinsics.sorted().joinToString(","))
+        append('|').append(value.supportedAbis.sorted().joinToString(","))
+        append('|').append(value.libcProfiles.sorted().joinToString(","))
+        append('|').append(value.services.sorted().joinToString(","))
     }
 
     private fun parseCategory(value: String): CpxCategory = when (value.lowercase()) {

@@ -959,6 +959,11 @@ class CPlusCompiler(
             previousDefinitions[path].orEmpty().forEach { (name, definition) -> visible[name] = definition }
             visible
         }.toMutableMap()
+        val visibleIdentities = unitsById.mapValues { (moduleId, unit) ->
+            val path = unit.source.path.toAbsolutePath().normalize()
+            val definitions = visibleDefinitions.getValue(moduleId)
+            definitions.mapValuesTo(linkedMapOf()) { (_, definition) -> "$path#${definition.name}" }
+        }.toMutableMap()
         // Imports are solved as a bounded workspace fixed point, not recursively
         // loaded while expanding a generator. This also handles declaration-only
         // import SCCs: each round publishes only already-declared public callables.
@@ -966,28 +971,33 @@ class CPlusCompiler(
             var changed = false
             unitsById.forEach { (moduleId, unit) ->
                 val visible = visibleDefinitions.getValue(moduleId)
+                val identities = visibleIdentities.getValue(moduleId)
                 programs.getValue(unit.source.path.toAbsolutePath().normalize()).declarations
                     .filterIsInstance<SyntaxImport>().forEach { import ->
                     val importedId = graph.importBindings[moduleId]?.get(import.module) ?: return@forEach
-                    val publicDefinitions = visibleDefinitions[importedId].orEmpty().values
-                        .filter(SyntaxComptimeFunction::isPublic)
-                        .distinctBy { it.origin to it.name }
-                    fun publish(name: String, definition: SyntaxComptimeFunction) {
+                    val providerVisible = visibleDefinitions[importedId].orEmpty()
+                    val providerIdentities = visibleIdentities[importedId].orEmpty()
+                    val publicDefinitions = providerVisible.entries
+                        .filter { it.value.isPublic }
+                        .distinctBy { providerIdentities[it.key] }
+                    fun publish(name: String, definition: SyntaxComptimeFunction, identity: String) {
                         if (name !in visible) {
                             visible[name] = definition
+                            identities[name] = identity
                             changed = true
                         }
                     }
                     if (import.names.isEmpty()) {
-                        import.alias?.let { alias -> publicDefinitions.forEach { definition ->
-                            publish("$alias.${definition.name}", definition)
+                        import.alias?.let { alias -> publicDefinitions.forEach { entry ->
+                            publish("$alias.${entry.value.name}", entry.value, providerIdentities[entry.key].orEmpty())
                         } }
                     } else {
                         import.names.forEach { name ->
-                            val definition = publicDefinitions.singleOrNull { it.name == name } ?: return@forEach
+                            val entry = publicDefinitions.singleOrNull { it.value.name == name } ?: return@forEach
                             val localName = import.nameAliases[name] ?: name
-                            publish(localName, definition)
-                            import.alias?.let { alias -> publish("$alias.$localName", definition) }
+                            val identity = providerIdentities[entry.key].orEmpty()
+                            publish(localName, entry.value, identity)
+                            import.alias?.let { alias -> publish("$alias.$localName", entry.value, identity) }
                         }
                     }
                 }
@@ -1001,21 +1011,24 @@ class CPlusCompiler(
                 .filterIsInstance<SyntaxImport>().forEach { import ->
                 val providerId = graph.importBindings[importerId]?.get(import.module) ?: return@forEach
                 val lexicalDefinitions = visibleDefinitions[providerId].orEmpty()
-                val definitions = lexicalDefinitions.values.filter(SyntaxComptimeFunction::isPublic)
-                fun offer(localName: String, definition: SyntaxComptimeFunction) {
+                val lexicalIdentities = visibleIdentities[providerId].orEmpty()
+                val definitions = lexicalDefinitions.entries.filter { it.value.isPublic }
+                    .distinctBy { lexicalIdentities[it.key] }
+                fun offer(localName: String, definition: SyntaxComptimeFunction, identity: String) {
                     candidates.getOrPut(localName) { mutableListOf() } +=
-                        ImportedComptimeDefinition(definition, lexicalDefinitions)
+                        ImportedComptimeDefinition(definition, lexicalDefinitions, identity, lexicalIdentities)
                 }
                 if (import.names.isEmpty()) {
-                    import.alias?.let { alias -> definitions.forEach { definition ->
-                        offer("$alias.${definition.name}", definition)
+                    import.alias?.let { alias -> definitions.distinctBy { lexicalIdentities[it.key] }.forEach { entry ->
+                        offer("$alias.${entry.value.name}", entry.value, lexicalIdentities[entry.key].orEmpty())
                     } }
                 } else {
                     import.names.forEach { importedName ->
-                        val definition = definitions.singleOrNull { it.name == importedName } ?: return@forEach
+                        val entry = definitions.singleOrNull { it.value.name == importedName } ?: return@forEach
                         val localName = import.nameAliases[importedName] ?: importedName
-                        offer(localName, definition)
-                        import.alias?.let { alias -> offer("$alias.$localName", definition) }
+                        val identity = lexicalIdentities[entry.key].orEmpty()
+                        offer(localName, entry.value, identity)
+                        import.alias?.let { alias -> offer("$alias.$localName", entry.value, identity) }
                     }
                 }
             }

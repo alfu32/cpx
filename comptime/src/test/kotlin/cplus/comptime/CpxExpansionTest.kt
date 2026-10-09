@@ -563,6 +563,130 @@ class CpxExpansionTest {
     }
 
     @Test
+    fun importedCallableIdentityPartitionsProvidersButAliasesReuseAndReoriginOutput() {
+        fun parseDefinition(sourceId: Int, path: String): SyntaxComptimeFunction {
+            val source = SourceFile(
+                SourceFileId(sourceId),
+                Path.of(path),
+                "pub comptime cpx<decl> make(type T) { return { struct box_{T}_t { T value; }; }; }",
+                1
+            )
+            return Parser(Lexer().lex(source)).parse().syntax.declarations
+                .filterIsInstance<SyntaxComptimeFunction>().single()
+        }
+
+        fun client(
+            sourceId: Int,
+            invocation: String,
+            path: String = "client.cp"
+        ): Pair<SourceFile, SyntaxProgram> {
+            val source = SourceFile(SourceFileId(sourceId), Path.of(path), "$invocation(int);", 1)
+            return source to Parser(Lexer().lex(source)).parse().syntax
+        }
+
+        fun binding(definition: SyntaxComptimeFunction, identity: String, alias: String) =
+            ImportedComptimeDefinition(
+                definition,
+                mapOf("make" to definition),
+                identity,
+                mapOf("make" to identity)
+            ).let { alias to it }
+
+        val providerA = parseDefinition(301, "providers/a.cp")
+        val providerB = parseDefinition(302, "providers/b.cp")
+        val identityA = "${Path.of("providers/a.cp").toAbsolutePath().normalize()}#make"
+        val identityB = "${Path.of("providers/b.cp").toAbsolutePath().normalize()}#make"
+        val cache = SpecializationCache()
+        val expander = CpxExpander(specializationCache = cache)
+        val (firstSource, firstProgram) = client(303, "makeA")
+        val first = expander.expand(
+            firstSource,
+            firstProgram,
+            importedDefinitions = mapOf(binding(providerA, identityA, "makeA"))
+        )
+        val (secondSource, secondProgram) = client(304, "makeB")
+        val second = expander.expand(
+            secondSource,
+            secondProgram,
+            importedDefinitions = mapOf(binding(providerB, identityB, "makeB"))
+        )
+        val (aliasSource, aliasProgram) = client(305, "renamedMake")
+        val alias = expander.expand(
+            aliasSource,
+            aliasProgram,
+            importedDefinitions = mapOf(binding(providerA, identityA, "renamedMake"))
+        )
+        val (otherClientSource, otherClientProgram) = client(306, "makeA", "other-client.cp")
+        val otherClient = expander.expand(
+            otherClientSource,
+            otherClientProgram,
+            importedDefinitions = mapOf(binding(providerA, identityA, "makeA"))
+        )
+
+        assertTrue(first.diagnostics.isEmpty(), first.diagnostics.joinToString())
+        assertTrue(second.diagnostics.isEmpty(), second.diagnostics.joinToString())
+        assertTrue(alias.diagnostics.isEmpty(), alias.diagnostics.joinToString())
+        assertTrue(otherClient.diagnostics.isEmpty(), otherClient.diagnostics.joinToString())
+        assertEquals(SpecializationCacheStatistics(entries = 2, hits = 1, misses = 3), cache.statistics())
+        assertEquals(firstSource.id, first.program.declarations.filterIsInstance<SyntaxStruct>().single().origin.primaryRange?.file)
+        assertEquals(secondSource.id, second.program.declarations.filterIsInstance<SyntaxStruct>().single().origin.primaryRange?.file)
+        assertEquals(aliasSource.id, alias.program.declarations.filterIsInstance<SyntaxStruct>().single().origin.primaryRange?.file)
+        assertEquals(
+            otherClientSource.id,
+            otherClient.program.declarations.filterIsInstance<SyntaxStruct>().single().origin.primaryRange?.file
+        )
+    }
+
+    @Test
+    fun importedEvaluationCacheInvalidatesWhenProviderHelperChanges() {
+        fun definition(sourceId: Int, path: String, text: String): SyntaxComptimeFunction {
+            val source = SourceFile(SourceFileId(sourceId), Path.of(path), text, 1)
+            return Parser(Lexer().lex(source)).parse().syntax.declarations
+                .filterIsInstance<SyntaxComptimeFunction>().single()
+        }
+
+        val outer = definition(
+            311,
+            "providers/outer.cp",
+            "pub comptime cpx<decl> outer(type T) { return { helper(T); }; }"
+        )
+        val helperBefore = definition(
+            312,
+            "providers/helper.cp",
+            "comptime cpx<decl> helper(type T) { return { struct before_{T}_t { T value; }; }; }"
+        )
+        val helperAfter = definition(
+            313,
+            "providers/helper.cp",
+            "comptime cpx<decl> helper(type T) { return { struct after_{T}_t { T value; }; }; }"
+        )
+        val outerIdentity = "${Path.of("providers/outer.cp").toAbsolutePath().normalize()}#outer"
+        val helperIdentity = "${Path.of("providers/helper.cp").toAbsolutePath().normalize()}#helper"
+        fun imported(helper: SyntaxComptimeFunction) = ImportedComptimeDefinition(
+            outer,
+            mapOf("outer" to outer, "helper" to helper),
+            outerIdentity,
+            mapOf("outer" to outerIdentity, "helper" to helperIdentity)
+        )
+        fun expand(sourceId: Int, helper: SyntaxComptimeFunction, expander: CpxExpander): CpxExpansionResult {
+            val source = SourceFile(SourceFileId(sourceId), Path.of("client.cp"), "run(int);", 1)
+            val program = Parser(Lexer().lex(source)).parse().syntax
+            return expander.expand(source, program, importedDefinitions = mapOf("run" to imported(helper)))
+        }
+
+        val cache = SpecializationCache()
+        val expander = CpxExpander(specializationCache = cache)
+        val first = expand(314, helperBefore, expander)
+        val second = expand(315, helperAfter, expander)
+
+        assertTrue(first.diagnostics.isEmpty(), first.diagnostics.joinToString())
+        assertTrue(second.diagnostics.isEmpty(), second.diagnostics.joinToString())
+        assertEquals("before_int_t", first.program.declarations.filterIsInstance<SyntaxStruct>().single().name)
+        assertEquals("after_int_t", second.program.declarations.filterIsInstance<SyntaxStruct>().single().name)
+        assertEquals(SpecializationCacheStatistics(entries = 2, hits = 0, misses = 4), cache.statistics())
+    }
+
+    @Test
     fun specializationCacheDoesNotSuppressCachedExpansionDiagnostics() {
         val sourceText = """
             comptime cpx<decl> broken(type T) {
