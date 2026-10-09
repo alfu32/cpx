@@ -72,6 +72,38 @@ async function run() {
   assert.ok(commands.includes('cplus.restartServer'), 'restart command should register');
   assert.ok(commands.includes('cplus.runMain'), 'Run Main command should register');
 
+  const fixturePath = path.join(workspace, 'fixture-editor.cp');
+  const fixtureText = [
+    'int main() { return 0; }',
+    'test arithmetic fixture with spaces {',
+    '    int value = 7;',
+    '    assert(value);',
+    '    assert("value is seven", value == 7);',
+    '    assertEquals(value, 7);',
+    '    assertEquals("same value", 7, value);',
+    '}',
+    ''
+  ].join('\n');
+  fs.writeFileSync(fixturePath, fixtureText);
+  const fixtureUri = vscode.Uri.file(fixturePath);
+  const fixtureDiagnostics = waitForDiagnostics(fixtureUri, (items) => items.length === 0);
+  const fixtureDocument = await vscode.workspace.openTextDocument(fixtureUri);
+  await vscode.window.showTextDocument(fixtureDocument);
+  assert.equal(fixtureDocument.languageId, 'cplus');
+  await fixtureDiagnostics;
+
+  const fixtureSymbols = await vscode.commands.executeCommand(
+    'vscode.executeDocumentSymbolProvider', fixtureUri
+  );
+  assert.ok(fixtureSymbols.some((item) => item.name === 'arithmetic fixture with spaces'),
+    'the packaged server should expose fixture descriptions as document symbols');
+  const signatureOffset = fixtureText.indexOf('assertEquals(value') + 'assertEquals('.length;
+  const signatureHelp = await vscode.commands.executeCommand(
+    'vscode.executeSignatureHelpProvider', fixtureUri, fixtureDocument.positionAt(signatureOffset)
+  );
+  assert.ok(signatureHelp?.signatures?.[0]?.label.includes('assertEquals(expected value, actual value)'),
+    'the packaged server should offer assertion signature help inside fixture bodies');
+
   const stdlibPath = path.join(workspace, 'stdlib-completion.cp');
   const stdlibText = 'import std.;\nimport { std_fs_c } from std.fs;\nint main() { return 0; }\n';
   fs.writeFileSync(stdlibPath, stdlibText);

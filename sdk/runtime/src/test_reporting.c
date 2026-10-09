@@ -96,15 +96,6 @@ static void __cplus_test_unsigned_decimal(__cplus_test_output* output, unsigned 
     while (count > 0) __cplus_test_char(output, digits[--count]);
 }
 
-static void __cplus_test_signed_decimal(__cplus_test_output* output, long long value) {
-    unsigned long long magnitude;
-    if (value < 0) {
-        __cplus_test_char(output, '-');
-        magnitude = (unsigned long long)(-(value + 1LL)) + 1ULL;
-    } else magnitude = (unsigned long long)value;
-    __cplus_test_unsigned_decimal(output, magnitude);
-}
-
 static int __cplus_test_integer_value(__cplus_test_output* output, const void* address,
                                       unsigned long long size, int kind) {
     unsigned char magnitude[16];

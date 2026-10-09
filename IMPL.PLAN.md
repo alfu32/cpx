@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    158/161 accepted with recorded evidence; 3 TODO
+Roadmap leaf tasks:    159/161 accepted with recorded evidence; 2 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.4.3.1 — accept Linux packaged test products and reconcile evidence
+Current task:          DOING: R14.4.3.2 — accept native Windows test products and close the feature gates
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 18/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 19/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       158/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       159/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 158/161 accepted; 3 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 159/161 accepted; 2 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (4/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
@@ -3814,13 +3814,13 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (18/20 leaves; next R14.4.3.1)
+[DOING] R14 — source test fixtures and CLI runner (19/20 leaves; next R14.4.3.2)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 158 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 159 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
 implementation is active; thirteen leaves remain open.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [18/20] Source test fixtures and CLI runner
+## R14 [DOING] [19/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7308,7 +7308,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestReportTest`.
 
-### R14.4 [DOING] [4/6] Editor support and product conformance
+### R14.4 [DOING] [5/6] Editor support and product conformance
 
 **Language:** LS §21.6 Importing compile-time functions; §41 Language-server model; §53 Test fixtures and assertions.
 **Technical:** TS §80.4 Acceptance and editor integration.
@@ -7386,13 +7386,13 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :compiler:test --tests cplus.compiler.IncrementalCompilerTest.importedProviderEditsRefreshGeneratedFixtureExpansionAndSourceOrigins --tests cplus.compiler.TestFixtureLoweringTest --tests cplus.compiler.CompilerIntegrationTest.importedGeneratorCycleReportsTheClientInvocationOrigin; ./gradlew :cli:test --tests cplus.cli.CliTestCommandTest.importedGeneratorTypesAndFixturesExecuteOnlyForExplicitRoots`.
 
-#### R14.4.3 [TODO] [0/2] Packaged Linux and Windows evidence
+#### R14.4.3 [DOING] [1/2] Packaged Linux and Windows evidence
 
 **Language:** LS §53 Test fixtures and assertions; §39 Determinism.
 **Technical:** TS §80.4 Acceptance and editor integration; SDK §103 Internal test reporting support.
 **Depends:** R14.4.1, R14.4.2; R13.4 at the respective platform gates.
 
-##### R14.4.3.1 [TODO] Accept Linux packaged test products and reconcile evidence
+##### R14.4.3.1 [DONE] Accept Linux packaged test products and reconcile evidence
 
 **Language:** LS §53 Test fixtures and assertions; §39 Determinism.
 **Technical:** TS §80.4 Acceptance and editor integration; SDK §103 Internal test reporting support.
@@ -7402,6 +7402,8 @@ non-string descriptions with source-ranged diagnostics.
 **Deliverable:** Run full Linux regression, fat-JAR/install/package tests and runtime dependency audits. Verify fixture diagnostics/navigation in the packaged extension using the configured JAR. Record commands/results, publish docs and recompute all counters.
 
 **Acceptance:** Full Gradle test/build-product checks pass; installed c+ and java -jar run passing/failing multi-file tests outside the repo with bundled SDK and override. Packaged editor opens fixtures without false parser/import errors. Only accepted local leaves become DONE; Windows gates stay open.
+
+**Evidence:** `./gradlew test :cli:fatJar :cli:installDist --no-daemon` passes on Linux after removing an unused test-reporting helper that failed the AArch64 `-Werror` source check. `npm test`, `npm run check`, `npm run package` and `npm run test:host` pass; the installed VSIX opens a fixture with all four assertion forms, receives clean diagnostics, exposes its description as a document symbol and returns `assertEquals` signature help. From `/tmp/cplus-package-acceptance.qaGKmv`, installed `cplus test` uses its bundled SDK and returns 0 for two passing roots / 1 for a mixed passing-failing pair; the fat JAR with `-Dcplus.sdk.manifest=...` returns the same statuses and exact 8/0/8 and 4/1/5 totals. Installed and fat-JAR build products both pass `cplus audit` for `linux-x86_64`. Windows gates remain open (2026-10-09).
 
 **Verify:** `./gradlew test :cli:fatJar :cli:installDist --no-daemon; cd vscode-extension && npm test && npm run package && npm run test:host`.
 
