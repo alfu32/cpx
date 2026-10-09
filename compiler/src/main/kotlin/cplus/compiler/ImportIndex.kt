@@ -9,7 +9,7 @@ import java.nio.file.Path
 import java.security.MessageDigest
 
 enum class ImportExportKind {
-    FUNCTION, VALUE, STRUCT, UNION, ENUM, TYPE_ALIAS, ENUM_VALUE, C_FUNCTION, C_VALUE, C_TYPE
+    FUNCTION, COMPTIME_FUNCTION, VALUE, STRUCT, UNION, ENUM, TYPE_ALIAS, ENUM_VALUE, C_FUNCTION, C_VALUE, C_TYPE
 }
 
 enum class ImportVisibility { PUBLIC }
@@ -127,7 +127,10 @@ class ImportIndex(
             val expandedProgram = normalizedExpansions[normalized]
                 ?.takeIf { it.sourceFingerprint == expectedSourceFingerprint }
                 ?.expandedProgram
-            val exportProgram = expandedProgram ?: parsed.syntax
+            val exportProgram = expandedProgram?.copy(
+                declarations = expandedProgram.declarations + parsed.syntax.declarations
+                    .filterIsInstance<SyntaxComptimeFunction>()
+            ) ?: parsed.syntax
             parsedModules[normalized] = provider to exportProgram
             val contentFingerprint = fingerprint(configFingerprint + normalized + text + (expandedProgram?.let(::structuralFingerprint).orEmpty()))
             syntaxExports(exportProgram, text, normalized, provider, contentFingerprint)
@@ -239,6 +242,13 @@ class ImportIndex(
                 is SyntaxFunction -> add(declaration.name, ImportExportKind.FUNCTION,
                     "${typeText(declaration.returnType)} ${declaration.name}(${declaration.parameters.joinToString(", ") { "${typeText(it.type)} ${it.name}" }})",
                     declaration.range, declaration.range.startOffset)
+                is SyntaxComptimeFunction -> add(
+                    declaration.name,
+                    ImportExportKind.COMPTIME_FUNCTION,
+                    "comptime ${declaration.category} ${declaration.name}(${declaration.parameters.joinToString(", ") { "${it.kind} ${it.name}" }})",
+                    declaration.range,
+                    declaration.range.startOffset
+                )
                 is SyntaxGlobalVariable -> add(declaration.name, ImportExportKind.VALUE,
                     "${typeText(declaration.type)} ${declaration.name}", declaration.range)
                 is SyntaxStruct -> {

@@ -10,6 +10,7 @@ import cplus.core.Origin
 import cplus.core.SourceRange
 import cplus.core.SourceRepository
 import cplus.semantic.SymbolKind
+import cplus.semantic.Visibility
 import java.nio.file.Files
 import kotlin.io.path.writeText
 import kotlin.test.Test
@@ -20,6 +21,57 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
+    @Test
+    fun importsPublicComptimeAsTypedNonRuntimeBindingAndRejectsInvalidExports() {
+        val directory = Files.createTempDirectory("cplus-comptime-export-bindings")
+        val provider = directory.resolve("box.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> box(type T) { return { struct box_{T}_t { T value; }; }; }
+                    comptime cpx<decl> privateBox(type T) { return { }; }
+                """.trimIndent()
+            )
+        }
+
+        fun compile(
+            importedName: String,
+            localFunction: Boolean = false,
+            invokeAsRuntime: Boolean = false
+        ): CompileResult {
+            val main = directory.resolve("main.cp").also { path ->
+                path.writeText(
+                    """
+                        import { $importedName } from "./box.cp";
+                        ${if (localFunction) "int box() { return 0; }" else ""}
+                        int main() { return ${if (invokeAsRuntime) "box()" else "0"}; }
+                    """.trimIndent()
+                )
+            }
+            return CPlusCompiler().compile(CompileRequest(listOf(main, provider)))
+        }
+
+        val accepted = compile("box")
+        assertTrue(accepted.isSuccessful, accepted.diagnostics.joinToString())
+        val model = assertNotNull(accepted.semanticModel)
+        val providerModule = assertNotNull(accepted.moduleGraph?.moduleIdForPath(provider)).value
+        val binding = model.comptimeFunctions.getValue(providerModule).getValue("box")
+        assertEquals("decl", binding.category)
+        assertEquals(listOf("type"), binding.parameterKinds)
+        assertEquals(listOf("T"), binding.parameters)
+        assertEquals(Visibility.PUBLIC, binding.visibility)
+        assertEquals(binding, model.importedComptimeFunctions.getValue("main").getValue("box"))
+        assertFalse(model.moduleFunctions["main"].orEmpty().containsKey("box"))
+
+        val private = compile("privateBox")
+        assertTrue(private.diagnostics.any { it.code == "SEM406" }, private.diagnostics.joinToString())
+        val missing = compile("absent")
+        assertTrue(missing.diagnostics.any { it.code == "SEM404" }, missing.diagnostics.joinToString())
+        val runtimeCall = compile("box", invokeAsRuntime = true)
+        assertTrue(runtimeCall.diagnostics.any { it.code == "SEM302" }, runtimeCall.diagnostics.joinToString())
+        val conflict = compile("box", localFunction = true)
+        assertTrue(conflict.diagnostics.any { it.code == "SEM405" }, conflict.diagnostics.joinToString())
+    }
+
     @Test
     fun sameBasenamePathImportsKeepProviderFunctionsAndSymbolsDistinct() {
         val workspace = Files.createTempDirectory("cplus-duplicate-module-basename")

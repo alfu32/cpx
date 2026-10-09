@@ -9,6 +9,28 @@ import kotlin.test.assertTrue
 
 class ImportIndexTest {
     @Test
+    fun indexesPublicComptimeFunctionsAsTheirOwnExportKind() {
+        val root = Files.createTempDirectory("cplus-import-index-comptime")
+        val provider = root.resolve("box.cp")
+        Files.writeString(
+            provider,
+            """
+                pub comptime cpx<decl> box(type T) {
+                    return { struct box_{T}_t { T value; }; };
+                }
+                comptime cpx<decl> private_box(type T) { return { }; }
+            """.trimIndent()
+        )
+
+        val result = ImportIndex().build(listOf(root))
+        val box = result.exports.single { it.name == "box" }
+
+        assertEquals(ImportExportKind.COMPTIME_FUNCTION, box.kind)
+        assertEquals("comptime decl box(type T)", box.signature)
+        assertFalse(result.exports.any { it.name == "private_box" })
+    }
+
+    @Test
     fun indexesOnlyPublicSourceDeclarationsWithProviderAndSourceMetadata() {
         val root = Files.createTempDirectory("cplus-import-index")
         val provider = Files.createDirectories(root.resolve("math")).resolve("numbers.cp")
@@ -147,6 +169,35 @@ class ImportIndexTest {
 
         assertTrue(accepted.exports.any { it.name == "generated_value" })
         assertFalse(stale.exports.any { it.name == "generated_value" })
+    }
+
+    @Test
+    fun validatedExpansionRetainsPublicComptimeExportBinding() {
+        val root = Files.createTempDirectory("cplus-import-index-comptime-cpx")
+        val module = root.resolve("box.cp")
+        val sourceText = """
+            pub comptime cpx<decl> box(type T) {
+                return { struct box_{T}_t { T value; }; };
+            }
+            box(int);
+        """.trimIndent()
+        Files.writeString(module, sourceText)
+        val source = cplus.core.SourceFile(cplus.core.SourceFileId(92), module, sourceText, 0)
+        val parsed = cplus.core.Parser(cplus.core.Lexer().lex(source)).parse()
+        val expansion = cplus.comptime.CpxExpander().expand(source, parsed.syntax)
+        assertTrue(expansion.diagnostics.none { it.severity == cplus.core.DiagnosticSeverity.ERROR }, expansion.diagnostics.joinToString())
+
+        val indexed = ImportIndex().build(
+            listOf(root),
+            validatedExpansions = mapOf(
+                module to ValidatedImportExpansion(ImportIndex.sourceFingerprint(sourceText), expansion.program)
+            )
+        )
+
+        assertTrue(
+            indexed.exports.any { it.name == "box" && it.kind == ImportExportKind.COMPTIME_FUNCTION },
+            indexed.exports.toString()
+        )
     }
 
     private fun available(name: String): Boolean = System.getenv("PATH").orEmpty()

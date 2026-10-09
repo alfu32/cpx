@@ -45,7 +45,15 @@ class AstBuilder {
             node.isPublic,
             node.threadLocal
         )
-        is SyntaxComptimeFunction -> AstComptimeFunction(node.name, node.category, node.parameters.map { it.name }, node.template, node.origin, node.isPublic)
+        is SyntaxComptimeFunction -> AstComptimeFunction(
+            node.name,
+            node.category,
+            node.parameters.map { it.name },
+            node.template,
+            node.origin,
+            node.isPublic,
+            node.parameters.map { it.kind }
+        )
         is SyntaxCpxInvocation -> AstCpxInvocation(node.name, node.arguments, node.origin, node.isPublic)
         is SyntaxImport -> AstImport(node.names, node.module, node.alias, node.nameAliases, node.origin, node.isPublic)
         is SyntaxFunction -> function(node, node.ownerName)

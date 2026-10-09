@@ -14,7 +14,8 @@ data class AstModule(
     val name: String,
     val declarations: List<AstDeclaration>,
     /** Canonical source path used only to bind source-path imports. */
-    val sourcePath: String? = null
+    val sourcePath: String? = null,
+    val comptimeFunctions: List<AstComptimeFunction> = emptyList()
 )
 
 sealed interface AstDeclaration : AstNode {
@@ -108,7 +109,8 @@ data class AstComptimeFunction(
     val parameters: List<String>,
     val template: String,
     override val origin: Origin,
-    override val isPublic: Boolean = false
+    override val isPublic: Boolean = false,
+    val parameterKinds: List<String> = emptyList()
 ) : AstDeclaration
 
 data class AstCpxInvocation(

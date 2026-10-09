@@ -135,6 +135,9 @@ object SdkMetadataCache {
 
     internal fun declarationExports(declaration: SyntaxDeclaration): List<String> = when (declaration) {
         is SyntaxTrait -> declaration.methods.map { "extension:${declaration.targetName}.${it.name}" }
+        is SyntaxComptimeFunction -> listOf(
+            "comptime-function:${declaration.name}:${declaration.category}(${declaration.parameters.joinToString(",") { "${it.kind}:${it.name}" }})"
+        )
         else -> listOf(declarationName(declaration))
     }
 

@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    131/161 accepted with recorded evidence; 30 TODO
+Roadmap leaf tasks:    132/161 accepted with recorded evidence; 29 TODO
 Phase gates:           13/15 complete; 1 active; 1 queued
-Current task:          Next: R13.1.3 — retain kind-aware compile-time export bindings
+Current task:          Next: R13.1.4 — resolve selective aliases and qualified CPX invocation syntax
 Current milestone:     imported comptime functions and source test fixtures (planned)
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -40,19 +40,18 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
-R13 [DOING] 2/12 imported comptime bindings, expansion and product conformance
+R13 [DOING] 3/12 imported comptime bindings, expansion and product conformance
 R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       131/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       132/161 implementation tasks accepted; 13/15 phase gates complete,
             0 active, 2 queued
 ```
 
 The current Luna 6 Medium execution runbook is
 [IMPL.HANDOFF.COMPTIME-TESTS.md](IMPL.HANDOFF.COMPTIME-TESTS.md).
 R13 adds 12 terminal tasks and R14 adds 20: 129 + 12 + 20 = 161.
-Two of the 32 new leaves are accepted with implementation evidence; 30 remain
-TODO. The overall
-roadmap is DOING, with R13/R14 queued and R0–R12 retained as accepted historical
+Three of the 32 new leaves are accepted with implementation evidence; 29 remain
+TODO. The overall roadmap is DOING, with R13 active, R14 queued and R0–R12 retained as accepted historical
 scope. Newly specified CPX import conformance is explicitly outstanding even
 though the earlier R2/R10 gates passed their then-recorded tests.
 The closed R10/R11 runbook remains
@@ -3796,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 131/161 accepted; 30 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 132/161 accepted; 29 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
 Active phase gates: 1 (R13); queued phase gates: 1 (R14)
@@ -3814,16 +3813,16 @@ Active phase gates: 1 (R13); queued phase gates: 1 (R14)
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
-[DOING] R13 — imported comptime functions (2/12 leaves; next R13.1.3)
+[DOING] R13 — imported comptime functions (3/12 leaves; next R13.1.4)
 [TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 131 of 161 terminal leaves and thirteen of fifteen
-phase gates have recorded acceptance evidence. R13.1.1 and R13.1.2 are
-accepted; the other 30 new leaves remain TODO. R13 is the active phase.
+overall roadmap is DOING: 132 of 161 terminal leaves and thirteen of fifteen
+phase gates have recorded acceptance evidence. R13.1.1 through R13.1.3 are
+accepted; the other 29 new leaves remain TODO. R13 is the active phase.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6688,7 +6687,7 @@ Version” using the configured Java executable and CLI JAR.
 `./gradlew :cli:fatJar --no-daemon`, both `java -jar ... version` and no-argument help,
 and the VS Code extension `npm test` pass on Linux.
 
-## R13 [DOING] [0/12] Imported compile-time functions
+## R13 [DOING] [3/12] Imported compile-time functions
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion.
@@ -6700,7 +6699,7 @@ construction, uses name-keyed CPX definitions/cache identity, and removes
 comptime definitions before final import validation. All leaves below are
 unimplemented; the plan is not passing regression evidence.
 
-### R13.1 [DOING] [2/4] Catalogue and binding foundations
+### R13.1 [DOING] [3/4] Catalogue and binding foundations
 
 **Language:** LS §5 Declaration catalogue; §7.4 Public compile-time declarations; §21 Imports.
 **Technical:** TS §26 Imports and modules; §27.1 Compile-time import binding and workspace expansion.
@@ -6756,12 +6755,12 @@ test tasks pass. During verification, a first implementation incorrectly
 qualified imports visible in multiple scopes; the suite caught this and the
 backend now qualifies only genuinely distinct defining modules.
 
-#### R13.1.3 [TODO] Retain kind-aware compile-time export bindings
+#### R13.1.3 [DONE] Retain kind-aware compile-time export bindings
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion.
 **Depends:** R13.1.2.
-**Files:** semantic/.../Semantics.kt catalogue and resolveImportedFunctions; compiler/.../ImportIndex.kt, SdkMetadata.kt.
+**Files:** language-core/.../Ast.kt, AstBuilder.kt; compiler/.../Compiler.kt, ImportIndex.kt, SdkMetadata.kt; semantic/.../Semantics.kt and DeclarationCatalogue.
 
 **Deliverable:** Represent comptime callable identity, visibility, definition, signature and environment in the shared catalogue. Final import validation consumes these records after runtime AST erasure; export discovery includes public definitions without executing them.
 
@@ -6771,7 +6770,16 @@ backend now qualifies only genuinely distinct defining modules.
 
 **Acceptance:** A module exporting only pub comptime imports successfully without SEM404; private, missing, conflicting and unselected names are diagnosed. Runtime call validation never treats the binding as a runtime function. Expanded import-index snapshots do not discard comptime exports.
 
-**Verify:** `./gradlew :semantic:test :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+**Verify:** Focused binding/index tests, then `./gradlew :compiler:test :semantic:test --no-daemon`.
+
+**Evidence:** Linux, 2026-10-09 — public comptime-only providers import without
+SEM404 and retain provider identity, visibility, category, parameter kinds and
+template in semantic records; they do not enter runtime function lookup.
+Private, missing, conflicting and runtime-call cases produce SEM406, SEM404,
+SEM405 and SEM302 respectively. ImportIndex distinguishes comptime functions
+from runtime functions and retains them when indexing a validated expanded
+snapshot; SDK export metadata preserves their callable kind/signature. Focused
+compiler tests and the complete compiler and semantic suites pass.
 
 #### R13.1.4 [TODO] Resolve selective aliases and qualified CPX invocation syntax
 

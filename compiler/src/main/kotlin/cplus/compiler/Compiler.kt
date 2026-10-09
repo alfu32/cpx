@@ -501,7 +501,9 @@ class CPlusCompiler(
                 AstModule(
                     moduleId.value,
                     unit.ast.declarations,
-                    unit.source.path.toAbsolutePath().normalize().toString()
+                    unit.source.path.toAbsolutePath().normalize().toString(),
+                    context.astBuilder.build(unit.parsed.syntax).declarations
+                        .filterIsInstance<AstComptimeFunction>()
                 )
             }
         )

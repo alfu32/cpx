@@ -10,6 +10,26 @@ import kotlin.test.assertEquals
 
 class SdkMetadataTraitTest {
     @Test
+    fun comptimeFunctionExportMetadataPreservesCallableKindAndParameterKinds() {
+        val source = SourceFile(
+            SourceFileId(78),
+            Path.of("comptime.cp"),
+            "pub comptime cpx<decl> box(type T) { return { struct box_{T}_t { T value; }; }; }",
+            1
+        )
+        val declaration = Parser(Lexer().lex(source)).parse().syntax.declarations.single()
+
+        assertEquals(
+            listOf("comptime-function:box:decl(type:T)"),
+            SdkMetadataCache.declarationExports(declaration)
+        )
+        assertEquals(
+            listOf("comptime:box:decl"),
+            SdkMetadataCache.declarationMetadata(declaration)
+        )
+    }
+
+    @Test
     fun traitMetadataExportsMethodsAsExtensionsRatherThanFreeFunctionsOrTypes() {
         val source = SourceFile(
             SourceFileId(77),

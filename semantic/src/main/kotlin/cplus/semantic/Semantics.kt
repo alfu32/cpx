@@ -174,6 +174,31 @@ data class DeclarationCatalogue(
     fun contains(name: String): Boolean = name in byName
 }
 
+data class ComptimeFunctionBinding(
+    val identity: String,
+    val moduleName: String,
+    val name: String,
+    val category: String,
+    val parameterKinds: List<String>,
+    val parameters: List<String>,
+    val template: String,
+    val visibility: Visibility,
+    val origin: Origin
+)
+
+private fun comptimeFunctionBinding(moduleName: String, declaration: AstComptimeFunction) =
+    ComptimeFunctionBinding(
+        identity = "$moduleName:${declaration.name}:${declaration.origin}",
+        moduleName = moduleName,
+        name = declaration.name,
+        category = declaration.category,
+        parameterKinds = declaration.parameterKinds,
+        parameters = declaration.parameters,
+        template = declaration.template,
+        visibility = if (declaration.isPublic) Visibility.PUBLIC else Visibility.PRIVATE,
+        origin = declaration.origin
+    )
+
 data class FieldSymbol(
     val symbol: Symbol,
     val owner: CType
@@ -369,7 +394,9 @@ data class SemanticModel(
     val moduleTypeAliases: Map<String, Map<String, String>> = emptyMap(),
     val methodRegistry: MethodRegistry = MethodRegistry.from(methods.values.flatMap { it.values }),
     val resolvedMethodCalls: Map<AstCall, ResolvedMethodCall> = emptyMap(),
-    val extensionModuleImports: Map<String, Set<String>> = emptyMap()
+    val extensionModuleImports: Map<String, Set<String>> = emptyMap(),
+    val comptimeFunctions: Map<String, Map<String, ComptimeFunctionBinding>> = emptyMap(),
+    val importedComptimeFunctions: Map<String, Map<String, ComptimeFunctionBinding>> = emptyMap()
 ) {
     val sourceTypeCatalogue: SourceTypeCatalogue
         get() = SourceTypeCatalogue.from(symbols)
@@ -670,6 +697,18 @@ fun buildDeclarationCatalogue(
             is AstImport -> add(declaration.alias ?: declaration.module, "import", declaration.origin, moduleScope)
         }
     }
+    program.modules.forEach { module ->
+        module.comptimeFunctions.filterNot(module.declarations::contains).forEach { declaration ->
+            add(
+                declaration.name,
+                "comptime",
+                declaration.origin,
+                moduleScopes[module.name] ?: moduleScopes.values.firstOrNull() ?: ScopeId(1),
+                parameters = declaration.parameters,
+                compileTime = true
+            )
+        }
+    }
     return DeclarationCatalogue(entries)
 }
 
@@ -766,6 +805,22 @@ class SemanticAnalyzer(
         } else {
             program.modules.associate { it.name to it.declarations }
         }
+        val comptimeFunctionsByModule = linkedMapOf<String, Map<String, ComptimeFunctionBinding>>()
+        if (program.modules.isEmpty()) {
+            val bindings = program.declarations.filterIsInstance<AstComptimeFunction>().associate { declaration ->
+                declaration.name to comptimeFunctionBinding(defaultModule, declaration)
+            }
+            comptimeFunctionsByModule[defaultModule] = bindings
+        } else {
+            program.modules.forEach { module ->
+                val declarations = (module.comptimeFunctions +
+                    module.declarations.filterIsInstance<AstComptimeFunction>()).distinctBy { it.origin to it.name }
+                comptimeFunctionsByModule[module.name] = declarations.associate { declaration ->
+                    declaration.name to comptimeFunctionBinding(module.name, declaration)
+                }
+            }
+        }
+        val importedComptimeFunctions = linkedMapOf<String, MutableMap<String, ComptimeFunctionBinding>>()
         val sourceExtensionNamesByModule = moduleDeclarationLists.mapValues { (_, declarations) ->
             declarations.filterIsInstance<AstTrait>()
                 .filter(AstTrait::isPublic)
@@ -1633,6 +1688,8 @@ class SemanticAnalyzer(
             moduleFunctions,
             sourceTypeDeclarationsByModule,
             sourceExtensionNamesByModule,
+            comptimeFunctionsByModule,
+            importedComptimeFunctions,
             foreignTypes,
             foreignGlobals,
             foreignSourceFunctions,
@@ -1641,7 +1698,9 @@ class SemanticAnalyzer(
         )
         moduleTypeBindingRefs.forEach { (moduleName, bindings) ->
             bindings.keys.forEach { localName ->
-                if (visibleFunctions[moduleName]?.containsKey(localName) == true) {
+                if (visibleFunctions[moduleName]?.containsKey(localName) == true ||
+                    importedComptimeFunctions[moduleName]?.containsKey(localName) == true
+                ) {
                     val importOrigin = moduleDeclarationLists[moduleName]
                         .orEmpty()
                         .filterIsInstance<AstImport>()
@@ -1660,7 +1719,9 @@ class SemanticAnalyzer(
         }
         moduleTypeAliases.forEach { (moduleName, aliases) ->
             aliases.keys.forEach { alias ->
-                if (visibleFunctions[moduleName]?.containsKey(alias) == true) {
+                if (visibleFunctions[moduleName]?.containsKey(alias) == true ||
+                    importedComptimeFunctions[moduleName]?.containsKey(alias) == true
+                ) {
                     val importOrigin = moduleDeclarationLists[moduleName]
                         .orEmpty()
                         .filterIsInstance<AstImport>()
@@ -2084,7 +2145,9 @@ class SemanticAnalyzer(
             moduleTypeAliases = moduleTypeAliases.mapValues { (_, aliases) -> aliases.toMap() },
             methodRegistry = activeMethodRegistry,
             resolvedMethodCalls = resolvedMethodCalls,
-            extensionModuleImports = moduleExtensionImports
+            extensionModuleImports = moduleExtensionImports,
+            comptimeFunctions = comptimeFunctionsByModule,
+            importedComptimeFunctions = importedComptimeFunctions.mapValues { (_, bindings) -> bindings.toMap() }
         )
         val cataloguedModel = initialModel.copy(
             declarationCatalogue = buildDeclarationCatalogue(
@@ -2107,6 +2170,8 @@ class SemanticAnalyzer(
         moduleFunctions: Map<String, Map<String, FunctionSymbol>>,
         sourceTypeDeclarationsByModule: Map<String, Map<String, AstDeclaration>>,
         sourceExtensionNamesByModule: Map<String, Set<String>>,
+        comptimeFunctionsByModule: Map<String, Map<String, ComptimeFunctionBinding>>,
+        importedComptimeFunctions: MutableMap<String, MutableMap<String, ComptimeFunctionBinding>>,
         foreignTypes: Map<String, ForeignType>,
         foreignGlobals: Map<String, Symbol>,
         foreignSourceFunctions: Map<String, FunctionSymbol>,
@@ -2143,6 +2208,9 @@ class SemanticAnalyzer(
                 val targetFunctions = targetNames.asSequence()
                     .mapNotNull(moduleFunctions::get)
                     .firstOrNull()
+                val targetComptimeFunctions = targetNames.asSequence()
+                    .mapNotNull(comptimeFunctionsByModule::get)
+                    .firstOrNull()
                 val exportedFunctions = targetFunctions?.filterValues {
                     it.symbol.visibility == Visibility.PUBLIC || it.symbol.kind == SymbolKind.FOREIGN
                 }.orEmpty()
@@ -2154,9 +2222,27 @@ class SemanticAnalyzer(
                     } else if (import.names.isNotEmpty()) {
                         import.names.forEach { name ->
                             if (name !in foreignTypes && name !in foreignGlobals &&
-                                name !in targetSourceTypes && name !in targetEnumValues && name !in targetExtensionNames
+                                name !in targetSourceTypes && name !in targetEnumValues && name !in targetExtensionNames &&
+                                name !in targetComptimeFunctions.orEmpty()
                             ) {
                                 diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
+                            } else if (name in targetComptimeFunctions.orEmpty()) {
+                                val binding = targetComptimeFunctions.orEmpty().getValue(name)
+                                if (binding.visibility != Visibility.PUBLIC) {
+                                    diagnostics.error("imported comptime function '$name' is not public in module '${import.module}'", rangeOf(import.origin), "SEM406")
+                                } else {
+                                    val localName = import.nameAliases[name] ?: name
+                                    val existing = visible.containsKey(localName) ||
+                                        importedComptimeFunctions[moduleName]?.containsKey(localName) == true ||
+                                        sourceTypeDeclarationsByModule[moduleName]?.containsKey(localName) == true ||
+                                        declarations.filterIsInstance<AstGlobalVariable>().any { it.name == localName } ||
+                                        declarations.filterIsInstance<AstEnum>().any { enum -> enum.values.any { it.name == localName } }
+                                    if (existing) {
+                                        diagnostics.error("imported name '$localName' conflicts in module '$moduleName'", rangeOf(import.origin), "SEM405")
+                                    } else {
+                                        importedComptimeFunctions.getOrPut(moduleName) { linkedMapOf() }[localName] = binding
+                                    }
+                                }
                             }
                         }
                     }
@@ -2174,6 +2260,25 @@ class SemanticAnalyzer(
                     ) return@forEach
                     if (name in foreignTypes || name in foreignGlobals) return@forEach
                     val function = targetFunctions[name]
+                    val comptimeFunction = targetComptimeFunctions?.get(name)
+                    if (function == null && comptimeFunction != null) {
+                        if (comptimeFunction.visibility != Visibility.PUBLIC) {
+                            diagnostics.error("imported comptime function '$name' is not public in module '${import.module}'", rangeOf(import.origin), "SEM406")
+                        } else {
+                            val localName = import.nameAliases[name] ?: name
+                            val existing = visible.containsKey(localName) ||
+                                importedComptimeFunctions[moduleName]?.containsKey(localName) == true ||
+                                sourceTypeDeclarationsByModule[moduleName]?.containsKey(localName) == true ||
+                                declarations.filterIsInstance<AstGlobalVariable>().any { it.name == localName } ||
+                                declarations.filterIsInstance<AstEnum>().any { enum -> enum.values.any { it.name == localName } }
+                            if (existing) {
+                                diagnostics.error("imported name '$localName' conflicts in module '$moduleName'", rangeOf(import.origin), "SEM405")
+                            } else {
+                                importedComptimeFunctions.getOrPut(moduleName) { linkedMapOf() }[localName] = comptimeFunction
+                            }
+                        }
+                        return@forEach
+                    }
                     if (function == null) {
                         diagnostics.error("imported function '$name' is not declared in module '${import.module}'", rangeOf(import.origin), "SEM404")
                     } else if (function.symbol.visibility != Visibility.PUBLIC && function.symbol.kind != SymbolKind.FOREIGN) {
