@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    146/161 accepted with recorded evidence; 15 TODO
+Roadmap leaf tasks:    147/161 accepted with recorded evidence; 14 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.2.3 — provide portable typed assertion reporting in the SDK
+Current task:          DOING: R14.2.4 — integrate fixture execution with compiler traversals and source maps
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 6/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 7/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       146/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       147/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,9 +3795,9 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 146/161 accepted; 15 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 147/161 accepted; 14 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
-                     R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (2/4); R10–R12 accepted
+                     R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (3/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -3814,13 +3814,13 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (6/20 leaves; next R14.2.3)
+[DOING] R14 — source test fixtures and CLI runner (7/20 leaves; next R14.2.4)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 146 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 147 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
 implementation is active; fifteen leaves remain open.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [6/20] Source test fixtures and CLI runner
+## R14 [DOING] [7/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7112,7 +7112,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :semantic:test --tests cplus.semantic.TestFixtureSemanticsTest`.
 
-### R14.2 [DOING] [2/4] Typed test products and runtime integration
+### R14.2 [DOING] [3/4] Typed test products and runtime integration
 
 **Language:** LS §53.2 Assertion statements; §53.3 Compilation and selection.
 **Technical:** TS §80.2 Typed lowering and runtime reporting; SDK §103 Internal test reporting support.
@@ -7156,7 +7156,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :c-backend:test --no-daemon` passes on Linux.
 
-#### R14.2.3 [TODO] Provide portable typed assertion reporting in the SDK
+#### R14.2.3 [DONE] Provide portable typed assertion reporting in the SDK
 
 **Language:** LS §53.2 Assertion statements; §53.4 Execution outcome.
 **Technical:** TS §80.2 Typed lowering and runtime reporting; §80.3 Child process and result protocol; SDK §103 Internal test reporting support.
@@ -7171,7 +7171,9 @@ non-string descriptions with source-ranged diagnostics.
 
 **Acceptance:** Independent native helper tests verify all type families, escaping, every assertion form's labels/default descriptions, write failure and protocol completion. Self-hosted linked test executable has no unexpected host-runtime imports; normal product has no test symbols. Runtime dependency audit passes locally.
 
-**Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestRuntimeReportTest; native helper vectors and CLI audit`.
+**Evidence:** Linux acceptance passes with `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest --tests cplus.compiler.RuntimeLinkerTest --tests cplus.compiler.RuntimeTestReportingTest --tests cplus.compiler.RuntimeUnusedServicesTest :c-backend:test :cli:compileKotlin --no-daemon`. Native report vectors cover signed/unsigned/plain wide integers, bool, float families including NaN/Inf/negative zero, complex families, enums, data/function/null pointers, escaping, all assertion labels, control-protocol counters, partial/write failures, and completion. Conditional runtime linking is verified; ordinary products contain no report symbols. The helper also passes `cc -std=c17 -Wall -Wextra -Werror -ffreestanding -fno-builtin -Isdk/runtime/include -Isdk/libc/include -fsyntax-only sdk/runtime/src/test_reporting.c`. Windows validation remains for the final platform gate.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest --tests cplus.compiler.RuntimeLinkerTest --tests cplus.compiler.RuntimeTestReportingTest --tests cplus.compiler.RuntimeUnusedServicesTest :c-backend:test :cli:compileKotlin --no-daemon`.
 
 #### R14.2.4 [TODO] Integrate fixture execution with defer, CPX traversal and source maps
 

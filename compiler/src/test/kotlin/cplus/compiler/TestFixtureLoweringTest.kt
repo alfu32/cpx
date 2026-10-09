@@ -44,6 +44,7 @@ class TestFixtureLoweringTest {
         assertTrue(Regex("__cplus_user_main_[0-9a-f]+\\(\\);").containsMatchIn(testC), testC)
         val metadata = assertNotNull(test.artifacts.single().lowered?.unit?.testProduct)
         assertEquals(1, metadata.fixtures.size)
+        assertTrue(test.artifacts.single().lowered!!.unit.runtimeDependencies.isEmpty())
     }
 
     @Test
@@ -113,6 +114,9 @@ class TestFixtureLoweringTest {
 
         val result = CPlusCompiler().compile(CompileRequest(listOf(source), mode = CompilationMode.TEST))
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertTrue(result.artifacts.single().lowered!!.unit.runtimeDependencies.containsAll(
+            setOf("__cplus_test_report_truth", "__cplus_test_report_equality")
+        ))
         val generated = result.generatedUnits.single().text
         val operandEvaluations = Regex("= nextValue\\(\\);").findAll(generated).toList()
         assertEquals(7, operandEvaluations.size, generated)

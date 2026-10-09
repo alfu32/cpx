@@ -45,6 +45,12 @@ class RuntimeUnusedServicesTest {
                 "std_math_sin",
                 "sin"
             ).forEach { symbol -> assertFalse(symbol in symbols, "unused service symbol '$symbol' was retained") }
+            setOf(
+                "__cplus_test_begin",
+                "__cplus_test_finish",
+                "__cplus_test_report_truth",
+                "__cplus_test_report_equality"
+            ).forEach { symbol -> assertFalse(symbol in symbols, "test-only runtime symbol '$symbol' leaked into a normal product") }
 
             val audit = RuntimeDependencyAuditor.inspect(
                 executable,

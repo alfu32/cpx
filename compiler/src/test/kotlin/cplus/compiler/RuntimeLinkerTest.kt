@@ -2,6 +2,7 @@ package cplus.compiler
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import java.nio.file.Files
 import org.junit.jupiter.api.Assumptions.assumeTrue
@@ -117,6 +118,24 @@ class RuntimeLinkerTest {
         val systemPlan = requireNotNull(RuntimeLinker.plan(resolution, systemTarget).plan)
         assertTrue(RuntimeHelperCatalogue.validate(listOf("__cplus_format"), systemPlan).any { it.code == "RUNTIME002" })
         assertTrue(RuntimeHelperCatalogue.validate(listOf("__cplus_unknown"), cplusPlan).any { it.code == "RUNTIME001" })
+    }
+
+    @Test
+    fun typedTestReportingRuntimeIsSelectedOnlyWhenGeneratedHelpersRequireIt() {
+        val manifest = requireNotNull(SdkManifestLoader.load(SdkManifestLocator.defaultManifestPath()).manifest)
+        val resolution = requireNotNull(SdkResolver.resolve(manifest, TargetInfo()).resolution)
+        val target = TargetInfo()
+        val ordinary = requireNotNull(RuntimeLinker.plan(resolution, target).plan)
+        val helpers = setOf("__cplus_test_report_truth", "__cplus_test_report_equality")
+        val withTestReporting = requireNotNull(RuntimeLinker.plan(resolution, target, helpers).plan)
+
+        assertFalse(ordinary.runtimeSources.any { it.fileName.toString() == "test_reporting.c" })
+        assertTrue(withTestReporting.runtimeSources.any { it.fileName.toString() == "test_reporting.c" })
+        assertTrue(RuntimeHelperCatalogue.validate(helpers, withTestReporting).isEmpty())
+
+        val systemTarget = TargetInfo(buildProfile = BuildProfile(RuntimeProfile.SYSTEM, LibcProfile.C17))
+        val systemPlan = requireNotNull(RuntimeLinker.plan(resolution, systemTarget, helpers).plan)
+        assertTrue(RuntimeHelperCatalogue.validate(helpers, systemPlan).all { it.code == "RUNTIME002" })
     }
 
     @Test

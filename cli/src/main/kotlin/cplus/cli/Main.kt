@@ -554,11 +554,11 @@ internal class Cli {
         if (!result.isSuccessful) return 1
         val generated = result.generatedUnits.singleOrNull()?.text ?: return 2
         val sdkResolution = result.sdkResolution ?: return 2
-        val runtimePlan = RuntimeLinker.plan(sdkResolution, target)
+        val runtimeHelpers = result.artifacts.flatMap { it.lowered?.unit?.runtimeDependencies.orEmpty() }.toSet()
+        val runtimePlan = RuntimeLinker.plan(sdkResolution, target, runtimeHelpers)
         printDiagnostics(runtimePlan.diagnostics, sources.first())
         if (!runtimePlan.isSuccessful) return 1
         val runtime = runtimePlan.plan!!
-        val runtimeHelpers = result.artifacts.flatMap { it.lowered?.unit?.runtimeDependencies.orEmpty() }
         val runtimeDiagnostics = RuntimeHelperCatalogue.validate(runtimeHelpers, runtime)
         printDiagnostics(runtimeDiagnostics, sources.first())
         if (runtimeDiagnostics.any { it.severity == DiagnosticSeverity.ERROR }) return 1

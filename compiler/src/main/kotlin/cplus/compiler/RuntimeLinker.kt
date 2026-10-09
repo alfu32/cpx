@@ -22,7 +22,11 @@ data class RuntimeLinkPlanResult(
 }
 
 object RuntimeLinker {
-    fun plan(resolution: SdkResolution, target: TargetInfo): RuntimeLinkPlanResult {
+    fun plan(
+        resolution: SdkResolution,
+        target: TargetInfo,
+        requiredHelpers: Set<String> = emptySet()
+    ): RuntimeLinkPlanResult {
         return when (target.buildProfile.runtime) {
             RuntimeProfile.SYSTEM -> RuntimeLinkPlanResult(
                 RuntimeLinkPlan(RuntimeProfile.SYSTEM, emptyList(), emptyList(), emptyList(), emptyList()),
@@ -68,6 +72,7 @@ object RuntimeLinker {
                 val compilerRuntime = resolution.layout.runtimeSource.resolve("memory.c")
                 val allocator = resolution.layout.runtimeSource.resolve("allocator.c")
                 val formatter = resolution.layout.runtimeSource.resolve("format.c")
+                val testReporting = resolution.layout.runtimeSource.resolve("test_reporting.c")
                 val stdio = resolution.layout.runtimeSource.resolve("stdio.c")
                 val libcCore = resolution.layout.runtimeSource.resolve("libc_core.c")
                 val time = resolution.layout.runtimeSource.resolve("time.c")
@@ -124,7 +129,8 @@ object RuntimeLinker {
                     synchronizationFacade, atomics, process, thread, networkAddress, networkFacade,
                     platformRuntime
                 ) + targetSpecificRuntime +
-                    if ("c17_complex" in descriptor.features) listOf(complexArithmetic) else emptyList()
+                    (if ("c17_complex" in descriptor.features) listOf(complexArithmetic) else emptyList()) +
+                    (if (requiredHelpers.any { it.startsWith("__cplus_test_") }) listOf(testReporting) else emptyList())
                 val missing = (commonRuntime + setjmp + threadStartup + platformNetworkRuntime + threadTlsScript)
                     .filterNot(Files::isRegularFile)
                 if (missing.isNotEmpty()) {

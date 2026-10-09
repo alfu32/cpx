@@ -3373,19 +3373,19 @@ the address. C lowering declares these test-only signatures:
 
 ```c
 void __cplus_test_report_truth(const char*, const char*, const void*,
-                               const char*, unsigned long long, int, int);
+                               const char*, unsigned long long, int, int, int);
 void __cplus_test_report_equality(const char*, const char*, const char*,
-                                  const void*, const char*, unsigned long long, int,
-                                  const void*, const char*, unsigned long long, int, int);
+                                  const void*, const char*, unsigned long long, int, int,
+                                  const void*, const char*, unsigned long long, int, int, int);
 ```
 
 The fields are description; source-expression label(s); pointer to the
 original typed temporary; emitted C type spelling; `sizeof` that temporary; value
-kind; and pass/fail. Value-kind tags are fixed: 0 unsupported, 1 signed
-integer, 2 unsigned integer, 3 plain-char integer, 4 boolean, 5 float/double,
-6 long double, 7/8/9 float/double/long-double complex, and 10 pointer or
-function pointer. Equality carries the expected value tuple, then the actual
-value tuple, then pass/fail. Each value is evaluated into its own temporary
+kind; null-pointer flag; and pass/fail. Value-kind tags are fixed: 0
+unsupported, 1 signed integer, 2 unsigned integer, 3 plain-char integer,
+4 boolean, 5 float, 6 double, 7 long double, 8/9/10 float/double/long-double
+complex, and 11 pointer or function pointer. Equality carries the expected
+value tuple, then the actual value tuple, then pass/fail. Each value is evaluated into its own temporary
 before this hook is called; equality conversion is applied only to the
 comparison, never to the reported original values.
 
@@ -3426,6 +3426,21 @@ completion record are errors. Valid preceding assertions remain countable.
 Exit zero alone never proves successful completion. A protocol writer failure
 causes an execution error. This is an internal integrity contract, not a sandbox
 against deliberately malicious fixture code.
+
+The current protocol version is 1. Records are newline-terminated UTF-8 TSV:
+
+```text
+CPLUS-TEST<TAB>1<TAB>BEGIN<TAB>percent-encoded-fixture-identity
+CPLUS-TEST<TAB>1<TAB>ASSERT<TAB>sequence<TAB>PASS-or-FAIL
+CPLUS-TEST<TAB>1<TAB>COMPLETE<TAB>passed<TAB>failed<TAB>total
+```
+
+Identity encoding leaves ASCII letters, digits, `_`, `-`, `.`, `/` and `:`
+unchanged and encodes every other UTF-8 byte as `%HH` with uppercase hex.
+Assertion sequences start at 1 and increase by exactly one. The writer emits
+each record directly through PAL file writes, handles partial writes, and
+reports open/write/close failures as execution errors. It never places user
+descriptions or rendered values in the control file.
 
 Children SHALL inherit/drain user output without pipe deadlock; bound protocol
 record size and parse it incrementally rather than reading unbounded output

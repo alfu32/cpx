@@ -16,7 +16,11 @@ data class RuntimeHelperBinding(
 
 object RuntimeHelperCatalogue {
     private val bindings = listOf(
-        RuntimeHelperBinding("__cplus_format", "format.c")
+        RuntimeHelperBinding("__cplus_format", "format.c"),
+        RuntimeHelperBinding("__cplus_test_report_truth", "test_reporting.c"),
+        RuntimeHelperBinding("__cplus_test_report_equality", "test_reporting.c"),
+        RuntimeHelperBinding("__cplus_test_begin", "test_reporting.c"),
+        RuntimeHelperBinding("__cplus_test_finish", "test_reporting.c")
     ).associateBy(RuntimeHelperBinding::symbol)
 
     fun validate(symbols: Iterable<String>, plan: RuntimeLinkPlan): List<Diagnostic> = buildList {

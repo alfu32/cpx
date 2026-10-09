@@ -711,6 +711,7 @@ class CLowerer(
                 CStringLiteral(cStringLiteral(semanticType(typed.operandTypes.single()).render()), assertion.origin),
                 CSizeOf(null, semanticType(typed.operandTypes.single()), assertion.origin),
                 CIntegerLiteral(testValueKind(typed.operandTypes.single()).tag.toString(), assertion.origin),
+                pointerNullFlag(valueNames.single(), typed.operandTypes.single(), assertion.origin),
                 CIdentifier(passedName, assertion.origin)
             )
             AssertionKind.EQUALITY -> listOf(
@@ -721,10 +722,12 @@ class CLowerer(
                 CStringLiteral(cStringLiteral(semanticType(typed.operandTypes[0]).render()), assertion.origin),
                 CSizeOf(null, semanticType(typed.operandTypes[0]), assertion.origin),
                 CIntegerLiteral(testValueKind(typed.operandTypes[0]).tag.toString(), assertion.origin),
+                pointerNullFlag(valueNames[0], typed.operandTypes[0], assertion.origin),
                 addressOf(valueNames[1], assertion.origin),
                 CStringLiteral(cStringLiteral(semanticType(typed.operandTypes[1]).render()), assertion.origin),
                 CSizeOf(null, semanticType(typed.operandTypes[1]), assertion.origin),
                 CIntegerLiteral(testValueKind(typed.operandTypes[1]).tag.toString(), assertion.origin),
+                pointerNullFlag(valueNames[1], typed.operandTypes[1], assertion.origin),
                 CIdentifier(passedName, assertion.origin)
             )
             AssertionKind.INVALID -> emptyList()
@@ -752,14 +755,14 @@ class CLowerer(
         val truth = CFunction(
             CType.Primitive("void"), "__cplus_test_report_truth",
             listOf(parameter(string, "description"), parameter(string, "expression"), parameter(opaquePointer, "value"),
-                parameter(string, "type_name"), parameter(size, "value_size"), parameter(integer, "value_kind"), parameter(integer, "passed")),
+                parameter(string, "type_name"), parameter(size, "value_size"), parameter(integer, "value_kind"), parameter(integer, "is_null_pointer"), parameter(integer, "passed")),
             null, origin
         )
         val equality = CFunction(
             CType.Primitive("void"), "__cplus_test_report_equality",
             listOf(parameter(string, "description"), parameter(string, "expected_expression"), parameter(string, "actual_expression"),
-                parameter(opaquePointer, "expected_value"), parameter(string, "expected_type"), parameter(size, "expected_size"), parameter(integer, "expected_kind"),
-                parameter(opaquePointer, "actual_value"), parameter(string, "actual_type"), parameter(size, "actual_size"), parameter(integer, "actual_kind"),
+                parameter(opaquePointer, "expected_value"), parameter(string, "expected_type"), parameter(size, "expected_size"), parameter(integer, "expected_kind"), parameter(integer, "expected_is_null_pointer"),
+                parameter(opaquePointer, "actual_value"), parameter(string, "actual_type"), parameter(size, "actual_size"), parameter(integer, "actual_kind"), parameter(integer, "actual_is_null_pointer"),
                 parameter(integer, "passed")),
             null, origin
         )
@@ -795,6 +798,11 @@ class CLowerer(
         else -> false
     }
 
+    private fun pointerNullFlag(name: String, type: cplus.semantic.CType, origin: Origin): CExpression =
+        if (isPointerSemanticType(type)) {
+            CBinary(CIdentifier(name, origin), "==", CIntegerLiteral("0", origin), origin)
+        } else CIntegerLiteral("0", origin)
+
     private fun testValueKind(type: cplus.semantic.CType): CTestValueKind = when (type) {
         is PointerType, is FunctionType -> CTestValueKind.POINTER
         is AliasType -> testValueKind(type.target)
@@ -804,7 +812,12 @@ class CLowerer(
             null -> CTestValueKind.UNKNOWN
             else -> when (info.kind) {
                 CPrimitiveKind.BOOLEAN -> CTestValueKind.BOOLEAN
-                CPrimitiveKind.FLOATING -> if (info.floatingRank == CFloatingRank.LONG_DOUBLE) CTestValueKind.LONG_DOUBLE else CTestValueKind.FLOATING
+                CPrimitiveKind.FLOATING -> when (info.floatingRank) {
+                    CFloatingRank.FLOAT -> CTestValueKind.FLOATING
+                    CFloatingRank.DOUBLE -> CTestValueKind.DOUBLE
+                    CFloatingRank.LONG_DOUBLE -> CTestValueKind.LONG_DOUBLE
+                    null -> CTestValueKind.UNKNOWN
+                }
                 CPrimitiveKind.COMPLEX -> when (info.floatingRank) {
                     CFloatingRank.FLOAT -> CTestValueKind.COMPLEX_FLOAT
                     CFloatingRank.DOUBLE -> CTestValueKind.COMPLEX_DOUBLE

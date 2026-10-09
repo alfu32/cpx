@@ -28,11 +28,12 @@ enum class CTestValueKind(val tag: Int) {
     PLAIN_INTEGER(3),
     BOOLEAN(4),
     FLOATING(5),
-    LONG_DOUBLE(6),
-    COMPLEX_FLOAT(7),
-    COMPLEX_DOUBLE(8),
-    COMPLEX_LONG_DOUBLE(9),
-    POINTER(10)
+    DOUBLE(6),
+    LONG_DOUBLE(7),
+    COMPLEX_FLOAT(8),
+    COMPLEX_DOUBLE(9),
+    COMPLEX_LONG_DOUBLE(10),
+    POINTER(11)
 }
 
 enum class CTagKind {
