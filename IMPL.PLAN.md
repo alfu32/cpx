@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    156/161 accepted with recorded evidence; 5 TODO
+Roadmap leaf tasks:    157/161 accepted with recorded evidence; 4 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.4.2.1 — exercise the CLI acceptance matrix through native products
+Current task:          DOING: R14.4.2.2 — execute imported generators inside source test scenarios
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 16/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 17/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       156/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       157/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 156/161 accepted; 5 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 157/161 accepted; 4 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (4/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
@@ -3814,13 +3814,13 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (16/20 leaves; next R14.4.2.1)
+[DOING] R14 — source test fixtures and CLI runner (17/20 leaves; next R14.4.2.2)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 156 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 157 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
 implementation is active; thirteen leaves remain open.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [16/20] Source test fixtures and CLI runner
+## R14 [DOING] [17/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7308,7 +7308,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestReportTest`.
 
-### R14.4 [DOING] [2/6] Editor support and product conformance
+### R14.4 [DOING] [3/6] Editor support and product conformance
 
 **Language:** LS §21.6 Importing compile-time functions; §41 Language-server model; §53 Test fixtures and assertions.
 **Technical:** TS §80.4 Acceptance and editor integration.
@@ -7350,13 +7350,13 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest; cd vscode-extension && npm test && npm run check`.
 
-#### R14.4.2 [TODO] [0/2] Native execution regression matrix
+#### R14.4.2 [DOING] [1/2] Native execution regression matrix
 
 **Language:** LS §21.6 Importing compile-time functions; §53 Test fixtures and assertions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion; §80.4 Acceptance and editor integration.
 **Depends:** R14.3.3, R13.3.
 
-##### R14.4.2.1 [TODO] Exercise the CLI acceptance matrix through native products
+##### R14.4.2.1 [DONE] Exercise the CLI acceptance matrix through native products
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80.4 Acceptance and editor integration.
@@ -7366,6 +7366,8 @@ non-string descriptions with source-ranged diagnostics.
 **Deliverable:** Add product-level execution fixtures covering the report/failure contract instead of only mocked process outcomes. Check all four forms, expressions with side effects and types, loops, defers, main, independent roots and protocol isolation.
 
 **Acceptance:** Actual generated C programs reproduce exact counts and exit statuses for pass/fail/empty/build-error/crash/timeout cases. Include i128/u128 only on supported targets, otherwise explicit capability diagnostics. Source-map errors point to assertion operands; ordinary run/build regressions pass.
+
+**Evidence:** Native CLI integration tests execute generated products for all assertion forms, typed values and side effects, loop iterations, deferred actions and calls to user `main`; a second fixture confirms globals reset in the fresh-process lifecycle. Linux x86_64 additionally executes `i128`/`u128` assertions; non-supporting host branches assert the `SEM411` capability diagnostic. Existing and new product tests assert exact pass/fail/error counts for passing, failing, empty, build-error, native abort and timeout runs, retaining validated assertion events before process failure. A non-scalar assertion reports `SEM531` at the source operand. Focused command/report tests and `./gradlew :cli:test` pass on Linux; `TestFixtureLoweringTest` passes. Ordinary run/build coverage remains green in the full CLI suite (2026-10-09).
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest --tests cplus.cli.CliTestReportTest`.
 

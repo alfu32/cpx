@@ -199,4 +199,134 @@ class CliTestCommandTest {
         assertEquals(2, status)
         assertTrue(capturedErr.toString().contains("requires a native runnable target"), capturedErr.toString())
     }
+
+    @Test
+    fun nativeProductsRunAssertionsOncePreserveOrderLoopsDefersMainAndIsolateFixtures() {
+        val directory = Files.createTempDirectory("cplus-test-native-semantics")
+        val supportsInt128 = cplus.compiler.defaultHostTargetTriple() == "linux-x86_64"
+        val wideImports = if (supportsInt128) ", i128, u128" else ""
+        val wideAssertions = if (supportsInt128) {
+            """
+                i128 signedWide = ((i128)1) << 100;
+                u128 unsignedWide = ((u128)1) << 120;
+                assertEquals(signedWide, ((i128)1) << 100);
+                assertEquals(unsignedWide, ((u128)1) << 120);
+            """.trimIndent()
+        } else ""
+        val source = Files.writeString(
+            directory.resolve("native semantics.cp"),
+            """
+                import { i32, u32$wideImports } from std.fixed_width;
+                int calls = 0;
+                int next_value() { calls += 1; return calls; }
+                int main() { return 23; }
+
+                test native assertion semantics {
+                    int index = 0;
+                    while (index < 2) {
+                        assert(next_value() != 0);
+                        index += 1;
+                    }
+                    assert("loop mutations are visible", calls == 2);
+                    assertEquals(next_value(), 3);
+                    assertEquals("operands evaluate left-to-right once", next_value(), next_value() - 1);
+                    assert(calls == 5);
+                    int deferred = 0;
+                    {
+                        defer deferred = 9;
+                    }
+                    assertEquals(9, deferred);
+                    assertEquals(23, main());
+                    i32 signedValue = 42;
+                    u32 unsignedValue = 42;
+                    assertEquals(signedValue, 42);
+                    assertEquals(unsignedValue, 42);
+                    $wideAssertions
+                }
+
+                test fixture state is isolated {
+                    assertEquals(calls, 0);
+                }
+            """.trimIndent()
+        )
+        val captured = runCli(listOf("test", source.toString()))
+
+        assertEquals(0, captured.status, "${captured.stderr}\n${captured.stdout}")
+        val expectedAssertions = if (supportsInt128) 13 else 11
+        assertTrue(
+            captured.stdout.contains("::: total: passed $expectedAssertions / failed 0 / total $expectedAssertions; errors 0"),
+            captured.stdout
+        )
+
+        if (!supportsInt128) {
+            val unsupported = Files.writeString(
+                directory.resolve("unsupported int128.cp"),
+                "import { i128 } from std.fixed_width; test unsupported width { i128 value; assert(value); }"
+            )
+            val diagnostic = runCli(listOf("test", unsupported.toString()))
+            assertEquals(1, diagnostic.status, "${diagnostic.stderr}\n${diagnostic.stdout}")
+            assertTrue(diagnostic.stderr.contains("SEM411"), diagnostic.stderr)
+        }
+    }
+
+    @Test
+    fun nativeCrashAndTimeoutRetainValidatedAssertionResultsAndReportExecutionErrors() {
+        val directory = Files.createTempDirectory("cplus-test-native-failures")
+        val crashSource = Files.writeString(
+            directory.resolve("crash.cp"),
+            "import { abort } from c.stdlib; int main() { return 0; } test crashing fixture { assert(1); abort(); }"
+        )
+        val crash = runCli(listOf("test", crashSource.toString()))
+        assertEquals(1, crash.status, "${crash.stderr}\n${crash.stdout}")
+        assertTrue(crash.stdout.contains("passed 1 / failed 0 / total 1; errors 1"), crash.stdout)
+
+        val timeoutSource = Files.writeString(
+            directory.resolve("timeout.cp"),
+            "int main() { return 0; } test timed fixture { assert(1); while (1) { } }"
+        )
+        val timeout = runCli(listOf("test", timeoutSource.toString(), "--timeout", "1"))
+        assertEquals(1, timeout.status, "${timeout.stderr}\n${timeout.stdout}")
+        assertTrue(timeout.stdout.contains("passed 1 / failed 0 / total 1; errors 1"), timeout.stdout)
+        assertTrue(timeout.stderr.contains("timed out"), timeout.stderr)
+    }
+
+    @Test
+    fun nativeTypeDiagnosticsMapBackToTheFixtureOperand() {
+        val directory = Files.createTempDirectory("cplus-test-assertion-source-map")
+        val source = Files.writeString(
+            directory.resolve("operand diagnostic.cp"),
+            """
+                struct record_t { int value; };
+                test non-scalar assertion {
+                    record_t record;
+                    assert(record);
+                }
+            """.trimIndent()
+        )
+        val result = runCli(listOf("test", source.toString()))
+
+        assertEquals(1, result.status, "${result.stderr}\n${result.stdout}")
+        assertTrue(result.stderr.contains("[SEM531]"), result.stderr)
+        assertTrue(result.stderr.contains("$source:4:"), result.stderr)
+        assertTrue(result.stderr.contains("assert condition must have scalar type"), result.stderr)
+        assertTrue(result.stdout.contains("errors 1"), result.stdout)
+    }
+
+    private data class CliCapture(val status: Int, val stdout: String, val stderr: String)
+
+    private fun runCli(arguments: List<String>): CliCapture {
+        val stdout = ByteArrayOutputStream()
+        val stderr = ByteArrayOutputStream()
+        val originalOut = System.out
+        val originalErr = System.err
+        val status = try {
+            System.setOut(PrintStream(stdout))
+            System.setErr(PrintStream(stderr))
+            Cli().run(arguments)
+        } finally {
+            System.setOut(originalOut)
+            System.setErr(originalErr)
+        }
+        return CliCapture(status, stdout.toString(), stderr.toString())
+    }
 }
