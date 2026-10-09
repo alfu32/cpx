@@ -415,6 +415,49 @@ Imports participate directly in:
 - navigation;
 - dependency analysis.
 
+## Discovering imports
+
+The language server indexes the selected SDK, project modules, configured
+include roots, and source libraries. Use completion after `import` or on an
+unresolved symbol to see available providers and applicable import edits; the
+extension applies the server's import quick fixes. There is no separately
+maintained list of standard-library or C symbols.
+
+Standard C imports use the header's path (with the `c.` prefix):
+
+```c
+import { puts } from c.stdio;       // <stdio.h>
+import { sqrt } from c.math;        // <math.h>
+import { api } from c.demo.api;     // <demo/api.h>
+```
+
+The last form resolves against configured include roots. For a project-local
+header, pass its containing directory; C sources and linker libraries remain
+explicit build inputs:
+
+```bash
+cplus build src/main.cp \
+    --include-dir "vendor/include" \
+    --c-source "vendor/api.c" \
+    --library "vendor/libapi.a"
+```
+
+The compiler discovers declarations by preprocessing the selected header with
+the selected target's C driver. `--c-compiler` can choose a specific driver;
+otherwise the CLI selects an available target-compatible driver. The driver
+must support the target's preprocessing requirements and relevant C dialect.
+This does not select a system C runtime for C+: the SDK supplies C+ runtime and
+platform services. A binary library alone does not provide callable type
+signatures; provide a header or source module as well.
+
+Discovery supports declarations the C+ foreign-type model can represent,
+including ordinary functions, object-like constants, and supported typedef /
+aggregate layouts. Unsupported compiler-specific layouts and declarations
+that cannot be safely represented are diagnosed rather than guessed. Arbitrary
+C++ APIs, binary ABI inference, and exhaustive preprocessing compatibility are
+not promised. See [SDK selection](#sdk-selection) for selecting a development
+SDK manifest when hacking on the SDK itself.
+
 ---
 
 # C interoperability

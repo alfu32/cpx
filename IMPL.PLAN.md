@@ -6266,7 +6266,7 @@ applies merged `std.fs` edits and verifies `cplus check` accepts the result.
 Identifier-context tests prevent auto-imports in comments, strings and member
 access; export metadata marks aggregate members as non-top-level bindings.
 
-### R10.3 [TODO] [0/5] Quick fixes and product acceptance
+### R10.3 [DOING] [4/5] Quick fixes and product acceptance
 
 **Language:** LS §41.1 Import assistance; §43 C interoperability.
 **Technical:** TS §50 LSP architecture; §54.1 Discoverable imports; §63 Testing architecture.
@@ -6363,7 +6363,21 @@ that subsequently passes `cplus check`.
 
 **Verify:** `gradle test :cli:fatJar :cli:installDist`; extension checks/host tests; native Windows equivalents at the final platform pass.
 
-## R11 [DOING] [10/12] Compile-time extension methods
+**Current evidence (gate remains open):** README now documents source-driven
+header discovery, import suggestions/fixes, include/source/library flags,
+driver requirements, representability limits, and SDK overrides. Linux focused
+discovery, SDK corpus, CPX-trait, semantic, CLI, and extension evidence is
+recorded above. On Windows, the fat-JAR `run examples\\traits.cp` succeeds
+with native MSYS2 GCC and prints `compile-time trait example passed`. The first
+full `gradlew.bat test :cli:fatJar :cli:installDist` run exposed and led to a
+fix for Windows-invalid virtual lexer paths; it then stopped at Linux-target
+fixtures because this VM has no Linux-target C driver/sysroot. Rerun the focused
+host-target fixtures and package/installed CLI checks after the portability
+test updates. Do not accept this leaf until the full claimed Windows test set
+and packaged import actions have passing evidence or the plan explicitly
+narrows the acceptance contract.
+
+## R11 [DOING] [11/12] Compile-time extension methods
 
 **Language:** LS §6.3.1 Compile-time extension methods; §21 Imports.
 **Technical:** TS §13.1 Compile-time traits; §33 Method lowering; §54 Completion.

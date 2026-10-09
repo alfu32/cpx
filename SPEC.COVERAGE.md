@@ -6,20 +6,19 @@ by focused tests and the claimed runtime behavior is executable-tested. A
 source contract, header, metadata entry, or declaration-only façade is marked
 **contracted** and does not satisfy a release gate by itself. The post-foundation
 completion gates are tracked in `IMPL.PLAN.md`; R0–R9 record the accepted
-baseline, while R10–R11 track the newly specified import-assistance and trait
-features. Broad section ranges in the historical matrix below do not imply
-implementation of newly added subsections. In particular, LS §6.3.1 and §41.1,
-the expanded LS §22.1 contract, and TS §13.1/§54.1 remain pending as listed
-below.
+baseline, while R10–R11 track the import-assistance and trait features. Broad
+section ranges in the historical matrix below do not imply implementation of
+newly added subsections. Evidence and remaining platform gates are listed
+below and in `IMPL.PLAN.md`.
 
-## Newly specified requirements — implementation pending
+## Newly specified requirements — implementation evidence
 
 | Requirement | Authoritative implementation tasks | Current evidence |
 | --- | --- | --- |
-| LS §22.1–22.3; TS §28; source-driven, target-aware C declarations | R10.1.1 and its terminal children | In progress; immutable target/SDK/compiler/include environment is implemented and tested (R10.1.1.1); declaration discovery remains pending |
-| LS §21, §41.1; TS §27, §47, §54.1; shared resolution, export index and invalidation; SPEC.STDLIB §58 | R10.1.2 and its terminal children | Planned; CLI/LSP resolution parity and fresh index tests required |
-| LS §41.1; TS §54.1; import completion, auto-import edits and quick fixes | R10.2–R10.3 and their terminal children | Planned; protocol, applied-edit, installed-product and packaged-editor tests required |
-| LS §6.3.1; TS §13.1; direct compile-time extensions | R11.1–R11.2 and their terminal children | Planned; parser/CPX/semantic/C execution, visibility and tooling tests required |
+| LS §22.1–22.3; TS §28; source-driven, target-aware C declarations | R10.1.1 and its terminal children | Implemented with Linux evidence; native Windows preprocessing and driver evidence remains part of R10.3.2.3 |
+| LS §21, §41.1; TS §27, §47, §54.1; shared resolution, export index and invalidation; SPEC.STDLIB §58 | R10.1.2 and its terminal children | Implemented; CLI/LSP parity and fresh-index invalidation tests recorded in `IMPL.PLAN.md` |
+| LS §41.1; TS §54.1; import completion, auto-import edits and quick fixes | R10.2–R10.3 and their terminal children | Implemented and packaged Linux VS Code host evidence recorded; final Windows packaged-import gate remains open |
+| LS §6.3.1; TS §13.1; direct compile-time extensions | R11.1–R11.2 and their terminal children | Parser, CPX, semantic, native C, visibility and LSP tooling are implemented; runnable example and TextMate tests pass; final Windows product gate remains open |
 
 The detailed execution runbook is
 [IMPL.HANDOFF.IMPORTS-TRAITS.md](IMPL.HANDOFF.IMPORTS-TRAITS.md). No new feature
@@ -79,8 +78,10 @@ is credited merely because its specification or implementation plan exists.
 ### Contracted but incomplete
 
 - Source-driven C/header discovery, shared import suggestions/quick fixes, and
-  `comptime trait type_identifier { ... }` extensions are newly specified but
-  not implemented; R10/R11 are entirely TODO at this planning checkpoint.
+  `comptime trait type_identifier { ... }` extensions have implementation and
+  Linux product evidence. Final native Windows and full-suite gates remain open
+  under R10.3.2.3 and R11.2.2.3; this audit does not count them as release-
+  complete.
 - C17's complete standard-library surface is not claimed: the reported 51
   checks are the registered project conformance suite, not an exhaustive test
   of every C17 header and function.
@@ -102,9 +103,10 @@ is credited merely because its specification or implementation plan exists.
   `146/146`.
 
 The baseline roadmap's R0–R9 gates are complete for their explicitly recorded
-targets/profiles and distribution checks. The roadmap is now reopened by the
-new R10/R11 requirements; no new gate has passed. This does not expand support
-claims to the excluded profiles.
+targets/profiles and distribution checks. The roadmap is reopened by the new
+R10/R11 requirements. Their unit and Linux product evidence does not expand
+support claims to excluded profiles or substitute for the still-open native
+Windows gates.
 
 ## Explicitly diagnosed limitations
 
