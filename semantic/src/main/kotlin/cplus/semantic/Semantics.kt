@@ -398,7 +398,8 @@ data class SemanticModel(
     val comptimeFunctions: Map<String, Map<String, ComptimeFunctionBinding>> = emptyMap(),
     val importedComptimeFunctions: Map<String, Map<String, ComptimeFunctionBinding>> = emptyMap(),
     val resolvedComptimeInvocations: Map<AstCpxInvocation, ComptimeFunctionBinding> = emptyMap(),
-    val testFixtures: List<SemanticTestFixture> = emptyList()
+    val testFixtures: List<SemanticTestFixture> = emptyList(),
+    val typedTestAssertions: Map<AstAssertion, TypedTestAssertion> = emptyMap()
 ) {
     val sourceTypeCatalogue: SourceTypeCatalogue
         get() = SourceTypeCatalogue.from(symbols)
@@ -523,6 +524,14 @@ data class SemanticTestFixture(
     val moduleName: String,
     val fixture: AstTestFixture,
     val scopeId: ScopeId
+)
+
+data class TypedTestAssertion(
+    val fixtureIdentity: String,
+    val assertion: AstAssertion,
+    val descriptionType: CType?,
+    val operandTypes: List<CType>,
+    val comparisonType: CType?
 )
 
 data class SemanticResult(
@@ -742,6 +751,8 @@ class SemanticAnalyzer(
     private var activeModuleName: String = "<main>"
     private var activeVisibleExtensionModules: Set<String> = emptySet()
     private var resolvedMethodCalls: MutableMap<AstCall, ResolvedMethodCall> = IdentityHashMap()
+    private var typedTestAssertions: MutableMap<AstAssertion, TypedTestAssertion> = IdentityHashMap()
+    private var currentTestFixtureIdentity: String? = null
     private val incompleteForeignTypes = mutableSetOf<String>()
 
     fun analyze(
@@ -758,6 +769,8 @@ class SemanticAnalyzer(
         activeModuleName = "<main>"
         activeVisibleExtensionModules = emptySet()
         resolvedMethodCalls = IdentityHashMap()
+        typedTestAssertions = IdentityHashMap()
+        currentTestFixtureIdentity = null
         incompleteForeignTypes.clear()
         val diagnostics = DiagnosticBag()
         val symbols = mutableListOf<Symbol>()
@@ -2073,24 +2086,29 @@ class SemanticAnalyzer(
                 SymbolId(Int.MIN_VALUE + index)
             )
             testFixtureInfos += SemanticTestFixture(identity, moduleName, fixture, fixtureScope)
-            validateStatement(
-                fixture.body,
-                primitive("void"),
-                linkedMapOf(),
-                availableFunctions,
-                globals,
-                typeEnvironment.structs,
-                typeEnvironment.unions,
-                typeEnvironment.enums,
-                typeEnvironment.aliases,
-                foreignTypes,
-                methods,
-                expressionTypes,
-                diagnostics,
-                ::primitive,
-                fixtureScope,
-                scopes
-            )
+            currentTestFixtureIdentity = identity
+            try {
+                validateStatement(
+                    fixture.body,
+                    primitive("void"),
+                    linkedMapOf(),
+                    availableFunctions,
+                    globals,
+                    typeEnvironment.structs,
+                    typeEnvironment.unions,
+                    typeEnvironment.enums,
+                    typeEnvironment.aliases,
+                    foreignTypes,
+                    methods,
+                    expressionTypes,
+                    diagnostics,
+                    ::primitive,
+                    fixtureScope,
+                    scopes
+                )
+            } finally {
+                currentTestFixtureIdentity = null
+            }
         }
 
         program.declarations.filterIsInstance<AstStruct>().forEach { declaration ->
@@ -2255,7 +2273,8 @@ class SemanticAnalyzer(
             comptimeFunctions = comptimeFunctionsByModule,
             importedComptimeFunctions = importedComptimeFunctions.mapValues { (_, bindings) -> bindings.toMap() },
             resolvedComptimeInvocations = resolvedComptimeInvocations,
-            testFixtures = testFixtureInfos.toList()
+            testFixtures = testFixtureInfos.toList(),
+            typedTestAssertions = typedTestAssertions.toMap()
         )
         val cataloguedModel = initialModel.copy(
             declarationCatalogue = buildDeclarationCatalogue(
@@ -2576,8 +2595,48 @@ class SemanticAnalyzer(
             }
             is AstExpressionStatement -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstAssertion -> {
-                statement.description?.let { validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive) }
-                statement.operands.forEach { validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive) }
+                val description = statement.description
+                val descriptionType = description?.let {
+                    validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                }
+                if (description != null && descriptionType != null && descriptionType !is UnknownType && !isStringType(descriptionType)) {
+                    diagnostics.error(
+                        "assertion description must have string type, not '${descriptionType.name}'",
+                        rangeOf(description.origin),
+                        "SEM530"
+                    )
+                }
+                val operandTypes = statement.operands.map {
+                    validateExpression(it, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
+                }
+                var comparisonType: CType? = null
+                when (statement.kind) {
+                    AssertionKind.TRUTH -> if (operandTypes.size == 1 && operandTypes[0] !is UnknownType && !isScalarType(operandTypes[0])) {
+                        diagnostics.error(
+                            "assert condition must have scalar type, not '${operandTypes[0].name}'",
+                            rangeOf(statement.operands[0].origin),
+                            "SEM531"
+                        )
+                    }
+                    AssertionKind.EQUALITY -> if (operandTypes.size == 2) {
+                        comparisonType = equalityResultType(
+                            "==", statement.operands[0], statement.operands[1], operandTypes[0], operandTypes[1],
+                            statement.origin, diagnostics, primitive
+                        )
+                    }
+                    AssertionKind.INVALID -> Unit
+                }
+                currentTestFixtureIdentity?.let { fixtureIdentity ->
+                    if (statement.kind != AssertionKind.INVALID) {
+                        typedTestAssertions[statement] = TypedTestAssertion(
+                            fixtureIdentity,
+                            statement,
+                            descriptionType,
+                            operandTypes,
+                            comparisonType
+                        )
+                    }
+                }
             }
             is AstDefer -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstIf -> {
@@ -2730,7 +2789,11 @@ class SemanticAnalyzer(
                         diagnostics.error("cannot assign '${right.name}' to '${left.name}'", rangeOf(expression.origin), "SEM308")
                     }
                 }
-                binaryResultType(expression.operator, left, right, expression.origin, diagnostics, primitive)
+                if (expression.operator in setOf("==", "!=")) {
+                    equalityResultType(expression.operator, expression.left, expression.right, left, right, expression.origin, diagnostics, primitive)
+                } else {
+                    binaryResultType(expression.operator, left, right, expression.origin, diagnostics, primitive)
+                }
             }
             is AstConditional -> {
                 val conditionType = validateExpression(expression.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
@@ -3090,6 +3153,34 @@ class SemanticAnalyzer(
         }
     }
 
+    private fun equalityResultType(
+        operator: String,
+        leftExpression: AstExpression,
+        rightExpression: AstExpression,
+        left: CType,
+        right: CType,
+        origin: Origin,
+        diagnostics: DiagnosticBag,
+        primitive: (String) -> PrimitiveType
+    ): CType {
+        val compatibleOperands = when {
+            isPointerLike(left) && isNullPointerConstant(rightExpression) && isIntegerType(right) -> left to left
+            isPointerLike(right) && isNullPointerConstant(leftExpression) && isIntegerType(left) -> right to right
+            else -> left to right
+        }
+        return binaryResultType(operator, compatibleOperands.first, compatibleOperands.second, origin, diagnostics, primitive)
+    }
+
+    private fun isNullPointerConstant(expression: AstExpression): Boolean = when (expression) {
+        is AstIntegerLiteral -> runCatching {
+            val text = expression.text.lowercase()
+            if (text.startsWith("0x")) java.math.BigInteger(text.drop(2), 16) == java.math.BigInteger.ZERO
+            else java.math.BigInteger(text) == java.math.BigInteger.ZERO
+        }.getOrDefault(false)
+        is AstParenthesized -> isNullPointerConstant(expression.expression)
+        else -> false
+    }
+
     private fun isNumericType(type: CType): Boolean = when (val canonical = canonicalType(type)) {
         is PrimitiveType -> CPrimitiveTypes.isNumeric(canonical.name) || CPrimitiveTypes.isComplex(canonical.name)
         is ForeignType -> canonical.underlyingType?.let(::isNumericType) == true
@@ -3138,6 +3229,15 @@ class SemanticAnalyzer(
     }
 
     private fun isScalarType(type: CType): Boolean = isNumericType(type) || isPointerLike(type)
+
+    private fun isStringType(type: CType): Boolean {
+        fun isChar(element: CType): Boolean = (canonicalType(element) as? PrimitiveType)?.name == "char"
+        return when (val canonical = canonicalType(type)) {
+            is PointerType -> isChar(canonical.pointee)
+            is ArrayType -> isChar(canonical.element)
+            else -> false
+        }
+    }
 
     private fun isPointerLike(type: CType): Boolean = when (val canonical = canonicalType(type)) {
         is PointerType -> true

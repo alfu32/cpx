@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    143/161 accepted with recorded evidence; 18 TODO
+Roadmap leaf tasks:    144/161 accepted with recorded evidence; 17 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.1.4 — type assertions with ordinary truth/equality rules
+Current task:          DOING: R14.2.1 — select test mode and synthesize a fixture dispatcher
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,16 +41,16 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 3/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 4/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       143/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       144/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
 The current Luna 6 Medium execution runbook is
 [IMPL.HANDOFF.COMPTIME-TESTS.md](IMPL.HANDOFF.COMPTIME-TESTS.md).
 R13 adds 12 terminal tasks and R14 adds 20: 129 + 12 + 20 = 161.
-Fourteen of the 32 new leaves are accepted with implementation evidence; 18 remain
+Fifteen of the 32 new leaves are accepted with implementation evidence; 17 remain
 TODO. The overall roadmap is DOING, with R13 and R14 active and R0–R12 retained as accepted historical
 scope. Newly specified CPX import conformance is explicitly outstanding even
 though the earlier R2/R10 gates passed their then-recorded tests.
@@ -3795,9 +3795,9 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 143/161 accepted; 18 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 144/161 accepted; 17 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
-                     R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (3/4); R10–R12 accepted
+                     R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (0/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -3814,16 +3814,16 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (3/20 leaves; next R14.1.4)
+[DOING] R14 — source test fixtures and CLI runner (4/20 leaves; next R14.2.1)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 143 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 144 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
-implementation is active; eighteen leaves remain open.
+implementation is active; seventeen leaves remain open.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [3/20] Source test fixtures and CLI runner
+## R14 [DOING] [4/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7006,7 +7006,7 @@ The fixture syntax node is introduced in R14.1.1; assertion semantics,
 execution, reporting and the top-level CLI `test` command remain unimplemented.
 All remaining leaves below remain TODO.
 
-### R14.1 [DOING] [3/4] Fixture syntax and semantics
+### R14.1 [DONE] [4/4] Fixture syntax and semantics
 
 **Language:** LS §53.1 Fixture declarations; §53.2 Assertion statements.
 **Technical:** TS §6 Parser; §29 Semantic model; §80.1 Shared fixture and assertion model.
@@ -7085,7 +7085,7 @@ diagnostics without linking or executing fixture bodies.
 
 **Verify:** `./gradlew :semantic:test --tests cplus.semantic.TestFixtureSemanticsTest`.
 
-#### R14.1.4 [TODO] Type assertions with ordinary truth and equality rules
+#### R14.1.4 [DONE] Type assertions with ordinary truth and equality rules
 
 **Language:** LS §53.2 Assertion statements.
 **Technical:** TS §12 Type system model; §80.1 Shared fixture and assertion model; §80.2 Typed lowering and runtime reporting.
@@ -7099,6 +7099,16 @@ diagnostics without linking or executing fixture bodies.
 **Invalid states:** String-content/deep equality invented implicitly or operand values folded away for reporting.
 
 **Acceptance:** Positive/negative typing covers all four forms, signed/unsigned multiword integers, typedefs, enums, floating/complex supported targets, pointers/null and strings. Void/aggregate-invalid conditions, incomparable operands and non-string descriptions fail at their source ranges.
+
+**Verification:** `./gradlew :semantic:test :cli:compileKotlin --no-daemon` passes (2026-10-09).
+Typed assertion records retain fixture identity, explicit-description type, original
+operand types and comparison result type. Conditions require scalar types; descriptions
+require `char*` string representation; equality delegates to existing numeric, enum,
+complex and pointer compatibility. Integer literal zero (parenthesized or bare) is
+accepted as a null pointer constant, and pointer equality remains value equality.
+Tests cover signed/unsigned wide integers, typedefs, enums, floating and complex values,
+pointers/null, strings, invalid aggregate/void conditions, incompatible equality and
+non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :semantic:test --tests cplus.semantic.TestFixtureSemanticsTest`.
 

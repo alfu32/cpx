@@ -2089,6 +2089,12 @@ underlying semantic type when the selected header catalogue provides it. ABI
 layout queries SHALL use the underlying type while C emission SHALL continue to
 use the external typedef spelling.
 
+Equality operators SHALL accept compatible object pointers and integer literal
+zero as a null pointer constant. Parentheses around zero do not change this
+conversion; other integer values are not implicitly converted to pointers.
+Equality between pointers compares pointer values and does not compare pointed-
+to string contents.
+
 Function-pointer declarators SHALL be represented as callable types wrapped in
 the required pointer depth. A declaration such as:
 
@@ -2543,9 +2549,11 @@ assertEquals(expected, actual);
 assertEquals(description, expected, actual);
 ```
 
-Descriptions have the existing `string` type. For `assert(condition)`, the
-display description is the condition's source text. For two-argument equality,
-it is `expectedSource == actualSource`. Assertions may appear in nested blocks
+Descriptions have the existing `string` type. In the current C representation,
+this is a pointer to `char`; character arrays and typedefs resolving to that
+representation are also accepted. For `assert(condition)`, the display
+description is the condition's source text. For two-argument equality, it is
+`expectedSource == actualSource`. Assertions may appear in nested blocks
 and `defer` bodies of the fixture, but not inside separately declared inner
 functions. Outside this lexical fixture context, `assert` and `assertEquals`
 remain ordinary names; C imports are unaffected.
@@ -2560,8 +2568,8 @@ once; it passes when the condition compares unequal to zero under ordinary
 C+ scalar truth rules. Zero is failure. Void or non-scalar conditions are errors.
 `assertEquals` evaluates the optional description, expected expression, then
 actual expression, each exactly once in that order. It uses the existing
-typed `==` semantics, including conversions, enum/alias rules and supported
-target-gated complex arithmetic. It SHALL NOT introduce approximate floating
+typed `==` semantics, including conversions, enum/alias rules, null pointer
+constants and supported target-gated complex arithmetic. It SHALL NOT introduce approximate floating
 comparison, deep aggregate equality or string-content comparison. String and
 other pointer equality follows existing pointer equality. Incomparable types
 are diagnosed before code generation.
