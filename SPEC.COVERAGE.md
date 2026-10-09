@@ -20,10 +20,10 @@ below and in `IMPL.PLAN.md`.
 | LS §21, §41.1; TS §27, §47, §54.1; shared resolution, export index and invalidation; SPEC.STDLIB §58 | R10.1.2 and its terminal children | Implemented; CLI/LSP parity and fresh-index invalidation tests recorded in `IMPL.PLAN.md` |
 | LS §41.1; TS §54.1; import completion, auto-import edits and quick fixes | R10.2–R10.3 and their terminal children | Implemented; packaged Linux and Windows VS Code host acceptance passes with real configured-CLI import actions |
 | LS §6.3.1; TS §13.1; direct compile-time extensions | R11.1–R11.2 and their terminal children | Implemented; parser, CPX, semantic, native C, visibility/LSP tooling, runnable examples and native Windows trait product checks pass |
-| LS §7.4, §21.6; TS §27.1; imported compile-time bindings, workspace expansion, identity and invalidation | R13.1–R13.4 | Implemented and Linux-tested through R13.4.1 (11/12); native Windows product acceptance remains open under R13.4.2 |
-| LS §53.1–53.2; TS §80.1–80.2; fixture syntax and four assertion forms | R14.1–R14.2 | Planned; no implementation credit |
-| LS §53.3–53.4; TS §57.1, §80.3; test selection, execution, reports and exit status | R14.3 | Planned; no top-level CLI test runner exists |
-| TS §80.4; SDK §103; runtime helper, tooling and platform conformance | R14.2.3, R14.4 | Planned; R14 total 0/20 |
+| LS §7.4, §21.6; TS §27.1; imported compile-time bindings, workspace expansion, identity and invalidation | R13.1–R13.4 | Implemented and accepted on Linux and native Windows x86_64 (12/12); 22 unrelated Linux-target compiler tests remain unavailable on Windows because no Linux C preprocessor/sysroot is installed |
+| LS §53.1–53.2; TS §80.1–80.2; fixture syntax and four assertion forms | R14.1–R14.2 | Implemented; parser/semantic/runtime coverage and native Windows CLI fixtures pass |
+| LS §53.3–53.4; TS §57.1, §80.3; test selection, execution, reports and exit status | R14.3 | Implemented; native Windows multi-file CLI products report exact aggregate counts and exit status |
+| TS §80.4; SDK §103; runtime helper, tooling and platform conformance | R14.2.3, R14.4 | Implemented and accepted on Linux and native Windows x86_64 (20/20); extension host was exercised through a temporary portable VS Code runtime, not a machine installation |
 
 The current detailed execution runbook is
 [IMPL.HANDOFF.COMPTIME-TESTS.md](IMPL.HANDOFF.COMPTIME-TESTS.md); the closed
@@ -79,6 +79,15 @@ is credited merely because its specification or implementation plan exists.
 - Source-driven C/header discovery, shared import suggestions/quick fixes, and
   `comptime trait type_identifier { ... }` extensions, with Linux full-suite
   and claimed native Windows product evidence (R10 19/19; R11 12/12).
+- Public comptime function imports into client CPX expansion, including generated
+  client types, pass compiler, incremental, LSP and packaged CLI acceptance on
+  Linux and Windows x86_64 (R13, LS §7.4/§21.6; TS §27.1). Linux-target C-header
+  tests remain unverified on Windows where the required cross preprocessor/sysroot
+  is unavailable.
+- Test fixtures, all four assertion forms and the CLI test/report runner pass
+  Linux and native Windows product acceptance (R14, LS §53; TS §57.1/§80;
+  SDK §103). Windows extension-host verification used a temporary portable VS
+  Code runtime; VS Code is not installed on that machine.
 - independent C17 `basic`, `context`, `stdio`, `complex-types`, and `tgmath`
   fixtures execute on native Windows x86_64 and pass PE dependency audits; the
   latest GCC/UCRT report is 51 pass, 0 fail, 0 unsupported, 0 planned. Windows
@@ -86,11 +95,6 @@ is credited merely because its specification or implementation plan exists.
 
 ### Contracted but incomplete
 
-- Public comptime function imports into client CPX expansion, including generated
-  client types, pass Linux compiler, incremental and LSP tests. CLI product and
-  native Windows acceptance remain open under R13.4 (LS §7.4/§21.6; TS §27.1).
-- Test fixture declarations, all four assertion forms and the CLI test/report
-  runner remain open under R14 (LS §53; TS §57.1/§80; SDK §103).
 - C17's complete standard-library surface is not claimed: the reported 51
   checks are the registered project conformance suite, not an exhaustive test
   of every C17 header and function.
@@ -113,11 +117,12 @@ is credited merely because its specification or implementation plan exists.
 
 The baseline roadmap's R0–R9 gates are complete for their explicitly recorded
 targets/profiles and distribution checks. R10/R11 have also been accepted;
-R12 has also been accepted. The expanded roadmap is 140/161 leaves and 13/15
-phase gates: R13 is 11/12 and R14 is 0/20, leaving 21 tasks. Planning coverage
-for the new normative sections is complete; implementation coverage remains
-open for native Windows imported-comptime acceptance and source-test runner
-requirements. This does not expand support claims to excluded profiles.
+R12 has also been accepted. The expanded roadmap is 161/161 leaves and 15/15
+phase gates. R13 and R14 have native Windows x86_64 acceptance. The latest
+Windows full Gradle run reports 22 compiler failures, all confirmed by XML as
+CIMP011 from Linux-target C-header tests without a Linux preprocessor/sysroot;
+these cross-target cases are not claimed as Windows execution evidence. This
+does not expand support claims to excluded profiles.
 
 ## Explicitly diagnosed limitations
 

@@ -2,10 +2,9 @@
 
 ## Start here
 
-Implement the R13/R14 queue in [IMPL.PLAN.md](IMPL.PLAN.md), one terminal task
-at a time. That file is the only status/evidence ledger. This handoff supplies
-execution instructions, design boundaries and regression inputs; it does not
-claim that either feature is complete. R0–R12 record prior accepted scope.
+R13 and R14 are complete. [IMPL.PLAN.md](IMPL.PLAN.md) is the status/evidence
+ledger; this handoff preserves execution instructions, design boundaries and
+regression inputs for future maintenance. R0–R12 record prior accepted scope.
 Progress checkpoint, 2026-10-09: R13.1.1 (batch parse boundary), R13.1.2
 (provider identity across same-basename paths), R13.1.3 (typed comptime export
 bindings), and R13.1.4 (selective and qualified invocation binding) are DONE.
@@ -16,9 +15,14 @@ provenance) are DONE. R13.3.1 (incremental provider/helper invalidation,
 retargeting, deletion and editor overlays) is DONE with Linux regression evidence.
 R13.3.2 (LSP import fixes, generated member completion, imported comptime
 hover/navigation and provider-edit refresh) is DONE with Linux regression
-evidence. R13.4.1 (Linux examples, CLI products, documentation and import/local
-parity) is DONE; R13.4.2 is the deferred final Windows gate. R14 is active at
-R14.1.1, beginning fixture syntax and AST support.
+evidence. R13.4.1 and R13.4.2 (Linux and native Windows imported-comptime
+products) are DONE. R14.1–R14.4.3.2 (fixture syntax, assertions, CLI, editor
+support and Linux/Windows packaged evidence) are DONE. Current aggregate:
+161/161 leaves, 15/15 phase gates. The latest Windows whole-project Gradle run
+has 22 compiler failures; all 22 contain CIMP011 because Linux-target C-header
+tests lack a Linux C preprocessor/sysroot on Windows. Native Windows compiler
+and full CLI suites pass. The extension-host test used a temporary portable VS
+Code runtime; VS Code is not installed on the Windows machine.
 The active counters and all acceptance evidence remain authoritative in
 `IMPL.PLAN.md`.
 
@@ -254,9 +258,11 @@ At the initial planning checkpoint: 129 accepted baseline leaves + 12 R13 leaves
 R14 has four children containing 4/4/6/6 leaves. The two six-leaf branches each
 have three two-leaf children, preserving bounded branching. All new statuses
 were initially TODO. R13.1.1 through R13.1.4, R13.2.1 through R13.2.4 and
-R13.3.1–R13.3.2 and R13.4.1 are accepted, so the current counter is 140/161
-while 21 new leaves remain open. No
-planning-only task is counted as implementation.
+R13.3.1–R13.3.2 and R13.4.1–R13.4.2 are accepted. All R14 leaves are
+accepted, so the current counter is 161/161 with 15/15 phase gates. No
+planning-only task is counted as implementation. The Windows cross-target
+limitation above remains explicit and is not represented as a passing
+Linux-target test run.
 
 On completion, check all dependency edges, mandatory acceptance criteria,
 origin tests and platform evidence before declaring 161/161 and 15/15. If the
@@ -266,13 +272,11 @@ Historical foundation 146/146 is a different metric and is not added to 161.
 ## Copyable execution prompt
 
 ```text
-Implement the remaining R13/R14 leaves in IMPL.PLAN.md using
-IMPL.HANDOFF.COMPTIME-TESTS.md. Read repository instructions first. Resume at
-R14.1.1 (unless the dashboard records later progress); do not redo accepted tasks.
-Support imported public comptime expansion and all four assertion forms in
-source fixtures, with the specified cplus test reports. Keep one principal
-DOING leaf, preserve user changes, add meaningful regression evidence, commit
-completed stages and update both dashboards/coverage honestly. Work locally
-through the Linux product gates, then validate native Windows. Do not mark
-missing/skipped acceptance as DONE or stop at parser-only support.
+R13/R14 are complete (161/161 leaves, 15/15 phase gates). Do not replay the
+accepted implementation. For future maintenance, preserve the exact imported
+comptime, fixture and assertion semantics in this handoff and consult
+IMPL.PLAN.md for evidence. The Windows full-suite CIMP011 limitation is caused
+by unavailable Linux cross-preprocessor/sysroot support; do not report the
+aggregate Windows Gradle task as green. VS Code is not installed on the Windows
+machine; its extension host was validated using a temporary portable runtime.
 ```
