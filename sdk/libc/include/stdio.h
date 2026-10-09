@@ -26,5 +26,10 @@ int fgetc(FILE* stream);
 int fputc(int value, FILE* stream);
 int puts(const char* text);
 int fflush(FILE* stream);
-
+int reflect(char n){
+    return n;
+}
+int quarante_deux(){
+    return 42;
+}
 #endif
