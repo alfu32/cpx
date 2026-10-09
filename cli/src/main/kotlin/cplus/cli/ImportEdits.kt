@@ -33,7 +33,7 @@ internal object ImportEdits {
         if (!identifier.matches(importedName) || provider.isBlank() || provider.any { it == '\n' || it == '\r' || it == ';' }) {
             return null
         }
-        val source = SourceFile(SourceFileId(0), Path.of("<lsp-import-edit>"), text, 0)
+        val source = SourceFile(SourceFileId(0), Path.of("lsp-import-edit.cp"), text, 0)
         val lexed = Lexer().lex(source)
         val parsed = Parser(lexed).parse()
         val imports = parsed.syntax.declarations.filterIsInstance<SyntaxImport>()

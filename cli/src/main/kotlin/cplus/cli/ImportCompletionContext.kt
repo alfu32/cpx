@@ -41,7 +41,7 @@ internal object ImportCompletionContextFinder {
         val offset = offsetAt(text, position) ?: return null
         if (isInsideComment(text, offset)) return null
 
-        val source = SourceFile(SourceFileId(0), Path.of("<lsp-import-context>"), text, 0)
+        val source = SourceFile(SourceFileId(0), Path.of("lsp-import-context.cp"), text, 0)
         val tokens = Lexer().lex(source).tokens
         val preceding = tokens.filter { it.kind != TokenKind.END_OF_FILE && it.range.endOffset <= offset }
         val lastBoundary = preceding.indexOfLast { it.isLexeme(";") }
@@ -85,7 +85,7 @@ internal object ImportCompletionContextFinder {
     fun identifier(text: String, position: LspPosition): IdentifierCompletionContext? {
         val offset = offsetAt(text, position) ?: return null
         if (isInsideComment(text, offset)) return null
-        val source = SourceFile(SourceFileId(0), Path.of("<lsp-identifier-context>"), text, 0)
+        val source = SourceFile(SourceFileId(0), Path.of("lsp-identifier-context.cp"), text, 0)
         val tokens = Lexer().lex(source).tokens
         val current = tokens.firstOrNull { it.range.startOffset <= offset && offset < it.range.endOffset }
         if (current?.kind in setOf(TokenKind.STRING_LITERAL, TokenKind.CHARACTER_LITERAL)) return null
