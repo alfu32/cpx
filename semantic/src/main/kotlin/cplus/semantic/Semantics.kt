@@ -876,9 +876,9 @@ class SemanticAnalyzer(
             "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"
         )
         val fixedWidthModules = moduleDeclarationLists.filterValues { declarations ->
+            val aliases = declarations.filterIsInstance<AstAlias>().mapTo(mutableSetOf()) { it.name }
             declarations.filterIsInstance<AstPackage>().any { it.name == "std" } &&
-                declarations.filterIsInstance<AstAlias>().mapTo(mutableSetOf()) { it.name }
-                    .containsAll(fixedWidthBaseAliasNames)
+                (aliases.containsAll(fixedWidthBaseAliasNames) || aliases.any { it in fixedWidthAliasNames })
         }.keys
         val supportsInt128 = "int128" in targetFeatures
         val supportsC17Complex = "c17_complex" in targetFeatures
