@@ -21,6 +21,58 @@ import kotlin.test.assertTrue
 
 class CompilerIntegrationTest {
     @Test
+    fun sameBasenamePathImportsKeepProviderFunctionsAndSymbolsDistinct() {
+        val workspace = Files.createTempDirectory("cplus-duplicate-module-basename")
+        val directory = workspace.resolve("workspace with spaces").also(Files::createDirectories)
+        val first = directory.resolve("first/box.cp").also { path ->
+            Files.createDirectories(path.parent)
+            path.writeText("pub struct first_box_t { int value; }; pub int value() { return 11; }")
+        }
+        val second = directory.resolve("second/box.cp").also { path ->
+            Files.createDirectories(path.parent)
+            path.writeText("pub struct second_box_t { int value; }; pub int value() { return 31; }")
+        }
+        val main = directory.resolve("main.cp").also { path ->
+            path.writeText(
+                """
+                    import { value as firstValue } from "./first/box.cp";
+                    import { value as secondValue } from "./second/box.cp";
+                    int main() { return firstValue() + secondValue(); }
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, first, second)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val graph = assertNotNull(result.moduleGraph)
+        val firstId = assertNotNull(graph.moduleIdForPath(first))
+        val secondId = assertNotNull(graph.moduleIdForPath(second))
+        assertNotEquals(firstId, secondId)
+        assertEquals(setOf(firstId, secondId), graph.nodes.getValue(assertNotNull(graph.moduleIdForPath(main))).imports)
+        val semantic = assertNotNull(result.semanticModel)
+        assertEquals(firstId.value, semantic.structs.getValue("first_box_t").moduleName)
+        assertEquals(secondId.value, semantic.structs.getValue("second_box_t").moduleName)
+        assertNotEquals(semantic.structs.getValue("first_box_t").id, semantic.structs.getValue("second_box_t").id)
+        val generated = result.generatedUnits.single().text
+        val firstSymbol = "__cplus_mod_${firstId.value.replace('.', '_')}_value"
+        val secondSymbol = "__cplus_mod_${secondId.value.replace('.', '_')}_value"
+        assertTrue(generated.contains(firstSymbol), generated)
+        assertTrue(generated.contains(secondSymbol), generated)
+
+        val cFile = directory.resolve("main.c").also { it.writeText(generated) }
+        val executable = directory.resolve("main")
+        val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(42, execution.waitFor(), executionOutput)
+    }
+
+    @Test
     fun traitDeclarationIsRegisteredBeforeTheBackendTraitLoweringStage() {
         val source = """
             struct counter_t { int value; };

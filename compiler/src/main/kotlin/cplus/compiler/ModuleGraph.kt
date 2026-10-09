@@ -37,6 +37,11 @@ data class ModuleGraph(
 
     val cyclicComponents: List<ModuleComponent>
         get() = components.filter(ModuleComponent::isCyclic)
+
+    fun moduleIdForPath(path: Path): ModuleId? {
+        val normalized = path.toAbsolutePath().normalize()
+        return nodes.values.firstOrNull { it.path.toAbsolutePath().normalize() == normalized }?.id
+    }
 }
 
 /**
@@ -49,16 +54,64 @@ data class ModuleGraph(
  */
 class ModuleGraphBuilder {
     fun build(sources: List<ModuleSource>): ModuleGraph {
-        val idsByName = sources.associate { moduleName(it.source.path) to ModuleId(moduleName(it.source.path)) }
+        val idsByPath = moduleIdentities(sources)
         val nodes = sources.associate { unit ->
-            val id = idsByName.getValue(moduleName(unit.source.path))
+            val id = idsByPath.getValue(normalize(unit.source.path))
             val imports = unit.program.declarations
                 .filterIsInstance<SyntaxImport>()
-                .mapNotNull { idsByName[normalizeImport(it.module)] }
+                .mapNotNull { import -> resolveImport(unit, import.module, sources, idsByPath) }
                 .toSet()
             id to ModuleNode(id, unit.source.path, imports)
         }
         return ModuleGraph(nodes, stronglyConnectedComponents(nodes))
+    }
+
+    private fun moduleIdentities(sources: List<ModuleSource>): Map<Path, ModuleId> {
+        val normalizedPaths = sources.associate { it to normalize(it.source.path) }
+        val duplicateNames = sources.groupBy { moduleName(it.source.path) }
+            .filterValues { it.size > 1 }
+        val names = sources.associateWith { moduleName(it.source.path) }.toMutableMap()
+        duplicateNames.values.forEach { duplicates ->
+            var depth = 1
+            while (true) {
+                val candidates = duplicates.associateWith { unit -> moduleName(unit.source.path, depth) }
+                if (candidates.values.toSet().size == duplicates.size) {
+                    candidates.forEach { (unit, name) -> names[unit] = name }
+                    break
+                }
+                depth++
+                require(depth <= duplicates.maxOf { normalizedPaths.getValue(it).nameCount }) {
+                    "distinct module files do not have unique source paths"
+                }
+            }
+        }
+        return sources.associate { unit -> normalizedPaths.getValue(unit) to ModuleId(names.getValue(unit)) }
+    }
+
+    private fun resolveImport(
+        importer: ModuleSource,
+        rawReference: String,
+        sources: List<ModuleSource>,
+        idsByPath: Map<Path, ModuleId>
+    ): ModuleId? {
+        val reference = rawReference.trim().removeSurrounding("\"", "\"")
+        val isPath = reference.startsWith("./") || reference.startsWith("../") ||
+            reference.startsWith("/") || reference.endsWith(".cp")
+        if (isPath) {
+            val target = runCatching { Path.of(reference) }.getOrNull() ?: return null
+            val resolved = normalize(if (target.isAbsolute) target else importer.source.path.parent.resolve(target))
+            return idsByPath[resolved]
+        }
+
+        val directNames = setOf(reference, reference.substringAfterLast('/'), reference.substringAfterLast('.'))
+        val candidates = sources.filter { source ->
+            val id = idsByPath.getValue(normalize(source.source.path)).value
+            val packageName = source.program.declarations.filterIsInstance<cplus.core.SyntaxPackage>()
+                .firstOrNull()?.name
+            id in directNames || moduleName(source.source.path) in directNames ||
+                packageName?.let { "$it.$id" in directNames || "$it.${moduleName(source.source.path)}" in directNames } == true
+        }
+        return candidates.singleOrNull()?.let { idsByPath.getValue(normalize(it.source.path)) }
     }
 
     private fun stronglyConnectedComponents(nodes: Map<ModuleId, ModuleNode>): List<ModuleComponent> {
@@ -107,12 +160,14 @@ class ModuleGraphBuilder {
         return components
     }
 
-    private fun moduleName(path: Path): String = path.nameWithoutExtension
+    private fun moduleName(path: Path, parentDepth: Int = 0): String {
+        val normalized = normalize(path)
+        val parents = generateSequence(normalized.parent) { it.parent }
+            .mapNotNull { it.fileName?.toString() }
+            .toList()
+        val prefix = parents.take(parentDepth).asReversed()
+        return (prefix + normalized.nameWithoutExtension).joinToString(".")
+    }
 
-    private fun normalizeImport(module: String): String = module
-        .trim()
-        .removeSurrounding("\"")
-        .substringAfterLast('/')
-        .removeSuffix(".cp")
-        .substringAfterLast('.')
+    private fun normalize(path: Path): Path = path.toAbsolutePath().normalize()
 }

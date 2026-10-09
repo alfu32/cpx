@@ -393,8 +393,10 @@ data class SemanticModel(
 
     fun functionSignature(name: String): FunctionType? = functions[name]?.signature
 
-    fun resolveFunction(name: String): FunctionSymbol? = functions[name]
-        ?: moduleFunctions.values.asSequence().mapNotNull { it[name] }.firstOrNull()
+    fun resolveFunction(name: String, requestingModule: String? = null): FunctionSymbol? =
+        requestingModule?.let { moduleFunctions[it]?.get(name) }
+            ?: functions[name]
+            ?: moduleFunctions.values.asSequence().mapNotNull { it[name] }.firstOrNull()
 
     fun canonicalTypeId(type: CType): TypeId = canonicalTypeIds[canonicalTypeKey(type)] ?: type.id
 
@@ -770,11 +772,14 @@ class SemanticAnalyzer(
                 .flatMap { trait -> trait.methods.map(AstFunction::name) }
                 .toSet()
         }
-        val moduleExtensionImports = moduleDeclarationLists.mapValues { (_, declarations) ->
+        val moduleExtensionImports = moduleDeclarationLists.mapValues { (moduleName, declarations) ->
             declarations.filterIsInstance<AstImport>()
                 .asSequence()
                 .filterNot { it.module.startsWith("c.") }
-                .mapNotNull { import -> moduleTargetNames(import.module).firstOrNull { it in moduleDeclarationLists } }
+                .mapNotNull { import ->
+                    moduleTargetNames(import.module, moduleName, program.modules)
+                        .firstOrNull { it in moduleDeclarationLists }
+                }
                 .toSet()
         }
         val fixedWidthAliasNames = setOf("i128", "u128")
@@ -797,7 +802,7 @@ class SemanticAnalyzer(
             declarations.filterIsInstance<AstImport>().forEach { import ->
                 val alias = import.alias ?: return@forEach
                 if (import.names.isNotEmpty()) return@forEach
-                val targetModule = moduleTargetNames(import.module)
+                val targetModule = moduleTargetNames(import.module, moduleName, program.modules)
                     .firstOrNull { it in moduleDeclarationLists }
                     ?: return@forEach
                 val localTypeNames = sourceTypeDeclarationsByModule[moduleName].orEmpty().keys
@@ -819,7 +824,7 @@ class SemanticAnalyzer(
         moduleDeclarationLists.forEach { (moduleName, declarations) ->
             declarations.filterIsInstance<AstImport>().forEach { import ->
                 if (import.module.startsWith("c.") || import.names.isEmpty()) return@forEach
-                val targetNames = moduleTargetNames(import.module)
+                val targetNames = moduleTargetNames(import.module, moduleName, program.modules)
                 val targetModule = targetNames.firstOrNull { it in sourceTypeDeclarationsByModule }
                     ?: return@forEach
                 val targetTypes = sourceTypeDeclarationsByModule[targetModule].orEmpty()
@@ -1311,8 +1316,9 @@ class SemanticAnalyzer(
                         externalLine = declaration.externalLine
                     )
                     val function = FunctionSymbol(symbol, returnType, parameterSymbols, declaration.isVariadic, signature)
-                    functions[declaration.name] = function
-                    moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
+                    functions.putIfAbsent(declaration.name, function)
+                    moduleFunctions.getOrPut(moduleName) { linkedMapOf() }
+                        .putIfAbsent(declaration.name, function)
                     if (exposeGlobally) foreignSourceFunctions[declaration.name] = function
                     defineBinding(moduleName, declaration.name, symbol.id)
                 }
@@ -1471,7 +1477,8 @@ class SemanticAnalyzer(
                 }
                 is AstUnion, is AstEnum, is AstStruct -> Unit
                 is AstFunction -> {
-                    val existing = functions[declaration.name]
+                    val existing = moduleFunctions[moduleName]?.get(declaration.name)
+                        ?: functions[declaration.name]?.takeIf { it.symbol.kind == SymbolKind.FOREIGN }
                     if (existing != null && !(existing.symbol.kind == SymbolKind.FOREIGN && declaration.body == null)) {
                         diagnostics.error("duplicate function '${declaration.name}'", rangeOf(declaration.origin), "SEM002")
                     } else if (existing == null) {
@@ -1498,8 +1505,9 @@ class SemanticAnalyzer(
                             abi
                         )
                         val function = FunctionSymbol(functionSymbol, returnType, parameterSymbols, signature = signature, abi = abi)
-                        functions[declaration.name] = function
-                        moduleFunctions.getOrPut(moduleName) { linkedMapOf() }[declaration.name] = function
+                        functions.putIfAbsent(declaration.name, function)
+                        moduleFunctions.getOrPut(moduleName) { linkedMapOf() }
+                            .putIfAbsent(declaration.name, function)
                         val functionScope = scopes.create(ScopeKind.FUNCTION, moduleScope(moduleName), functionSymbol.id)
                         functionScopes[functionSymbol.id] = functionScope
                         defineBinding(moduleName, functionSymbol.name, functionSymbol.id)
@@ -1884,8 +1892,10 @@ class SemanticAnalyzer(
         }
 
         program.declarations.filterIsInstance<AstFunction>().forEach { declaration ->
-            val function = functions[declaration.name] ?: return@forEach
             val moduleName = declarationModules[declaration] ?: defaultModule
+            val function = moduleFunctions[moduleName]?.get(declaration.name)
+                ?: functions[declaration.name]
+                ?: return@forEach
             activeModuleName = moduleName
             activeVisibleExtensionModules = moduleExtensionImports[moduleName].orEmpty()
             val availableFunctions = visibleFunctions[moduleName] ?: functions
@@ -2113,7 +2123,7 @@ class SemanticAnalyzer(
             moduleFunctions[moduleName].orEmpty().forEach { (name, function) -> visible[name] = function }
             foreignSourceFunctions.forEach { (name, function) -> visible.putIfAbsent(name, function) }
             declarations.filterIsInstance<AstImport>().forEach { import ->
-                val targetNames = moduleTargetNames(import.module)
+                val targetNames = moduleTargetNames(import.module, moduleName, program.modules)
                 val targetSourceTypes = targetNames.asSequence()
                     .mapNotNull(sourceTypeDeclarationsByModule::get)
                     .firstOrNull()
@@ -2183,8 +2193,30 @@ class SemanticAnalyzer(
         }
     }
 
-    private fun moduleTargetNames(module: String): List<String> {
+    private fun moduleTargetNames(
+        module: String,
+        requestingModule: String? = null,
+        modules: List<AstModule> = emptyList()
+    ): List<String> {
         val normalized = module.trim().removeSurrounding("\"")
+        val isSourcePath = normalized.startsWith("./") || normalized.startsWith("../") ||
+            normalized.startsWith("/") || normalized.endsWith(".cp")
+        if (isSourcePath && requestingModule != null) {
+            val importerPath = modules.firstOrNull { it.name == requestingModule }
+                ?.sourcePath?.let { runCatching { java.nio.file.Path.of(it) }.getOrNull() }
+            if (importerPath != null) {
+                val targetPath = runCatching { java.nio.file.Path.of(normalized) }.getOrNull()
+                    ?: return emptyList()
+                val resolvedPath = if (targetPath.isAbsolute) targetPath.toAbsolutePath().normalize()
+                else importerPath.parent.resolve(targetPath).toAbsolutePath().normalize()
+                return modules.firstOrNull { candidate ->
+                    candidate.sourcePath?.let { path ->
+                        runCatching { java.nio.file.Path.of(path).toAbsolutePath().normalize() == resolvedPath }
+                            .getOrDefault(false)
+                    } == true
+                }?.let { listOf(it.name) }.orEmpty()
+            }
+        }
         val basename = normalized.substringAfterLast('/')
         val withoutExtension = basename.removeSuffix(".cp")
         val dottedName = normalized.substringAfterLast('.')

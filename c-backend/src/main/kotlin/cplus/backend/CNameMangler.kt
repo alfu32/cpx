@@ -7,6 +7,15 @@ import cplus.semantic.Symbol
 interface CNameMangler {
     fun nameOf(symbol: Symbol): String
 
+    fun moduleFunctionName(symbol: Symbol): String {
+        fun sanitize(value: String): String = buildString {
+            value.forEach { character ->
+                if (character.isLetterOrDigit() || character == '_') append(character) else append('_')
+            }
+        }
+        return "__cplus_mod_${sanitize(symbol.moduleName.orEmpty())}_${sanitize(symbol.name)}"
+    }
+
     fun methodName(owner: CType, method: MethodSymbol): String
 
     fun extensionMethodName(method: MethodSymbol): String = method.symbol.externalName ?:

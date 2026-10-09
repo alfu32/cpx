@@ -227,9 +227,11 @@ class CLowerer(
         val globals = programGlobals + foreignGlobals
         val programFunctions = program.declarations.filterIsInstance<AstFunction>().map { declaration ->
             activeModuleName = moduleByDeclaration[declaration] ?: "<main>"
+            val function = semantic.moduleFunctions[activeModuleName]?.get(declaration.name)
+                ?: semantic.functions[declaration.name]
             CFunction(
                 type(declaration.returnType),
-                semantic.functions[declaration.name]?.symbol?.let { it.externalName ?: names.nameOf(it) } ?: declaration.name,
+                function?.symbol?.let(::functionName) ?: declaration.name,
                 declaration.parameters.map { CParameter(type(it.type), it.name, it.origin, it.arrayDimensions) },
                 declaration.body?.let { lowerBody(it, declaration.ownerName, declaration.isMethod) },
                 declaration.origin,
@@ -831,8 +833,10 @@ class CLowerer(
     private fun lowerCall(node: AstCall, ownerName: String?, instanceMethod: Boolean): CExpression {
         val member = node.callee as? AstMemberAccess
         if (member == null) {
-            val directFunction = (node.callee as? AstIdentifier)?.let { semantic.resolveFunction(it.name) }
-            val callee = directFunction?.let { CIdentifier(names.nameOf(it.symbol), node.callee.origin) }
+            val directFunction = (node.callee as? AstIdentifier)?.let {
+                semantic.resolveFunction(it.name, activeModuleName)
+            }
+            val callee = directFunction?.let { CIdentifier(functionName(it.symbol), node.callee.origin) }
                 ?: expression(node.callee, ownerName, instanceMethod)
             return CCall(
                 callee,
@@ -845,9 +849,9 @@ class CLowerer(
             "${receiver.name}.${member.member}"
         }
         if (qualifiedName != null && qualifiedName in semantic.qualifiedFunctionNames) {
-            val qualifiedFunction = semantic.resolveFunction(qualifiedName)
+            val qualifiedFunction = semantic.resolveFunction(qualifiedName, activeModuleName)
             return CCall(
-                CIdentifier(qualifiedFunction?.let { names.nameOf(it.symbol) } ?: member.member, node.origin),
+                CIdentifier(qualifiedFunction?.let { functionName(it.symbol) } ?: member.member, node.origin),
                 node.arguments.map { expression(it, ownerName, instanceMethod) },
                 node.origin
             )
@@ -896,6 +900,15 @@ class CLowerer(
             node.arguments.forEach { add(expression(it, ownerName, instanceMethod)) }
         }
         return CCall(target, arguments, node.origin)
+    }
+
+    private fun functionName(symbol: Symbol): String {
+        symbol.externalName?.let { return it }
+        val definingModules = semantic.moduleFunctions.values.asSequence()
+            .mapNotNull { it[symbol.name]?.symbol?.moduleName }
+            .toSet()
+        val nameIsSharedAcrossModules = definingModules.size > 1
+        return if (nameIsSharedAcrossModules) names.moduleFunctionName(symbol) else names.nameOf(symbol)
     }
 
     private fun ownerStruct(receiver: AstExpression, receiverType: cplus.semantic.CType?): cplus.semantic.StructType? = when (receiver) {

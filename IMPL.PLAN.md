@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    130/161 accepted with recorded evidence; 31 TODO
+Roadmap leaf tasks:    131/161 accepted with recorded evidence; 30 TODO
 Phase gates:           13/15 complete; 1 active; 1 queued
-Current task:          Next: R13.1.2 — preserve resolved provider identity across the module graph
+Current task:          Next: R13.1.3 — retain kind-aware compile-time export bindings
 Current milestone:     imported comptime functions and source test fixtures (planned)
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -40,17 +40,18 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
-R13 [DOING] 1/12 imported comptime bindings, expansion and product conformance
+R13 [DOING] 2/12 imported comptime bindings, expansion and product conformance
 R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       130/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       131/161 implementation tasks accepted; 13/15 phase gates complete,
             0 active, 2 queued
 ```
 
 The current Luna 6 Medium execution runbook is
 [IMPL.HANDOFF.COMPTIME-TESTS.md](IMPL.HANDOFF.COMPTIME-TESTS.md).
 R13 adds 12 terminal tasks and R14 adds 20: 129 + 12 + 20 = 161.
-All 32 new leaves are TODO; planning adds no completion credit. The overall
+Two of the 32 new leaves are accepted with implementation evidence; 30 remain
+TODO. The overall
 roadmap is DOING, with R13/R14 queued and R0–R12 retained as accepted historical
 scope. Newly specified CPX import conformance is explicitly outstanding even
 though the earlier R2/R10 gates passed their then-recorded tests.
@@ -3795,7 +3796,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 130/161 accepted; 31 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 131/161 accepted; 30 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
 Active phase gates: 1 (R13); queued phase gates: 1 (R14)
@@ -3813,16 +3814,16 @@ Active phase gates: 1 (R13); queued phase gates: 1 (R14)
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
-[DOING] R13 — imported comptime functions (1/12 leaves; next R13.1.2)
+[DOING] R13 — imported comptime functions (2/12 leaves; next R13.1.3)
 [TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 130 of 161 terminal leaves and thirteen of fifteen
-phase gates have recorded acceptance evidence. R13.1.1 is accepted; the other
-31 new leaves remain TODO. R13 is the active phase.
+overall roadmap is DOING: 131 of 161 terminal leaves and thirteen of fifteen
+phase gates have recorded acceptance evidence. R13.1.1 and R13.1.2 are
+accepted; the other 30 new leaves remain TODO. R13 is the active phase.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6699,7 +6700,7 @@ construction, uses name-keyed CPX definitions/cache identity, and removes
 comptime definitions before final import validation. All leaves below are
 unimplemented; the plan is not passing regression evidence.
 
-### R13.1 [DOING] [1/4] Catalogue and binding foundations
+### R13.1 [DOING] [2/4] Catalogue and binding foundations
 
 **Language:** LS §5 Declaration catalogue; §7.4 Public compile-time declarations; §21 Imports.
 **Technical:** TS §26 Imports and modules; §27.1 Compile-time import binding and workspace expansion.
@@ -6728,12 +6729,12 @@ compiler test tasks pass; the compiler suite executes with the new batch
 frontend path. Serial and two-worker text workspaces both contain
 `first_generated_t` and `second_generated_t`, with identical generated C.
 
-#### R13.1.2 [TODO] Preserve resolved provider identity across the module graph
+#### R13.1.2 [DONE] Preserve resolved provider identity across the module graph
 
 **Language:** LS §21.1 Import declaration; §23 Symbol identity and C symbol generation.
 **Technical:** TS §26.1 Module model; §27.1 Compile-time import binding and workspace expansion.
 **Depends:** R13.1.1.
-**Files:** compiler/.../ModuleSourceResolver.kt, ModuleGraph.kt, Compiler.kt; semantic/.../Semantics.kt module ownership.
+**Files:** language-core/.../Ast.kt; compiler/.../ModuleGraph.kt, Compiler.kt; semantic/.../Semantics.kt; c-backend/.../CBackend.kt, CNameMangler.kt; compiler/src/test/kotlin/cplus/compiler/CompilerIntegrationTest.kt.
 
 **Deliverable:** Carry canonical resolved module identity separately from basename/package display names. Bind path and logical imports to resolver results; adapt graph, semantic ownership and emitted naming consumers as necessary.
 
@@ -6743,7 +6744,17 @@ frontend path. Serial and two-worker text workspaces both contain
 
 **Acceptance:** Two directories each containing box.cp can export a function named box and be imported with distinct aliases; neither graph nodes, types nor C symbols merge. Slash paths, space-containing paths and existing package aliases still resolve.
 
-**Verify:** `./gradlew :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :semantic:test`.
+**Verify:** Focused duplicate-basename regression, followed by `./gradlew :compiler:test :semantic:test :c-backend:test --no-daemon`.
+
+**Evidence:** Linux, 2026-10-09 — the duplicate-basename integration test
+imports same-named public functions from two directories under distinct
+aliases, confirms separate graph nodes and struct type identities (including
+module ownership), compiles emitted C with `cc`, and executes with exit 42.
+The paths include spaces. Existing package/logical imports are covered by the
+compiler suite. The focused test and complete compiler, semantic and C-backend
+test tasks pass. During verification, a first implementation incorrectly
+qualified imports visible in multiple scopes; the suite caught this and the
+backend now qualifies only genuinely distinct defining modules.
 
 #### R13.1.3 [TODO] Retain kind-aware compile-time export bindings
 

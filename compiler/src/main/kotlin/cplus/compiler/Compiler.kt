@@ -497,7 +497,12 @@ class CPlusCompiler(
             resolvedUnits.flatMap { it.ast.declarations },
             mergedOrigin,
             resolvedUnits.map { unit ->
-                AstModule(unit.source.path.fileName.toString().substringBeforeLast('.'), unit.ast.declarations)
+                val moduleId = requireNotNull(moduleGraph.moduleIdForPath(unit.source.path))
+                AstModule(
+                    moduleId.value,
+                    unit.ast.declarations,
+                    unit.source.path.toAbsolutePath().normalize().toString()
+                )
             }
         )
         val semantic = context.analyzerFor(headerEnvironment).analyze(

@@ -12,7 +12,9 @@ data class AstProgram(
 
 data class AstModule(
     val name: String,
-    val declarations: List<AstDeclaration>
+    val declarations: List<AstDeclaration>,
+    /** Canonical source path used only to bind source-path imports. */
+    val sourcePath: String? = null
 )
 
 sealed interface AstDeclaration : AstNode {
