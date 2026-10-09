@@ -12,7 +12,9 @@ bindings), and R13.1.4 (selective and qualified invocation binding) are DONE.
 R13.2.1 (imported expansion into the client type universe), R13.2.2 (provider
 lexical environment for private nested helpers), R13.2.3 (workspace generated-
 declaration/import fixed point), and R13.2.4 (cache identity and insertion
-provenance) are DONE. Resume at R13.3.1.
+provenance) are DONE. R13.3.1 (incremental provider/helper invalidation,
+retargeting, deletion and editor overlays) is DONE with Linux regression evidence.
+Resume at R13.3.2.
 The active counters and all acceptance evidence remain authoritative in
 `IMPL.PLAN.md`.
 
@@ -247,8 +249,9 @@ At the initial planning checkpoint: 129 accepted baseline leaves + 12 R13 leaves
 20 R14 leaves = 161 total. R13 has four children containing 4/4/2/2 leaves;
 R14 has four children containing 4/4/6/6 leaves. The two six-leaf branches each
 have three two-leaf children, preserving bounded branching. All new statuses
-were TODO. R13.1.1 through R13.1.4 and R13.2.1 through R13.2.4 are accepted,
-so the current counter is 137/161 while 24 new leaves remain open. No
+were initially TODO. R13.1.1 through R13.1.4, R13.2.1 through R13.2.4 and
+R13.3.1 are accepted, so the current counter is 138/161 while 23 new leaves
+remain open. No
 planning-only task is counted as implementation.
 
 On completion, check all dependency edges, mandatory acceptance criteria,
@@ -261,7 +264,7 @@ Historical foundation 146/146 is a different metric and is not added to 161.
 ```text
 Implement the remaining R13/R14 leaves in IMPL.PLAN.md using
 IMPL.HANDOFF.COMPTIME-TESTS.md. Read repository instructions first. Resume at
-R13.3.1 (unless the dashboard records later progress); do not redo accepted tasks.
+R13.3.2 (unless the dashboard records later progress); do not redo accepted tasks.
 Support imported public comptime expansion and all four assertion forms in
 source fixtures, with the specified cplus test reports. Keep one principal
 DOING leaf, preserve user changes, add meaningful regression evidence, commit

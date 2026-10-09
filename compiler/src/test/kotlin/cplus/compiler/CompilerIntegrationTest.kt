@@ -336,6 +336,48 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun generatedImportResolvesUnsavedProviderOverlayWithoutDiskFile() {
+        val directory = Files.createTempDirectory("cplus-generated-import-overlay")
+        val loader = directory.resolve("loader.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> load(type T) {
+                        return {
+                            import { build } from "./late.cp";
+                            build(T);
+                        };
+                    }
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("main.cp")
+        val late = directory.resolve("late.cp")
+        val mainText = """
+            import { load } from "./loader.cp";
+            load(int);
+            int main() {
+                struct late_int_t value;
+                value.value = 42;
+                return value.value;
+            }
+        """.trimIndent()
+        val lateText = """
+            pub comptime cpx<decl> build(type T) {
+                return { struct late_{T}_t { T value; }; };
+            }
+        """.trimIndent()
+
+        val result = CPlusCompiler().compileTextWorkspace(
+            listOf(TextSource(main, mainText), TextSource(late, lateText))
+        )
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertFalse(Files.exists(late), "the imported provider is intentionally only an editor overlay")
+        assertEquals("main", result.semanticModel?.structs?.get("late_int_t")?.moduleName)
+        assertTrue(result.moduleGraph?.nodes?.values?.any { it.path == late } == true)
+    }
+
+    @Test
     fun generatedPublicComptimeFunctionIsRecataloguedForImportedClient() {
         val directory = Files.createTempDirectory("cplus-generated-public-cpx")
         val provider = directory.resolve("provider.cp").also { path ->

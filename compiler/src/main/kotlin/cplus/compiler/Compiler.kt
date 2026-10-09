@@ -238,7 +238,6 @@ class CPlusCompiler(
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
         val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
-        val entries = linkedMapOf<Path, FrontendCacheEntry>()
         val paths = request.sources.map { it.toAbsolutePath().normalize() }
         val pathsToCompute = paths.filter { path ->
             val fingerprint = fingerprints.getValue(path)
@@ -246,18 +245,33 @@ class CPlusCompiler(
             path in recompute || reusable?.fingerprint != fingerprint
         }
         val computed = prepareFrontends(pathsToCompute, request.options.parallelism, headerEnvironment)
-        val units = paths.map { path ->
-            val fingerprint = fingerprints.getValue(path)
-            val reusable = cached[path]
-            val entry = if (path !in recompute && reusable?.fingerprint == fingerprint) {
-                reusable
-            } else {
-                FrontendCacheEntry(fingerprint, computed.getValue(path))
-            }
-            entries[path] = entry
-            entry.frontend
+        val candidates = cached.mapValues { it.value.frontend } + computed
+        val graph = ModuleGraphBuilder().build(
+            candidates.values.map { unit -> ModuleSource(unit.source, unit.expanded?.program ?: unit.parsed.syntax) }
+        )
+        val reachableModules = linkedSetOf<ModuleId>()
+        val pendingModules = ArrayDeque<ModuleId>()
+        paths.mapNotNull(graph::moduleIdForPath).forEach { root ->
+            if (reachableModules.add(root)) pendingModules.addLast(root)
         }
-        val result = if (request.sources.size <= 1) {
+        while (pendingModules.isNotEmpty()) {
+            val current = pendingModules.removeFirst()
+            graph.nodes[current]?.imports.orEmpty().forEach { imported ->
+                if (reachableModules.add(imported)) pendingModules.addLast(imported)
+            }
+        }
+        val pathsByModule = graph.nodes.values.associate { it.id to it.path.toAbsolutePath().normalize() }
+        val reachablePaths = reachableModules.mapNotNullTo(linkedSetOf()) { pathsByModule[it] }
+        val selectedPaths = (paths.filter { it in reachablePaths } +
+            (reachablePaths - paths.toSet()).sortedBy(Path::toString)).distinct()
+        val entries = selectedPaths.associateWith { path ->
+            val frontend = candidates[path]
+                ?: error("reachable incremental module has no prepared frontend: $path")
+            FrontendCacheEntry(fingerprints[path].orEmpty(), frontend)
+        }
+        val units = selectedPaths.map { entries.getValue(it).frontend }
+        val effectiveRequest = request.copy(sources = selectedPaths)
+        val result = if (units.size <= 1) {
             val artifacts = units.map {
                 val headers = discoverCHeaders(listOf(it), headerEnvironment)
                 compileFrontend(
@@ -277,7 +291,7 @@ class CPlusCompiler(
             )
         } else {
             compileWorkspace(
-                request,
+                effectiveRequest,
                 foreignInputs,
                 cLinkDependencies,
                 linkDiagnostics,

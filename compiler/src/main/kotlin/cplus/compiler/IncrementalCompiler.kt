@@ -72,7 +72,10 @@ class IncrementalCompiler(
             )
         }
         val sdkIdentity = sdk.manifest!!.identity
-        val sourceFingerprints = canonicalRequest.sources.associateWith(::fingerprint)
+        val previous = state
+        val trackedSources = (canonicalRequest.sources + previous?.sourceFingerprints.orEmpty().keys)
+            .distinct()
+        val sourceFingerprints = trackedSources.associateWith(::fingerprint)
         val foreignFingerprints = canonicalRequest.cSources.associateWith(::fingerprint)
         val cacheKey = IncrementalCacheKey(
             sourceFingerprints,
@@ -86,7 +89,6 @@ class IncrementalCompiler(
             canonicalRequest.cCompiler
         )
         val configuration = RequestConfiguration.from(canonicalRequest)
-        val previous = state
 
         val changedSources = if (previous == null) {
             sourceFingerprints.keys
@@ -181,17 +183,22 @@ class IncrementalCompiler(
         val report = InvalidationReport(
             changedSources = stablePaths(changedSources),
             invalidatedSources = stablePaths(dependencyClosure),
-            reusedSources = stablePaths(sourceFingerprints.keys - recompute),
+            reusedSources = stablePaths(pipeline.frontends.keys.filter { it !in recompute }),
             invalidatedExpansionKeys = invalidatedExpansionKeys,
             reusedExpansionKeys = reusedExpansionKeys,
             invalidatedSpecializationKeys = invalidatedSpecializationKeys,
             reusedSpecializationKeys = reusedSpecializationKeys
         )
 
+        val finalSourceFingerprints = (canonicalRequest.sources + pipeline.frontends.keys)
+            .distinct()
+            .associateWith(::fingerprint)
+        val finalCacheKey = cacheKey.copy(sourceFingerprints = finalSourceFingerprints)
+
         state = WorkspaceState(
-            cacheKey = cacheKey,
+            cacheKey = finalCacheKey,
             configuration = configuration,
-            sourceFingerprints = sourceFingerprints,
+            sourceFingerprints = finalSourceFingerprints,
             foreignFingerprints = foreignFingerprints,
             frontends = pipeline.frontends,
             moduleGraph = pipeline.result.moduleGraph,
@@ -199,7 +206,7 @@ class IncrementalCompiler(
             specializations = currentSpecializations,
             result = pipeline.result
         )
-        return IncrementalCompileResult(pipeline.result, report, cacheKey)
+        return IncrementalCompileResult(pipeline.result, report, finalCacheKey)
     }
 
     @Synchronized

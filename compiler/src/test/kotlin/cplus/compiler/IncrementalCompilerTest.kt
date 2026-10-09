@@ -117,6 +117,154 @@ class IncrementalCompilerTest {
     }
 
     @Test
+    fun importedComptimeProviderEditsInvalidateClientAndNeverServeStaleOutput() {
+        val directory = Files.createTempDirectory("cplus-incremental-imported-cpx")
+        val provider = directory.resolve("box.cp")
+        val main = directory.resolve("main.cp")
+        provider.writeText(
+            """
+                pub comptime cpx<decl> box(type T) {
+                    return { struct box_{T}_t { int value; }; };
+                }
+            """.trimIndent()
+        )
+        main.writeText(
+            """
+                import { box } from "./box.cp";
+                box(int);
+                int main() {
+                    struct box_int_t value;
+                    value.value = 42;
+                    return value.value;
+                }
+            """.trimIndent()
+        )
+        val request = CompileRequest(listOf(main))
+        val incremental = IncrementalCompiler()
+        val first = incremental.compile(request)
+        assertTrue(first.isSuccessful, first.result.diagnostics.joinToString())
+
+        provider.writeText(
+            """
+                pub comptime cpx<decl> box(type T) {
+                    return { struct box_{T}_t { long value; }; };
+                }
+            """.trimIndent()
+        )
+        val updated = incremental.compile(request)
+        val cold = CPlusCompiler().compile(request)
+        val normalizedProvider = provider.toAbsolutePath().normalize()
+        val normalizedMain = main.toAbsolutePath().normalize()
+
+        assertTrue(updated.isSuccessful, updated.result.diagnostics.joinToString())
+        assertTrue(cold.isSuccessful, cold.diagnostics.joinToString())
+        assertTrue(normalizedProvider in updated.invalidation.changedSources)
+        assertTrue(normalizedMain in updated.invalidation.invalidatedSources)
+        assertEquals(cold.generatedUnits.map { it.text }, updated.result.generatedUnits.map { it.text })
+        assertTrue(first.result.generatedUnits.single().text != updated.result.generatedUnits.single().text)
+
+        provider.writeText(
+            """
+                comptime cpx<decl> box(type T) {
+                    return { struct box_{T}_t { long value; }; };
+                }
+            """.trimIndent()
+        )
+        val unpublished = incremental.compile(request)
+        assertTrue(!unpublished.isSuccessful)
+        assertTrue(unpublished.result.diagnostics.any { it.code == "SEM406" }, unpublished.result.diagnostics.joinToString())
+
+        Files.delete(provider)
+        val deleted = incremental.compile(request)
+        assertTrue(!deleted.isSuccessful)
+        assertTrue(deleted.result.diagnostics.any { it.code == "SEM406" }, deleted.result.diagnostics.joinToString())
+        assertTrue(deleted.result.semanticModel?.structs?.get("box_int_t") == null)
+    }
+
+    @Test
+    fun privateImportedComptimeHelperEditsInvalidateClientExpansion() {
+        val directory = Files.createTempDirectory("cplus-incremental-imported-helper")
+        val provider = directory.resolve("box.cp")
+        val main = directory.resolve("main.cp")
+        fun writeProvider(fieldType: String) {
+            provider.writeText(
+                """
+                    comptime cpx<decl> helper(type T) {
+                        return { struct helper_{T}_t { $fieldType value; }; };
+                    }
+                    pub comptime cpx<decl> box(type T) {
+                        return { helper(T); struct box_{T}_t { int marker; }; };
+                    }
+                """.trimIndent()
+            )
+        }
+        writeProvider("int")
+        main.writeText(
+            """
+                import { box } from "./box.cp";
+                box(int);
+                int main() {
+                    struct helper_int_t value;
+                    value.value = 42;
+                    return value.value;
+                }
+            """.trimIndent()
+        )
+        val request = CompileRequest(listOf(main))
+        val incremental = IncrementalCompiler()
+        val first = incremental.compile(request)
+        assertTrue(first.isSuccessful, first.result.diagnostics.joinToString())
+
+        writeProvider("long")
+        val second = incremental.compile(request)
+
+        assertTrue(second.isSuccessful, second.result.diagnostics.joinToString())
+        assertTrue(second.invalidation.invalidatedExpansionKeys.isNotEmpty())
+        assertEquals("long", second.result.semanticModel?.structs?.get("helper_int_t")?.fields?.single()?.symbol?.type?.name)
+    }
+
+    @Test
+    fun retargetedGeneratedImportDropsOldProviderFromWarmWorkspace() {
+        val directory = Files.createTempDirectory("cplus-incremental-retarget-cpx")
+        val providerA = directory.resolve("provider_a.cp").also {
+            it.writeText("pub comptime cpx<decl> box(type T) { return { struct box_a_{T}_t { int value; }; }; }")
+        }
+        val providerB = directory.resolve("provider_b.cp").also {
+            it.writeText("pub comptime cpx<decl> box(type T) { return { struct box_b_{T}_t { int value; }; }; }")
+        }
+        val main = directory.resolve("main.cp")
+        fun writeMain(providerName: String, importedName: String, invokedName: String, generatedType: String) {
+            main.writeText(
+                """
+                    import { $importedName } from "./$providerName";
+                    $invokedName(int);
+                    int main() {
+                        struct $generatedType value;
+                        return value.value;
+                    }
+                """.trimIndent()
+            )
+        }
+        writeMain("provider_a.cp", "box", "box", "box_a_int_t")
+        val request = CompileRequest(listOf(main))
+        val incremental = IncrementalCompiler()
+        val first = incremental.compile(request)
+        assertTrue(first.isSuccessful, first.result.diagnostics.joinToString())
+
+        writeMain("provider_b.cp", "box as makeBox", "makeBox", "box_b_int_t")
+        val retargeted = incremental.compile(request)
+        val normalizedA = providerA.toAbsolutePath().normalize()
+        val normalizedB = providerB.toAbsolutePath().normalize()
+
+        assertTrue(retargeted.isSuccessful, retargeted.result.diagnostics.joinToString())
+        assertEquals("main", retargeted.result.semanticModel?.structs?.get("box_b_int_t")?.moduleName)
+        assertTrue(retargeted.result.semanticModel?.structs?.get("box_a_int_t") == null)
+        assertTrue(normalizedB in retargeted.cacheKey!!.sourceFingerprints.keys)
+        assertTrue(normalizedA !in retargeted.cacheKey.sourceFingerprints.keys)
+        assertTrue(normalizedA !in retargeted.invalidation.reusedSources)
+    }
+
+    @Test
     fun unchangedWorkspaceReturnsCachedCompilationResult() {
         val source = Files.createTempFile("cplus-incremental-stable", ".cp").also {
             it.writeText("int main() { return 0; }")
