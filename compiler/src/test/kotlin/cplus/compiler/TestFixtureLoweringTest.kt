@@ -81,6 +81,58 @@ class TestFixtureLoweringTest {
     }
 
     @Test
+    fun assertionsEvaluateOperandsOnceInExplicitOrderAndRetainTheirTypes() {
+        val directory = Files.createTempDirectory("cplus-test-assertion-lowering")
+        val source = directory.resolve("main.cp")
+        Files.writeString(
+            source,
+            """
+                int calls = 0;
+                volatile int volatileValue = 1;
+                int* pointerValue = (int*)0;
+                unsigned int unsignedValue = 1;
+                int nextValue() { calls += 1; return calls; }
+                int main() { return 0; }
+                test all assertion forms {
+                    int index = 0;
+                    while (index < 1) {
+                        assert(nextValue());
+                        index += 1;
+                    }
+                    assert(nextValue());
+                    assert("described truth", nextValue());
+                    assertEquals(nextValue(), nextValue());
+                    assertEquals("described equality", nextValue(), nextValue());
+                    assert(volatileValue);
+                    assert(pointerValue);
+                    assertEquals(pointerValue, 0);
+                    assertEquals(-1, unsignedValue);
+                }
+            """.trimIndent()
+        )
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(source), mode = CompilationMode.TEST))
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        val operandEvaluations = Regex("= nextValue\\(\\);").findAll(generated).toList()
+        assertEquals(7, operandEvaluations.size, generated)
+        assertTrue(
+            Regex("int (__cplus_test_[0-9a-f]+)_value_0 = nextValue\\(\\);\\s+int \\1_value_1 = nextValue\\(\\);")
+                .containsMatchIn(generated),
+            generated
+        )
+        assertTrue(generated.contains("while ("), generated)
+        assertTrue(generated.contains("volatile int") && generated.contains("= volatileValue;"), generated)
+        assertTrue(generated.contains("int*" ) || generated.contains("int *"), generated)
+        assertTrue(generated.contains("__cplus_test_report_truth("), generated)
+        assertTrue(generated.contains("__cplus_test_report_equality("), generated)
+        assertTrue(generated.contains("unsigned int") && generated.contains("= unsignedValue;"), generated)
+        assertTrue(Regex("== \\(int\\*\\)__cplus_test_[0-9a-f]+_value_1").containsMatchIn(generated), generated)
+        val assertionRanges = result.semanticModel!!.typedTestAssertions.keys.map { it.origin.primaryRange }.toSet()
+        assertTrue(assertionRanges.all { range -> result.generatedUnits.single().sourceMap.any { it.origin.primaryRange == range } })
+    }
+
+    @Test
     fun testModeWithoutFixturesDoesNotInventDispatcher() {
         val directory = Files.createTempDirectory("cplus-empty-test-lowering")
         val source = directory.resolve("main.cp")

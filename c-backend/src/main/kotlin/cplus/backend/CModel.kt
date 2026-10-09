@@ -21,6 +21,20 @@ data class CTranslationUnit(
 data class CTestProductMetadata(val entryPointName: String, val fixtures: List<CTestFixtureMetadata>)
 data class CTestFixtureMetadata(val identity: String, val functionName: String, val origin: Origin)
 
+enum class CTestValueKind(val tag: Int) {
+    UNKNOWN(0),
+    SIGNED_INTEGER(1),
+    UNSIGNED_INTEGER(2),
+    PLAIN_INTEGER(3),
+    BOOLEAN(4),
+    FLOATING(5),
+    LONG_DOUBLE(6),
+    COMPLEX_FLOAT(7),
+    COMPLEX_DOUBLE(8),
+    COMPLEX_LONG_DOUBLE(9),
+    POINTER(10)
+}
+
 enum class CTagKind {
     STRUCT,
     UNION

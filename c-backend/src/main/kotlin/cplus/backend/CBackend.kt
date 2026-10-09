@@ -19,6 +19,7 @@ class CLowerer(
     private var stableModuleNames: Map<String, String> = emptyMap()
     private var activeModuleName = "<main>"
     private var activeTestMode = false
+    private var activeTestFixtureIdentity: String? = null
 
     fun lower(
         program: AstProgram,
@@ -297,11 +298,17 @@ class CLowerer(
                 )
             }
         val fixtureFunctions = fixtures.map { selected ->
+            activeModuleName = selected.moduleName
+            val stableIdentity = stableFixtureIdentity(selected)
+            val previousFixtureIdentity = activeTestFixtureIdentity
+            activeTestFixtureIdentity = stableIdentity
+            val body = lowerBody(selected.fixture.body, null, instanceMethod = false)
+            activeTestFixtureIdentity = previousFixtureIdentity
             CFunction(
                 CType.Primitive("void"),
-                fixtureFunctionName(stableFixtureIdentity(selected)),
+                fixtureFunctionName(stableIdentity),
                 emptyList(),
-                lowerBody(selected.fixture.body, null, instanceMethod = false),
+                body,
                 selected.fixture.origin,
                 isStatic = true
             )
@@ -318,7 +325,11 @@ class CLowerer(
                 origin
             )
         }
-        val functions = programFunctions + foreignFunctions + fixtureFunctions + listOfNotNull(dispatcher)
+        val hasAssertions = fixtures.any { selected ->
+            semantic.typedTestAssertions.values.any { it.fixtureIdentity == selected.identity }
+        }
+        val testHelpers = if (hasAssertions) testReportDeclarations(fixtures.first().fixture.origin) else emptyList()
+        val functions = programFunctions + foreignFunctions + testHelpers + fixtureFunctions + listOfNotNull(dispatcher)
         functions.groupBy { it.name }
             .filterValues { it.size > 1 }
             .forEach { (name, declarations) ->
@@ -611,6 +622,214 @@ class CLowerer(
         val fallsThrough: Boolean
     )
 
+    private fun lowerAssertion(
+        assertion: AstAssertion,
+        ownerName: String?,
+        instanceMethod: Boolean
+    ): LoweredStatements {
+        if (!activeTestMode) return LoweredStatements(emptyList(), fallsThrough = true)
+        val typed = semantic.typedTestAssertions[assertion]
+        if (typed == null) {
+            diagnostics.error("test assertion has no resolved semantic record", assertion.origin.primaryRange, "LOW531")
+            return LoweredStatements(emptyList(), fallsThrough = true)
+        }
+        val unsupportedIndex = typed.operandTypes.indexOfFirst { testValueKind(it) == CTestValueKind.UNKNOWN }
+        if (unsupportedIndex >= 0) {
+            diagnostics.error(
+                "test assertion operand type '${typed.operandTypes[unsupportedIndex].name}' has no portable reporting representation",
+                assertion.operands.getOrNull(unsupportedIndex)?.origin?.primaryRange,
+                "LOW533"
+            )
+            return LoweredStatements(emptyList(), fallsThrough = true)
+        }
+        val stableId = activeTestFixtureIdentity ?: "${typed.fixtureIdentity}:${assertion.origin.primaryRange?.startOffset ?: 0}"
+        val prefix = "__cplus_test_${stableSuffix("$stableId:${assertion.origin.primaryRange?.startOffset ?: 0}")}"
+        val statements = mutableListOf<CStatement>()
+        val descriptionName = "${prefix}_description"
+        val descriptionText = when (assertion.kind) {
+            AssertionKind.TRUTH -> assertion.operandSourceText.singleOrNull().orEmpty()
+            AssertionKind.EQUALITY -> assertion.operandSourceText.let { operands ->
+                if (operands.size == 2) "${operands[0]} == ${operands[1]}" else "expected == actual"
+            }
+            AssertionKind.INVALID -> "assert"
+        }
+        val descriptionInitializer = assertion.description?.let { expression(it, ownerName, instanceMethod) }
+            ?: CStringLiteral(cStringLiteral(descriptionText), assertion.origin)
+        statements += CVariableDeclaration(
+            constCharPointerType(),
+            descriptionName,
+            descriptionInitializer,
+            assertion.origin
+        )
+
+        val valueNames = assertion.operands.mapIndexed { index, operand ->
+            val name = "${prefix}_value_$index"
+            val valueType = typed.operandTypes.getOrNull(index)?.let(::semanticType) ?: run {
+                diagnostics.error("test assertion operand has no resolved type", operand.origin.primaryRange, "LOW532")
+                CType.Unknown
+            }
+            statements += CVariableDeclaration(
+                valueType,
+                name,
+                expression(operand, ownerName, instanceMethod),
+                operand.origin
+            )
+            name
+        }
+
+        val passedName = "${prefix}_passed"
+        val comparison = when (assertion.kind) {
+            AssertionKind.TRUTH -> CBinary(
+                CIdentifier(valueNames.single(), assertion.origin),
+                "!=",
+                CIntegerLiteral("0", assertion.origin),
+                assertion.origin
+            )
+            AssertionKind.EQUALITY -> {
+                fun comparable(index: Int): CExpression {
+                    val otherIndex = 1 - index
+                    val otherType = typed.operandTypes[otherIndex]
+                    val operandIsNull = isNullPointerLiteral(assertion.operands[index])
+                    val castTarget = when {
+                        operandIsNull && isPointerSemanticType(otherType) -> semanticType(otherType)
+                        else -> null
+                    }
+                    val value = CIdentifier(valueNames[index], assertion.origin)
+                    return castTarget?.let { CCast(it, value, assertion.origin) } ?: value
+                }
+                CBinary(comparable(0), "==", comparable(1), assertion.origin)
+            }
+            AssertionKind.INVALID -> CIntegerLiteral("0", assertion.origin)
+        }
+        statements += CVariableDeclaration(CType.Primitive("int"), passedName, comparison, assertion.origin)
+
+        val reportArguments = when (assertion.kind) {
+            AssertionKind.TRUTH -> listOf(
+                CIdentifier(descriptionName, assertion.origin),
+                CStringLiteral(cStringLiteral(assertion.operandSourceText.singleOrNull().orEmpty()), assertion.origin),
+                addressOf(valueNames.single(), assertion.origin),
+                CStringLiteral(cStringLiteral(semanticType(typed.operandTypes.single()).render()), assertion.origin),
+                CSizeOf(null, semanticType(typed.operandTypes.single()), assertion.origin),
+                CIntegerLiteral(testValueKind(typed.operandTypes.single()).tag.toString(), assertion.origin),
+                CIdentifier(passedName, assertion.origin)
+            )
+            AssertionKind.EQUALITY -> listOf(
+                CIdentifier(descriptionName, assertion.origin),
+                CStringLiteral(cStringLiteral(assertion.operandSourceText.getOrElse(0) { "expected" }), assertion.origin),
+                CStringLiteral(cStringLiteral(assertion.operandSourceText.getOrElse(1) { "actual" }), assertion.origin),
+                addressOf(valueNames[0], assertion.origin),
+                CStringLiteral(cStringLiteral(semanticType(typed.operandTypes[0]).render()), assertion.origin),
+                CSizeOf(null, semanticType(typed.operandTypes[0]), assertion.origin),
+                CIntegerLiteral(testValueKind(typed.operandTypes[0]).tag.toString(), assertion.origin),
+                addressOf(valueNames[1], assertion.origin),
+                CStringLiteral(cStringLiteral(semanticType(typed.operandTypes[1]).render()), assertion.origin),
+                CSizeOf(null, semanticType(typed.operandTypes[1]), assertion.origin),
+                CIntegerLiteral(testValueKind(typed.operandTypes[1]).tag.toString(), assertion.origin),
+                CIdentifier(passedName, assertion.origin)
+            )
+            AssertionKind.INVALID -> emptyList()
+        }
+        val reportName = when (assertion.kind) {
+            AssertionKind.TRUTH -> "__cplus_test_report_truth"
+            AssertionKind.EQUALITY -> "__cplus_test_report_equality"
+            AssertionKind.INVALID -> ""
+        }
+        if (reportName.isNotEmpty()) {
+            statements += CExpressionStatement(
+                CCall(CIdentifier(reportName, assertion.origin), reportArguments, assertion.origin),
+                assertion.origin
+            )
+        }
+        return LoweredStatements(statements, fallsThrough = true)
+    }
+
+    private fun testReportDeclarations(origin: Origin): List<CFunction> {
+        val string = constCharPointerType()
+        val opaquePointer = CType.Primitive("void", pointerDepth = 1, qualifiers = setOf("const"))
+        val size = CType.Primitive("unsigned long long")
+        val integer = CType.Primitive("int")
+        fun parameter(type: CType, name: String) = CParameter(type, name, origin)
+        val truth = CFunction(
+            CType.Primitive("void"), "__cplus_test_report_truth",
+            listOf(parameter(string, "description"), parameter(string, "expression"), parameter(opaquePointer, "value"),
+                parameter(string, "type_name"), parameter(size, "value_size"), parameter(integer, "value_kind"), parameter(integer, "passed")),
+            null, origin
+        )
+        val equality = CFunction(
+            CType.Primitive("void"), "__cplus_test_report_equality",
+            listOf(parameter(string, "description"), parameter(string, "expected_expression"), parameter(string, "actual_expression"),
+                parameter(opaquePointer, "expected_value"), parameter(string, "expected_type"), parameter(size, "expected_size"), parameter(integer, "expected_kind"),
+                parameter(opaquePointer, "actual_value"), parameter(string, "actual_type"), parameter(size, "actual_size"), parameter(integer, "actual_kind"),
+                parameter(integer, "passed")),
+            null, origin
+        )
+        return listOf(truth, equality)
+    }
+
+    private fun constCharPointerType() = CType.Primitive("char", pointerDepth = 1, qualifiers = setOf("const"))
+
+    private fun addressOf(name: String, origin: Origin): CExpression = CCast(
+        CType.Primitive("void", pointerDepth = 1, qualifiers = setOf("const")),
+        CUnary("&", CIdentifier(name, origin), origin),
+        origin
+    )
+
+    private fun cStringLiteral(value: String): String = buildString {
+        append('"')
+        value.forEach { character ->
+            when (character) {
+                '\\' -> append("\\\\")
+                '"' -> append("\\\"")
+                '\n' -> append("\\n")
+                '\r' -> append("\\r")
+                '\t' -> append("\\t")
+                else -> append(character)
+            }
+        }
+        append('"')
+    }
+
+    private fun isPointerSemanticType(type: cplus.semantic.CType): Boolean = when (type) {
+        is PointerType, is FunctionType -> true
+        is AliasType -> isPointerSemanticType(type.target)
+        else -> false
+    }
+
+    private fun testValueKind(type: cplus.semantic.CType): CTestValueKind = when (type) {
+        is PointerType, is FunctionType -> CTestValueKind.POINTER
+        is AliasType -> testValueKind(type.target)
+        is EnumType -> CTestValueKind.SIGNED_INTEGER
+        is ForeignType -> type.underlyingType?.let(::testValueKind) ?: CTestValueKind.UNKNOWN
+        is PrimitiveType -> when (val info = CPrimitiveTypes.typeInfo(CPrimitiveTypes.canonicalName(type.name) ?: type.name)) {
+            null -> CTestValueKind.UNKNOWN
+            else -> when (info.kind) {
+                CPrimitiveKind.BOOLEAN -> CTestValueKind.BOOLEAN
+                CPrimitiveKind.FLOATING -> if (info.floatingRank == CFloatingRank.LONG_DOUBLE) CTestValueKind.LONG_DOUBLE else CTestValueKind.FLOATING
+                CPrimitiveKind.COMPLEX -> when (info.floatingRank) {
+                    CFloatingRank.FLOAT -> CTestValueKind.COMPLEX_FLOAT
+                    CFloatingRank.DOUBLE -> CTestValueKind.COMPLEX_DOUBLE
+                    CFloatingRank.LONG_DOUBLE -> CTestValueKind.COMPLEX_LONG_DOUBLE
+                    null -> CTestValueKind.UNKNOWN
+                }
+                CPrimitiveKind.INTEGER -> when (info.signedness) {
+                    CIntegerSignedness.UNSIGNED -> CTestValueKind.UNSIGNED_INTEGER
+                    CIntegerSignedness.PLAIN -> CTestValueKind.PLAIN_INTEGER
+                    CIntegerSignedness.SIGNED -> CTestValueKind.SIGNED_INTEGER
+                    null -> CTestValueKind.UNKNOWN
+                }
+                CPrimitiveKind.VOID -> CTestValueKind.UNKNOWN
+            }
+        }
+        else -> CTestValueKind.UNKNOWN
+    }
+
+    private fun isNullPointerLiteral(expression: AstExpression): Boolean = when (expression) {
+        is AstIntegerLiteral -> runCatching { java.math.BigInteger(expression.text) == java.math.BigInteger.ZERO }.getOrDefault(false)
+        is AstParenthesized -> isNullPointerLiteral(expression.expression)
+        else -> false
+    }
+
+
     private class LoweringContext {
         val cleanupScopes = mutableListOf<MutableList<CExpression>>()
         val loopBoundaries = mutableListOf<Int>()
@@ -639,7 +858,7 @@ class CLowerer(
             listOf(CExpressionStatement(expression(node.expression, ownerName, instanceMethod), node.origin)),
             fallsThrough = true
         )
-        is AstAssertion -> LoweredStatements(emptyList(), fallsThrough = true)
+        is AstAssertion -> lowerAssertion(node, ownerName, instanceMethod)
         is AstDefer -> {
             val scope = context.cleanupScopes.lastOrNull()
             if (scope == null) {

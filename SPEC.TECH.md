@@ -3367,6 +3367,28 @@ valid language strings. Escape embedded control characters in descriptions and
 source labels so one label cannot forge report lines. Arbitrary user output
 remains unchanged.
 
+The lowering/runtime boundary uses synchronous, typed-address hooks; the
+runtime MUST consume each pointed-to value during the call and MUST NOT retain
+the address. C lowering declares these test-only signatures:
+
+```c
+void __cplus_test_report_truth(const char*, const char*, const void*,
+                               const char*, unsigned long long, int, int);
+void __cplus_test_report_equality(const char*, const char*, const char*,
+                                  const void*, const char*, unsigned long long, int,
+                                  const void*, const char*, unsigned long long, int, int);
+```
+
+The fields are description; source-expression label(s); pointer to the
+original typed temporary; emitted C type spelling; `sizeof` that temporary; value
+kind; and pass/fail. Value-kind tags are fixed: 0 unsupported, 1 signed
+integer, 2 unsigned integer, 3 plain-char integer, 4 boolean, 5 float/double,
+6 long double, 7/8/9 float/double/long-double complex, and 10 pointer or
+function pointer. Equality carries the expected value tuple, then the actual
+value tuple, then pass/fail. Each value is evaluated into its own temporary
+before this hook is called; equality conversion is applied only to the
+comparison, never to the reported original values.
+
 Test reporting helpers SHALL be internal SDK/runtime services using existing
 stdio/file/PAL support, included only in test products. The compiler records
 their runtime dependencies through the helper catalogue and normal linker.
