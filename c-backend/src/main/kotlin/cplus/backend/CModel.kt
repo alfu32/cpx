@@ -14,8 +14,12 @@ data class CTranslationUnit(
     val forwardDeclarations: List<CForwardDeclaration> = emptyList(),
     val aggregateDeclarations: List<CAggregateDeclaration> = emptyList(),
     val publicIncludes: List<String> = emptyList(),
-    val runtimeDependencies: List<String> = emptyList()
+    val runtimeDependencies: List<String> = emptyList(),
+    val testProduct: CTestProductMetadata? = null
 )
+
+data class CTestProductMetadata(val entryPointName: String, val fixtures: List<CTestFixtureMetadata>)
+data class CTestFixtureMetadata(val identity: String, val functionName: String, val origin: Origin)
 
 enum class CTagKind {
     STRUCT,
@@ -60,7 +64,8 @@ data class CEnumDeclaration(
     val name: String,
     val values: List<CEnumValue>,
     val origin: Origin,
-    val isPublic: Boolean = false
+    val isPublic: Boolean = false,
+    val isStatic: Boolean = false
 )
 
 data class CEnumValue(
@@ -95,7 +100,8 @@ data class CFunction(
     val body: CStatement?,
     val origin: Origin,
     val isVariadic: Boolean = false,
-    val isPublic: Boolean = false
+    val isPublic: Boolean = false,
+    val isStatic: Boolean = false
 )
 
 data class CParameter(

@@ -50,6 +50,8 @@ data class CompilerOptions(
     }
 }
 
+enum class CompilationMode { NORMAL, TEST }
+
 data class CompileRequest(
     val sources: List<Path>,
     val target: TargetInfo = TargetInfo(),
@@ -59,7 +61,12 @@ data class CompileRequest(
     val cIncludeDirectories: List<Path> = emptyList(),
     val sdkManifest: Path = SdkManifestLocator.defaultManifestPath(),
     val externalSysroot: Path? = null,
-    val cCompiler: String? = null
+    val cCompiler: String? = null,
+    val mode: CompilationMode = CompilationMode.NORMAL,
+    /** Null selects every fixture owned by rootSources; an empty set selects none. */
+    val selectedFixtureIdentities: Set<String>? = null,
+    /** Preserved when sources is expanded to include imported workspace modules. */
+    val rootSources: List<Path> = sources
 )
 
 data class TextSource(
@@ -279,7 +286,10 @@ class CPlusCompiler(
                     request.options,
                     foreignInputs.units + headers.units,
                     headerEnvironment,
-                    headers.diagnostics
+                    headers.diagnostics,
+                    request.mode,
+                    request.selectedFixtureIdentities,
+                    request.rootSources
                 )
             }
             resultOf(
@@ -374,7 +384,10 @@ class CPlusCompiler(
                         options,
                         headers.units,
                         headerEnvironment,
-                        headers.diagnostics
+                        headers.diagnostics,
+                        request.mode,
+                        request.selectedFixtureIdentities,
+                        request.rootSources
                     )
                 },
                 sdkResolution = resolvedSdk
@@ -422,7 +435,10 @@ class CPlusCompiler(
         options: CompilerOptions,
         foreignSources: List<CSourceUnit> = emptyList(),
         headerEnvironment: HeaderEnvironment,
-        discoveryDiagnostics: List<Diagnostic> = emptyList()
+        discoveryDiagnostics: List<Diagnostic> = emptyList(),
+        mode: CompilationMode = CompilationMode.NORMAL,
+        selectedFixtureIdentities: Set<String>? = null,
+        rootSources: List<Path> = listOf(frontend.source.path)
     ): CompilationArtifacts {
         val source = frontend.source
         val lexed = frontend.lexed
@@ -446,7 +462,19 @@ class CPlusCompiler(
             source, lexed, parsed, expanded, ast, semantic, null, null,
             frontend.closureDiagnostics + discoveryDiagnostics
         )
-        val backend = BackendProcessingPipeline(context.cLowererFactory(model), context.cEmitter).run(ast, model)
+        val selection = selectRootFixtures(model, mode, selectedFixtureIdentities, rootSources)
+        if (selection.diagnostics.isNotEmpty()) {
+            return CompilationArtifacts(
+                source, lexed, parsed, expanded, ast, semantic, null, null,
+                frontend.closureDiagnostics + discoveryDiagnostics + selection.diagnostics
+            )
+        }
+        val backend = BackendProcessingPipeline(context.cLowererFactory(model), context.cEmitter).run(
+            ast,
+            model,
+            mode == CompilationMode.TEST,
+            selection.identities
+        )
         return CompilationArtifacts(
             source,
             lexed,
@@ -459,6 +487,34 @@ class CPlusCompiler(
             frontend.closureDiagnostics + discoveryDiagnostics,
             backend.header
         )
+    }
+
+    private data class RootFixtureSelection(val identities: Set<String>, val diagnostics: List<Diagnostic>)
+
+    private fun selectRootFixtures(
+        model: SemanticModel,
+        mode: CompilationMode,
+        requested: Set<String>?,
+        rootSources: List<Path>
+    ): RootFixtureSelection {
+        if (mode != CompilationMode.TEST) return RootFixtureSelection(emptySet(), emptyList())
+        val roots = rootSources.mapTo(linkedSetOf()) { it.toAbsolutePath().normalize() }
+        val rootFixtures = model.testFixtures.filter { fixture ->
+            val file = fixture.fixture.origin.primaryRange?.file ?: return@filter false
+            context.sourceRepository.find(file)?.path?.toAbsolutePath()?.normalize() in roots
+        }
+        val rootIds = rootFixtures.mapTo(linkedSetOf(), SemanticTestFixture::identity)
+        if (requested == null) return RootFixtureSelection(rootIds, emptyList())
+        val unowned = requested - rootIds
+        val diagnostics = unowned.map { identity ->
+            Diagnostic(
+                DiagnosticSeverity.ERROR,
+                "selected test fixture '$identity' is not owned by an explicit root source",
+                null,
+                "CMPTEST001"
+            )
+        }
+        return RootFixtureSelection(requested.intersect(rootIds), diagnostics)
     }
 
     private fun compileWorkspace(
@@ -594,7 +650,22 @@ class CPlusCompiler(
                 sdkResolution = sdkResolution
             )
         }
-        val backend = BackendProcessingPipeline(context.cLowererFactory(model), context.cEmitter).run(mergedAst, model)
+        val fixtureSelection = selectRootFixtures(model, request.mode, request.selectedFixtureIdentities, request.rootSources)
+        if (fixtureSelection.diagnostics.isNotEmpty()) {
+            return resultOf(
+                listOf(CompilationArtifacts(base.source, base.lexed, base.parsed, base.expanded, mergedAst, semantic, null, null, additionalDiagnostics + fixtureSelection.diagnostics)),
+                moduleGraph,
+                cSourceDependencies,
+                cLinkDependencies = cLinkDependencies,
+                sdkResolution = sdkResolution
+            )
+        }
+        val backend = BackendProcessingPipeline(context.cLowererFactory(model), context.cEmitter).run(
+            mergedAst,
+            model,
+            request.mode == CompilationMode.TEST,
+            fixtureSelection.identities
+        )
         if (backend.lowered.diagnostics.any { it.severity == DiagnosticSeverity.ERROR }) {
             return resultOf(
                 listOf(

@@ -43,7 +43,10 @@ data class IncrementalCacheKey(
     val cIncludeDirectories: List<Path>,
     val sdkIdentity: SdkManifestIdentity,
     val externalSysroot: Path?,
-    val cCompiler: String?
+    val cCompiler: String?,
+    val mode: CompilationMode,
+    val selectedFixtureIdentities: Set<String>?,
+    val rootSources: List<Path>
 )
 
 /**
@@ -86,7 +89,10 @@ class IncrementalCompiler(
             canonicalRequest.cIncludeDirectories,
             sdkIdentity,
             canonicalRequest.externalSysroot,
-            canonicalRequest.cCompiler
+            canonicalRequest.cCompiler,
+            canonicalRequest.mode,
+            canonicalRequest.selectedFixtureIdentities?.toSortedSet(),
+            canonicalRequest.rootSources
         )
         val configuration = RequestConfiguration.from(canonicalRequest)
 
@@ -266,7 +272,9 @@ class IncrementalCompiler(
     private fun CompileRequest.canonicalized(): CompileRequest = copy(
         sources = sources.map(::normalize).distinct(),
         cSources = cSources.map(::normalize).distinct(),
-        cIncludeDirectories = cIncludeDirectories.map(::normalize).distinct()
+        cIncludeDirectories = cIncludeDirectories.map(::normalize).distinct(),
+        rootSources = rootSources.map(::normalize).distinct(),
+        selectedFixtureIdentities = selectedFixtureIdentities?.toSortedSet()
     )
 
     private fun normalize(path: Path): Path = path.toAbsolutePath().normalize()
@@ -282,21 +290,27 @@ class IncrementalCompiler(
         val cIncludeDirectories: List<Path>,
         val sdkIdentity: SdkManifestIdentity,
         val externalSysroot: Path?,
-        val cCompiler: String?
+        val cCompiler: String?,
+        val mode: CompilationMode,
+        val selectedFixtureIdentities: Set<String>?,
+        val rootSources: List<Path>
     ) {
         companion object {
             fun from(request: CompileRequest): RequestConfiguration {
                 val sdk = SdkManifestLoader.load(request.sdkManifest)
                 check(sdk.isSuccessful) { "validated SDK manifest must be available" }
                 return RequestConfiguration(
-                request.target,
-                request.options,
-                request.cSources,
-                request.cLibraries,
-                request.cIncludeDirectories,
-                sdk.manifest!!.identity,
-                request.externalSysroot,
-                request.cCompiler
+                    request.target,
+                    request.options,
+                    request.cSources,
+                    request.cLibraries,
+                    request.cIncludeDirectories,
+                    sdk.manifest!!.identity,
+                    request.externalSysroot,
+                    request.cCompiler,
+                    request.mode,
+                    request.selectedFixtureIdentities?.toSortedSet(),
+                    request.rootSources
                 )
             }
         }

@@ -3,6 +3,7 @@ package cplus.backend
 import cplus.core.*
 import cplus.semantic.*
 import java.util.IdentityHashMap
+import java.security.MessageDigest
 
 data class LoweredCResult(
     val unit: CTranslationUnit,
@@ -16,16 +17,24 @@ class CLowerer(
     private val diagnostics = DiagnosticBag()
     private var moduleByDeclaration = IdentityHashMap<AstDeclaration, String>()
     private var activeModuleName = "<main>"
+    private var activeTestMode = false
 
-    fun lower(program: AstProgram): LoweredCResult {
+    fun lower(program: AstProgram, testMode: Boolean = false, selectedFixtureIdentities: Set<String> = emptySet()): LoweredCResult {
+        val fixtures = if (testMode) semantic.testFixtures.filter { it.identity in selectedFixtureIdentities } else emptyList()
+        activeTestMode = testMode && fixtures.isNotEmpty()
+        val loweredProgram = program.copy(
+            declarations = program.declarations.filterNot { it is AstTestFixture },
+            modules = program.modules.map { module -> module.copy(declarations = module.declarations.filterNot { it is AstTestFixture }) }
+        )
         moduleByDeclaration = IdentityHashMap()
-        if (program.modules.isEmpty()) {
-            program.declarations.forEach { moduleByDeclaration[it] = "<main>" }
+        if (loweredProgram.modules.isEmpty()) {
+            loweredProgram.declarations.forEach { moduleByDeclaration[it] = "<main>" }
         } else {
-            program.modules.forEach { module ->
+            loweredProgram.modules.forEach { module ->
                 module.declarations.forEach { declaration -> moduleByDeclaration[declaration] = module.name }
             }
         }
+        val program = loweredProgram
         val requiresStringTemplateRuntime = program.declarations.any(::containsStringTemplate)
         val includes = CDependencyCollector().collect(program, semantic, requiresStringTemplateRuntime)
         val structs = program.declarations.filterIsInstance<AstStruct>().map { declaration ->
@@ -236,7 +245,8 @@ class CLowerer(
                 declaration.body?.let { lowerBody(it, declaration.ownerName, declaration.isMethod) },
                 declaration.origin,
                 isVariadic = declaration.isVariadic,
-                isPublic = declaration.isPublic
+                isPublic = declaration.isPublic,
+                isStatic = activeTestMode && declaration.name == "main"
             )
         } + program.declarations.filterIsInstance<AstStruct>().flatMap { structure ->
             activeModuleName = moduleByDeclaration[structure] ?: "<main>"
@@ -276,7 +286,29 @@ class CLowerer(
                     function.isVariadic
                 )
             }
-        val functions = programFunctions + foreignFunctions
+        val fixtureFunctions = fixtures.map { selected ->
+            CFunction(
+                CType.Primitive("void"),
+                fixtureFunctionName(selected.identity),
+                emptyList(),
+                lowerBody(selected.fixture.body, null, instanceMethod = false),
+                selected.fixture.origin,
+                isStatic = true
+            )
+        }
+        val dispatcher = fixtures.takeIf { it.isNotEmpty() }?.let { selected ->
+            val origin = selected.first().fixture.origin
+            CFunction(
+                CType.Primitive("int"),
+                "main",
+                emptyList(),
+                CBlock(fixtureFunctions.map { fixture ->
+                    CExpressionStatement(CCall(CIdentifier(fixture.name, fixture.origin), emptyList(), fixture.origin), fixture.origin)
+                } + CReturn(CIntegerLiteral("0", origin), origin), origin),
+                origin
+            )
+        }
+        val functions = programFunctions + foreignFunctions + fixtureFunctions + listOfNotNull(dispatcher)
         functions.groupBy { it.name }
             .filterValues { it.size > 1 }
             .forEach { (name, declarations) ->
@@ -300,7 +332,11 @@ class CLowerer(
             )
         val unitWithDependencies = unit.copy(
             publicIncludes = CDependencyCollector().collectPublic(program, unit),
-            runtimeDependencies = CRuntimeDependencyCatalogue.collect(unit)
+            runtimeDependencies = CRuntimeDependencyCatalogue.collect(unit),
+            testProduct = if (fixtures.isEmpty()) null else CTestProductMetadata(
+                "main",
+                fixtures.map { CTestFixtureMetadata(it.identity, fixtureFunctionName(it.identity), it.fixture.origin) }
+            )
         )
         diagnostics.addAll(CSubsetValidator().validate(unitWithDependencies))
         return LoweredCResult(
@@ -907,12 +943,20 @@ class CLowerer(
 
     private fun functionName(symbol: Symbol): String {
         symbol.externalName?.let { return it }
+        if (activeTestMode && symbol.name == "main") return "__cplus_user_main_${stableSuffix(symbol.moduleName ?: "root")}"
         val definingModules = semantic.moduleFunctions.values.asSequence()
             .mapNotNull { it[symbol.name]?.symbol?.moduleName }
             .toSet()
         val nameIsSharedAcrossModules = definingModules.size > 1
         return if (nameIsSharedAcrossModules) names.moduleFunctionName(symbol) else names.nameOf(symbol)
     }
+
+    private fun fixtureFunctionName(identity: String): String = "__cplus_test_fixture_${stableSuffix(identity)}"
+
+    private fun stableSuffix(value: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray())
+        .take(8)
+        .joinToString("") { byte -> "%02x".format(byte) }
 
     private fun ownerStruct(receiver: AstExpression, receiverType: cplus.semantic.CType?): cplus.semantic.StructType? = when (receiver) {
         is AstIdentifier -> semantic.structs[receiver.name] ?: aggregateStruct(receiverType)?.let { semantic.structs[it.name] ?: it }
@@ -1034,7 +1078,8 @@ class CEmitter {
         if (unit.globals.isNotEmpty() && unit.functions.isNotEmpty()) appendLine()
 
         unit.functions.forEach { function ->
-            appendLine("${function.returnType.render()} ${function.name}(${parameters(function.parameters, function.isVariadic)});", function.origin)
+            val storage = if (function.isStatic) "static " else ""
+            appendLine("$storage${function.returnType.render()} ${function.name}(${parameters(function.parameters, function.isVariadic)});", function.origin)
         }
         val definitions = unit.functions.filter { it.body != null }
         if (definitions.isNotEmpty()) appendLine()
@@ -1073,7 +1118,8 @@ class CEmitter {
         appendLine: (String, Origin?) -> Unit,
         append: (String) -> Unit
     ) {
-        appendLine("${function.returnType.render()} ${function.name}(${parameters(function.parameters, function.isVariadic)}) {", function.origin)
+        val storage = if (function.isStatic) "static " else ""
+        appendLine("$storage${function.returnType.render()} ${function.name}(${parameters(function.parameters, function.isVariadic)}) {", function.origin)
         when (val body = function.body) {
             null -> Unit
             is CBlock -> body.statements.forEach { emitStatement(it, 1, appendLine) }
