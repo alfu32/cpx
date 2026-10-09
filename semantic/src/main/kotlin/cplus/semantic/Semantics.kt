@@ -876,9 +876,9 @@ class SemanticAnalyzer(
             "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64"
         )
         val fixedWidthModules = moduleDeclarationLists.filterValues { declarations ->
-            val aliases = declarations.filterIsInstance<AstAlias>().mapTo(mutableSetOf()) { it.name }
-            declarations.filterIsInstance<AstPackage>().any { it.name == "std" } &&
-                (aliases.containsAll(fixedWidthBaseAliasNames) || aliases.any { it in fixedWidthAliasNames })
+            val aliases = declarations.filterIsInstance<AstAlias>()
+            aliases.mapTo(mutableSetOf()) { it.name }.containsAll(fixedWidthBaseAliasNames) ||
+                aliases.any { it.name in fixedWidthAliasNames && "__int128" in it.target.name }
         }.keys
         val supportsInt128 = "int128" in targetFeatures
         val supportsC17Complex = "c17_complex" in targetFeatures
@@ -2064,6 +2064,8 @@ class SemanticAnalyzer(
                     expressionTypes,
                     diagnostics,
                     ::primitive,
+                    { type, ownerModule, dimensions -> resolve(type, ownerModule, dimensions) },
+                    moduleName,
                     functionScopes[function.symbol.id] ?: moduleScope(moduleName),
                     scopes
                 )
@@ -2106,6 +2108,8 @@ class SemanticAnalyzer(
                     expressionTypes,
                     diagnostics,
                     ::primitive,
+                    { type, ownerModule, dimensions -> resolve(type, ownerModule, dimensions) },
+                    moduleName,
                     fixtureScope,
                     scopes
                 )
@@ -2153,6 +2157,8 @@ class SemanticAnalyzer(
                         expressionTypes,
                         diagnostics,
                         ::primitive,
+                        { type, ownerModule, dimensions -> resolve(type, ownerModule, dimensions) },
+                        moduleName,
                         functionScopes[methodSymbol.symbol.id] ?: moduleScope(moduleName),
                         scopes
                     )
@@ -2184,6 +2190,8 @@ class SemanticAnalyzer(
                     expressionTypes,
                     diagnostics,
                     ::primitive,
+                    { type, ownerModule, dimensions -> resolve(type, ownerModule, dimensions) },
+                    moduleName,
                     functionScopes.getValue(methodSymbol.symbol.id),
                     scopes
                 )
@@ -2547,6 +2555,8 @@ class SemanticAnalyzer(
         expressionTypes: MutableMap<AstExpression, CType>,
         diagnostics: DiagnosticBag,
         primitive: (String) -> PrimitiveType,
+        typeResolver: (AstTypeRef, String, List<String>) -> CType,
+        moduleName: String,
         scopeId: ScopeId,
         scopes: ScopeTable,
         loopDepth: Int = 0
@@ -2571,6 +2581,8 @@ class SemanticAnalyzer(
                         expressionTypes,
                         diagnostics,
                         primitive,
+                        typeResolver,
+                        moduleName,
                         blockScope,
                         scopes,
                         loopDepth
@@ -2644,25 +2656,25 @@ class SemanticAnalyzer(
             is AstDefer -> validateExpression(statement.expression, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
             is AstIf -> {
                 validateExpression(statement.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                validateStatement(statement.thenBranch, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, scopeId, scopes, loopDepth)
+                validateStatement(statement.thenBranch, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, typeResolver, moduleName, scopeId, scopes, loopDepth)
                 statement.elseBranch?.let {
-                    validateStatement(it, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, scopeId, scopes, loopDepth)
+                    validateStatement(it, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, typeResolver, moduleName, scopeId, scopes, loopDepth)
                 }
             }
             is AstWhile -> {
                 validateExpression(statement.condition, locals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
-                validateStatement(statement.body, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, scopeId, scopes, loopDepth + 1)
+                validateStatement(statement.body, expectedReturn, LinkedHashMap(locals), functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, typeResolver, moduleName, scopeId, scopes, loopDepth + 1)
             }
             is AstFor -> {
                 val loopScope = scopes.create(ScopeKind.BLOCK, scopeId)
                 val loopLocals = LinkedHashMap(locals)
                 statement.initializer?.let {
-                    validateStatement(it, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopScope, scopes, loopDepth)
+                    validateStatement(it, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, typeResolver, moduleName, loopScope, scopes, loopDepth)
                 }
                 statement.condition?.let {
                     validateExpression(it, loopLocals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 }
-                validateStatement(statement.body, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, loopScope, scopes, loopDepth + 1)
+                validateStatement(statement.body, expectedReturn, loopLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, typeResolver, moduleName, loopScope, scopes, loopDepth + 1)
                 statement.increment?.let {
                     validateExpression(it, loopLocals, functions, globals, structs, methods, expressionTypes, diagnostics, primitive)
                 }
@@ -2674,7 +2686,7 @@ class SemanticAnalyzer(
                 diagnostics.error("continue is only valid inside a loop", rangeOf(statement.origin), "SEM206")
             }
             is AstVariableDeclaration -> {
-                val type = resolveType(statement.type, structs, unions, enums, aliases, foreignTypes, primitive, diagnostics, statement.arrayDimensions)
+                val type = typeResolver(statement.type, moduleName, statement.arrayDimensions)
                 val symbol = Symbol(SymbolId(-locals.size - 1), statement.name, SymbolKind.VARIABLE, type, statement.origin)
                 if (locals.containsKey(statement.name)) {
                     diagnostics.error("duplicate local '${statement.name}'", rangeOf(statement.origin), "SEM204")
@@ -2697,13 +2709,13 @@ class SemanticAnalyzer(
                 val nestedLocals = LinkedHashMap(locals)
                 val nestedScope = scopes.create(ScopeKind.FUNCTION, scopeId)
                 statement.function.parameters.forEach { parameter ->
-                    val type = resolveType(parameter.type, structs, unions, enums, aliases, foreignTypes, primitive, diagnostics, parameter.arrayDimensions)
+                    val type = typeResolver(parameter.type, moduleName, parameter.arrayDimensions)
                     val symbol = Symbol(SymbolId(-nestedLocals.size - 1), parameter.name, SymbolKind.PARAMETER, type, parameter.origin)
                     nestedLocals[parameter.name] = symbol
                     scopes.define(nestedScope, parameter.name, symbol.id)
                 }
-                val returnType = resolveType(statement.function.returnType, structs, unions, enums, aliases, foreignTypes, primitive, diagnostics)
-                validateStatement(statement.function.body ?: AstBlock(emptyList(), statement.origin), returnType, nestedLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, nestedScope, scopes, loopDepth)
+                val returnType = typeResolver(statement.function.returnType, moduleName, emptyList())
+                validateStatement(statement.function.body ?: AstBlock(emptyList(), statement.origin), returnType, nestedLocals, functions, globals, structs, unions, enums, aliases, foreignTypes, methods, expressionTypes, diagnostics, primitive, typeResolver, moduleName, nestedScope, scopes, loopDepth)
             }
         }
     }

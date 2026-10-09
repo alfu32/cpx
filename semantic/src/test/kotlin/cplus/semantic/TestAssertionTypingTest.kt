@@ -35,7 +35,7 @@ class TestAssertionTypingTest {
                 assertEquals("pointer string", message, message);
             }
             int compare(int* pointer) { return pointer == 0; }
-        """)
+        """, setOf("c17_complex"))
 
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         val model = assertNotNull(result.model)
@@ -72,10 +72,10 @@ class TestAssertionTypingTest {
         assertEquals(5, result.model?.typedTestAssertions?.size)
     }
 
-    private fun analyze(text: String): SemanticResult {
+    private fun analyze(text: String, targetFeatures: Set<String> = emptySet()): SemanticResult {
         val source = SourceFile(SourceFileId(131), Path.of("assertion-typing.cp"), text.trimIndent(), 1)
         val parsed = Parser(Lexer().lex(source)).parse()
         assertTrue(parsed.diagnostics.isEmpty(), parsed.diagnostics.joinToString())
-        return SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax))
+        return SemanticAnalyzer().analyze(AstBuilder().build(parsed.syntax), targetFeatures = targetFeatures)
     }
 }

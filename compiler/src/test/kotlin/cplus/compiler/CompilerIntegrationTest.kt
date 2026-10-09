@@ -2287,6 +2287,24 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun unavailableImportedInt128AliasUsesTargetDiagnosticInFunctionBody() {
+        val directory = Files.createTempDirectory("cplus-fixed-width-partial-module")
+        val fixedWidthModule = directory.resolve("fixed_width.cp").also {
+            it.writeText("package std; pub typedef __int128 i128;")
+        }
+        val main = directory.resolve("main.cp").also {
+            it.writeText("import { i128 } from std.fixed_width; int main() { i128 value; return 0; }")
+        }
+
+        val result = CPlusCompiler().compile(
+            CompileRequest(listOf(main, fixedWidthModule), target = TargetInfo(targetTriple = "linux-aarch64"))
+        )
+
+        assertTrue(result.diagnostics.any { it.code == "SEM411" }, result.diagnostics.joinToString())
+        assertFalse(result.diagnostics.any { it.code == "SEM102" }, result.diagnostics.joinToString())
+    }
+
+    @Test
     fun integerSpecifierVariantsWorkAcrossDeclarationsAndGeneratedC() {
         val result = CPlusCompiler().compileText(
             Files.createTempFile("cplus-integer-specifiers", ".cp"),
