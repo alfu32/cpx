@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    144/161 accepted with recorded evidence; 17 TODO
+Roadmap leaf tasks:    145/161 accepted with recorded evidence; 16 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.2.1 — select test mode and synthesize a fixture dispatcher
+Current task:          DOING: R14.2.2 — lower assertions to ordered typed temporaries
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 4/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 5/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       144/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       145/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,9 +3795,9 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 144/161 accepted; 17 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 145/161 accepted; 16 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
-                     R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (0/4); R10–R12 accepted
+                     R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (1/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
 
 [DONE]  R0 — implementation inventory and scope freeze
@@ -3814,16 +3814,16 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (4/20 leaves; next R14.2.1)
+[DOING] R14 — source test fixtures and CLI runner (5/20 leaves; next R14.2.2)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 144 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 145 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
-implementation is active; seventeen leaves remain open.
+implementation is active; sixteen leaves remain open.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [4/20] Source test fixtures and CLI runner
+## R14 [DOING] [5/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7112,18 +7112,18 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :semantic:test --tests cplus.semantic.TestFixtureSemanticsTest`.
 
-### R14.2 [TODO] [0/4] Typed test products and runtime integration
+### R14.2 [DOING] [1/4] Typed test products and runtime integration
 
 **Language:** LS §53.2 Assertion statements; §53.3 Compilation and selection.
 **Technical:** TS §80.2 Typed lowering and runtime reporting; SDK §103 Internal test reporting support.
 **Depends:** R14.1.
 
-#### R14.2.1 [TODO] Select test mode and synthesize one fixture entry dispatcher
+#### R14.2.1 [DONE] Select test mode and synthesize one fixture entry dispatcher
 
 **Language:** LS §53.3 Compilation and selection.
 **Technical:** TS §58 Compiler pipeline API; §80.2 Typed lowering and runtime reporting.
 **Depends:** R14.1.4.
-**Files:** compiler/.../Compiler.kt CompilerOptions/CompileRequest, BackendPipeline.kt, IncrementalCompiler.kt; c-backend/.../CBackend.kt.
+**Files:** compiler/.../Compiler.kt `CompileRequest`, `BackendPipeline.kt`, `IncrementalCompiler.kt`, `TestFixtureLoweringTest.kt`; c-backend/.../`CBackend.kt`, `CModel.kt`; semantic/.../`Semantics.kt`.
 
 **Deliverable:** Add explicit normal/test mode and requested root selection, including cache identity. In test mode produce stable fixture functions and dispatcher metadata; retain user main under a symbol-mapped private emitted name. Normal mode erases validated fixtures before backend lowering.
 
@@ -7131,9 +7131,11 @@ non-string descriptions with source-ranged diagnostics.
 **Postconditions:** Normal/test products have the correct unique entry and selection.
 **Invalid states:** Renaming main by text, cache reuse across modes or silently executing imported fixtures.
 
-**Acceptance:** Normal C/header/map omit test runtime/code; test mode contains one entry and selected root fixtures only. User main remains callable from a fixture. Imported tests are not selected; switching modes in a warm cache matches cold results. Zero fixtures needs no synthetic fake assertion.
+**Acceptance:** Normal C/header/source map omit fixture code; test mode contains exactly one entry and selected root fixtures only. User `main` remains callable from a fixture through its symbol-mapped private name. Imported tests are validated but not selected; switching modes in a warm cache yields byte-identical C to a cold build. Zero fixtures retain the user entry and synthesize no dispatcher or fake assertion.
 
-**Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :c-backend:test`.
+**Evidence:** `:compiler:test --tests cplus.compiler.TestFixtureLoweringTest` passes all four focused tests. Tests cover normal-product erasure/source-map omission, one-entry and selected-subset output, callable remapped user `main`, imported fixture exclusion, zero-fixture behavior, and warm/cold cache parity. Fixture function names derive from stable module paths and offsets rather than process-local source IDs. Windows execution remains part of the final platform pass.
+
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :c-backend:test --no-daemon`.
 
 #### R14.2.2 [TODO] Lower assertions to ordered typed temporaries
 

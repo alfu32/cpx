@@ -16,10 +16,16 @@ class CLowerer(
 ) {
     private val diagnostics = DiagnosticBag()
     private var moduleByDeclaration = IdentityHashMap<AstDeclaration, String>()
+    private var stableModuleNames: Map<String, String> = emptyMap()
     private var activeModuleName = "<main>"
     private var activeTestMode = false
 
-    fun lower(program: AstProgram, testMode: Boolean = false, selectedFixtureIdentities: Set<String> = emptySet()): LoweredCResult {
+    fun lower(
+        program: AstProgram,
+        testMode: Boolean = false,
+        selectedFixtureIdentities: Set<String> = emptySet(),
+        stableRootIdentity: String? = null
+    ): LoweredCResult {
         val fixtures = if (testMode) semantic.testFixtures.filter { it.identity in selectedFixtureIdentities } else emptyList()
         activeTestMode = testMode && fixtures.isNotEmpty()
         val loweredProgram = program.copy(
@@ -28,8 +34,12 @@ class CLowerer(
         )
         moduleByDeclaration = IdentityHashMap()
         if (loweredProgram.modules.isEmpty()) {
+            stableModuleNames = stableRootIdentity?.let { mapOf("<main>" to it) }.orEmpty()
             loweredProgram.declarations.forEach { moduleByDeclaration[it] = "<main>" }
         } else {
+            stableModuleNames = loweredProgram.modules.associate { module ->
+                module.name to (module.sourcePath ?: module.name)
+            }
             loweredProgram.modules.forEach { module ->
                 module.declarations.forEach { declaration -> moduleByDeclaration[declaration] = module.name }
             }
@@ -289,7 +299,7 @@ class CLowerer(
         val fixtureFunctions = fixtures.map { selected ->
             CFunction(
                 CType.Primitive("void"),
-                fixtureFunctionName(selected.identity),
+                fixtureFunctionName(stableFixtureIdentity(selected)),
                 emptyList(),
                 lowerBody(selected.fixture.body, null, instanceMethod = false),
                 selected.fixture.origin,
@@ -335,7 +345,7 @@ class CLowerer(
             runtimeDependencies = CRuntimeDependencyCatalogue.collect(unit),
             testProduct = if (fixtures.isEmpty()) null else CTestProductMetadata(
                 "main",
-                fixtures.map { CTestFixtureMetadata(it.identity, fixtureFunctionName(it.identity), it.fixture.origin) }
+                fixtures.map { CTestFixtureMetadata(it.identity, fixtureFunctionName(stableFixtureIdentity(it)), it.fixture.origin) }
             )
         )
         diagnostics.addAll(CSubsetValidator().validate(unitWithDependencies))
@@ -943,7 +953,10 @@ class CLowerer(
 
     private fun functionName(symbol: Symbol): String {
         symbol.externalName?.let { return it }
-        if (activeTestMode && symbol.name == "main") return "__cplus_user_main_${stableSuffix(symbol.moduleName ?: "root")}"
+        if (activeTestMode && symbol.name == "main") {
+            val stableModule = symbol.moduleName?.let { stableModuleNames[it] ?: it } ?: "root"
+            return "__cplus_user_main_${stableSuffix(stableModule)}"
+        }
         val definingModules = semantic.moduleFunctions.values.asSequence()
             .mapNotNull { it[symbol.name]?.symbol?.moduleName }
             .toSet()
@@ -952,6 +965,11 @@ class CLowerer(
     }
 
     private fun fixtureFunctionName(identity: String): String = "__cplus_test_fixture_${stableSuffix(identity)}"
+
+    private fun stableFixtureIdentity(fixture: SemanticTestFixture): String {
+        val source = stableModuleNames[fixture.moduleName] ?: fixture.moduleName
+        return "$source:${fixture.fixture.origin.primaryRange?.startOffset ?: fixture.identity}"
+    }
 
     private fun stableSuffix(value: String): String = MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray())

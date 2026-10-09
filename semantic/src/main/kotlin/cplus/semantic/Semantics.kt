@@ -2079,7 +2079,10 @@ class SemanticAnalyzer(
                 ?: ModuleTypeEnvironment(structs, unions, enums, aliases)
             activeTypeEnvironment = typeEnvironment.knownTypes
             val sourceRange = fixture.origin.primaryRange
-            val identity = "$moduleName:${sourceRange?.file?.value ?: -1}:${sourceRange?.startOffset ?: index}"
+            val sourcePath = program.modules.firstOrNull { module -> module.declarations.any { it === fixture } }?.sourcePath
+                ?: "source"
+            val stableModule = if (sourcePath == "source") moduleName else sourcePath
+            val identity = "$stableModule:${sourceRange?.startOffset ?: index}"
             val fixtureScope = scopes.create(
                 ScopeKind.FUNCTION,
                 moduleScope(moduleName),

@@ -473,7 +473,8 @@ class CPlusCompiler(
             ast,
             model,
             mode == CompilationMode.TEST,
-            selection.identities
+            selection.identities,
+            frontend.source.path.toAbsolutePath().normalize().toString()
         )
         return CompilationArtifacts(
             source,

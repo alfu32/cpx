@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertEquals
 
 class TestFixtureLoweringTest {
     @Test
@@ -14,7 +15,8 @@ class TestFixtureLoweringTest {
         Files.writeString(
             source,
             """
-                test a fixture { int local = 1; }
+                test first fixture { int local = 1; int userResult = main(); }
+                test second fixture { int other = 2; }
                 int main() { return 0; }
             """.trimIndent()
         )
@@ -25,14 +27,57 @@ class TestFixtureLoweringTest {
         val normalC = normal.generatedUnits.single().text
         assertFalse(normalC.contains("fixture_"))
         assertTrue(normalC.contains("int main("))
+        assertFalse(normal.artifacts.single().header?.text.orEmpty().contains("__cplus_test_fixture_"))
+        val fixtureRange = normal.semanticModel!!.testFixtures.first().fixture.origin.primaryRange
+        assertTrue(normal.generatedUnits.single().sourceMap.none { it.origin.primaryRange == fixtureRange })
 
-        val test = compiler.compile(CompileRequest(listOf(source), mode = CompilationMode.TEST))
+        val selected = normal.semanticModel!!.testFixtures.first().identity
+        val test = compiler.compile(
+            CompileRequest(listOf(source), mode = CompilationMode.TEST, selectedFixtureIdentities = setOf(selected))
+        )
         assertTrue(test.isSuccessful, test.diagnostics.joinToString())
         val testC = test.generatedUnits.single().text
         assertTrue(testC.contains("int main("))
+        assertEquals(1, Regex("(?m)^int main\\s*\\(\\) \\{").findAll(testC).count())
         assertTrue(testC.contains("__cplus_test_fixture_"))
         assertTrue(testC.contains("__cplus_user_main_"))
-        assertNotNull(test.artifacts.single().lowered?.unit?.testProduct)
+        assertTrue(Regex("__cplus_user_main_[0-9a-f]+\\(\\);").containsMatchIn(testC), testC)
+        val metadata = assertNotNull(test.artifacts.single().lowered?.unit?.testProduct)
+        assertEquals(1, metadata.fixtures.size)
+    }
+
+    @Test
+    fun importedFixturesAreValidatedButNotSelectedAsRootTests() {
+        val directory = Files.createTempDirectory("cplus-imported-test-lowering")
+        val root = directory.resolve("main.cp")
+        val provider = directory.resolve("provider.cp")
+        Files.writeString(provider, "pub int helper() { return 1; } test imported fixture { int value = 2; }")
+        Files.writeString(
+            root,
+            "import { helper } from \"./provider.cp\"; test root fixture { int value = helper(); } int main() { return 0; }"
+        )
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(root), mode = CompilationMode.TEST))
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val metadata = assertNotNull(result.artifacts.single().lowered?.unit?.testProduct)
+        assertEquals(1, metadata.fixtures.size)
+        assertTrue(metadata.fixtures.single().identity.contains("main.cp"))
+    }
+
+    @Test
+    fun switchingWarmIncrementalCompilerModesMatchesColdTestBuild() {
+        val directory = Files.createTempDirectory("cplus-test-cache-mode")
+        val source = directory.resolve("main.cp")
+        Files.writeString(source, "test fixture { int value = 1; } int main() { return 0; }")
+        val incremental = IncrementalCompiler()
+        assertTrue(incremental.compile(CompileRequest(listOf(source))).isSuccessful)
+        val warm = incremental.compile(CompileRequest(listOf(source), mode = CompilationMode.TEST))
+        val cold = CPlusCompiler().compile(CompileRequest(listOf(source), mode = CompilationMode.TEST))
+
+        assertTrue(warm.isSuccessful, warm.result.diagnostics.joinToString())
+        assertTrue(cold.isSuccessful, cold.diagnostics.joinToString())
+        assertEquals(cold.generatedUnits.single().text, warm.result.generatedUnits.single().text)
+        assertEquals(CompilationMode.TEST, warm.cacheKey?.mode)
     }
 
     @Test

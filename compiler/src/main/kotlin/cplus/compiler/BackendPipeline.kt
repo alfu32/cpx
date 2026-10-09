@@ -55,6 +55,7 @@ internal class BackendProcessingPipeline(
         val semantic: CompilerPacketChannel<SemanticModel> = CompilerPacketChannel("semantic"),
         val testMode: CompilerPacketChannel<Boolean> = CompilerPacketChannel("testMode"),
         val selectedFixtures: CompilerPacketChannel<Set<String>> = CompilerPacketChannel("selectedFixtures"),
+        val rootIdentity: CompilerPacketChannel<String> = CompilerPacketChannel("rootIdentity"),
         val cAst: CompilerPacketChannel<LoweredCResult> = CompilerPacketChannel("cAst"),
         val cAstForHeaders: CompilerPacketChannel<LoweredCResult> = CompilerPacketChannel("cAstForHeaders"),
         val namedCAst: CompilerPacketChannel<LoweredCResult> = CompilerPacketChannel("namedCAst"),
@@ -66,13 +67,15 @@ internal class BackendProcessingPipeline(
         program: AstProgram,
         semantic: SemanticModel,
         testMode: Boolean = false,
-        selectedFixtureIdentities: Set<String> = emptySet()
+        selectedFixtureIdentities: Set<String> = emptySet(),
+        stableRootIdentity: String? = null
     ): BackendPipelineResult {
         val channels = Channels()
         channels.ast.push(program)
         channels.semantic.push(semantic)
         channels.testMode.push(testMode)
         channels.selectedFixtures.push(selectedFixtureIdentities)
+        channels.rootIdentity.push(stableRootIdentity.orEmpty())
 
         lowerCplus(channels)
         val lowered = channels.namedCAst.peek() ?: error("channel 'namedCAst' did not contain a packet")
@@ -95,7 +98,12 @@ internal class BackendProcessingPipeline(
     private fun lowerCplus(channels: Channels) {
         val program = channels.ast.requirePacket()
         val semantic = channels.semantic.requirePacket()
-        val lowered = lowerer.lower(program, channels.testMode.requirePacket(), channels.selectedFixtures.requirePacket())
+        val lowered = lowerer.lower(
+            program,
+            channels.testMode.requirePacket(),
+            channels.selectedFixtures.requirePacket(),
+            channels.rootIdentity.requirePacket().ifEmpty { null }
+        )
         channels.cAst.push(lowered)
         channels.cAstForHeaders.push(lowered)
         nameCSymbols(channels)
