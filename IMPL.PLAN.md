@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    148/161 accepted with recorded evidence; 13 TODO
+Roadmap leaf tasks:    149/161 accepted with recorded evidence; 12 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.3.1 — implement CLI test command argument and root expansion
+Current task:          DOING: R14.3.1.2 — build independent temporary test products per root
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 8/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 9/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       148/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       149/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 148/161 accepted; 13 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 149/161 accepted; 12 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (4/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
@@ -3814,13 +3814,13 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (8/20 leaves; next R14.3.1)
+[DOING] R14 — source test fixtures and CLI runner (9/20 leaves; next R14.3.1.2)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 148 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 149 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
 implementation is active; fifteen leaves remain open.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [8/20] Source test fixtures and CLI runner
+## R14 [DOING] [9/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7194,19 +7194,19 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :comptime:test`.
 
-### R14.3 [TODO] [0/6] CLI execution and reporting
+### R14.3 [DOING] [1/6] CLI execution and reporting
 
 **Language:** LS §53.3 Compilation and selection; §53.4 Execution outcome.
 **Technical:** TS §57.1 Source test command and report; §80.3 Child process and result protocol.
 **Depends:** R14.2.
 
-#### R14.3.1 [TODO] [0/2] Root selection and product builds
+#### R14.3.1 [DOING] [1/2] Root selection and product builds
 
 **Language:** LS §53.3 Compilation and selection.
 **Technical:** TS §57.1 Source test command and report.
 **Depends:** R14.2.
 
-##### R14.3.1.1 [TODO] Parse test command roots and shared build configuration
+##### R14.3.1.1 [DONE] Parse test command roots and shared build configuration
 
 **Language:** LS §53.3 Compilation and selection.
 **Technical:** TS §57.1 Source test command and report.
@@ -7216,6 +7216,8 @@ non-string descriptions with source-ranged diagnostics.
 **Deliverable:** Add test dispatch with explicit file roots, -- delimiter, ordered normalized deduplication, positive --timeout and allowed shared configuration. Discover each root closure separately; manifest configuration does not add hidden test roots.
 
 **Acceptance:** CLI argument tests cover multiple shell-expanded paths, no files, nonexistent files, duplicate roots, quoted wildcard literal, spaces, invalid timeout/unsupported output options and shared SDK override. Keep libc test and run behavior intact.
+
+**Evidence:** `TestCommandArguments` normalizes explicit paths against the invocation directory, preserves order while deduplicating, treats wildcard tokens literally, supports `--`, validates manifests and a positive integer timeout, and accepts shared target/runtime/libc/SDK/sysroot/compiler/C-source/library/include options. Output/header/map and unknown options are rejected. The `test` CLI dispatch is registered; product execution is the next leaf. `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest --no-daemon` passes (2026-10-09).
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest`.
 

@@ -61,6 +61,7 @@ internal class Cli {
             "expand" -> expand(args.drop(1))
             "build" -> build(args.drop(1))
             "run" -> runProgram(args.drop(1))
+            "test" -> testCommand(args.drop(1))
             "sdk" -> sdk(args.drop(1))
             "target" -> target(args.drop(1))
             "abi" -> abi(args.drop(1))
@@ -290,6 +291,12 @@ internal class Cli {
         } finally {
             temporaryDirectory?.let(::deleteTemporaryProduct)
         }
+    }
+
+    private fun testCommand(arguments: List<String>): Int {
+        TestCommandArguments.parse(arguments) ?: return 2
+        System.err.println("test product execution is not yet available")
+        return 2
     }
 
     private fun executablePath(path: Path, target: TargetInfo): Path =
@@ -969,6 +976,7 @@ internal class Cli {
         stream.println("  expand      print the post-CPX normalized AST")
         stream.println("  build       transcode and compile one source file with the target C driver")
         stream.println("  run         build and execute one source file")
+        stream.println("  test        build and run source test fixtures")
         stream.println("  sdk         verify, inspect, or index the source SDK")
         stream.println("  target      list or inspect target ABI descriptors")
         stream.println("  abi         verify target ABI descriptors")
