@@ -7,6 +7,7 @@ import cplus.comptime.ComptimeTargetInfo
 import cplus.comptime.ComptimeTypeResolver
 import cplus.comptime.CpxExpansionResult
 import cplus.comptime.CpxExpander
+import cplus.comptime.ImportedComptimeDefinition
 import cplus.comptime.SpecializationKey
 import cplus.comptime.StructuralFieldDescriptor
 import cplus.comptime.StructuralMethodDescriptor
@@ -856,22 +857,24 @@ class CPlusCompiler(
 
     private fun workspaceComptimeDefinitions(
         parsedUnits: List<ParsedUnit>
-    ): Map<Path, Map<String, SyntaxComptimeFunction>> {
+    ): Map<Path, Map<String, ImportedComptimeDefinition>> {
         if (parsedUnits.size < 2) return emptyMap()
         val sources = parsedUnits.map { ModuleSource(it.source, it.parsed.syntax) }
         val graph = ModuleGraphBuilder().build(sources)
         val unitsById = parsedUnits.associateBy { unit -> requireNotNull(graph.moduleIdForPath(unit.source.path)) }
         return parsedUnits.associate { importer ->
             val importerId = requireNotNull(graph.moduleIdForPath(importer.source.path))
-            val candidates = linkedMapOf<String, MutableList<SyntaxComptimeFunction>>()
+            val candidates = linkedMapOf<String, MutableList<ImportedComptimeDefinition>>()
             importer.parsed.syntax.declarations.filterIsInstance<SyntaxImport>().forEach { import ->
                 val providerId = graph.importBindings[importerId]?.get(import.module) ?: return@forEach
-                val definitions = unitsById[providerId]?.parsed?.syntax?.declarations
+                val providerDefinitions = unitsById[providerId]?.parsed?.syntax?.declarations
                     ?.filterIsInstance<SyntaxComptimeFunction>()
-                    ?.filter(SyntaxComptimeFunction::isPublic)
                     .orEmpty()
+                val lexicalDefinitions = providerDefinitions.associateBy { it.name }
+                val definitions = lexicalDefinitions.values.filter(SyntaxComptimeFunction::isPublic)
                 fun offer(localName: String, definition: SyntaxComptimeFunction) {
-                    candidates.getOrPut(localName) { mutableListOf() } += definition
+                    candidates.getOrPut(localName) { mutableListOf() } +=
+                        ImportedComptimeDefinition(definition, lexicalDefinitions)
                 }
                 if (import.names.isEmpty()) {
                     import.alias?.let { alias -> definitions.forEach { definition ->
@@ -887,7 +890,7 @@ class CPlusCompiler(
                 }
             }
             val unambiguous = candidates.mapNotNull { (name, definitions) ->
-                val distinct = definitions.distinctBy { it.origin to it.name }
+                val distinct = definitions.distinctBy { it.declaration.origin to it.declaration.name }
                 distinct.singleOrNull()?.let { name to it }
             }.toMap()
             importer.source.path.toAbsolutePath().normalize() to unambiguous
@@ -923,7 +926,7 @@ class CPlusCompiler(
         parsedUnit: ParsedUnit,
         headerEnvironment: HeaderEnvironment,
         deferImportedCpx: Boolean = false,
-        importedDefinitions: Map<String, SyntaxComptimeFunction> = emptyMap()
+        importedDefinitions: Map<String, ImportedComptimeDefinition> = emptyMap()
     ): FrontendUnit {
         val source = parsedUnit.source
         val lexed = parsedUnit.lexed

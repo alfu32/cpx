@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    134/161 accepted with recorded evidence; 27 TODO
+Roadmap leaf tasks:    135/161 accepted with recorded evidence; 26 TODO
 Phase gates:           13/15 complete; 1 active; 1 queued
-Current task:          Next: R13.2.2 — separate definition bindings from argument and insertion scopes
+Current task:          DOING: R13.2.3 — drive workspace structural dependencies to a bounded fixed point
 Current milestone:     imported comptime functions and source test fixtures (planned)
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -40,11 +40,11 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
-R13 [DOING] 5/12 imported comptime bindings, expansion and product conformance
+R13 [DOING] 6/12 imported comptime bindings, expansion and product conformance
 R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       134/161 implementation tasks accepted; 13/15 phase gates complete,
-            0 active, 2 queued
+TOTAL       135/161 implementation tasks accepted; 13/15 phase gates complete,
+            1 active, 1 queued
 ```
 
 The current Luna 6 Medium execution runbook is
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 1 active, 1 queued]
-Roadmap leaf tasks: 134/161 accepted; 27 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 135/161 accepted; 26 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
 Active phase gates: 1 (R13); queued phase gates: 1 (R14)
@@ -3813,16 +3813,16 @@ Active phase gates: 1 (R13); queued phase gates: 1 (R14)
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
-[DOING] R13 — imported comptime functions (5/12 leaves; next R13.2.2)
+[DOING] R13 — imported comptime functions (6/12 leaves; next R13.2.3)
 [TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 134 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 135 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1 is complete; the other
-27 new leaves remain TODO. R13 is the active phase.
+26 new leaves remain TODO. R13 is the active phase.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6687,7 +6687,7 @@ Version” using the configured Java executable and CLI JAR.
 `./gradlew :cli:fatJar --no-daemon`, both `java -jar ... version` and no-argument help,
 and the VS Code extension `npm test` pass on Linux.
 
-## R13 [DOING] [5/12] Imported compile-time functions
+## R13 [DOING] [6/12] Imported compile-time functions
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion.
@@ -6839,7 +6839,7 @@ unambiguous imported definitions under their selective/module aliases. No
 SEM404, CPX001 or unknown-type diagnostic occurs. The focused test and full
 compiler, semantic and comptime suites pass.
 
-#### R13.2.2 [TODO] Separate definition bindings from argument and insertion scopes
+#### R13.2.2 [DONE] Separate definition bindings from argument and insertion scopes
 
 **Language:** LS §12 Hygiene; §13 Scope-sensitive CPX expansion; §21.6 Importing compile-time functions.
 **Technical:** TS §17 CPX evaluator; §27.1 Compile-time import binding and workspace expansion.
@@ -6855,6 +6855,14 @@ compiler, semantic and comptime suites pass.
 **Acceptance:** Provider and client define conflicting helper/type names: provider references bind to the provider, interpolated client expressions/types retain client identity. Nested private helper expansion succeeds; direct client import of that helper fails. Generated names retain ordinary collision diagnostics.
 
 **Verify:** `./gradlew :comptime:test :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+
+**Evidence:** Linux, 2026-10-09 — imported public generators retain their
+provider lexical definition environment during nested expansion. A public
+`box` generator can invoke a private `helper`; both generated structures are
+owned by the client module, while the helper is absent from the client's
+imported callable set and cannot be imported directly. The focused integration
+test compiles emitted C and exits 42. Full `:compiler:test :comptime:test
+:semantic:test` passes.
 
 #### R13.2.3 [TODO] Drive workspace structural dependencies to a bounded fixed point
 

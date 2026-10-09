@@ -733,7 +733,8 @@ data class ExpansionTask(
     val parentExpansion: ExpansionId? = null,
     val ancestors: List<ExpansionKey> = emptyList(),
     val phase: CpxPhase = CpxPhase.STRUCTURAL,
-    val dependencies: Set<ComptimeDependency> = emptySet()
+    val dependencies: Set<ComptimeDependency> = emptySet(),
+    val definitionEnvironment: Map<String, SyntaxComptimeFunction> = emptyMap()
 ) {
     val expansionId: ExpansionId
         get() = ExpansionId(definition.name, callSite, parentExpansion, key)
@@ -742,7 +743,13 @@ data class ExpansionTask(
 private data class DeferredCpxInvocation(
     val invocation: SyntaxCpxInvocation,
     val ancestors: List<ExpansionKey>,
-    val parentExpansion: ExpansionId?
+    val parentExpansion: ExpansionId?,
+    val definitionEnvironment: Map<String, SyntaxComptimeFunction>
+)
+
+data class ImportedComptimeDefinition(
+    val declaration: SyntaxComptimeFunction,
+    val lexicalDefinitions: Map<String, SyntaxComptimeFunction>
 )
 
 /**
@@ -979,7 +986,7 @@ class CpxExpander(
         typeDescriptors: Iterable<StructuralTypeDescriptor> = emptyList(),
         deferredInvocationNames: Set<String> = emptySet(),
         deferredInvocationPrefixes: Set<String> = emptySet(),
-        importedDefinitions: Map<String, SyntaxComptimeFunction> = emptyMap()
+        importedDefinitions: Map<String, ImportedComptimeDefinition> = emptyMap()
     ): CpxExpansionResult {
         val diagnostics = DiagnosticBag()
         val syntaxArena = AstArena()
@@ -992,14 +999,14 @@ class CpxExpander(
         program.declarations
             .filterIsInstance<SyntaxComptimeFunction>()
             .forEach { definitions[it.name] = it }
-        importedDefinitions.forEach { (name, definition) -> definitions.putIfAbsent(name, definition) }
         val scheduler = ComptimeScheduler()
         val deferredInvocations = mutableListOf<DeferredCpxInvocation>()
 
         fun queueInvocation(
             invocation: SyntaxCpxInvocation,
             ancestors: List<ExpansionKey> = emptyList(),
-            parentExpansion: ExpansionId? = null
+            parentExpansion: ExpansionId? = null,
+            definitionEnvironment: Map<String, SyntaxComptimeFunction> = definitions
         ) {
             if (invocation.name == "require_service") {
                 val argument = invocation.arguments.singleOrNull()
@@ -1030,11 +1037,26 @@ class CpxExpander(
                 return
             }
             val callSite = syntaxArena.add(astBuilder.buildDeclaration(invocation))
-            val definition = definitions[invocation.name]
+            val importedDefinition = importedDefinitions[invocation.name]
+            val selectedEnvironment = importedDefinition?.lexicalDefinitions ?: definitionEnvironment
+            val definition = importedDefinition?.declaration ?: selectedEnvironment[invocation.name]
             if (definition == null) {
-                deferredInvocations += DeferredCpxInvocation(invocation, ancestors, parentExpansion)
+                deferredInvocations += DeferredCpxInvocation(
+                    invocation,
+                    ancestors,
+                    parentExpansion,
+                    selectedEnvironment
+                )
             } else {
-                val task = taskFor(invocation, definition, callSite, parentExpansion, ancestors, typeResolver)
+                val task = taskFor(
+                    invocation,
+                    definition,
+                    callSite,
+                    parentExpansion,
+                    ancestors,
+                    typeResolver,
+                    selectedEnvironment
+                )
                 expansionIds += task.expansionId
                 scheduler.enqueue(task)
             }
@@ -1044,7 +1066,7 @@ class CpxExpander(
             val iterator = deferredInvocations.iterator()
             while (iterator.hasNext()) {
                 val deferred = iterator.next()
-                val definition = definitions[deferred.invocation.name] ?: continue
+                val definition = deferred.definitionEnvironment[deferred.invocation.name] ?: continue
                 val phase = phaseFor(definition.category)
                 if (scheduler.isStructuralPhaseClosed && phase == CpxPhase.STRUCTURAL) {
                     diagnostics.error(
@@ -1060,7 +1082,8 @@ class CpxExpander(
                         callSite,
                         deferred.parentExpansion,
                         deferred.ancestors,
-                        typeResolver
+                        typeResolver,
+                        deferred.definitionEnvironment
                     )
                     expansionIds += task.expansionId
                     scheduler.enqueue(task)
@@ -1268,7 +1291,12 @@ class CpxExpander(
             }
             generated += acceptedDeclarations.filterNot { it is SyntaxComptimeFunction || it is SyntaxCpxInvocation }
             acceptedDeclarations.filterIsInstance<SyntaxCpxInvocation>().forEach { invocation ->
-                queueInvocation(invocation, task.ancestors + task.key, task.expansionId)
+                queueInvocation(
+                    invocation,
+                    task.ancestors + task.key,
+                    task.expansionId,
+                    task.definitionEnvironment
+                )
             }
         }
 
@@ -1302,7 +1330,8 @@ class CpxExpander(
         callSite: NodeId,
         parentExpansion: ExpansionId? = null,
         ancestors: List<ExpansionKey> = emptyList(),
-        typeResolver: ComptimeTypeResolver? = null
+        typeResolver: ComptimeTypeResolver? = null,
+        definitionEnvironment: Map<String, SyntaxComptimeFunction> = emptyMap()
     ): ExpansionTask = ExpansionTask(
         invocation,
         definition,
@@ -1326,7 +1355,8 @@ class CpxExpander(
         callSite,
         parentExpansion,
         ancestors,
-        phase = phaseFor(definition.category)
+        phase = phaseFor(definition.category),
+        definitionEnvironment = definitionEnvironment
     ).let { task ->
         task.copy(
             dependencies = ancestors.lastOrNull()?.let { setOf(ComptimeDependency.Expansion(it)) }.orEmpty()

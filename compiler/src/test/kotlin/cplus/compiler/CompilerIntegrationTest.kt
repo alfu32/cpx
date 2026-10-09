@@ -78,6 +78,59 @@ class CompilerIntegrationTest {
     }
 
     @Test
+    fun importedDefinitionKeepsPrivateHelperInProviderScope() {
+        val directory = Files.createTempDirectory("cplus-imported-private-cpx-helper")
+        val provider = directory.resolve("box.cp").also { path ->
+            path.writeText(
+                """
+                    comptime cpx<decl> helper(type T) {
+                        return { struct helper_{T}_t { T value; }; };
+                    }
+                    pub comptime cpx<decl> box(type T) {
+                        return {
+                            helper(T);
+                            struct box_{T}_t { T value; };
+                        };
+                    }
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("main.cp").also { path ->
+            path.writeText(
+                """
+                    import { box } from "./box.cp";
+                    box(int);
+                    int main() {
+                        struct helper_int_t helperValue;
+                        struct box_int_t boxValue;
+                        helperValue.value = 10;
+                        boxValue.value = 32;
+                        return helperValue.value + boxValue.value;
+                    }
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, provider)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val semantic = assertNotNull(result.semanticModel)
+        assertEquals("main", semantic.structs.getValue("helper_int_t").moduleName)
+        assertEquals("main", semantic.structs.getValue("box_int_t").moduleName)
+        assertFalse(semantic.importedComptimeFunctions.getValue("main").containsKey("helper"))
+        val cFile = directory.resolve("main.c").also { it.writeText(result.generatedUnits.single().text) }
+        val executable = directory.resolve("main")
+        val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+            .redirectErrorStream(true)
+            .start()
+        val compileOutput = compile.inputStream.bufferedReader().readText()
+        assertEquals(0, compile.waitFor(), compileOutput)
+        val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+        val executionOutput = execution.inputStream.bufferedReader().readText()
+        assertEquals(42, execution.waitFor(), executionOutput)
+    }
+
+    @Test
     fun importsPublicComptimeAsTypedNonRuntimeBindingAndRejectsInvalidExports() {
         val directory = Files.createTempDirectory("cplus-comptime-export-bindings")
         val provider = directory.resolve("box.cp").also { path ->
