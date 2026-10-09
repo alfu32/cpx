@@ -131,4 +131,49 @@ class CliTestCommandTest {
         assertEquals(1, builds[2].fixtures.size)
         assertTrue(Files.isRegularFile(provider))
     }
+
+    @Test
+    fun testCommandRunsFixturesAndReturnsFailureForFailedAssertions() {
+        val directory = Files.createTempDirectory("cplus test command")
+        val source = Files.writeString(
+            directory.resolve("fixture root.cp"),
+            "int main() { return 0; } test cli fixture { assert(1); assert(\"expected failure\", 0); }"
+        )
+        val capturedOut = ByteArrayOutputStream()
+        val capturedErr = ByteArrayOutputStream()
+        val originalOut = System.out
+        val originalErr = System.err
+        val status = try {
+            System.setOut(PrintStream(capturedOut))
+            System.setErr(PrintStream(capturedErr))
+            Cli().run(listOf("test", source.toString()))
+        } finally {
+            System.setOut(originalOut)
+            System.setErr(originalErr)
+        }
+
+        assertEquals(1, status, capturedErr.toString())
+        assertTrue(capturedOut.toString().contains("cli fixture"), capturedOut.toString())
+        assertTrue(capturedOut.toString().contains("expected failure"), capturedOut.toString())
+        assertTrue(capturedOut.toString().contains("asserts passed 1 / failed 1 / total 2"), capturedOut.toString())
+        assertTrue(capturedErr.toString().isEmpty(), capturedErr.toString())
+    }
+
+    @Test
+    fun rejectsNonNativeTestExecutionTargetExplicitly() {
+        val directory = Files.createTempDirectory("cplus-test-cross-target")
+        val source = Files.writeString(directory.resolve("main.cp"), "int main() { return 0; }")
+        val target = if (cplus.compiler.defaultHostTargetTriple() == "linux-x86_64") "windows-x86_64" else "unsupported-target"
+        val capturedErr = ByteArrayOutputStream()
+        val originalErr = System.err
+        val status = try {
+            System.setErr(PrintStream(capturedErr))
+            Cli().run(listOf("test", source.toString(), "--target", target))
+        } finally {
+            System.setErr(originalErr)
+        }
+
+        assertEquals(2, status)
+        assertTrue(capturedErr.toString().contains("requires a native runnable target"), capturedErr.toString())
+    }
 }

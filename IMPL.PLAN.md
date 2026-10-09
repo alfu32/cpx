@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    151/161 accepted with recorded evidence; 10 TODO
+Roadmap leaf tasks:    152/161 accepted with recorded evidence; 9 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.3.2.2 — run isolated fixtures with timeout and reliable cleanup
+Current task:          DOING: R14.3.3.1 — render ordered file, fixture and assertion reports
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 11/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 12/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       151/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       152/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 151/161 accepted; 10 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 152/161 accepted; 9 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (4/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
@@ -3814,13 +3814,13 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (11/20 leaves; next R14.3.2.2)
+[DOING] R14 — source test fixtures and CLI runner (12/20 leaves; next R14.3.3.1)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 151 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 152 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
 implementation is active; fifteen leaves remain open.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [11/20] Source test fixtures and CLI runner
+## R14 [DOING] [12/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7194,7 +7194,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :compiler:test --tests cplus.compiler.TestFixtureLoweringTest :comptime:test`.
 
-### R14.3 [DOING] [3/6] CLI execution and reporting
+### R14.3 [DOING] [4/6] CLI execution and reporting
 
 **Language:** LS §53.3 Compilation and selection; §53.4 Execution outcome.
 **Technical:** TS §57.1 Source test command and report; §80.3 Child process and result protocol.
@@ -7236,7 +7236,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestCommandTest`.
 
-#### R14.3.2 [DOING] [1/2] Result integrity and process lifecycle
+#### R14.3.2 [DONE] [2/2] Result integrity and process lifecycle
 
 **Language:** LS §53.4 Execution outcome.
 **Technical:** TS §80.3 Child process and result protocol; SDK §103 Internal test reporting support.
@@ -7257,7 +7257,7 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.TestResultProtocolTest`.
 
-##### R14.3.2.2 [TODO] Run isolated fixtures with timeout and reliable cleanup
+##### R14.3.2.2 [DONE] Run isolated fixtures with timeout and reliable cleanup
 
 **Language:** LS §53.4 Execution outcome.
 **Technical:** TS §57.1 Source test command and report; §80.3 Child process and result protocol.
@@ -7267,6 +7267,8 @@ non-string descriptions with source-ranged diagnostics.
 **Deliverable:** Invoke each fixture in a fresh child with private report path and inherited/drained output. Reap on completion/timeout/cancellation, validate records, continue after fixture errors, and clean only owned temp artifacts. Reuse existing Java process and SDK path facilities.
 
 **Acceptance:** Native tests cover global-state isolation, exit(0) without completion, nonzero exit, crash, sleep timeout, noisy stdout/stderr beyond pipe capacity, missing report and start failure. Later fixtures run after errors; cancellation stops the queue; products/reports are removed on every path.
+
+**Evidence:** `TestProcessRunner` launches each fixture directly as a fresh child with identity/result path argv, streams both output pipes concurrently (discarding further output if a sink fails), reads only its private result channel, and enforces the positive timeout. Timeout/interruption terminate the process and attempt descendant cleanup; only the owned report file is deleted. `cplus test` now builds roots, prints file/fixture headers, runs every fixture in sequence, counts validated assertions/errors, continues after failures and returns nonzero for failures/errors (130 on cancellation). It rejects non-native target execution before building. Native C probe tests verify per-process state reset, output beyond pipe capacity, no completion, nonzero exit, crash, timeout, missing report, start failure, interruption and cleanup; CLI integration runs real compiled C+ fixtures. `./gradlew :cli:test --no-daemon` passes on Linux, and the focused `TestProcessRunnerTest` plus `CliTestCommandTest` gate passes after the isolation vector update. Windows process behavior remains in the final platform gate.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.TestProcessRunnerTest`.
 

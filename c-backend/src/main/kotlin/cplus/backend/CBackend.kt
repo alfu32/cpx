@@ -392,7 +392,7 @@ class CLowerer(
                 "main",
                 fixtures.map {
                     val functionName = fixtureFunctionName(stableFixtureIdentity(it))
-                    CTestFixtureMetadata(functionName, functionName, it.fixture.origin)
+                    CTestFixtureMetadata(functionName, functionName, it.fixture.origin, it.fixture.description)
                 }
             )
         )

@@ -19,7 +19,12 @@ data class CTranslationUnit(
 )
 
 data class CTestProductMetadata(val entryPointName: String, val fixtures: List<CTestFixtureMetadata>)
-data class CTestFixtureMetadata(val identity: String, val functionName: String, val origin: Origin)
+data class CTestFixtureMetadata(
+    val identity: String,
+    val functionName: String,
+    val origin: Origin,
+    val description: String = identity
+)
 
 enum class CTestValueKind(val tag: Int) {
     UNKNOWN(0),

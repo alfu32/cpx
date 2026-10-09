@@ -296,23 +296,73 @@ internal class Cli {
 
     private fun testCommand(arguments: List<String>): Int {
         val parsed = TestCommandArguments.parse(arguments) ?: return 2
+        if (!isNativeRunnableTarget(parsed.target.targetTriple)) {
+            System.err.println("test execution requires a native runnable target; '${parsed.target.targetTriple}' does not match '${defaultHostTargetTriple()}'")
+            return 2
+        }
         val temporaryDirectory = runCatching { Files.createTempDirectory("cplus-test") }.getOrElse {
             System.err.println("unable to create temporary test directory: ${it.message}")
             return 2
         }
         try {
             val builds = buildTestProducts(parsed, temporaryDirectory)
-            builds.forEach { build ->
-                if (build.exitCode != 0) System.err.println("test product build failed for ${build.root} (exit ${build.exitCode})")
-                else println("prepared ${build.fixtures.size} fixture(s) for ${build.root}")
+            var totalPassed = 0
+            var totalFailed = 0
+            var totalErrors = 0
+            var cancelled = false
+            builds.forEachIndexed { fileIndex, build ->
+                if (cancelled) return@forEachIndexed
+                val fixtureCount = if (build.exitCode == 0) build.fixtures.size else 0
+                println("::: [${fileIndex + 1}/${builds.size}] ${build.root}")
+                var filePassed = 0
+                var fileFailed = 0
+                var fileErrors = 0
+                if (build.exitCode != 0) {
+                    System.err.println("test product build failed for ${build.root} (exit ${build.exitCode})")
+                    fileErrors++
+                } else if (fixtureCount == 0) {
+                    println("... NO TESTS")
+                } else {
+                    build.fixtures.forEachIndexed { fixtureIndex, fixture ->
+                        if (cancelled) return@forEachIndexed
+                        if (Thread.currentThread().isInterrupted) {
+                            cancelled = true
+                            return@forEachIndexed
+                        }
+                        println("... [${fixtureIndex + 1}/$fixtureCount] ${fixture.description}")
+                        val result = TestProcessRunner().run(
+                            build.executable,
+                            fixture.identity,
+                            parsed.timeoutSeconds,
+                            temporaryDirectory
+                        )
+                        val protocol = result.protocol
+                        filePassed += protocol?.passed ?: 0
+                        fileFailed += protocol?.failed ?: 0
+                        if (result.error != null) {
+                            fileErrors++
+                            System.err.println("fixture execution error: ${result.error}")
+                            if (result.error == "fixture execution was interrupted") cancelled = true
+                        }
+                        println("... asserts passed ${protocol?.passed ?: 0} / failed ${protocol?.failed ?: 0} / total ${protocol?.total ?: 0}; errors ${if (result.error == null) 0 else 1}")
+                    }
+                }
+                totalPassed += filePassed
+                totalFailed += fileFailed
+                totalErrors += fileErrors
+                println("::: asserts passed $filePassed / failed $fileFailed / total ${filePassed + fileFailed}; errors $fileErrors")
             }
-            if (builds.any { it.exitCode != 0 }) return 1
+            println("::: final report")
+            println("::: total passed $totalPassed / failed $totalFailed / total ${totalPassed + totalFailed}; errors $totalErrors")
+            if (cancelled) return 130
+            return if (totalFailed == 0 && totalErrors == 0) 0 else 1
         } finally {
             deleteTemporaryProduct(temporaryDirectory)
         }
-        System.err.println("test execution is not yet available")
-        return 2
     }
+
+    private fun isNativeRunnableTarget(targetTriple: String): Boolean =
+        targetTriple.equals(defaultHostTargetTriple(), ignoreCase = true)
 
     internal fun buildTestProducts(arguments: TestCommandArguments, temporaryDirectory: Path): List<TestRootBuildResult> =
         arguments.roots.mapIndexed { index, root ->
