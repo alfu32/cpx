@@ -397,7 +397,8 @@ data class SemanticModel(
     val extensionModuleImports: Map<String, Set<String>> = emptyMap(),
     val comptimeFunctions: Map<String, Map<String, ComptimeFunctionBinding>> = emptyMap(),
     val importedComptimeFunctions: Map<String, Map<String, ComptimeFunctionBinding>> = emptyMap(),
-    val resolvedComptimeInvocations: Map<AstCpxInvocation, ComptimeFunctionBinding> = emptyMap()
+    val resolvedComptimeInvocations: Map<AstCpxInvocation, ComptimeFunctionBinding> = emptyMap(),
+    val testFixtures: List<SemanticTestFixture> = emptyList()
 ) {
     val sourceTypeCatalogue: SourceTypeCatalogue
         get() = SourceTypeCatalogue.from(symbols)
@@ -516,6 +517,13 @@ data class SemanticModel(
     val resolvedAst: ResolvedAst
         get() = ResolvedAst(program, nodeIds, referenceIndex)
 }
+
+data class SemanticTestFixture(
+    val identity: String,
+    val moduleName: String,
+    val fixture: AstTestFixture,
+    val scopeId: ScopeId
+)
 
 data class SemanticResult(
     val model: SemanticModel?,
@@ -938,6 +946,7 @@ class SemanticAnalyzer(
         val moduleScopes = linkedMapOf<String, ScopeId>()
         val typeScopes = linkedMapOf<SymbolId, ScopeId>()
         val functionScopes = linkedMapOf<SymbolId, ScopeId>()
+        val testFixtureInfos = mutableListOf<SemanticTestFixture>()
 
         fun moduleScope(name: String): ScopeId = moduleScopes.getOrPut(name) {
             scopes.create(ScopeKind.MODULE, rootScope)
@@ -2048,6 +2057,42 @@ class SemanticAnalyzer(
             }
         }
 
+        program.declarations.filterIsInstance<AstTestFixture>().forEachIndexed { index, fixture ->
+            val moduleName = declarationModules[fixture] ?: defaultModule
+            activeModuleName = moduleName
+            activeVisibleExtensionModules = moduleExtensionImports[moduleName].orEmpty()
+            val availableFunctions = visibleFunctions[moduleName] ?: functions
+            val typeEnvironment = moduleTypeEnvironments[moduleName]
+                ?: ModuleTypeEnvironment(structs, unions, enums, aliases)
+            activeTypeEnvironment = typeEnvironment.knownTypes
+            val sourceRange = fixture.origin.primaryRange
+            val identity = "$moduleName:${sourceRange?.file?.value ?: -1}:${sourceRange?.startOffset ?: index}"
+            val fixtureScope = scopes.create(
+                ScopeKind.FUNCTION,
+                moduleScope(moduleName),
+                SymbolId(Int.MIN_VALUE + index)
+            )
+            testFixtureInfos += SemanticTestFixture(identity, moduleName, fixture, fixtureScope)
+            validateStatement(
+                fixture.body,
+                primitive("void"),
+                linkedMapOf(),
+                availableFunctions,
+                globals,
+                typeEnvironment.structs,
+                typeEnvironment.unions,
+                typeEnvironment.enums,
+                typeEnvironment.aliases,
+                foreignTypes,
+                methods,
+                expressionTypes,
+                diagnostics,
+                ::primitive,
+                fixtureScope,
+                scopes
+            )
+        }
+
         program.declarations.filterIsInstance<AstStruct>().forEach { declaration ->
             val owner = structs[declaration.name] ?: return@forEach
             val moduleName = declarationModules[declaration] ?: defaultModule
@@ -2209,7 +2254,8 @@ class SemanticAnalyzer(
             extensionModuleImports = moduleExtensionImports,
             comptimeFunctions = comptimeFunctionsByModule,
             importedComptimeFunctions = importedComptimeFunctions.mapValues { (_, bindings) -> bindings.toMap() },
-            resolvedComptimeInvocations = resolvedComptimeInvocations
+            resolvedComptimeInvocations = resolvedComptimeInvocations,
+            testFixtures = testFixtureInfos.toList()
         )
         val cataloguedModel = initialModel.copy(
             declarationCatalogue = buildDeclarationCatalogue(

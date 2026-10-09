@@ -225,6 +225,7 @@ internal object ReferenceCollector {
         model.program.declarations.forEach { declaration ->
             id(declaration)
             when (declaration) {
+                is AstTestFixture -> collectStatement(declaration.body, emptyMap())
                 is AstAlias -> collectType(declaration.target)
                 is AstUnion -> declaration.fields.forEach { field -> id(field); collectType(field.type) }
                 is AstEnum -> declaration.values.forEach(::id)

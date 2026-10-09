@@ -31,6 +31,23 @@ class ImportIndexTest {
     }
 
     @Test
+    fun neverExportsFixtureDeclarationsAsImportableSymbols() {
+        val root = Files.createTempDirectory("cplus-import-index-fixture")
+        Files.writeString(
+            root.resolve("fixture.cp"),
+            """
+                pub int visible(int value) { return value; }
+                test private fixture name { int local = visible(1); }
+            """.trimIndent()
+        )
+
+        val result = ImportIndex().build(listOf(root))
+
+        assertTrue(result.exports.any { it.name == "visible" })
+        assertFalse(result.exports.any { it.name.contains("fixture") || it.name == "local" })
+    }
+
+    @Test
     fun indexesOnlyPublicSourceDeclarationsWithProviderAndSourceMetadata() {
         val root = Files.createTempDirectory("cplus-import-index")
         val provider = Files.createDirectories(root.resolve("math")).resolve("numbers.cp")
