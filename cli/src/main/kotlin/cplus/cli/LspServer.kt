@@ -558,7 +558,7 @@ internal class LspServer(
         val document = requestedDocument(params) ?: return emptyList()
         val model = compileWorkspace(document).semanticModel ?: return emptyList()
         val normalizedPath = document.path.toAbsolutePath().normalize()
-        return model.symbols.mapNotNull { symbol ->
+        val declarations = model.symbols.mapNotNull { symbol ->
             val range = symbol.origin.primaryRange ?: return@mapNotNull null
             val path = compiler.sourcePathFor(range.file)?.toAbsolutePath()?.normalize()
             if (path != normalizedPath) return@mapNotNull null
@@ -568,6 +568,17 @@ internal class LspServer(
                 "location" to location(range, document)
             )
         }
+        val fixtures = model.testFixtures.mapNotNull { fixture ->
+            val range = fixture.fixture.origin.primaryRange ?: return@mapNotNull null
+            val path = compiler.sourcePathFor(range.file)?.toAbsolutePath()?.normalize()
+            if (path != normalizedPath) return@mapNotNull null
+            linkedMapOf(
+                "name" to fixture.fixture.description,
+                "kind" to 12,
+                "location" to location(range, document)
+            )
+        }
+        return declarations + fixtures
     }
 
     private fun rename(params: Map<*, *>): Map<String, Any?>? {

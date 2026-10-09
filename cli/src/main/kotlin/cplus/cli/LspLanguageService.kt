@@ -14,6 +14,8 @@ import cplus.core.TokenKind
 import cplus.core.Token
 import cplus.core.AstIdentifier
 import cplus.core.AstMemberAccess
+import cplus.core.AstAssertion
+import cplus.core.AssertionKind
 import java.nio.file.Files
 import cplus.semantic.AliasType
 import cplus.semantic.ArrayType
@@ -405,6 +407,23 @@ internal object LspLanguageService {
         val model = result.semanticModel ?: return null
         val artifact = artifactFor(result, sourcePath) ?: return null
         val offset = offsetAt(text, position) ?: return null
+        val cursorRange = SourceRange(artifact.source.id, offset, offset)
+        val assertion = model.typedTestAssertions.keys.firstOrNull { contains(it.origin, cursorRange) }
+            ?: model.nodeIds.values.filterIsInstance<AstAssertion>()
+                .firstOrNull { contains(it.origin, cursorRange) }
+        if (assertion != null) {
+            val parameters = assertionSignatureParameters(assertion)
+            val argumentOrigins = buildList {
+                assertion.description?.let { add(it.origin) }
+                assertion.operands.forEach { add(it.origin) }
+            }
+            val activeParameter = argumentOrigins.indexOfFirst { contains(it, cursorRange) }
+                .takeIf { it >= 0 }
+                ?: argumentOrigins.indexOfLast { it.primaryRange?.let { range -> range.endOffset <= offset } == true }
+                    .coerceAtLeast(0)
+            val name = if (assertion.kind == AssertionKind.EQUALITY) "assertEquals" else "assert"
+            return SignatureInfo("$name(${parameters.joinToString(", ") { it.label }})", parameters, activeParameter)
+        }
         val call = model.nodeIds.values
             .filterIsInstance<cplus.core.AstCall>()
             .firstOrNull { contains(it.origin, SourceRange(artifact.source.id, offset, offset)) }
@@ -449,6 +468,16 @@ internal object LspLanguageService {
             parameters,
             activeParameter
         )
+    }
+
+    private fun assertionSignatureParameters(assertion: AstAssertion): List<SignatureParameterInfo> = buildList {
+        assertion.description?.let { add(SignatureParameterInfo("string description")) }
+        if (assertion.kind == AssertionKind.EQUALITY) {
+            add(SignatureParameterInfo("expected value"))
+            add(SignatureParameterInfo("actual value"))
+        } else {
+            add(SignatureParameterInfo("condition"))
+        }
     }
 
     private fun artifactFor(result: CompileResult, sourcePath: Path?) =

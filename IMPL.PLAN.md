@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    154/161 accepted with recorded evidence; 7 TODO
+Roadmap leaf tasks:    155/161 accepted with recorded evidence; 6 TODO
 Phase gates:           13/15 complete; 2 active; 0 queued
-Current task:          DOING: R14.4.1.1 — support fixture diagnostics and navigation in the shared LSP
+Current task:          DOING: R14.4.1.2 — document and highlight the four assertion forms
 Current milestone:     imported comptime product accepted on Linux; source test fixtures in progress
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -41,9 +41,9 @@ R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
 R13 [DOING] 11/12 imported comptime bindings, expansion and product conformance
-R14 [DOING] 14/20 source test blocks, four assertion forms and CLI runner
+R14 [DOING] 15/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       154/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       155/161 implementation tasks accepted; 13/15 phase gates complete,
             2 active, 0 queued
 ```
 
@@ -3795,7 +3795,7 @@ self-hosted SDK described by the specifications.
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
 Completion phases: [DOING] [13/15 gates complete; 2 active, 0 queued]
-Roadmap leaf tasks: 154/161 accepted; 7 TODO; R10.1 (10/10), R10.2 (4/4),
+Roadmap leaf tasks: 155/161 accepted; 6 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R14.1 (4/4); R14.2 (4/4); R10–R12 accepted
 Active phase gates: 2 (R13/R14); queued phase gates: 0
@@ -3814,16 +3814,16 @@ Active phase gates: 2 (R13/R14); queued phase gates: 0
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
 [DOING] R13 — imported comptime functions (11/12 leaves; Windows gate R13.4.2 deferred)
-[DOING] R14 — source test fixtures and CLI runner (14/20 leaves; next R14.4.1.1)
+[DOING] R14 — source test fixtures and CLI runner (15/20 leaves; next R14.4.1.2)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 154 of 161 terminal leaves and thirteen of fifteen
+overall roadmap is DOING: 155 of 161 terminal leaves and thirteen of fifteen
 phase gates have recorded acceptance evidence. R13.1–R13.3 and R13.4.1 are
 accepted on Linux; R13.4.2 is deferred to the final Windows pass. R14 local
-implementation is active; fifteen leaves remain open.
+implementation is active; fourteen leaves remain open.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6993,7 +6993,7 @@ Full `:compiler:test :comptime:test :semantic:test :cli:test` passes.
 
 **Verify:** `gradlew.bat :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest :cli:fatJar :cli:installDist --no-daemon; native installed CLI fixtures`.
 
-## R14 [DOING] [14/20] Source test fixtures and CLI runner
+## R14 [DOING] [15/20] Source test fixtures and CLI runner
 
 **Language:** LS §53 Test fixtures and assertions.
 **Technical:** TS §57.1 Source test command and report; §80 Source test implementation architecture; SDK §103 Internal test reporting support.
@@ -7003,8 +7003,8 @@ The four forms are `assert(expr)`, `assert(description, expr)`,
 `assertEquals(expected, actual)` and `assertEquals(description, expected, actual)`.
 Descriptions omitted by the caller are generated from operand source text.
 The fixture syntax node is introduced in R14.1.1; assertion semantics,
-execution, reporting and the top-level CLI `test` command remain unimplemented.
-All remaining leaves below remain TODO.
+execution, reporting and the top-level CLI `test` command are implemented in
+R14.1–R14.3. Editor integration and packaged/platform acceptance remain open.
 
 ### R14.1 [DONE] [4/4] Fixture syntax and semantics
 
@@ -7308,19 +7308,19 @@ non-string descriptions with source-ranged diagnostics.
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.CliTestReportTest`.
 
-### R14.4 [TODO] [0/6] Editor support and product conformance
+### R14.4 [DOING] [1/6] Editor support and product conformance
 
 **Language:** LS §21.6 Importing compile-time functions; §41 Language-server model; §53 Test fixtures and assertions.
 **Technical:** TS §80.4 Acceptance and editor integration.
 **Depends:** R14.2 (tooling); R14.3 and R13.3 at the integration leaves.
 
-#### R14.4.1 [TODO] [0/2] Tooling and user documentation
+#### R14.4.1 [DOING] [1/2] Tooling and user documentation
 
 **Language:** LS §41–42 Language-server model and lexical highlighting; §53 Test fixtures and assertions.
 **Technical:** TS §80.1 Shared fixture and assertion model; §80.4 Acceptance and editor integration.
 **Depends:** R14.2.4, R13.3.2.
 
-##### R14.4.1.1 [TODO] Support fixture diagnostics and navigation in the shared LSP
+##### R14.4.1.1 [DONE] Support fixture diagnostics and navigation in the shared LSP
 
 **Language:** LS §41 Language-server model; §53.1–53.3 Test fixtures and assertions.
 **Technical:** TS §80.1 Shared fixture and assertion model; §80.4 Acceptance and editor integration.
@@ -7330,6 +7330,8 @@ non-string descriptions with source-ranged diagnostics.
 **Deliverable:** Expose fixture symbols/descriptions for tooling and builtin assertion signatures in fixture context. Traverse ordinary operands for completion, references, rename and diagnostics; use generated-type origins from imported CPX.
 
 **Acceptance:** LSP fixture tests verify four assertion signatures/arity diagnostics, type errors, local and imported symbol navigation, generated member completion and document edits. No runtime fixture executes during indexing/checking; assert remains an ordinary symbol outside fixtures.
+
+**Evidence:** The shared LSP emits fixture descriptions as document symbols and provides signature help for all four built-in assertion forms using active operand ranges. Focused tests verify fixture-body semantic diagnostics and references, rename edits from fixture operands, navigation to an imported function, and completion for a CPX-generated struct member. Fixture indexing/checking uses normal compilation and does not invoke test execution. `./gradlew :cli:test --tests cplus.cli.LspTestFixtureTest` passes on Linux (2026-10-09).
 
 **Verify:** `./gradlew :cli:test --tests cplus.cli.LspTestFixtureTest`.
 
