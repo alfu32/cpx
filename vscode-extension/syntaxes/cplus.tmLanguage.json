@@ -97,6 +97,14 @@
     "keywords": {
       "patterns": [
         {
+          "name": "keyword.declaration.trait.cplus",
+          "match": "\\btrait\\b"
+        },
+        {
+          "name": "variable.language.receiver.cplus",
+          "match": "\\bself\\b"
+        },
+        {
           "name": "keyword.control.cplus",
           "match": "\\b(?:if|else|for|while|do|switch|case|default|break|continue|return|defer|match)\\b"
         },
@@ -112,6 +120,10 @@
     },
     "types": {
       "patterns": [
+        {
+          "name": "entity.name.type.cplus",
+          "match": "(?<=\\btrait\\s)[_$a-zA-Z][_$a-zA-Z0-9]*"
+        },
         {
           "name": "support.type.primitive.cplus",
           "match": "\\b(?:bool|char|short|int|long|float|double|string|size_t|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64)\\b"

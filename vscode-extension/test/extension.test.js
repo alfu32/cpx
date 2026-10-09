@@ -31,6 +31,19 @@ test('language configuration and TextMate grammar are valid JSON', () => {
   assert.ok(grammar.repository.cpx);
 });
 
+test('TextMate grammar scopes trait declarations, target types, and self receivers', () => {
+  const grammar = JSON.parse(fs.readFileSync(path.join(root, 'syntaxes', 'cplus.tmLanguage.json'), 'utf8'));
+  const keywordPatterns = grammar.repository.keywords.patterns;
+  const typePatterns = grammar.repository.types.patterns;
+
+  assert.ok(keywordPatterns.some((pattern) =>
+    pattern.name === 'keyword.declaration.trait.cplus' && pattern.match === '\\btrait\\b'));
+  assert.ok(keywordPatterns.some((pattern) =>
+    pattern.name === 'variable.language.receiver.cplus' && pattern.match === '\\bself\\b'));
+  assert.ok(typePatterns.some((pattern) =>
+    pattern.name === 'entity.name.type.cplus' && pattern.match.includes('trait')));
+});
+
 function loadExtension(vscode, LanguageClient = class {}, childProcess) {
   const originalLoad = Module._load;
   Module._load = function (request, parent, isMain) {

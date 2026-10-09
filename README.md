@@ -131,6 +131,34 @@ becomes:
 counter_t__create()
 ```
 
+## Compile-time extension methods
+
+Use a compile-time trait block to attach ordinary methods to an existing
+struct, union, enum, or non-void primitive without changing its layout. The
+syntax is singular and has no angle-bracketed target:
+
+```c
+comptime trait Counter {
+    int read(self) { return self.value; }
+    void increment(self*) { self->value += 1; }
+}
+```
+
+`self` uses the ordinary value receiver rules; `self*` explicitly receives a
+pointer and can mutate addressable storage. A trait is private unless declared
+`pub`. Importing a module that exports traits activates its public extensions
+directly in the importer; it does not make them free functions or transitively
+re-export them. When a target needs a multiword C type, give it a local typedef
+name and use that name in the trait declaration.
+
+The runnable example in [`examples/traits.cp`](examples/traits.cp) demonstrates
+public and private extensions, selective imports, a typedef target, and pointer
+receiver mutation. Run it with `c+ run examples/traits.cp`.
+
+Traits add methods only: they do not add fields or change object layout, and
+they are not named interfaces, conformance contracts, overload sets, or
+dynamic dispatch.
+
 ---
 
 # Compile-time programming
