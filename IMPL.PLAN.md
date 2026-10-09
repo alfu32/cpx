@@ -11,9 +11,9 @@ runtime, SDK, LSP, and release products.
 
 ```text
 Historical foundation: 146/146 evidenced; acceptance reconciled with R5 evidence
-Roadmap leaf tasks:    129/161 accepted with recorded evidence; 32 TODO
-Phase gates:           13/15 complete; 0 active; 2 queued
-Current task:          Next: R13.1.1 — separate parsing/cataloguing from CPX expansion
+Roadmap leaf tasks:    130/161 accepted with recorded evidence; 31 TODO
+Phase gates:           13/15 complete; 1 active; 1 queued
+Current task:          Next: R13.1.2 — preserve resolved provider identity across the module graph
 Current milestone:     imported comptime functions and source test fixtures (planned)
 Latest C17 Linux report: 51 pass, 0 fail, 0 unsupported, 0 planned
 Latest C17 Windows x86_64 report: 51 pass, 0 fail, 0 unsupported, 0 planned
@@ -40,10 +40,10 @@ R9 [DONE]  4/4  CLI distribution includes SDK; explicit SDK override and JVM opt
 R10 [DONE]  19/19 import discovery, completion and quick fixes
 R11 [DONE]  12/12 compile-time extension methods
 R12 [DONE]  1/1 generated CLI and editor build identity
-R13 [TODO]  0/12 imported comptime bindings, expansion and product conformance
+R13 [DOING] 1/12 imported comptime bindings, expansion and product conformance
 R14 [TODO]  0/20 source test blocks, four assertion forms and CLI runner
 
-TOTAL       129/161 implementation tasks accepted; 13/15 phase gates complete,
+TOTAL       130/161 implementation tasks accepted; 13/15 phase gates complete,
             0 active, 2 queued
 ```
 
@@ -3794,10 +3794,11 @@ self-hosted SDK described by the specifications.
 
 ```text
 Foundation tasks: 146/146 (6.3.1.1 and 6.3.1.4 accepted against R5 evidence; 6.3.2 is 4/4)
-Completion phases: [DOING] [13/15 gates complete; 0 active, 2 queued]
-Roadmap leaf tasks: 129/161 accepted; 32 TODO; R10.1 (10/10), R10.2 (4/4),
+Completion phases: [DOING] [13/15 gates complete; 1 active, 1 queued]
+Roadmap leaf tasks: 130/161 accepted; 31 TODO; R10.1 (10/10), R10.2 (4/4),
                      R10.3.1 (2/2), R10.3.2 (3/3);
                      R11.1.1 (3/3), R11.1.2 (3/3), R11.2.1 (3/3), R11.2.2 (3/3); R10–R12 accepted
+Active phase gates: 1 (R13); queued phase gates: 1 (R14)
 
 [DONE]  R0 — implementation inventory and scope freeze
 [DONE]  R1 — language and front-end conformance; primitive type matrix verified
@@ -3812,15 +3813,16 @@ Roadmap leaf tasks: 129/161 accepted; 32 TODO; R10.1 (10/10), R10.2 (4/4),
 [DONE]  R10 — import discovery, completion and quick fixes (19/19 leaves)
 [DONE]  R11 — compile-time extension methods (12/12 leaves)
 [DONE]  R12 — generated CLI and editor build identity (1/1 leaf)
-[TODO]  R13 — imported comptime functions (0/12 leaves)
+[DOING] R13 — imported comptime functions (1/12 leaves; next R13.1.2)
 [TODO]  R14 — source test fixtures and CLI runner (0/20 leaves)
 ```
 
 The completion phase counter counts only the fifteen phase gates above. A phase
 with all descendants TODO stays TODO. Once work starts, it MUST remain DOING
 until every acceptance gate inside it passes on the claimed target matrix. The
-overall roadmap is DOING: 129 of 161 terminal leaves and thirteen of fifteen
-phase gates have recorded acceptance evidence. R13/R14 are planned, not implemented.
+overall roadmap is DOING: 130 of 161 terminal leaves and thirteen of fifteen
+phase gates have recorded acceptance evidence. R13.1.1 is accepted; the other
+31 new leaves remain TODO. R13 is the active phase.
 Source declarations, headers, platform contracts, or a green
 unit test that does not execute the claimed behavior are not completion
 evidence.
@@ -6685,7 +6687,7 @@ Version” using the configured Java executable and CLI JAR.
 `./gradlew :cli:fatJar --no-daemon`, both `java -jar ... version` and no-argument help,
 and the VS Code extension `npm test` pass on Linux.
 
-## R13 [TODO] [0/12] Imported compile-time functions
+## R13 [DOING] [0/12] Imported compile-time functions
 
 **Language:** LS §7.4 Public compile-time declarations; §21.6 Importing compile-time functions.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion.
@@ -6697,18 +6699,18 @@ construction, uses name-keyed CPX definitions/cache identity, and removes
 comptime definitions before final import validation. All leaves below are
 unimplemented; the plan is not passing regression evidence.
 
-### R13.1 [TODO] [0/4] Catalogue and binding foundations
+### R13.1 [DOING] [1/4] Catalogue and binding foundations
 
 **Language:** LS §5 Declaration catalogue; §7.4 Public compile-time declarations; §21 Imports.
 **Technical:** TS §26 Imports and modules; §27.1 Compile-time import binding and workspace expansion.
 **Depends:** R12.
 
-#### R13.1.1 [TODO] Separate parsing and cataloguing from expansion
+#### R13.1.1 [DONE] Separate parsing and cataloguing from expansion
 
 **Language:** LS §5 Declaration catalogue; §17 Structural compile-time phase.
 **Technical:** TS §27.1 Compile-time import binding and workspace expansion; §59 Pipeline orchestration.
 **Depends:** R12.
-**Files:** compiler/.../Compiler.kt (`frontend`, `prepareFrontends`, all compile entry points); IncrementalCompiler.kt.
+**Files:** compiler/.../Compiler.kt (`frontend`, `prepareFrontends`, all compile entry points); compiler/src/test/kotlin/cplus/compiler/WorkspaceFrontendPhasesTest.kt; IncrementalCompiler.kt.
 
 **Deliverable:** Introduce a parsed-unit boundary before CPX expansion; register all source snapshots before constructing a workspace catalogue. Keep existing frontend/result APIs coherent while routing disk, text and incremental paths through the boundary.
 
@@ -6716,9 +6718,15 @@ unimplemented; the plan is not passing regression evidence.
 **Postconditions:** All providers can be catalogued without running their CPX.
 **Invalid states:** Expanding a client before its provider is parsed; losing per-file origins.
 
-**Acceptance:** Existing local CPX/import/trait fixtures produce equivalent diagnostics, origins and emitted C in serial and parallel compilation. A boundary test proves all requested modules are parsed before expansion starts.
+**Acceptance:** Existing local CPX/import/trait fixtures produce equivalent diagnostics, origins and emitted C in serial and parallel compilation. The workspace test verifies both source modules are in the module graph, both CPX expansions contribute generated structs, and serial/parallel compilation emits identical C. In code, `prepareFrontends` completes the batch parse result map before invoking `expandFrontend` for any member.
 
-**Verify:** `./gradlew :compiler:test --tests cplus.compiler.WorkspaceComptimeImportTest`.
+**Verify:** `./gradlew :compiler:test --tests cplus.compiler.WorkspaceFrontendPhasesTest --no-daemon`, followed by `./gradlew :language-core:test :semantic:test :comptime:test :compiler:test --no-daemon`.
+
+**Evidence:** Linux, 2026-10-09 — the focused `WorkspaceFrontendPhasesTest`
+passes (1/1). The follow-up language-core, semantic, comptime and complete
+compiler test tasks pass; the compiler suite executes with the new batch
+frontend path. Serial and two-worker text workspaces both contain
+`first_generated_t` and `second_generated_t`, with identical generated C.
 
 #### R13.1.2 [TODO] Preserve resolved provider identity across the module graph
 

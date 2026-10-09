@@ -355,7 +355,11 @@ class CPlusCompiler(
         val sourceFiles = sources
             .distinctBy { it.path.toAbsolutePath().normalize() }
             .map { source -> context.sourceRepository.put(source.path, source.text) }
-        val frontends = sourceFiles.map { frontend(it, headerEnvironment) }
+        // Finish parsing every workspace source before any source enters CPX.
+        // Besides making the phase boundary explicit, this keeps source IDs
+        // and parse results independent of expansion order.
+        val parsedUnits = sourceFiles.map(::parseFrontend)
+        val frontends = parsedUnits.map { expandFrontend(it, headerEnvironment) }
         if (frontends.size <= 1) {
             return resultOf(
                 frontends.map { frontend ->
@@ -463,7 +467,11 @@ class CPlusCompiler(
         val headerEnvironment = requireNotNull(sdkResolution?.headerEnvironment) {
             "workspace compilation requires its resolved header environment"
         }
-        val resolvedUnits = units ?: request.sources.map { frontend(it, headerEnvironment) }
+        val resolvedUnits = units ?: prepareFrontends(
+            request.sources,
+            request.options.parallelism,
+            headerEnvironment
+        ).values.toList()
         val discoveredHeaders = discoverCHeaders(resolvedUnits, headerEnvironment)
         val allForeignUnits = foreignInputs.units + discoveredHeaders.units
         val moduleGraph = ModuleGraphBuilder().build(
@@ -764,6 +772,13 @@ class CPlusCompiler(
         }
     }
 
+    /** Parsed source boundary: no provisional semantic pass or CPX has run. */
+    internal data class ParsedUnit(
+        val source: SourceFile,
+        val lexed: LexedSource,
+        val parsed: Parser.ParsedSource
+    )
+
     private fun frontend(path: Path, headerEnvironment: HeaderEnvironment): FrontendUnit {
         if (!Files.exists(path)) {
             val source = context.sourceRepository.put(path, "")
@@ -788,23 +803,29 @@ class CPlusCompiler(
                 PreparedSource(context.sourceRepository.put(path, ""), true)
             }
         }
-        fun compute(preparedSource: PreparedSource): FrontendUnit = if (preparedSource.missing) {
-            missingFrontend(preparedSource.source)
+        fun parse(preparedSource: PreparedSource): ParsedUnit? =
+            if (preparedSource.missing) null else parseFrontend(preparedSource.source)
+
+        val parsedUnits = if (parallelism == 1 || paths.size == 1) {
+            paths.associateWith { path -> parse(prepared.getValue(path)) }
         } else {
-            frontend(preparedSource.source, headerEnvironment)
-        }
-        if (parallelism == 1 || paths.size == 1) {
-            return paths.associateWith { path -> compute(prepared.getValue(path)) }
+            val workers = Executors.newFixedThreadPool(parallelism.coerceAtMost(paths.size))
+            try {
+                val futures = paths.map { path ->
+                    path to workers.submit<ParsedUnit?> { parse(prepared.getValue(path)) }
+                }
+                futures.associate { (path, future) -> path to future.get() }
+            } finally {
+                workers.shutdown()
+            }
         }
 
-        val workers = Executors.newFixedThreadPool(parallelism.coerceAtMost(paths.size))
-        return try {
-            val futures = paths.map { path ->
-                path to workers.submit<FrontendUnit> { compute(prepared.getValue(path)) }
-            }
-            futures.associate { (path, future) -> path to future.get() }
-        } finally {
-            workers.shutdown()
+        // This second pass cannot begin until every requested source has a
+        // ParsedUnit (or an explicit missing-source result) above.
+        return paths.associateWith { path ->
+            val source = prepared.getValue(path)
+            if (source.missing) missingFrontend(source.source)
+            else expandFrontend(requireNotNull(parsedUnits[path]), headerEnvironment)
         }
     }
 
@@ -825,9 +846,18 @@ class CPlusCompiler(
         return FrontendUnit(source, lexed, parsed, null, AstProgram(emptyList(), parsed.syntax.origin))
     }
 
-    private fun frontend(source: SourceFile, headerEnvironment: HeaderEnvironment): FrontendUnit {
+    private fun frontend(source: SourceFile, headerEnvironment: HeaderEnvironment): FrontendUnit =
+        expandFrontend(parseFrontend(source), headerEnvironment)
+
+    private fun parseFrontend(source: SourceFile): ParsedUnit {
         val lexed = context.lexer.lex(source)
-        val parsed = Parser(lexed).parse()
+        return ParsedUnit(source, lexed, Parser(lexed).parse())
+    }
+
+    private fun expandFrontend(parsedUnit: ParsedUnit, headerEnvironment: HeaderEnvironment): FrontendUnit {
+        val source = parsedUnit.source
+        val lexed = parsedUnit.lexed
+        val parsed = parsedUnit.parsed
         val provisionalSemantic = context.analyzerFor(headerEnvironment, provisional = true).analyze(
             context.astBuilder.build(parsed.syntax),
             targetFeatures = activeTargetAbiDescriptor?.features.orEmpty(),
