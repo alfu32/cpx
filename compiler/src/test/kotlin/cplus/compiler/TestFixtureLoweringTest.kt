@@ -38,13 +38,15 @@ class TestFixtureLoweringTest {
         assertTrue(test.isSuccessful, test.diagnostics.joinToString())
         val testC = test.generatedUnits.single().text
         assertTrue(testC.contains("int main("))
-        assertEquals(1, Regex("(?m)^int main\\s*\\(\\) \\{").findAll(testC).count())
+        assertEquals(1, Regex("(?m)^int main\\s*\\(int argc, char\\*\\* argv\\) \\{").findAll(testC).count())
         assertTrue(testC.contains("__cplus_test_fixture_"))
         assertTrue(testC.contains("__cplus_user_main_"))
         assertTrue(Regex("__cplus_user_main_[0-9a-f]+\\(\\);").containsMatchIn(testC), testC)
         val metadata = assertNotNull(test.artifacts.single().lowered?.unit?.testProduct)
         assertEquals(1, metadata.fixtures.size)
-        assertTrue(test.artifacts.single().lowered!!.unit.runtimeDependencies.isEmpty())
+        assertTrue(test.artifacts.single().lowered!!.unit.runtimeDependencies.containsAll(
+            setOf("__cplus_test_begin", "__cplus_test_finish", "__cplus_test_dispatch_match")
+        ))
     }
 
     @Test
@@ -62,7 +64,65 @@ class TestFixtureLoweringTest {
         assertTrue(result.isSuccessful, result.diagnostics.joinToString())
         val metadata = assertNotNull(result.artifacts.single().lowered?.unit?.testProduct)
         assertEquals(1, metadata.fixtures.size)
-        assertTrue(metadata.fixtures.single().identity.contains("main.cp"))
+        assertTrue(metadata.fixtures.single().identity.startsWith("__cplus_test_fixture_"))
+    }
+
+    @Test
+    fun fixtureEntryDispatchesOneStableFixtureAndFinishesAfterDeferCleanup() {
+        val directory = Files.createTempDirectory("cplus-test-lifecycle")
+        val source = directory.resolve("main.cp")
+        Files.writeString(
+            source,
+            """
+                int cleanup() { return 0; }
+                int main() { return 7; }
+                test early return {
+                    defer cleanup();
+                    return;
+                    assert(0);
+                }
+            """.trimIndent()
+        )
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(source), mode = CompilationMode.TEST))
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val generated = result.generatedUnits.single().text
+        val metadata = assertNotNull(result.artifacts.single().lowered?.unit?.testProduct)
+        val fixture = metadata.fixtures.single()
+        assertEquals(fixture.functionName, fixture.identity)
+        assertTrue(generated.contains("__cplus_test_dispatch_match(*((argv + 1)), \"${fixture.identity}\")"), generated)
+        val fixtureBody = generated.substringAfter("static void ${fixture.functionName}() {").substringBefore("\n}")
+        assertTrue(fixtureBody.indexOf("cleanup();") in 0 until fixtureBody.indexOf("return;"), fixtureBody)
+        val wrapper = generated.substringAfter("int main(int argc, char** argv) {")
+        assertTrue(wrapper.indexOf("${fixture.functionName}();") < wrapper.indexOf("__cplus_test_finish()"), wrapper)
+        val fixtureOrigin = result.semanticModel!!.testFixtures.single().fixture.origin.primaryRange
+        assertTrue(result.generatedUnits.single().sourceMap.any { it.origin.primaryRange == fixtureOrigin })
+    }
+
+    @Test
+    fun cpxGeneratedFixturesAndAssertionsSurviveTraversalAndKeepExpansionOrigins() {
+        val directory = Files.createTempDirectory("cplus-cpx-test-fixture")
+        val source = directory.resolve("main.cp")
+        Files.writeString(
+            source,
+            """
+                comptime cpx<decl> make_fixture() {
+                    return { test generated fixture { assert("generated assertion", 1); } };
+                }
+                make_fixture();
+                int main() { return 0; }
+            """.trimIndent()
+        )
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(source), mode = CompilationMode.TEST))
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        val fixture = result.semanticModel!!.testFixtures.single()
+        val assertionOrigin = fixture.fixture.body.statements.single().origin
+        assertTrue(fixture.fixture.description.contains("generated"))
+        assertTrue(fixture.fixture.origin is cplus.core.Origin.Expansion)
+        assertTrue(result.generatedUnits.single().text.contains("__cplus_test_report_truth("))
+        assertTrue(result.generatedUnits.single().sourceMap.any { it.origin == assertionOrigin })
+        assertTrue(result.artifacts.single().lowered!!.unit.testProduct!!.fixtures.single().origin is cplus.core.Origin.Expansion)
     }
 
     @Test

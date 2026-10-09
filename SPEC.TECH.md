@@ -3350,8 +3350,13 @@ fixtures. The import index SHALL never offer a fixture as an export.
 Compilation mode and selected root fixture identities SHALL be explicit
 request inputs and cache-key fields. After semantic validation, normal modes
 erase fixture bodies before runtime lowering. Test mode produces fixture
-functions, an index dispatcher and one entry wrapper per root product, with
-user `main` remapped by symbol identity. Reuse method/closure/defer lowering.
+functions and one entry wrapper per root product, with user `main` remapped by
+symbol identity. The wrapper accepts exactly two user arguments: the stable
+fixture identity and result-file path. It dispatches exactly one fixture,
+opens reporting before invocation, and writes completion only after the fixture
+returns. Invalid arguments or identities return a nonzero execution status.
+Normal block/return lowering MUST run all registered `defer` actions before
+the wrapper can finish reporting. Reuse method/closure/defer lowering.
 Generated statements and helper calls SHALL retain fixture/assertion origins.
 
 Lower each assertion through typed temporaries, enforcing description,

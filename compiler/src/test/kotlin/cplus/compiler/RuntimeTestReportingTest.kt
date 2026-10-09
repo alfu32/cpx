@@ -45,7 +45,9 @@ class RuntimeTestReportingTest {
             val link = LinkDriver.link(LinkRequest(generated, executable, target, sdk), plan)
             assertTrue(link.isSuccessful, link.output)
 
-            val process = ProcessBuilder(executable.toString()).start()
+            val fixture = requireNotNull(product.testProduct).fixtures.single()
+            val resultPath = sourceDirectory.resolve("result.tsv")
+            val process = ProcessBuilder(executable.toString(), fixture.identity, resultPath.toString()).start()
             val stdout = process.inputStream.bufferedReader().readText()
             val stderr = process.errorStream.bufferedReader().readText()
             assertTrue(process.waitFor(30, TimeUnit.SECONDS), "generated assertion product timed out")
@@ -56,6 +58,10 @@ class RuntimeTestReportingTest {
             assertTrue(stdout.contains("    - equality description ----------------"), stdout)
             assertTrue(stdout.contains("expected expression: expectedValue()"), stdout)
             assertTrue(stdout.contains("evaluated expression: actualValue()"), stdout)
+            val records = Files.readString(resultPath).lineSequence().filter(String::isNotEmpty).toList()
+            assertEquals("CPLUS-TEST\t1\tBEGIN\t${fixture.identity}", records.first())
+            assertEquals("CPLUS-TEST\t1\tCOMPLETE\t4\t0\t4", records.last())
+            Files.deleteIfExists(resultPath)
         } finally {
             Files.deleteIfExists(executable)
             Files.deleteIfExists(generated)

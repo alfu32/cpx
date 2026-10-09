@@ -18,6 +18,7 @@ typedef enum {
 
 int __cplus_test_begin(const char* fixture_identity, const char* result_path);
 int __cplus_test_finish(void);
+int __cplus_test_dispatch_match(const char* actual, const char* expected);
 void __cplus_test_report_truth(const char* description, const char* expression,
                                const void* value, const char* type_name,
                                unsigned long long value_size, int value_kind,

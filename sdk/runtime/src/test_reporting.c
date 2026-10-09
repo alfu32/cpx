@@ -357,6 +357,16 @@ int __cplus_test_begin(const char* fixture_identity, const char* result_path) {
     return __cplus_test_io_failed ? -1 : 0;
 }
 
+int __cplus_test_dispatch_match(const char* actual, const char* expected) {
+    unsigned long index = 0;
+    if (!actual || !expected) return 0;
+    while (actual[index] != 0 && expected[index] != 0) {
+        if (actual[index] != expected[index]) return 0;
+        index++;
+    }
+    return actual[index] == expected[index];
+}
+
 static int __cplus_test_record_assertion(int passed) {
     __cplus_test_record record = { { 0 }, 0, 0 };
     __cplus_test_record_text(&record, "CPLUS-TEST\t1\tASSERT\t");

@@ -20,7 +20,8 @@ object RuntimeHelperCatalogue {
         RuntimeHelperBinding("__cplus_test_report_truth", "test_reporting.c"),
         RuntimeHelperBinding("__cplus_test_report_equality", "test_reporting.c"),
         RuntimeHelperBinding("__cplus_test_begin", "test_reporting.c"),
-        RuntimeHelperBinding("__cplus_test_finish", "test_reporting.c")
+        RuntimeHelperBinding("__cplus_test_finish", "test_reporting.c"),
+        RuntimeHelperBinding("__cplus_test_dispatch_match", "test_reporting.c")
     ).associateBy(RuntimeHelperBinding::symbol)
 
     fun validate(symbols: Iterable<String>, plan: RuntimeLinkPlan): List<Diagnostic> = buildList {

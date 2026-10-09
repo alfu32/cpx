@@ -315,20 +315,54 @@ class CLowerer(
         }
         val dispatcher = fixtures.takeIf { it.isNotEmpty() }?.let { selected ->
             val origin = selected.first().fixture.origin
+            val argc = CIdentifier("argc", origin)
+            val argv = CIdentifier("argv", origin)
+            val argument = { index: Int -> CUnary("*", CBinary(argv, "+", CIntegerLiteral(index.toString(), origin), origin), origin) }
+            val invalidArguments = CIf(
+                CBinary(argc, "!=", CIntegerLiteral("3", origin), origin),
+                CReturn(CIntegerLiteral("2", origin), origin),
+                null,
+                origin
+            )
+            val dispatch = fixtures.zip(fixtureFunctions).map { (fixture, function) ->
+                val identity = function.name
+                val begin = CCall(
+                    CIdentifier("__cplus_test_begin", origin),
+                    listOf(CStringLiteral(cStringLiteral(identity), origin), argument(2)),
+                    origin
+                )
+                val finish = CCall(CIdentifier("__cplus_test_finish", origin), emptyList(), origin)
+                CIf(
+                    CCall(
+                        CIdentifier("__cplus_test_dispatch_match", origin),
+                        listOf(argument(1), CStringLiteral(cStringLiteral(identity), origin)),
+                        origin
+                    ),
+                    CBlock(
+                        listOf(
+                            CIf(CBinary(begin, "!=", CIntegerLiteral("0", origin), origin), CReturn(CIntegerLiteral("3", origin), origin), null, origin),
+                            CExpressionStatement(CCall(CIdentifier(function.name, function.origin), emptyList(), function.origin), function.origin),
+                            CIf(CBinary(finish, "!=", CIntegerLiteral("0", origin), origin), CReturn(CIntegerLiteral("4", origin), origin), null, origin),
+                            CReturn(CIntegerLiteral("0", origin), origin)
+                        ),
+                        origin
+                    ),
+                    null,
+                    origin
+                )
+            }
             CFunction(
                 CType.Primitive("int"),
                 "main",
-                emptyList(),
-                CBlock(fixtureFunctions.map { fixture ->
-                    CExpressionStatement(CCall(CIdentifier(fixture.name, fixture.origin), emptyList(), fixture.origin), fixture.origin)
-                } + CReturn(CIntegerLiteral("0", origin), origin), origin),
+                listOf(
+                    CParameter(CType.Primitive("int"), "argc", origin),
+                    CParameter(CType.Primitive("char", pointerDepth = 2), "argv", origin)
+                ),
+                CBlock(listOf(invalidArguments) + dispatch + CReturn(CIntegerLiteral("2", origin), origin), origin),
                 origin
             )
         }
-        val hasAssertions = fixtures.any { selected ->
-            semantic.typedTestAssertions.values.any { it.fixtureIdentity == selected.identity }
-        }
-        val testHelpers = if (hasAssertions) testReportDeclarations(fixtures.first().fixture.origin) else emptyList()
+        val testHelpers = if (fixtures.isNotEmpty()) testReportDeclarations(fixtures.first().fixture.origin) else emptyList()
         val functions = programFunctions + foreignFunctions + testHelpers + fixtureFunctions + listOfNotNull(dispatcher)
         functions.groupBy { it.name }
             .filterValues { it.size > 1 }
@@ -356,7 +390,10 @@ class CLowerer(
             runtimeDependencies = CRuntimeDependencyCatalogue.collect(unit),
             testProduct = if (fixtures.isEmpty()) null else CTestProductMetadata(
                 "main",
-                fixtures.map { CTestFixtureMetadata(it.identity, fixtureFunctionName(stableFixtureIdentity(it)), it.fixture.origin) }
+                fixtures.map {
+                    val functionName = fixtureFunctionName(stableFixtureIdentity(it))
+                    CTestFixtureMetadata(functionName, functionName, it.fixture.origin)
+                }
             )
         )
         diagnostics.addAll(CSubsetValidator().validate(unitWithDependencies))
@@ -766,7 +803,16 @@ class CLowerer(
                 parameter(integer, "passed")),
             null, origin
         )
-        return listOf(truth, equality)
+        val begin = CFunction(
+            CType.Primitive("int"), "__cplus_test_begin",
+            listOf(parameter(string, "fixture_identity"), parameter(string, "result_path")), null, origin
+        )
+        val finish = CFunction(CType.Primitive("int"), "__cplus_test_finish", emptyList(), null, origin)
+        val dispatchMatch = CFunction(
+            CType.Primitive("int"), "__cplus_test_dispatch_match",
+            listOf(parameter(string, "actual"), parameter(string, "expected")), null, origin
+        )
+        return listOf(begin, finish, dispatchMatch, truth, equality)
     }
 
     private fun constCharPointerType() = CType.Primitive("char", pointerDepth = 1, qualifiers = setOf("const"))
