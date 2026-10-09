@@ -905,7 +905,9 @@ data class CpxExpansionResult(
     val syntaxArena: AstArena = AstArena(),
     val argumentValues: Map<ExpansionKey, List<ComptimeValue>> = emptyMap(),
     val evaluationResults: Map<ExpansionKey, ComptimeEvaluationResult> = emptyMap(),
-    val expansionIds: List<ExpansionId> = emptyList()
+    val expansionIds: List<ExpansionId> = emptyList(),
+    /** Local and generated comptime definitions available after this expansion. */
+    val availableComptimeDefinitions: Map<String, SyntaxComptimeFunction> = emptyMap()
 )
 
 /**
@@ -1279,6 +1281,9 @@ class CpxExpander(
             acceptedDeclarations
                 .filterIsInstance<SyntaxComptimeFunction>()
                 .forEach { definitions.putIfAbsent(it.name, it) }
+            val nestedDefinitionEnvironment = task.definitionEnvironment + acceptedDeclarations
+                .filterIsInstance<SyntaxComptimeFunction>()
+                .associateBy(SyntaxComptimeFunction::name)
             resolveDeferredInvocations()
             if (generated.size + acceptedDeclarations.count { it !is SyntaxComptimeFunction && it !is SyntaxCpxInvocation } > limits.maxGeneratedDeclarations) {
                 scheduler.markFailed(task.key)
@@ -1295,7 +1300,7 @@ class CpxExpander(
                     invocation,
                     task.ancestors + task.key,
                     task.expansionId,
-                    task.definitionEnvironment
+                    nestedDefinitionEnvironment
                 )
             }
         }
@@ -1320,7 +1325,8 @@ class CpxExpander(
             syntaxArena = syntaxArena,
             argumentValues = argumentValues,
             evaluationResults = evaluationResults,
-            expansionIds = expansionIds
+            expansionIds = expansionIds,
+            availableComptimeDefinitions = definitions.toMap()
         )
     }
 

@@ -5,6 +5,7 @@ import cplus.backend.SourceMapping
 import cplus.comptime.ComptimeEvaluationResult
 import cplus.comptime.ComptimeEvaluator
 import cplus.comptime.ComptimeValue
+import cplus.comptime.CpxExpansionLimits
 import cplus.comptime.CpxExpander
 import cplus.core.Origin
 import cplus.core.SourceRange
@@ -128,6 +129,247 @@ class CompilerIntegrationTest {
         val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
         val executionOutput = execution.inputStream.bufferedReader().readText()
         assertEquals(42, execution.waitFor(), executionOutput)
+    }
+
+    @Test
+    fun importedGeneratorCanInvokeItsProvidersImportedGeneratorInEitherWorkspaceOrder() {
+        val directory = Files.createTempDirectory("cplus-imported-cpx-dependency")
+        val base = directory.resolve("base.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> make_value(type T) {
+                        return { struct value_{T}_t { T value; }; };
+                    }
+                    import "./box.cp";
+                """.trimIndent()
+            )
+        }
+        val provider = directory.resolve("box.cp").also { path ->
+            path.writeText(
+                """
+                    import { make_value } from "./base.cp";
+                    pub comptime cpx<decl> make_box(type T) {
+                        return {
+                            make_value(T);
+                            struct box_{T}_t { struct value_{T}_t item; };
+                        };
+                    }
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("main.cp").also { path ->
+            path.writeText(
+                """
+                    import { make_box } from "./box.cp";
+                    make_box(int);
+                    int main() {
+                        struct box_int_t result;
+                        result.item.value = 42;
+                        return result.item.value;
+                    }
+                """.trimIndent()
+            )
+        }
+
+        listOf(listOf(main, provider, base), listOf(base, provider, main)).forEach { sources ->
+            val result = CPlusCompiler().compile(CompileRequest(sources))
+            assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+            val semantic = assertNotNull(result.semanticModel)
+            assertEquals("main", semantic.structs.getValue("value_int_t").moduleName)
+            assertEquals("main", semantic.structs.getValue("box_int_t").moduleName)
+            if (sources.first() == main) {
+                val cFile = directory.resolve("main.c").also { it.writeText(result.generatedUnits.single().text) }
+                val executable = directory.resolve("main")
+                val compile = ProcessBuilder("cc", "-std=c17", cFile.toString(), "-o", executable.toString())
+                    .redirectErrorStream(true)
+                    .start()
+                val compileOutput = compile.inputStream.bufferedReader().readText()
+                assertEquals(0, compile.waitFor(), compileOutput)
+                val execution = ProcessBuilder(executable.toString()).redirectErrorStream(true).start()
+                val executionOutput = execution.inputStream.bufferedReader().readText()
+                assertEquals(42, execution.waitFor(), executionOutput)
+            }
+        }
+    }
+
+    @Test
+    fun importedGeneratorCycleReportsTheClientInvocationOrigin() {
+        val directory = Files.createTempDirectory("cplus-imported-cpx-cycle")
+        val provider = directory.resolve("cycle.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> repeat(type T) {
+                        return { repeat(T); };
+                    }
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("main.cp").also { path ->
+            path.writeText(
+                """
+                    import { repeat } from "./cycle.cp";
+                    repeat(int);
+                """.trimIndent()
+            )
+        }
+
+        val compiler = CPlusCompiler()
+        val result = compiler.compile(CompileRequest(listOf(main, provider)))
+        val diagnostic = result.diagnostics.singleOrNull { it.code == "CPX002" }
+
+        assertNotNull(diagnostic, result.diagnostics.joinToString())
+        assertEquals(main, compiler.sourcePathFor(assertNotNull(diagnostic.range).file))
+    }
+
+    @Test
+    fun importedGeneratorOutputLimitStopsExpansionAtClientCallSite() {
+        val directory = Files.createTempDirectory("cplus-imported-cpx-output-limit")
+        val provider = directory.resolve("provider.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> burst(type T) {
+                        return {
+                            struct first_{T}_t { T value; };
+                            struct second_{T}_t { T value; };
+                        };
+                    }
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("main.cp").also { path ->
+            path.writeText(
+                """
+                    import { burst } from "./provider.cp";
+                    burst(int);
+                """.trimIndent()
+            )
+        }
+        val compiler = CPlusCompiler(
+            CompilerContext(cpxExpander = CpxExpander(limits = CpxExpansionLimits(maxGeneratedDeclarations = 1)))
+        )
+
+        val result = compiler.compile(CompileRequest(listOf(main)))
+        val diagnostic = result.diagnostics.singleOrNull { it.code == "CPX007" }
+
+        assertNotNull(diagnostic, result.diagnostics.joinToString())
+        assertEquals(main, compiler.sourcePathFor(assertNotNull(diagnostic.range).file))
+    }
+
+    @Test
+    fun generatedComptimeFunctionIsAvailableToLaterInvocationInSameExpansion() {
+        val directory = Files.createTempDirectory("cplus-generated-cpx-dependency")
+        val provider = directory.resolve("provider.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> outer(type T) {
+                        return {
+                            comptime cpx<decl> generated(type U) {
+                                return { struct generated_{U}_t { U value; }; };
+                            }
+                            generated(T);
+                        };
+                    }
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("main.cp").also { path ->
+            path.writeText(
+                """
+                    import { outer } from "./provider.cp";
+                    outer(int);
+                    int main() {
+                        struct generated_int_t value;
+                        value.value = 42;
+                        return value.value;
+                    }
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main, provider)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("main", result.semanticModel?.structs?.get("generated_int_t")?.moduleName)
+    }
+
+    @Test
+    fun generatedImportLoadsProviderAndMakesItsComptimeFunctionAvailable() {
+        val directory = Files.createTempDirectory("cplus-generated-imported-cpx")
+        val provider = directory.resolve("loader.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> load(type T) {
+                        return {
+                            import { build } from "./late.cp";
+                            build(T);
+                        };
+                    }
+                """.trimIndent()
+            )
+        }
+        directory.resolve("late.cp").writeText(
+            """
+                pub comptime cpx<decl> build(type T) {
+                    return { struct late_{T}_t { T value; }; };
+                }
+            """.trimIndent()
+        )
+        val main = directory.resolve("main.cp").also { path ->
+            path.writeText(
+                """
+                    import { load } from "./loader.cp";
+                    load(int);
+                    int main() {
+                        struct late_int_t value;
+                        value.value = 42;
+                        return value.value;
+                    }
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("main", result.semanticModel?.structs?.get("late_int_t")?.moduleName)
+        assertTrue(result.moduleGraph?.nodes?.values?.any { it.path == directory.resolve("late.cp") } == true)
+    }
+
+    @Test
+    fun generatedPublicComptimeFunctionIsRecataloguedForImportedClient() {
+        val directory = Files.createTempDirectory("cplus-generated-public-cpx")
+        val provider = directory.resolve("provider.cp").also { path ->
+            path.writeText(
+                """
+                    pub comptime cpx<decl> declare(type T) {
+                        return {
+                            pub comptime cpx<decl> generated(type U) {
+                                return { struct generated_{U}_t { U value; }; };
+                            }
+                        };
+                    }
+                    declare(int);
+                """.trimIndent()
+            )
+        }
+        val main = directory.resolve("main.cp").also { path ->
+            path.writeText(
+                """
+                    import { generated } from "./provider.cp";
+                    generated(int);
+                    int main() {
+                        struct generated_int_t value;
+                        value.value = 42;
+                        return value.value;
+                    }
+                """.trimIndent()
+            )
+        }
+
+        val result = CPlusCompiler().compile(CompileRequest(listOf(main)))
+
+        assertTrue(result.isSuccessful, result.diagnostics.joinToString())
+        assertEquals("main", result.semanticModel?.structs?.get("generated_int_t")?.moduleName)
     }
 
     @Test

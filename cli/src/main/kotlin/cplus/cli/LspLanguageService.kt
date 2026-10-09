@@ -466,7 +466,7 @@ internal object LspLanguageService {
     }
 
     private fun exportCompletionKind(kind: ImportExportKind): Int = when (kind) {
-        ImportExportKind.FUNCTION, ImportExportKind.C_FUNCTION -> 3
+        ImportExportKind.FUNCTION, ImportExportKind.COMPTIME_FUNCTION, ImportExportKind.C_FUNCTION -> 3
         ImportExportKind.VALUE, ImportExportKind.ENUM_VALUE, ImportExportKind.C_VALUE -> 6
         ImportExportKind.STRUCT, ImportExportKind.UNION, ImportExportKind.ENUM,
         ImportExportKind.TYPE_ALIAS, ImportExportKind.C_TYPE -> 7
@@ -484,7 +484,11 @@ internal object LspLanguageService {
         ImportExportKind.STRUCT, ImportExportKind.UNION, ImportExportKind.ENUM,
         ImportExportKind.TYPE_ALIAS, ImportExportKind.C_TYPE
     )
-    private val CALLABLE_EXPORTS = setOf(ImportExportKind.FUNCTION, ImportExportKind.C_FUNCTION)
+    private val CALLABLE_EXPORTS = setOf(
+        ImportExportKind.FUNCTION,
+        ImportExportKind.COMPTIME_FUNCTION,
+        ImportExportKind.C_FUNCTION
+    )
     private val VALUE_EXPORTS = setOf(
         ImportExportKind.VALUE, ImportExportKind.ENUM_VALUE, ImportExportKind.C_VALUE
     )

@@ -21,6 +21,8 @@ import java.nio.file.Path
 import java.util.concurrent.Executors
 import kotlin.io.path.readText
 
+private const val MAX_WORKSPACE_CPX_ROUNDS = 64
+
 fun defaultHostTargetTriple(): String {
     val operatingSystem = System.getProperty("os.name").lowercase()
     val architecture = System.getProperty("os.arch").lowercase()
@@ -190,18 +192,6 @@ class CPlusCompiler(
         val foreignInputs = loadForeignSources(request.cSources)
         val cLinkDependencies = linkDependencies(request.cLibraries)
         val linkDiagnostics = validateLinkDependencies(cLinkDependencies)
-        if (request.sources.size <= 1) {
-            val artifacts = request.sources.map {
-                compileOne(it, request.options, foreignInputs, headerEnvironment)
-            }
-            return resultOf(
-                artifacts,
-                cSourceDependencies = dependencies(request.cSources),
-                additionalDiagnostics = foreignInputs.diagnostics + linkDiagnostics,
-                cLinkDependencies = cLinkDependencies,
-                sdkResolution = resolvedSdk
-            )
-        }
         return compileWorkspace(
             request,
             foreignInputs,
@@ -360,15 +350,7 @@ class CPlusCompiler(
         // Besides making the phase boundary explicit, this keeps source IDs
         // and parse results independent of expansion order.
         val parsedUnits = sourceFiles.map(::parseFrontend)
-        val importedDefinitions = workspaceComptimeDefinitions(parsedUnits)
-        val frontends = parsedUnits.map { unit ->
-            expandFrontend(
-                unit,
-                headerEnvironment,
-                deferImportedCpx = sourceFiles.size > 1,
-                importedDefinitions = importedDefinitions[unit.source.path.toAbsolutePath().normalize()].orEmpty()
-            )
-        }
+        val frontends = expandWorkspace(parsedUnits, headerEnvironment)
         if (frontends.size <= 1) {
             return resultOf(
                 frontends.map { frontend ->
@@ -384,7 +366,7 @@ class CPlusCompiler(
                 sdkResolution = resolvedSdk
             )
         }
-        val workspaceRequest = request.copy(sources = sourceFiles.map { it.path })
+        val workspaceRequest = request.copy(sources = frontends.map { it.source.path })
         return compileWorkspace(
             workspaceRequest,
             ForeignInputs(emptyList(), emptyList()),
@@ -507,12 +489,16 @@ class CPlusCompiler(
             mergedOrigin,
             resolvedUnits.map { unit ->
                 val moduleId = requireNotNull(moduleGraph.moduleIdForPath(unit.source.path))
+                val comptimeFunctions = (
+                    unit.parsed.syntax.declarations.filterIsInstance<SyntaxComptimeFunction>() +
+                        unit.expanded?.availableComptimeDefinitions?.values.orEmpty()
+                    ).distinctBy { it.origin to it.name }
+                val comptimeFunctionSyntax = unit.parsed.syntax.copy(declarations = comptimeFunctions)
                 AstModule(
                     moduleId.value,
                     unit.ast.declarations,
                     unit.source.path.toAbsolutePath().normalize().toString(),
-                    context.astBuilder.build(unit.parsed.syntax).declarations
-                        .filterIsInstance<AstComptimeFunction>(),
+                    context.astBuilder.build(comptimeFunctionSyntax).declarations.filterIsInstance<AstComptimeFunction>(),
                     context.astBuilder.build(unit.parsed.syntax).declarations
                         .filterIsInstance<AstCpxInvocation>()
                 )
@@ -839,38 +825,182 @@ class CPlusCompiler(
         }
 
         val workspaceUnits = paths.mapNotNull { parsedUnits[it] }
-        val importedDefinitions = workspaceComptimeDefinitions(workspaceUnits)
+        val expandedUnits = expandWorkspace(workspaceUnits, headerEnvironment)
+        val missingUnits = paths.mapNotNull { path ->
+            prepared.getValue(path).takeIf(PreparedSource::missing)?.let { missingFrontend(it.source) }
+        }
+        return (expandedUnits + missingUnits).associateBy { it.source.path.toAbsolutePath().normalize() }
+    }
 
-        // This second pass cannot begin until every requested source has a
-        // ParsedUnit (or an explicit missing-source result) above.
-        return paths.associateWith { path ->
-            val source = prepared.getValue(path)
-            if (source.missing) missingFrontend(source.source)
-            else expandFrontend(
-                requireNotNull(parsedUnits[path]),
-                headerEnvironment,
-                deferImportedCpx = paths.size > 1,
-                importedDefinitions = importedDefinitions[path.toAbsolutePath().normalize()].orEmpty()
-            )
+    /**
+     * Re-expands the parsed workspace as import edges and generated callable
+     * declarations become visible. Newly materialized path imports are parsed
+     * into the same workspace; the bounded loop never recursively compiles a
+     * provider from inside CPX evaluation.
+     */
+    private fun expandWorkspace(
+        initialUnits: List<ParsedUnit>,
+        headerEnvironment: HeaderEnvironment
+    ): List<FrontendUnit> {
+        if (initialUnits.isEmpty()) return emptyList()
+        val parsedByPath = initialUnits.associateBy { it.source.path.toAbsolutePath().normalize() }
+            .toMutableMap()
+        val roots = initialUnits.mapNotNull { it.source.path.toAbsolutePath().normalize().parent }.distinct()
+        val resolver = ModuleSourceResolver(roots, headerEnvironment.sdkRoot)
+        var catalogPrograms = parsedByPath.mapValues { it.value.parsed.syntax }
+        var previousDefinitions = emptyMap<Path, Map<String, SyntaxComptimeFunction>>()
+        var lastExpanded = emptyList<FrontendUnit>()
+        var lastGeneratedImportRange: SourceRange? = null
+
+        fun importKey(import: SyntaxImport): String = listOf(
+            import.module,
+            import.names.joinToString(","),
+            import.alias.orEmpty(),
+            import.nameAliases.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value}" }
+        ).joinToString("|")
+
+        fun catalogSignature(programs: Map<Path, SyntaxProgram>): List<String> = programs.toSortedMap(
+            compareBy(Path::toString)
+        ).flatMap { (path, program) ->
+            program.declarations.filterIsInstance<SyntaxImport>().map { "${path}: ${importKey(it)}" }
+        }.sorted()
+
+        fun definitionSignature(definitions: Map<Path, Map<String, SyntaxComptimeFunction>>): List<String> =
+            definitions.toSortedMap(compareBy(Path::toString)).flatMap { (path, functions) ->
+                functions.toSortedMap().map { (name, definition) ->
+                    "$path|$name|${definition.isPublic}|${definition.category}|" +
+                        definition.parameters.joinToString(",") { "${it.kind}:${it.name}" } + "|${definition.template}"
+                }
+            }
+
+        repeat(MAX_WORKSPACE_CPX_ROUNDS) {
+            val currentPaths = parsedByPath.keys.toList()
+            val currentUnits = currentPaths.map(parsedByPath::getValue)
+            val imported = workspaceComptimeDefinitions(currentUnits, catalogPrograms, previousDefinitions)
+            lastExpanded = currentUnits.map { unit ->
+                expandFrontend(
+                    unit,
+                    headerEnvironment,
+                    deferImportedCpx = currentUnits.size > 1,
+                    importedDefinitions = imported[unit.source.path.toAbsolutePath().normalize()].orEmpty()
+                )
+            }
+
+            val nextPrograms = currentUnits.associate { unit ->
+                val path = unit.source.path.toAbsolutePath().normalize()
+                val original = unit.parsed.syntax
+                val existingImports = original.declarations.filterIsInstance<SyntaxImport>().map(::importKey).toSet()
+                val generatedImports = lastExpanded.first { it.source.path.toAbsolutePath().normalize() == path }
+                    .expanded?.program?.declarations.orEmpty().filterIsInstance<SyntaxImport>()
+                    .filterNot { importKey(it) in existingImports }
+                generatedImports.lastOrNull()?.origin?.primaryRange?.let { lastGeneratedImportRange = it }
+                path to original.copy(declarations = original.declarations + generatedImports)
+            }
+
+            val overlayPaths = parsedByPath.keys.toSet()
+            val newlyParsed = linkedMapOf<Path, ParsedUnit>()
+            nextPrograms.forEach { (importer, program) ->
+                program.declarations.filterIsInstance<SyntaxImport>().forEach { import ->
+                    if (import.module.startsWith("c.") || import.module.startsWith("c/")) return@forEach
+                    val dependency = resolver.resolveImport(importer, import.module, overlayPaths) ?: return@forEach
+                    val normalized = dependency.toAbsolutePath().normalize()
+                    if (normalized in parsedByPath || normalized in newlyParsed) return@forEach
+                    val text = runCatching { Files.readString(normalized) }.getOrNull() ?: return@forEach
+                    val source = context.sourceRepository.put(normalized, text)
+                    newlyParsed[normalized] = parseFrontend(source)
+                }
+            }
+
+            val nextSignature = catalogSignature(nextPrograms)
+            val currentSignature = catalogSignature(catalogPrograms)
+            val nextDefinitions = lastExpanded.associate { frontend ->
+                frontend.source.path.toAbsolutePath().normalize() to
+                    frontend.expanded?.availableComptimeDefinitions.orEmpty()
+            }
+            val definitionsChanged = definitionSignature(previousDefinitions) != definitionSignature(nextDefinitions)
+            previousDefinitions = nextDefinitions
+            if (newlyParsed.isEmpty() && nextSignature == currentSignature && !definitionsChanged) return lastExpanded
+
+            parsedByPath.putAll(newlyParsed)
+            catalogPrograms = nextPrograms + newlyParsed.mapValues { it.value.parsed.syntax }
+        }
+
+        val first = initialUnits.first()
+        val diagnostic = Diagnostic(
+            DiagnosticSeverity.ERROR,
+            "workspace compile-time import expansion did not stabilize within $MAX_WORKSPACE_CPX_ROUNDS rounds",
+            lastGeneratedImportRange ?: first.parsed.syntax.range,
+            "CPX007"
+        )
+        return lastExpanded.mapIndexed { index, unit ->
+            if (index == 0) unit.copy(closureDiagnostics = unit.closureDiagnostics + diagnostic) else unit
         }
     }
 
     private fun workspaceComptimeDefinitions(
-        parsedUnits: List<ParsedUnit>
+        parsedUnits: List<ParsedUnit>,
+        catalogPrograms: Map<Path, SyntaxProgram> = emptyMap(),
+        previousDefinitions: Map<Path, Map<String, SyntaxComptimeFunction>> = emptyMap()
     ): Map<Path, Map<String, ImportedComptimeDefinition>> {
         if (parsedUnits.size < 2) return emptyMap()
-        val sources = parsedUnits.map { ModuleSource(it.source, it.parsed.syntax) }
+        val programs = parsedUnits.associate { unit ->
+            val path = unit.source.path.toAbsolutePath().normalize()
+            path to (catalogPrograms[path] ?: unit.parsed.syntax)
+        }
+        val sources = parsedUnits.map { unit ->
+            ModuleSource(unit.source, programs.getValue(unit.source.path.toAbsolutePath().normalize()))
+        }
         val graph = ModuleGraphBuilder().build(sources)
         val unitsById = parsedUnits.associateBy { unit -> requireNotNull(graph.moduleIdForPath(unit.source.path)) }
+        val visibleDefinitions = unitsById.mapValues { (_, unit) ->
+            val path = unit.source.path.toAbsolutePath().normalize()
+            val visible = unit.parsed.syntax.declarations.filterIsInstance<SyntaxComptimeFunction>()
+                .associateByTo(linkedMapOf(), SyntaxComptimeFunction::name)
+            previousDefinitions[path].orEmpty().forEach { (name, definition) -> visible[name] = definition }
+            visible
+        }.toMutableMap()
+        // Imports are solved as a bounded workspace fixed point, not recursively
+        // loaded while expanding a generator. This also handles declaration-only
+        // import SCCs: each round publishes only already-declared public callables.
+        repeat(graph.nodes.size.coerceAtLeast(1)) {
+            var changed = false
+            unitsById.forEach { (moduleId, unit) ->
+                val visible = visibleDefinitions.getValue(moduleId)
+                programs.getValue(unit.source.path.toAbsolutePath().normalize()).declarations
+                    .filterIsInstance<SyntaxImport>().forEach { import ->
+                    val importedId = graph.importBindings[moduleId]?.get(import.module) ?: return@forEach
+                    val publicDefinitions = visibleDefinitions[importedId].orEmpty().values
+                        .filter(SyntaxComptimeFunction::isPublic)
+                        .distinctBy { it.origin to it.name }
+                    fun publish(name: String, definition: SyntaxComptimeFunction) {
+                        if (name !in visible) {
+                            visible[name] = definition
+                            changed = true
+                        }
+                    }
+                    if (import.names.isEmpty()) {
+                        import.alias?.let { alias -> publicDefinitions.forEach { definition ->
+                            publish("$alias.${definition.name}", definition)
+                        } }
+                    } else {
+                        import.names.forEach { name ->
+                            val definition = publicDefinitions.singleOrNull { it.name == name } ?: return@forEach
+                            val localName = import.nameAliases[name] ?: name
+                            publish(localName, definition)
+                            import.alias?.let { alias -> publish("$alias.$localName", definition) }
+                        }
+                    }
+                }
+            }
+            if (!changed) return@repeat
+        }
         return parsedUnits.associate { importer ->
             val importerId = requireNotNull(graph.moduleIdForPath(importer.source.path))
             val candidates = linkedMapOf<String, MutableList<ImportedComptimeDefinition>>()
-            importer.parsed.syntax.declarations.filterIsInstance<SyntaxImport>().forEach { import ->
+            programs.getValue(importer.source.path.toAbsolutePath().normalize()).declarations
+                .filterIsInstance<SyntaxImport>().forEach { import ->
                 val providerId = graph.importBindings[importerId]?.get(import.module) ?: return@forEach
-                val providerDefinitions = unitsById[providerId]?.parsed?.syntax?.declarations
-                    ?.filterIsInstance<SyntaxComptimeFunction>()
-                    .orEmpty()
-                val lexicalDefinitions = providerDefinitions.associateBy { it.name }
+                val lexicalDefinitions = visibleDefinitions[providerId].orEmpty()
                 val definitions = lexicalDefinitions.values.filter(SyntaxComptimeFunction::isPublic)
                 fun offer(localName: String, definition: SyntaxComptimeFunction) {
                     candidates.getOrPut(localName) { mutableListOf() } +=
